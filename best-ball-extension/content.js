@@ -618,6 +618,130 @@ bAPI.runtime.onMessage.addListener(msg => {
   }
 });
 
+// ── Auto-detect draft position ────────────────────────────────────────────────
+
+let autoPositionDetected = false;
+
+// Strategy 1: Read window.mvcVars for any position data DK embeds on the page
+function tryDetectPositionFromMvcVars() {
+  const mv = window.mvcVars;
+  if (!mv) return null;
+
+  const sd = mv.snakeDraft;
+  if (!sd) return null;
+
+  // numTeams from contest config
+  const numTeams = sd.contestData?.maxEntries || sd.numTeams || sd.teamCount || null;
+
+  // DK sometimes puts the user's draft slot directly in mvcVars
+  const entry = sd.draftEntry || sd.entry || sd.userEntry || sd.myEntry;
+  const pos = entry?.draftPosition ?? entry?.pickPosition ?? entry?.slotPosition ?? entry?.draftSlot ?? null;
+  if (pos && pos > 0) return { position: pos, numTeams: numTeams || 12 };
+
+  return numTeams ? { position: null, numTeams } : null;
+}
+
+// Strategy 2: Scan draft board DOM for "YOU" / username column
+function tryDetectPositionFromDOM() {
+  // DraftKings renders the pick order as a horizontal list of team columns.
+  // The current user's column is labelled with their username or "YOU".
+  const mv = window.mvcVars;
+  const username = (mv?.currentUser?.displayName || mv?.user?.displayName || '').toLowerCase();
+
+  // Look for a column header containing "YOU" or the username
+  const candidates = [...document.querySelectorAll('[class*="PickOrder"], [class*="pick-order"], [class*="DraftOrder"], [class*="draft-order"]')];
+  for (const container of candidates) {
+    const cols = container.children;
+    for (let i = 0; i < cols.length; i++) {
+      const text = cols[i].textContent.toLowerCase();
+      if (text.includes('you') || (username && text.includes(username))) {
+        return { position: i + 1, numTeams: cols.length };
+      }
+    }
+  }
+
+  // Wider search: any element whose text is literally "YOU"
+  const result = document.evaluate(
+    "//*[normalize-space(text())='YOU' or normalize-space(text())='you']",
+    document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+  );
+  const youEl = result.singleNodeValue;
+  if (youEl) {
+    // Walk up to find siblings to count position
+    const parent = youEl.closest('[class*="pick-order"], [class*="PickOrder"], [class*="draft-order"], [class*="DraftOrder"]');
+    if (parent?.parentElement) {
+      const siblings = [...parent.parentElement.children];
+      const idx = siblings.indexOf(parent);
+      if (idx >= 0) return { position: idx + 1, numTeams: siblings.length };
+    }
+  }
+
+  return null;
+}
+
+// Strategy 3: infer from "PK X" timer at start of round 1
+// At overallPick O in round 1, PK X means our next pick is at O + X, so position = O + X
+function tryDetectPositionFromPK(pkValue) {
+  const numTeams = state.numTeams || tryDetectPositionFromMvcVars()?.numTeams || 12;
+  // Only reliable in round 1
+  if (state.overallPick > numTeams) return null;
+  const position = state.overallPick + pkValue;
+  if (position < 1 || position > numTeams) return null;
+  return { position, numTeams };
+}
+
+function showPositionDetectedBanner(position, numTeams) {
+  if (document.getElementById('bba-pos-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'bba-pos-banner';
+  banner.className = 'bba-toast';
+  banner.style.cssText = 'bottom:auto;top:80px;';
+  banner.innerHTML = `
+    <span>🎯 Pick #<strong>${position}</strong> of ${numTeams} detected</span>
+    <button class="bba-toast-btn bba-my-pick" id="bba-pos-confirm">Use this</button>
+    <button class="bba-toast-dismiss" id="bba-pos-dismiss">✕</button>
+  `;
+  document.body.appendChild(banner);
+
+  document.getElementById('bba-pos-confirm').addEventListener('click', () => {
+    bAPI.storage.local.set({ numTeams, myPosition: position }, () => {
+      state.numTeams   = numTeams;
+      state.myPosition = position;
+      state.isSetup    = true;
+      autoPositionDetected = true;
+      banner.remove();
+      render();
+    });
+  });
+  document.getElementById('bba-pos-dismiss').addEventListener('click', () => {
+    autoPositionDetected = false;
+    banner.remove();
+  });
+}
+
+async function tryAutoDetectPosition() {
+  if (state.isSetup || autoPositionDetected) return;
+
+  // Strategy 1 — mvcVars
+  const fromVars = tryDetectPositionFromMvcVars();
+  if (fromVars?.position) {
+    autoPositionDetected = true;
+    showPositionDetectedBanner(fromVars.position, fromVars.numTeams);
+    return;
+  }
+
+  // Apply numTeams from mvcVars even if no position yet
+  if (fromVars?.numTeams && !state.numTeams) state.numTeams = fromVars.numTeams;
+
+  // Strategy 2 — DOM
+  const fromDOM = tryDetectPositionFromDOM();
+  if (fromDOM?.position) {
+    autoPositionDetected = true;
+    showPositionDetectedBanner(fromDOM.position, fromDOM.numTeams);
+    return;
+  }
+}
+
 // ── DraftKings turn timer watcher ─────────────────────────────────────────────
 
 // XPath confirmed from live draft: countdown / "on the clock" span
@@ -632,22 +756,23 @@ function parseDKTimerText(text) {
   if (!text) return null;
   const t = text.trim();
   // "on the clock" / "your pick" → my turn
-  if (/on the clock|your pick|pick now|you're up/i.test(t)) return { myTurn: true, label: 'On the clock!' };
+  if (/on the clock|your pick|pick now|you're up/i.test(t)) return { myTurn: true, label: 'On the clock!', pkValue: 0 };
   // "PK 0" or "PK 1" → effectively my turn
   const pkMatch = t.match(/^PK\s*(\d+)$/i);
   if (pkMatch) {
     const picks = parseInt(pkMatch[1]);
-    if (picks <= 1) return { myTurn: true, label: 'On the clock!' };
-    return { myTurn: false, label: `${picks} picks away` };
+    if (picks <= 1) return { myTurn: true, label: 'On the clock!', pkValue: picks };
+    return { myTurn: false, label: `${picks} picks away`, pkValue: picks };
   }
   // Countdown timer "1:23"
   const timeMatch = t.match(/(\d+):(\d+)/);
-  if (timeMatch) return { myTurn: false, label: t };
-  return { myTurn: false, label: t };
+  if (timeMatch) return { myTurn: false, label: t, pkValue: null };
+  return { myTurn: false, label: t, pkValue: null };
 }
 
 let dkTimerInterval = null;
 let lastTimerText = '';
+let pkAutoDetectDone = false;
 
 function startTimerWatcher() {
   if (dkTimerInterval) clearInterval(dkTimerInterval);
@@ -660,6 +785,16 @@ function startTimerWatcher() {
 
     const parsed = parseDKTimerText(text);
     if (!parsed) return;
+
+    // Strategy 3: infer position from first observed PK value in round 1
+    if (!state.isSetup && !autoPositionDetected && !pkAutoDetectDone && parsed.pkValue != null && parsed.pkValue > 1) {
+      pkAutoDetectDone = true;
+      const detected = tryDetectPositionFromPK(parsed.pkValue);
+      if (detected?.position) {
+        autoPositionDetected = true;
+        showPositionDetectedBanner(detected.position, detected.numTeams);
+      }
+    }
 
     // Sync my turn state from DK directly
     const bar = document.getElementById('bba-turn-bar');
@@ -681,6 +816,21 @@ function startTimerWatcher() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+let autoDetectRetryTimer = null;
+
+function scheduleAutoDetectRetry(delay = 3000) {
+  if (autoDetectRetryTimer) return;
+  autoDetectRetryTimer = setTimeout(() => {
+    autoDetectRetryTimer = null;
+    if (!state.isSetup && !autoPositionDetected) {
+      tryAutoDetectPosition().then(() => {
+        // Keep retrying until React app is loaded and detection succeeds
+        if (!state.isSetup && !autoPositionDetected) scheduleAutoDetectRetry(5000);
+      });
+    }
+  }, delay);
+}
+
 function init() {
   initPlayers();
   loadSettings(() => {
@@ -690,6 +840,10 @@ function init() {
       const observer = new MutationObserver(onMutation);
       observer.observe(document.body, { childList: true, subtree: true });
       startTimerWatcher();
+      // Try to auto-detect draft position (React app may not be rendered yet)
+      tryAutoDetectPosition().then(() => {
+        if (!state.isSetup && !autoPositionDetected) scheduleAutoDetectRetry(3000);
+      });
     });
   });
 }
