@@ -1,6 +1,6 @@
 """
-Fetches NFL player data from the Sleeper API.
-Docs: https://docs.sleeper.com/
+Fetches NFL player data from the Sleeper API, with ADP from Fantasy Football Calculator.
+Docs: https://docs.sleeper.com/ | https://fantasyfootballcalculator.com/api
 """
 import json
 import os
@@ -9,6 +9,7 @@ import requests
 CACHE_PATH = os.path.join(os.path.dirname(__file__), 'player_cache.json')
 SLEEPER_STATE_URL = 'https://api.sleeper.app/v1/state/nfl'
 SLEEPER_PLAYERS_URL = 'https://api.sleeper.app/v1/players/nfl'
+FFC_ADP_URL = 'https://fantasyfootballcalculator.com/api/v1/adp/ppr?teams=12&year={year}'
 
 SKILL_POSITIONS = {'QB', 'RB', 'WR', 'TE'}
 
@@ -73,14 +74,39 @@ def _fetch_players():
     return resp.json()
 
 
+def _fetch_ffc_adp(season: str) -> dict:
+    """
+    Fetch PPR ADP from Fantasy Football Calculator.
+    Returns a dict keyed by normalized player name -> adp float.
+    Falls back to empty dict on failure.
+    """
+    try:
+        url = FFC_ADP_URL.format(year=season)
+        resp = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+        resp.raise_for_status()
+        players = resp.json().get('players', [])
+        return {_normalize_name(p['name']): p['adp'] for p in players if p.get('adp')}
+    except Exception:
+        return {}
+
+
+def _normalize_name(name: str) -> str:
+    """Lowercase, strip punctuation, collapse whitespace for fuzzy name matching."""
+    import re
+    name = name.lower()
+    name = re.sub(r"['\.\-]", '', name)
+    return re.sub(r'\s+', ' ', name).strip()
+
+
 def fetch_players(force_refresh=False):
-    """Return cached players, or fetch from Sleeper API if force_refresh=True or no cache exists."""
+    """Return cached players, or fetch from Sleeper + FFC if force_refresh=True or no cache exists."""
     cached = _load_cache()
     if cached and not force_refresh:
         return cached
 
     season = fetch_nfl_season()
     raw_players = _fetch_players()
+    ffc_adp = _fetch_ffc_adp(season)
 
     players = []
     for pid, p in raw_players.items():
@@ -100,27 +126,39 @@ def fetch_players(force_refresh=False):
         if not name:
             continue
 
-        search_rank = p.get('search_rank') or 9999
-        try:
-            adp = int(search_rank)
-        except (TypeError, ValueError):
-            adp = 9999
-
         players.append({
             'id': f"sleeper_{pid}",
             'name': name,
             'pos': pos,
             'team': team,
             'bye': BYE_WEEKS_2026.get(team, 0),
-            'adp': adp,
-            'dk_proj': 0,  # filled in below
+            'adp': None,
+            'dk_proj': 0,
             'season': season,
         })
 
-    # Sort by raw ADP first so pos_rank is meaningful
-    players.sort(key=lambda p: p['adp'])
+    # Merge real ADP from FFC where available
+    ffc_hits = 0
+    for p in players:
+        key = _normalize_name(p['name'])
+        if key in ffc_adp:
+            p['adp'] = ffc_adp[key]
+            ffc_hits += 1
 
-    # Assign sequential ADP and position-based projection
+    # Players without FFC ADP get synthetic fallback from Sleeper search_rank
+    sleeper_lookup = {
+        f"{v.get('first_name', '')} {v.get('last_name', '')}".strip(): v.get('search_rank') or 9999
+        for v in raw_players.values()
+    }
+    max_ffc_adp = max((p['adp'] for p in players if p['adp'] is not None), default=250)
+    for p in players:
+        if p['adp'] is None:
+            sr = sleeper_lookup.get(p['name'], 9999)
+            # Place unranked players after all FFC-ranked players
+            p['adp'] = max_ffc_adp + sr
+
+    # Sort by ADP, then assign sequential integers and position-based projections
+    players.sort(key=lambda p: p['adp'])
     pos_counters = {pos: 0 for pos in SKILL_POSITIONS}
     for i, p in enumerate(players, 1):
         p['adp'] = i
