@@ -108,9 +108,74 @@ function setCurrentPick(n) {
   render();
 }
 
-// ── Page scan: try to mark already-drafted players from DK DOM ────────────────
+// ── Draft board reader ────────────────────────────────────────────────────────
+// Reads the DraftBoardColumn_draft-board-column grid DK renders once picks happen.
+// Each column: child[0] = header ("jvonderhoffQB3RB6WR8TE3"), child[1..20] = picks.
+// Each pick child text: "1.7 7 C. McCaffrey RB SF" (all concatenated, no spaces).
 
+let lastNameLookup = null;
+
+function getLastNameLookup() {
+  if (lastNameLookup) return lastNameLookup;
+  lastNameLookup = {};
+  for (const player of (typeof PLAYERS !== 'undefined' ? PLAYERS : [])) {
+    const parts = player.name.split(' ');
+    // Strip generation suffixes (Jr, Sr, II, III, IV) before keying by last name
+    let last = parts[parts.length - 1];
+    if (/^(Jr\.?|Sr\.?|II|III|IV|V)$/i.test(last)) last = parts[parts.length - 2] || last;
+    const key = `${last.toLowerCase()}_${player.pos}_${player.team}`;
+    if (!lastNameLookup[key]) lastNameLookup[key] = player;
+  }
+  return lastNameLookup;
+}
+
+function parsePickFromBoardText(text) {
+  // "C. McCaffreyRBSF" | "J. Smith-NjigbaWRSEA" | "J. Cook IIIRBBUF"
+  const m = text.match(/([A-Z]\.\s*[A-Za-z][A-Za-z '.‑\-]*?)\s*(QB|RB|WR|TE)\s*([A-Z]{2,3})/);
+  if (!m) return null;
+  let lastName = m[1].replace(/^[A-Z]\.\s*/, '').replace(/\s+(Jr\.?|Sr\.?|II|III|IV|V)\s*$/i, '').trim().toLowerCase();
+  const key = `${lastName}_${m[2]}_${m[3]}`;
+  return getLastNameLookup()[key] || null;
+}
+
+function readDraftBoard() {
+  const columns = [...document.querySelectorAll('.DraftBoardColumn_draft-board-column')];
+  if (!columns.length) return { myPicks: 0, takenPicks: 0 };
+
+  let myPicks = 0, takenPicks = 0;
+
+  for (const col of columns) {
+    const kids = [...col.children];
+    if (kids.length < 2) continue;
+    const headerText = kids[0].textContent.toLowerCase();
+    const isMe = state.dkUsername && headerText.startsWith(state.dkUsername.toLowerCase().slice(0, 8));
+
+    for (let i = 1; i < kids.length; i++) {
+      const player = parsePickFromBoardText(kids[i].textContent);
+      if (!player || state.drafted.has(player.id)) continue;
+
+      state.drafted.add(player.id);
+      state.available = state.available.filter(p => p.id !== player.id);
+      if (isMe) { state.myTeam.push(player); myPicks++; }
+      else takenPicks++;
+    }
+  }
+
+  if (myPicks + takenPicks > 0) {
+    state.overallPick = Math.max(state.overallPick, state.drafted.size + 1);
+    state.isComplete = state.myTeam.length >= 20;
+    render();
+  }
+  return { myPicks, takenPicks };
+}
+
+// Fallback full-text scan (less precise — no "my team" attribution)
 function scanPageForDraftedPlayers() {
+  // Try the structured board first
+  const { myPicks, takenPicks } = readDraftBoard();
+  if (myPicks + takenPicks > 0) return myPicks + takenPicks;
+
+  // Fallback: body text contains player name
   let found = 0;
   const allText = document.body.innerText;
   for (const [name, player] of Object.entries(playerNameMap)) {
@@ -816,10 +881,11 @@ function scheduleAutoDetectRetry(delay = 3000) {
   if (autoDetectRetryTimer) return;
   autoDetectRetryTimer = setTimeout(() => {
     autoDetectRetryTimer = null;
-    if (!state.isSetup && !autoPositionDetected) {
+    // Read draft board on every retry — picks may have rendered since last attempt
+    readDraftBoard();
+    if (!autoPositionDetected) {
       tryAutoDetectPosition().then(() => {
-        // Keep retrying until React app is loaded and detection succeeds
-        if (!state.isSetup && !autoPositionDetected) scheduleAutoDetectRetry(5000);
+        if (!autoPositionDetected) scheduleAutoDetectRetry(5000);
       });
     }
   }, delay);
@@ -837,9 +903,10 @@ function init() {
       render();
       startPickPoller();
       startTimerWatcher();
-      // Try to auto-detect draft position (React app may not be rendered yet)
+      // Read board + detect position (React app may not be rendered yet — retry if needed)
+      readDraftBoard();
       tryAutoDetectPosition().then(() => {
-        if (!state.isSetup && !autoPositionDetected) scheduleAutoDetectRetry(3000);
+        if (!autoPositionDetected) scheduleAutoDetectRetry(3000);
       });
     });
   });
