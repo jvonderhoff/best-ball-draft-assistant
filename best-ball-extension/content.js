@@ -30,13 +30,27 @@ async function loadExposure() {
   } catch (_) {}
 }
 
-async function saveDraftToFlask(contest = '') {
+function getDKDraftId() {
+  // Extract draft ID from URL: /draft/snake/190384827
+  const m = location.pathname.match(/\/draft\/snake\/(\d+)/);
+  return m ? m[1] : null;
+}
+
+async function saveDraftToFlask({ contest = '', silent = false } = {}) {
+  if (!state.myTeam.length) return false;
   try {
-    const resp = await fetch('http://localhost:8000/api/drafts/save', {
+    const resp = await fetch('http://localhost:8000/api/drafts/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contest })
+      body: JSON.stringify({
+        dk_draft_id: getDKDraftId(),
+        my_position: state.myPosition || 0,
+        picks: state.myTeam,
+        contest,
+      }),
     });
+    const json = await resp.json();
+    if (!silent && json.duplicate) console.log('[BBA] Draft already saved, skipping.');
     return resp.ok;
   } catch (_) { return false; }
 }
@@ -86,6 +100,7 @@ function myPick(playerId) {
   state.overallPick++;
   state.isComplete = state.myTeam.length >= 20;
   render();
+  if (state.isComplete) saveDraftToFlask({ silent: true });
 }
 
 function undoLast() {
@@ -173,6 +188,7 @@ function readDraftBoard() {
     state.overallPick = Math.max(state.overallPick, state.drafted.size + 1);
     state.isComplete = state.myTeam.length >= 20;
     render();
+    if (state.isComplete) saveDraftToFlask({ silent: true }).then(ok => { if (ok) loadExposure(); });
   }
   return { myPicks, takenPicks };
 }
@@ -226,11 +242,138 @@ function showDetectionToast(player) {
 
 // ── DK API response processor (fed by pick-interceptor.js) ───────────────────
 
+function _extractPlayerFromPickObj(pick) {
+  const name = (
+    pick.displayName ||
+    `${pick.firstName || ''} ${pick.lastName || ''}`.trim() ||
+    pick.playerName ||
+    pick.name || ''
+  ).toLowerCase();
+  return name ? playerNameMap[name] : null;
+}
+
+function _isMyPickObj(pick) {
+  if (!state.dkUsername) return false;
+  const entryName = (pick.username || pick.entryName || pick.teamName || pick.draftTeamName || '').toLowerCase();
+  return entryName.includes(state.dkUsername.toLowerCase());
+}
+
+// ── DK history sync (mycontests page) ────────────────────────────────────────
+
+// Tracks draft group IDs we've already queued to avoid duplicate fetches.
+const _syncedDraftIds = new Set();
+
+// Extract snake/best-ball draft group IDs from a DK contest-list response.
+// DK uses many response shapes; try all common locations.
+function _extractDraftGroupIds(data) {
+  const ids = new Set();
+  const walk = (obj) => {
+    if (!obj || typeof obj !== 'object') return;
+    if (Array.isArray(obj)) { obj.forEach(walk); return; }
+    // Candidate fields that hold a draft group id
+    for (const key of ['draftGroupId', 'DraftGroupId', 'draftKey', 'contestKey', 'contestId']) {
+      if (obj[key] && /^\d+$/.test(String(obj[key]))) ids.add(String(obj[key]));
+    }
+    // Recurse into known wrapper keys
+    for (const key of ['contests', 'entries', 'myContests', 'upcomingContests', 'liveContests',
+                       'completedContests', 'data', 'payload', 'results']) {
+      if (obj[key]) walk(obj[key]);
+    }
+  };
+  walk(data);
+  return [...ids];
+}
+
+// Fetch picks for one draft group ID directly from DK's API (authenticated via browser session).
+async function _fetchDKDraftPicks(draftGroupId) {
+  const paths = [
+    `https://api.draftkings.com/drafts/v1/draftgroups/${draftGroupId}/picks`,
+    `https://api.draftkings.com/drafts/v1/draftgroups/${draftGroupId}/selections`,
+    `https://api.draftkings.com/lineups/v1/lineup/${draftGroupId}`,
+  ];
+  for (const url of paths) {
+    try {
+      const resp = await fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      console.log('[BBA] picks response from', url, data);
+      return data;
+    } catch (_) {}
+  }
+  return null;
+}
+
+// Import picks from one DK draft group into Flask.
+async function syncDraftGroup(draftGroupId) {
+  if (_syncedDraftIds.has(draftGroupId)) return;
+  _syncedDraftIds.add(draftGroupId);
+
+  const data = await _fetchDKDraftPicks(draftGroupId);
+  if (!data) return;
+
+  // Build pick list — try common response shapes
+  const pickList = data.picks || data.selections || data.draftPicks ||
+                   data.data?.picks || data.payload?.picks || [];
+  if (!pickList.length) return;
+
+  const myPicks = [];
+  for (const pick of pickList) {
+    const player = _extractPlayerFromPickObj(pick);
+    if (!player) continue;
+    if (_isMyPickObj(pick)) myPicks.push(player);
+  }
+
+  if (myPicks.length < 1) return;
+
+  await fetch('http://localhost:8000/api/drafts/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      dk_draft_id: draftGroupId,
+      my_position: 0,
+      picks: myPicks,
+      contest: `DK draft ${draftGroupId}`,
+    }),
+  }).catch(() => {});
+}
+
+// Proactively fetch the user's my-contests list from DK (runs when on mycontests page).
+async function fetchAndSyncMyContests() {
+  if (!state.dkUsername) return;
+  const endpoints = [
+    'https://api.draftkings.com/contests/v1/contests/user?sport=NFL&maxResultsCount=100',
+    `https://api.draftkings.com/entries/v1/entries?username=${encodeURIComponent(state.dkUsername)}&sport=NFL&maxResultsCount=100`,
+    'https://api.draftkings.com/lineups/v1/getuserdraftlineups?sport=NFL',
+  ];
+  for (const url of endpoints) {
+    try {
+      const resp = await fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } });
+      if (!resp.ok) { console.log('[BBA] mycontests probe', resp.status, url); continue; }
+      const data = await resp.json();
+      console.log('[BBA] mycontests response from', url, data);
+      const ids = _extractDraftGroupIds(data);
+      console.log('[BBA] found draft group IDs:', ids);
+      for (const id of ids) syncDraftGroup(id);
+      if (ids.length) break;
+    } catch (e) { console.log('[BBA] mycontests fetch error', url, e); }
+  }
+}
+
 function processDKResponse(url, data) {
   if (!data || typeof data !== 'object') return;
 
-  // Walk any response looking for arrays that contain player pick objects.
-  // DK uses various shapes — try common locations.
+  // ── Contest-list detection ───────────────────────────────────────────────
+  // When the user visits mycontests, DK fires API calls that contain their
+  // contest/entry list. We extract draft group IDs and sync picks for each.
+  if (/contest|entries|lineup|mycontest/i.test(url)) {
+    const ids = _extractDraftGroupIds(data);
+    if (ids.length) {
+      console.log('[BBA] contest list detected from', url, '— draft IDs:', ids);
+      ids.forEach(id => syncDraftGroup(id));
+    }
+  }
+
+  // ── Current-draft pick detection ─────────────────────────────────────────
   const candidates = [
     data.picks, data.draftPicks, data.selections,
     data.data?.picks, data.payload?.picks,
@@ -240,21 +383,14 @@ function processDKResponse(url, data) {
   for (const list of candidates) {
     if (!Array.isArray(list) || list.length === 0) continue;
     const first = list[0];
-    // A pick object usually has a player name and a team/user identifier
     const hasPlayerName = first.displayName || first.firstName || first.playerName || first.name;
     if (!hasPlayerName) continue;
 
     let applied = 0;
     for (const pick of list) {
-      const name = (pick.displayName || `${pick.firstName || ''} ${pick.lastName || ''}`.trim() || pick.playerName || pick.name || '').toLowerCase();
-      if (!name) continue;
-      const player = playerNameMap[name];
+      const player = _extractPlayerFromPickObj(pick);
       if (!player || state.drafted.has(player.id)) continue;
-
-      // Determine if this pick belongs to the current user
-      const entryName = (pick.username || pick.entryName || pick.teamName || pick.draftTeamName || '').toLowerCase();
-      const isMine = state.dkUsername && entryName.includes(state.dkUsername.toLowerCase());
-
+      const isMine = _isMyPickObj(pick);
       state.drafted.add(player.id);
       state.available = state.available.filter(p => p.id !== player.id);
       if (isMine) state.myTeam.push(player);
@@ -265,7 +401,8 @@ function processDKResponse(url, data) {
       state.overallPick = Math.max(state.overallPick, state.drafted.size + 1);
       state.isComplete = state.myTeam.length >= 20;
       if (overlayEl) render();
-      return; // found the right list, stop searching
+      if (state.isComplete) saveDraftToFlask({ silent: true }).then(ok => { if (ok) loadExposure(); });
+      return;
     }
   }
 }
@@ -549,14 +686,7 @@ function renderTurnBar() {
   }
   if (state.isComplete) {
     bar.className = 'bba-turn-mine';
-    bar.innerHTML = `✓ Draft complete! &nbsp;<button id="bba-save-draft" style="padding:3px 10px;background:#c8e6c9;color:#1b5e20;border:none;border-radius:4px;font-weight:700;cursor:pointer;font-size:0.82em;">Save Draft</button>`;
-    document.getElementById('bba-save-draft')?.addEventListener('click', async e => {
-      const btn = e.target;
-      const ok = await saveDraftToFlask();
-      btn.textContent = ok ? '✓ Saved' : 'Flask not running';
-      btn.disabled = true;
-      if (ok) loadExposure();
-    });
+    bar.textContent = `✓ Draft complete! ${state.myTeam.length} players · auto-saved`;
     return;
   }
 
@@ -946,12 +1076,19 @@ function init() {
   });
 }
 
-if (/draftkings\.com\/(draft|lineup)/.test(location.href)) {
-  init();
-} else {
-  window.addEventListener('popstate', () => {
-    if (/draftkings\.com\/(draft|lineup)/.test(location.href) && !document.getElementById('bba-root')) {
-      init();
-    }
-  });
+function onPageLoad() {
+  const href = location.href;
+  if (/draftkings\.com\/(draft|lineup)/.test(href)) {
+    if (!document.getElementById('bba-root')) init();
+  } else if (/draftkings\.com\/mycontests/.test(href)) {
+    // On the mycontests page: register the interceptor and sync past drafts.
+    window.addEventListener('__bba_api', e => processDKResponse(e.detail.url, e.detail.data));
+    loadSettings(() => {
+      // Give DK's page JS time to fire its own API calls first, then also probe proactively.
+      setTimeout(fetchAndSyncMyContests, 2000);
+    });
+  }
 }
+
+onPageLoad();
+window.addEventListener('popstate', onPageLoad);

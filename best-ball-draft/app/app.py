@@ -99,8 +99,38 @@ def save_draft_route():
             my_position = draft_state.my_position,
             proj_pts    = draft_state.calculate_team_projection(),
             picks       = draft_state.my_team,
-            contest     = data.get('contest', '')
+            contest     = data.get('contest', ''),
+            dk_draft_id = data.get('dk_draft_id'),
         )
+        if draft_id is None:
+            return jsonify({'success': True, 'draft_id': None, 'duplicate': True})
+        return jsonify({'success': True, 'draft_id': draft_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/drafts/import', methods=['POST'])
+def import_draft():
+    """
+    Import a completed draft directly from the extension.
+    Body: { dk_draft_id, my_position, picks: [{id,name,pos,team,adp,dk_proj},...] }
+    """
+    data = request.get_json()
+    picks = data.get('picks', [])
+    if not picks:
+        return jsonify({'error': 'No picks provided'}), 400
+    proj_pts = sum(p.get('dk_proj', 0) for p in picks)
+    try:
+        draft_id = save_draft(
+            num_teams   = 12,
+            my_position = data.get('my_position', 0),
+            proj_pts    = proj_pts,
+            picks       = picks,
+            contest     = data.get('contest', ''),
+            dk_draft_id = data.get('dk_draft_id'),
+        )
+        if draft_id is None:
+            return jsonify({'success': True, 'draft_id': None, 'duplicate': True})
         return jsonify({'success': True, 'draft_id': draft_id})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
