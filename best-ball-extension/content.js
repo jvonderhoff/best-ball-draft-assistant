@@ -618,6 +618,63 @@ bAPI.runtime.onMessage.addListener(msg => {
   }
 });
 
+// ── DraftKings turn timer watcher ─────────────────────────────────────────────
+
+// XPath confirmed from live draft: countdown / "on the clock" span
+const DK_TIMER_XPATH = '/html/body/div[3]/div/div/div/div/div[2]/div[1]/div[2]/div[1]/span';
+
+function getDKTimerEl() {
+  const result = document.evaluate(DK_TIMER_XPATH, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+  return result.singleNodeValue;
+}
+
+function parseDKTimerText(text) {
+  if (!text) return null;
+  const t = text.trim().toLowerCase();
+  // "on the clock" / "your pick" / "pick now" → it's my turn
+  if (/on the clock|your pick|pick now|you're up/i.test(t)) return { myTurn: true, label: t };
+  // Countdown like "1:23" or "0:45"
+  const timeMatch = t.match(/(\d+):(\d+)/);
+  if (timeMatch) return { myTurn: false, label: t, seconds: parseInt(timeMatch[1]) * 60 + parseInt(timeMatch[2]) };
+  // Plain number of seconds
+  const secMatch = t.match(/^(\d+)s?$/);
+  if (secMatch) return { myTurn: false, label: t, seconds: parseInt(secMatch[1]) };
+  return { myTurn: false, label: t };
+}
+
+let dkTimerInterval = null;
+let lastTimerText = '';
+
+function startTimerWatcher() {
+  if (dkTimerInterval) clearInterval(dkTimerInterval);
+  dkTimerInterval = setInterval(() => {
+    const el = getDKTimerEl();
+    if (!el) return;
+    const text = el.textContent?.trim();
+    if (!text || text === lastTimerText) return;
+    lastTimerText = text;
+
+    const parsed = parseDKTimerText(text);
+    if (!parsed) return;
+
+    // Sync my turn state from DK directly
+    const bar = document.getElementById('bba-turn-bar');
+    if (!bar || state.isComplete) return;
+
+    if (parsed.myTurn) {
+      bar.className = 'bba-turn-mine';
+      bar.textContent = `YOUR PICK  •  Round ${currentRound(state.overallPick, state.numTeams)}  •  ${state.myTeam.length + 1}/20`;
+      // Re-render suggestion in case it wasn't showing
+      renderSuggestion();
+      renderList();
+    } else if (parsed.label) {
+      bar.className = 'bba-turn-waiting';
+      const round = currentRound(state.overallPick, state.numTeams);
+      bar.textContent = `Round ${round}  •  ${parsed.label}  •  ${state.drafted.size} off board`;
+    }
+  }, 1000);
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 function init() {
@@ -628,6 +685,7 @@ function init() {
       render();
       const observer = new MutationObserver(onMutation);
       observer.observe(document.body, { childList: true, subtree: true });
+      startTimerWatcher();
     });
   });
 }
