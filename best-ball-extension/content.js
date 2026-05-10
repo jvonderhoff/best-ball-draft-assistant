@@ -17,7 +17,7 @@ let state = {
   isComplete: false,
 };
 
-let exposure = {};  // player_id -> { exposure_rate, times_drafted }
+let exposure = {};
 
 async function loadExposure() {
   try {
@@ -25,15 +25,11 @@ async function loadExposure() {
     if (!resp.ok) return;
     const data = await resp.json();
     exposure = data.players || {};
-  } catch (_) {
-    // Flask not running — exposure stays empty, no penalty applied
-  }
+  } catch (_) {}
 }
 
 async function saveDraftToFlask(contest = '') {
   try {
-    // Build payload matching what Flask expects
-    const picks = state.myTeam.map((p, i) => ({ ...p, pick_number: i + 1 }));
     const resp = await fetch('http://localhost:8000/api/drafts/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -45,7 +41,6 @@ async function saveDraftToFlask(contest = '') {
   }
 }
 
-// Fast lookup: lowercase full name → player object
 let playerNameMap = {};
 
 function initPlayers() {
@@ -64,7 +59,7 @@ function loadSettings(cb) {
       state.myPosition = result.myPosition;
       state.isSetup    = true;
     }
-    state.stackIntensity   = result.stackIntensity   || 'medium';
+    state.stackIntensity    = result.stackIntensity    || 'medium';
     state.diversifyStrength = result.diversifyStrength != null ? result.diversifyStrength : 0.5;
     cb();
   });
@@ -90,7 +85,6 @@ function myPick(playerId) {
 }
 
 function undoLast() {
-  // Restore last overall pick
   if (state.overallPick <= 1) return;
   const last = state.myTeam[state.myTeam.length - 1];
   if (last) {
@@ -105,23 +99,17 @@ function undoLast() {
 
 // ── Auto-detection via MutationObserver ───────────────────────────────────────
 
-const seenText = new Set();
+// Track players we've already surfaced a toast for so we don't double-fire
+const toastedPlayers = new Set();
 
-function extractPlayerFromText(text) {
-  if (!text || text.length < 5) return null;
+function extractPlayerFromNode(node) {
+  const text = node.textContent?.trim() || '';
+  if (text.length < 4 || text.length > 120) return null;
   const lower = text.toLowerCase();
-  // Direct name lookup
   for (const [name, player] of Object.entries(playerNameMap)) {
     if (lower.includes(name)) return player;
   }
   return null;
-}
-
-function looksLikePickContext(node) {
-  // Check parent/sibling text for pick-related words
-  const context = (node.closest?.('[class*="pick"], [class*="draft"], [class*="selected"], [class*="clock"]') ||
-                   node.parentElement)?.textContent?.toLowerCase() || '';
-  return /pick|draft|select|clock|on the clock/.test(context);
 }
 
 function showDetectionToast(player) {
@@ -133,34 +121,43 @@ function showDetectionToast(player) {
   toast.className = 'bba-toast';
   toast.innerHTML = `
     <span>Detected: <strong>${player.name}</strong> (${player.pos})</span>
-    <button class="bba-toast-btn bba-taken" data-id="${player.id}">Mark Taken</button>
+    <button class="bba-toast-btn bba-my-pick" data-id="${player.id}">My Pick</button>
+    <button class="bba-toast-btn bba-taken" data-id="${player.id}">Taken</button>
     <button class="bba-toast-dismiss">✕</button>
   `;
   document.body.appendChild(toast);
 
+  toast.querySelector('.bba-my-pick').addEventListener('click', () => {
+    myPick(player.id);
+    toast.remove();
+  });
   toast.querySelector('.bba-taken').addEventListener('click', () => {
     markTaken(player.id);
     toast.remove();
   });
   toast.querySelector('.bba-toast-dismiss').addEventListener('click', () => toast.remove());
-  setTimeout(() => toast?.remove(), 8000);
+  setTimeout(() => toast?.remove(), 10000);
 }
 
 function onMutation(mutations) {
   if (!state.isSetup) return;
+
   for (const mutation of mutations) {
     for (const node of mutation.addedNodes) {
-      const text = node.textContent?.trim();
-      if (!text || seenText.has(text)) continue;
-      seenText.add(text);
-
-      const player = extractPlayerFromText(text);
-      if (!player) continue;
-      if (!state.available.find(p => p.id === player.id)) continue; // already gone
-
-      // Only surface as toast if the DOM context suggests a pick happened
-      if (looksLikePickContext(node.parentElement || node)) {
+      // Walk all text-bearing descendants of added nodes
+      const walker = document.createTreeWalker(
+        node.nodeType === Node.ELEMENT_NODE ? node : (node.parentElement || document.body),
+        NodeFilter.SHOW_TEXT
+      );
+      let textNode;
+      while ((textNode = walker.nextNode())) {
+        const player = extractPlayerFromNode(textNode);
+        if (!player) continue;
+        if (!state.available.find(p => p.id === player.id)) continue;
+        if (toastedPlayers.has(player.id)) continue;
+        toastedPlayers.add(player.id);
         showDetectionToast(player);
+        break; // one toast per mutation batch
       }
     }
   }
@@ -172,7 +169,7 @@ let overlayEl = null;
 let overlayOpen = true;
 let searchQuery = '';
 let posFilter = '';
-let activeTab = 'board'; // 'board' | 'team'
+let activeTab = 'board';
 
 function createOverlay() {
   if (document.getElementById('bba-root')) return;
@@ -183,7 +180,7 @@ function createOverlay() {
     <div id="bba-toggle" title="Best Ball Assistant">🏈</div>
     <div id="bba-panel">
       <div id="bba-header">
-        <span id="bba-title">Best Ball Assistant</span>
+        <span id="bba-title">🏈 Best Ball</span>
         <div style="display:flex;gap:6px;align-items:center">
           <button id="bba-undo" title="Undo last pick">↩</button>
           <button id="bba-close">✕</button>
@@ -199,7 +196,7 @@ function createOverlay() {
       <div id="bba-suggestion"></div>
 
       <div id="bba-tabs">
-        <button class="bba-tab active" data-tab="board">Board</button>
+        <button class="bba-tab active" data-tab="board">Top Picks</button>
         <button class="bba-tab" data-tab="team">My Team (<span id="bba-team-count">0</span>)</button>
         <button class="bba-tab" data-tab="stacks">Stacks</button>
       </div>
@@ -216,13 +213,13 @@ function createOverlay() {
       </div>
 
       <div id="bba-list"></div>
+      <div id="bba-resize-handle" title="Drag to resize"></div>
     </div>
   `;
 
   document.body.appendChild(root);
   overlayEl = root;
 
-  // Events
   document.getElementById('bba-toggle').addEventListener('click', togglePanel);
   document.getElementById('bba-close').addEventListener('click', togglePanel);
   document.getElementById('bba-undo').addEventListener('click', undoLast);
@@ -250,8 +247,8 @@ function createOverlay() {
     });
   });
 
-  // Make panel draggable via header
   makeDraggable(document.getElementById('bba-header'), document.getElementById('bba-panel'));
+  makeResizable(document.getElementById('bba-resize-handle'), document.getElementById('bba-panel'));
 }
 
 function togglePanel() {
@@ -271,10 +268,34 @@ function makeDraggable(handle, target) {
     startTop = rect.top;
 
     function onMove(e) {
-      const dx = startX - e.clientX;
-      const dy = e.clientY - startY;
-      target.style.right = Math.max(0, startRight + dx) + 'px';
-      target.style.top = Math.max(0, startTop + dy) + 'px';
+      target.style.right = Math.max(0, startRight + (startX - e.clientX)) + 'px';
+      target.style.top   = Math.max(0, startTop  + (e.clientY - startY))  + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function makeResizable(handle, target) {
+  let startX, startY, startW, startH;
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    startX = e.clientX;
+    startY = e.clientY;
+    startW = target.offsetWidth;
+    startH = target.offsetHeight;
+
+    function onMove(e) {
+      // Dragging left expands width; dragging down expands height
+      const newW = Math.max(260, startW + (startX - e.clientX));
+      const newH = Math.max(300, startH + (e.clientY - startY));
+      target.style.width     = newW + 'px';
+      target.style.maxHeight = newH + 'px';
     }
     function onUp() {
       document.removeEventListener('mousemove', onMove);
@@ -325,12 +346,12 @@ function renderTurnBar() {
 
   if (myTurn) {
     bar.className = 'bba-turn-mine';
-    bar.textContent = `YOUR PICK  •  Pick #${state.overallPick}  •  Round ${round}  •  My pick ${state.myTeam.length + 1}/20`;
+    bar.textContent = `YOUR PICK  •  Round ${round}  •  ${state.myTeam.length + 1}/20`;
   } else {
     const until = picksUntilMyTurn(state.overallPick, state.numTeams, state.myPosition);
     const next  = nextMyOverallPick(state.overallPick + 1, state.numTeams, state.myPosition);
     bar.className = 'bba-turn-waiting';
-    bar.textContent = `Pick #${state.overallPick}  •  Round ${round}  —  your pick in ${until} (overall #${next})`;
+    bar.textContent = `Round ${round}  —  your pick in ${until}  (overall #${next})`;
   }
 }
 
@@ -338,10 +359,7 @@ function renderSuggestion() {
   const box = document.getElementById('bba-suggestion');
   const myTurn = state.isSetup && isMyTurn(state.overallPick, state.numTeams, state.myPosition);
 
-  if (!myTurn || state.isComplete) {
-    box.style.display = 'none';
-    return;
-  }
+  if (!myTurn || state.isComplete) { box.style.display = 'none'; return; }
 
   const rec = getRecommendation(state.available, state.myTeam, state.myTeam.length + 1, state.stackIntensity, exposure, state.diversifyStrength);
   if (!rec) { box.style.display = 'none'; return; }
@@ -368,28 +386,40 @@ function renderList() {
   if (activeTab === 'team')   { renderTeam(listEl);   return; }
   if (activeTab === 'stacks') { renderStacks(listEl);  return; }
 
+  // Board tab: show search results when searching, top 10 by value otherwise
+  const myTurn  = state.isSetup && isMyTurn(state.overallPick, state.numTeams, state.myPosition);
+  const needs   = getTeamNeeds(state.myTeam);
+  const qbTeams = getMyQBTeams(state.myTeam);
+  const myTeamSet = new Set(state.myTeam.map(p => p.team));
+
   let players = [...state.available];
   if (posFilter) players = players.filter(p => p.pos === posFilter);
-  if (searchQuery) {
+
+  const isSearching = searchQuery.trim().length > 0;
+  if (isSearching) {
     const q = searchQuery.toLowerCase();
     players = players.filter(p => p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q));
   }
 
-  const myTurn = state.isSetup && isMyTurn(state.overallPick, state.numTeams, state.myPosition);
-  const needs  = getTeamNeeds(state.myTeam);
-  const qbTeams = getMyQBTeams(state.myTeam);
-  const myTeamSet = new Set(state.myTeam.map(p => p.team));
-
+  // Sort: by value on my turn, by ADP otherwise
   if (myTurn) {
     players.sort((a, b) =>
       calculateValue(b, needs, state.myTeam.length + 1, state.myTeam, state.stackIntensity) -
-      calculateValue(a, needs, state.myTeam.length + 1, state.myTeam, state.stackIntensity));
+      calculateValue(a, needs, state.myTeam.length + 1, state.myTeam, state.stackIntensity)
+    );
   } else {
     players.sort((a, b) => a.adp - b.adp);
   }
 
-  const top = players.slice(0, 60);
-  listEl.innerHTML = top.map(p => {
+  // Show top 10 unless actively searching (then show all matches up to 30)
+  const display = isSearching ? players.slice(0, 30) : players.slice(0, 10);
+
+  if (!display.length) {
+    listEl.innerHTML = '<div class="bba-empty">No players found</div>';
+    return;
+  }
+
+  listEl.innerHTML = display.map(p => {
     const isQBStack   = ['WR', 'TE'].includes(p.pos) && qbTeams.has(p.team);
     const hasTeammate = myTeamSet.has(p.team);
     const stackBadge  = isQBStack
@@ -405,7 +435,7 @@ function renderList() {
       <div class="bba-player-row bba-pos-border-${p.pos}${isQBStack ? ' bba-is-stack' : ''}">
         <div class="bba-player-info">
           <div class="bba-player-name">${p.name} <span class="bba-pos bba-pos-${p.pos}">${p.pos}</span>${stackBadge}${expBadge}</div>
-          <div class="bba-player-meta">${p.team} · Bye ${p.bye} · ADP ${p.adp} · ${p.dk_proj} pts</div>
+          <div class="bba-player-meta">${p.team} · ADP ${p.adp} · ${p.dk_proj} pts</div>
         </div>
         <div class="bba-player-btns">
           <button class="bba-btn-pick ${myTurn ? '' : 'bba-dim'}" data-id="${p.id}">My Pick</button>
@@ -413,6 +443,10 @@ function renderList() {
         </div>
       </div>`;
   }).join('');
+
+  if (!isSearching && players.length > 10) {
+    listEl.innerHTML += `<div class="bba-empty" style="font-size:0.72em;padding:10px">Search to see more players</div>`;
+  }
 
   listEl.querySelectorAll('.bba-btn-pick').forEach(btn =>
     btn.addEventListener('click', e => myPick(e.currentTarget.dataset.id)));
@@ -442,7 +476,7 @@ function renderTeam(listEl) {
 }
 
 function renderStacks(listEl) {
-  const stacks = getStackSummary(state.myTeam);
+  const stacks  = getStackSummary(state.myTeam);
   const qbTeams = getMyQBTeams(state.myTeam);
 
   if (!stacks.length && !state.myTeam.length) {
@@ -450,7 +484,6 @@ function renderStacks(listEl) {
     return;
   }
 
-  // Current stacks
   let html = '';
   if (stacks.length) {
     html += '<div class="bba-stack-section-label">Your Stacks</div>';
@@ -463,13 +496,12 @@ function renderStacks(listEl) {
     });
   }
 
-  // Available stackmates for your QBs
   if (qbTeams.size) {
-    const stackmates = state.available.filter(p =>
-      ['WR', 'TE'].includes(p.pos) && qbTeams.has(p.team)
-    ).sort((a, b) => a.adp - b.adp);
+    const stackmates = state.available
+      .filter(p => ['WR', 'TE'].includes(p.pos) && qbTeams.has(p.team))
+      .sort((a, b) => a.adp - b.adp);
 
-    html += '<div class="bba-stack-section-label">Available Stackmates (your QB teams)</div>';
+    html += '<div class="bba-stack-section-label">Available Stackmates</div>';
     if (!stackmates.length) {
       html += '<div class="bba-empty">None left on the board</div>';
     } else {
@@ -477,7 +509,7 @@ function renderStacks(listEl) {
         <div class="bba-player-row bba-pos-border-${p.pos} bba-is-stack">
           <div class="bba-player-info">
             <div class="bba-player-name">${p.name} <span class="bba-pos bba-pos-${p.pos}">${p.pos}</span></div>
-            <div class="bba-player-meta">${p.team} · Bye ${p.bye} · ADP ${p.adp} · ${p.dk_proj} pts</div>
+            <div class="bba-player-meta">${p.team} · ADP ${p.adp} · ${p.dk_proj} pts</div>
           </div>
           <div class="bba-player-btns">
             <button class="bba-btn-pick" data-id="${p.id}">My Pick</button>
@@ -499,11 +531,11 @@ function renderStacks(listEl) {
 
 bAPI.runtime.onMessage.addListener(msg => {
   if (msg.action === 'settingsUpdated') {
-    state.numTeams       = msg.numTeams;
-    state.myPosition     = msg.myPosition;
-    state.stackIntensity = msg.stackIntensity || 'medium';
-    state.isSetup        = true;
-    // Reset draft state when setup changes
+    state.numTeams        = msg.numTeams;
+    state.myPosition      = msg.myPosition;
+    state.stackIntensity  = msg.stackIntensity  || 'medium';
+    state.diversifyStrength = msg.diversifyStrength != null ? msg.diversifyStrength : 0.5;
+    state.isSetup         = true;
     state.available   = [...PLAYERS];
     state.myTeam      = [];
     state.overallPick = 1;
@@ -526,11 +558,9 @@ function init() {
   });
 }
 
-// Only activate on draft room pages
 if (/draftkings\.com\/(draft|lineup)/.test(location.href)) {
   init();
 } else {
-  // Still show a minimal toggle on other DK pages in case they navigate
   window.addEventListener('popstate', () => {
     if (/draftkings\.com\/(draft|lineup)/.test(location.href) && !document.getElementById('bba-root')) {
       init();
