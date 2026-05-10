@@ -127,7 +127,9 @@ function scanPageForDraftedPlayers() {
 // ── Pick detection ────────────────────────────────────────────────────────────
 
 let lastDetectedPick = null;
+let lastKnownOnClockUser = ''; // who was on the clock before the most recent pick
 
+// Toast is only shown when dkUsername is not set (manual fallback)
 function showDetectionToast(player) {
   const existing = document.getElementById('bba-toast');
   if (existing) existing.remove();
@@ -147,6 +149,52 @@ function showDetectionToast(player) {
   toast.querySelector('.bba-taken').addEventListener('click', () => { markTaken(player.id); toast.remove(); });
   toast.querySelector('.bba-toast-dismiss').addEventListener('click', () => toast.remove());
   setTimeout(() => { if (document.getElementById('bba-toast') === toast) toast.remove(); }, 15000);
+}
+
+// ── DK API response processor (fed by pick-interceptor.js) ───────────────────
+
+function processDKResponse(url, data) {
+  if (!data || typeof data !== 'object') return;
+
+  // Walk any response looking for arrays that contain player pick objects.
+  // DK uses various shapes — try common locations.
+  const candidates = [
+    data.picks, data.draftPicks, data.selections,
+    data.data?.picks, data.payload?.picks,
+    data.entries, data.roster,
+  ];
+
+  for (const list of candidates) {
+    if (!Array.isArray(list) || list.length === 0) continue;
+    const first = list[0];
+    // A pick object usually has a player name and a team/user identifier
+    const hasPlayerName = first.displayName || first.firstName || first.playerName || first.name;
+    if (!hasPlayerName) continue;
+
+    let applied = 0;
+    for (const pick of list) {
+      const name = (pick.displayName || `${pick.firstName || ''} ${pick.lastName || ''}`.trim() || pick.playerName || pick.name || '').toLowerCase();
+      if (!name) continue;
+      const player = playerNameMap[name];
+      if (!player || state.drafted.has(player.id)) continue;
+
+      // Determine if this pick belongs to the current user
+      const entryName = (pick.username || pick.entryName || pick.teamName || pick.draftTeamName || '').toLowerCase();
+      const isMine = state.dkUsername && entryName.includes(state.dkUsername.toLowerCase());
+
+      state.drafted.add(player.id);
+      state.available = state.available.filter(p => p.id !== player.id);
+      if (isMine) state.myTeam.push(player);
+      applied++;
+    }
+
+    if (applied > 0) {
+      state.overallPick = Math.max(state.overallPick, state.drafted.size + 1);
+      state.isComplete = state.myTeam.length >= 20;
+      if (overlayEl) render();
+      return; // found the right list, stop searching
+    }
+  }
 }
 
 // Extract player from DK pick text: "Jalen Hurts | QB PHI" or "Jalen Hurts | QB <span>PHI</span>"
@@ -190,12 +238,23 @@ function pollForLastPick() {
   lastPickPollText = text;
 
   const player = extractPlayerFromPickElement(playerEl);
-  if (!player) return;
-  if (player.id === lastDetectedPick) return;
-  if (state.drafted.has(player.id)) return; // already tracked
+  if (!player || player.id === lastDetectedPick || state.drafted.has(player.id)) return;
 
   lastDetectedPick = player.id;
-  showDetectionToast(player);
+
+  if (state.dkUsername) {
+    // Auto-classify: if the user who was just on the clock is me, it's my pick
+    const wasMyPick = lastKnownOnClockUser.toLowerCase().startsWith(
+      state.dkUsername.toLowerCase().slice(0, Math.min(6, state.dkUsername.length))
+    );
+    if (wasMyPick) {
+      myPick(player.id);
+    } else {
+      markTaken(player.id);
+    }
+  } else {
+    showDetectionToast(player);
+  }
 }
 
 function startPickPoller() {
@@ -743,6 +802,12 @@ function startTimerWatcher() {
 
     const text = stickyEl.textContent?.trim();
     if (!text || text === lastStickyText) return;
+
+    // Save who was on the clock before this transition — used by pollForLastPick
+    // to determine if the pick that just happened was mine
+    const prevParsed = parseStickyCard(lastStickyText);
+    if (prevParsed) lastKnownOnClockUser = prevParsed.username;
+
     lastStickyText = text;
 
     const parsed = parseStickyCard(text);
@@ -813,6 +878,10 @@ function scheduleAutoDetectRetry(delay = 3000) {
 
 function init() {
   initPlayers();
+
+  // Listen for DK API responses captured by pick-interceptor.js (page context)
+  window.addEventListener('__bba_api', e => processDKResponse(e.detail.url, e.detail.data));
+
   loadSettings(() => {
     loadExposure().then(() => {
       createOverlay();
