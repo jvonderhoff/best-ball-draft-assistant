@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Draft History — Best Ball Assistant</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .history-container { max-width: 1100px; margin: 0 auto; }
+        .back-link { color: #4fc3f7; text-decoration: none; font-size: 0.9em; }
+        .back-link:hover { text-decoration: underline; }
+        .exposure-section { margin-bottom: 30px; }
+        .exposure-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .exposure-card {
+            background: #1a2f4d;
+            border-radius: 6px;
+            padding: 10px 12px;
+            border-left: 3px solid #4fc3f7;
+        }
+        .exposure-card .exp-name { font-weight: 600; font-size: 0.88em; color: #fff; }
+        .exposure-card .exp-meta { font-size: 0.75em; color: #78909c; margin-top: 2px; }
+        .exp-bar-wrap { margin-top: 6px; background: #0f1419; border-radius: 3px; height: 5px; }
+        .exp-bar { height: 5px; border-radius: 3px; background: #4fc3f7; transition: width 0.3s; }
+        .exp-bar.high { background: #ef5350; }
+        .exp-bar.med  { background: #ff9800; }
+
+        .draft-list { display: flex; flex-direction: column; gap: 12px; }
+        .draft-card {
+            background: #0f1419;
+            border: 1px solid #2a3f5f;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .draft-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #1a2f4d;
+            padding: 12px 16px;
+        }
+        .draft-card-header h3 { font-size: 1em; color: #fff; margin: 0; }
+        .draft-meta { font-size: 0.8em; color: #78909c; }
+        .draft-proj { font-weight: 700; color: #81c784; font-size: 0.95em; }
+        .delete-btn {
+            background: none; border: 1px solid #37474f; color: #78909c;
+            border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 0.78em;
+        }
+        .delete-btn:hover { background: #37474f; color: #cfd8dc; }
+        .draft-picks-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 6px;
+            padding: 12px;
+        }
+        .pick-chip {
+            background: #1a2f4d;
+            border-radius: 4px;
+            padding: 6px 8px;
+            font-size: 0.78em;
+            border-left: 3px solid #4fc3f7;
+        }
+        .pick-chip .pick-name { font-weight: 600; color: #fff; }
+        .pick-chip .pick-meta { color: #78909c; font-size: 0.85em; }
+        .pos-QB { border-left-color: #e91e63; }
+        .pos-RB { border-left-color: #2196f3; }
+        .pos-WR { border-left-color: #4caf50; }
+        .pos-TE { border-left-color: #ff9800; }
+        .empty-history { color: #546e7a; text-align: center; padding: 40px; font-style: italic; }
+        .section-title { font-size: 0.75em; font-weight: 700; color: #546e7a; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="history-container" style="padding: 24px;">
+        <div style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+                <a href="/" class="back-link">← Back to Draft</a>
+                <h1 style="color:#fff; margin-top: 6px;">Draft History</h1>
+            </div>
+            <div id="totalDrafts" style="color: #78909c; font-size: 0.9em;"></div>
+        </div>
+
+        <!-- Exposure section -->
+        <div class="exposure-section panel" style="margin-bottom: 20px;">
+            <div class="panel-header">
+                <h2>Player Exposure</h2>
+                <span id="exposureSubtitle" style="font-size:0.8em; color:#78909c;"></span>
+            </div>
+            <div style="padding: 14px;">
+                <div class="section-title">Most Drafted (highest exposure first)</div>
+                <div id="exposureGrid" class="exposure-grid">
+                    <p class="empty-history">No drafts saved yet</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Draft list -->
+        <div class="panel">
+            <div class="panel-header"><h2>Saved Drafts</h2></div>
+            <div style="padding: 14px;">
+                <div id="draftList" class="draft-list">
+                    <p class="empty-history">No drafts saved yet</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function load() {
+            const [draftsResp, expResp] = await Promise.all([
+                fetch('/api/drafts'),
+                fetch('/api/drafts/exposure')
+            ]);
+            const drafts = await draftsResp.json();
+            const exposure = await expResp.json();
+            renderExposure(exposure);
+            renderDrafts(drafts);
+        }
+
+        function renderExposure(exposure) {
+            const total = exposure.total_drafts || 0;
+            document.getElementById('totalDrafts').textContent = `${total} draft${total === 1 ? '' : 's'} saved`;
+            document.getElementById('exposureSubtitle').textContent =
+                total ? `across ${total} drafts` : '';
+
+            const grid = document.getElementById('exposureGrid');
+            const players = Object.values(exposure.players || {})
+                .sort((a, b) => b.exposure_rate - a.exposure_rate)
+                .slice(0, 40);
+
+            if (!players.length) {
+                grid.innerHTML = '<p class="empty-history">No drafts saved yet</p>';
+                return;
+            }
+
+            grid.innerHTML = players.map(p => {
+                const pct = Math.round(p.exposure_rate * 100);
+                const barClass = pct >= 70 ? 'high' : pct >= 40 ? 'med' : '';
+                return `
+                    <div class="exposure-card pos-${p.pos}">
+                        <div class="exp-name">${p.name}</div>
+                        <div class="exp-meta">${p.pos} · ${p.team} · ${p.times_drafted}/${total} drafts</div>
+                        <div class="exp-bar-wrap">
+                            <div class="exp-bar ${barClass}" style="width:${pct}%"></div>
+                        </div>
+                        <div style="font-size:0.72em; color:#90a4ae; margin-top:3px;">${pct}% exposure</div>
+                    </div>`;
+            }).join('');
+        }
+
+        function renderDrafts(drafts) {
+            const list = document.getElementById('draftList');
+            if (!drafts.length) {
+                list.innerHTML = '<p class="empty-history">No drafts saved yet</p>';
+                return;
+            }
+            list.innerHTML = drafts.map(d => {
+                const date = new Date(d.created_at).toLocaleDateString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                });
+                const picks = d.picks.map(p => `
+                    <div class="pick-chip pos-${p.pos}">
+                        <div class="pick-name">${p.player_name}</div>
+                        <div class="pick-meta">${p.pos} · ${p.team} · Pk ${p.pick_number}</div>
+                    </div>`).join('');
+                return `
+                    <div class="draft-card" id="draft-${d.id}">
+                        <div class="draft-card-header">
+                            <div>
+                                <h3>${d.contest || 'Best Ball Draft'}</h3>
+                                <div class="draft-meta">${date} · ${d.num_teams} teams · Pick ${d.my_position}</div>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <span class="draft-proj">${d.proj_pts} proj pts</span>
+                                <button class="delete-btn" onclick="deleteDraft(${d.id})">Delete</button>
+                            </div>
+                        </div>
+                        <div class="draft-picks-grid">${picks}</div>
+                    </div>`;
+            }).join('');
+        }
+
+        async function deleteDraft(id) {
+            if (!confirm('Delete this draft?')) return;
+            await fetch(`/api/drafts/${id}`, { method: 'DELETE' });
+            document.getElementById(`draft-${id}`)?.remove();
+            load(); // refresh exposure
+        }
+
+        load();
+    </script>
+</body>
+</html>

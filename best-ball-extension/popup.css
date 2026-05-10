@@ -1,0 +1,92 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  width: 280px;
+  background: #0f1419;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+}
+
+.header {
+  background: #1a2f4d;
+  padding: 12px 14px;
+  font-weight: 700;
+  color: #4fc3f7;
+  border-bottom: 1px solid #2a3f5f;
+}
+
+.section {
+  padding: 14px;
+  border-bottom: 1px solid #1a2f4d;
+}
+
+h3 {
+  font-size: 0.85em;
+  color: #90a4ae;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.form-group { margin-bottom: 12px; }
+
+label {
+  display: block;
+  font-size: 0.82em;
+  color: #78909c;
+  margin-bottom: 5px;
+}
+
+select {
+  width: 100%;
+  padding: 7px 10px;
+  background: #1a2f4d;
+  border: 1px solid #2a3f5f;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 0.9em;
+  outline: none;
+}
+select:focus { border-color: #4fc3f7; }
+
+.btn-primary {
+  width: 100%;
+  padding: 9px;
+  background: #1565c0;
+  border: none;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 0.9em;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-primary:hover { background: #1976d2; }
+
+.saved-msg {
+  text-align: center;
+  color: #4caf50;
+  font-size: 0.82em;
+  margin-top: 8px;
+}
+
+.hint {
+  font-size: 0.78em;
+  color: #546e7a;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+code {
+  background: #1a2f4d;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.9em;
+  color: #80cbc4;
+}
+
+.player-info {
+  font-size: 0.82em;
+  color: #78909c;
+}

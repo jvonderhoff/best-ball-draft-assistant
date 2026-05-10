@@ -1,0 +1,402 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #e0e0e0;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.hidden { display: none !important; }
+
+/* ── Setup Modal ── */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modal {
+    background: #0f1419;
+    border: 1px solid #2a3f5f;
+    border-radius: 10px;
+    padding: 36px 40px;
+    width: 360px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+.modal h2 { font-size: 1.5em; color: #fff; margin-bottom: 6px; }
+.modal-subtitle { color: #a0a0a0; font-size: 0.9em; margin-bottom: 24px; }
+
+.form-group { margin-bottom: 18px; }
+.form-group label { display: block; font-size: 0.85em; color: #a0a0a0; margin-bottom: 6px; }
+.form-group select {
+    width: 100%;
+    padding: 10px;
+    background: #1a2f4d;
+    border: 1px solid #2a3f5f;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 1em;
+}
+
+/* ── Turn Status Banner ── */
+.turn-status {
+    border-radius: 8px;
+    padding: 14px 20px;
+    font-size: 1em;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 16px;
+    letter-spacing: 0.01em;
+}
+
+.turn-status.my-turn {
+    background: #1b5e20;
+    border: 1px solid #4caf50;
+    color: #a5d6a7;
+    font-size: 1.1em;
+}
+
+.turn-status.waiting {
+    background: #1a2f4d;
+    border: 1px solid #2a3f5f;
+    color: #90a4ae;
+}
+
+/* ── Layout ── */
+.container { max-width: 1400px; margin: 0 auto; }
+
+header { text-align: center; margin-bottom: 20px; color: #fff; }
+header h1 { font-size: 2em; margin-bottom: 4px; }
+header .subtitle { color: #a0a0a0; font-size: 0.9em; }
+
+.main-content {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+/* ── Panels ── */
+.panel {
+    background: #0f1419;
+    border: 1px solid #2a2a3e;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #1a2f4d;
+    padding: 12px 16px;
+    border-bottom: 1px solid #2a3f5f;
+}
+
+.panel-header h2 { margin: 0; font-size: 1.1em; color: #fff; }
+
+.panel-footer {
+    background: #1a2f4d;
+    padding: 12px 16px;
+    border-top: 1px solid #2a3f5f;
+    display: flex;
+    gap: 10px;
+}
+
+/* ── Team Panel ── */
+.team-panel { display: flex; flex-direction: column; }
+
+.team-stats { display: flex; gap: 16px; font-size: 0.85em; color: #a0a0a0; }
+.team-stats strong { color: #4fc3f7; }
+
+.requirement-status {
+    padding: 8px 16px;
+    background: #1a2f4d;
+    border-bottom: 1px solid #2a3f5f;
+    font-size: 0.85em;
+}
+.requirement-status p { margin: 0; color: #a0a0a0; }
+.requirement-status.valid p { color: #81c784; }
+.requirement-status.invalid p { color: #ef5350; }
+
+.team-roster {
+    flex: 1;
+    padding: 12px;
+    overflow-y: auto;
+    max-height: 480px;
+}
+
+.position-label {
+    font-size: 0.75em;
+    font-weight: 700;
+    color: #607d8b;
+    letter-spacing: 0.08em;
+    padding: 6px 4px 2px;
+}
+
+/* ── Draft Panel ── */
+.draft-panel {
+    display: flex;
+    flex-direction: column;
+    max-height: 620px;
+}
+
+/* ── Suggestion Box ── */
+.suggestion-box {
+    background: #0d2618;
+    border-bottom: 2px solid #4caf50;
+    padding: 14px 16px;
+}
+
+.suggestion-header {
+    font-size: 0.75em;
+    font-weight: 700;
+    color: #4caf50;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+}
+
+.suggestion-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.suggestion-player .player-name {
+    font-size: 1.05em;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.suggestion-player .player-meta { font-size: 0.85em; color: #a0a0a0; margin-bottom: 4px; }
+.suggestion-reason { font-size: 0.82em; color: #78909c; font-style: italic; }
+
+.suggestion-draft-btn {
+    white-space: nowrap;
+    padding: 10px 20px;
+    font-size: 0.95em;
+    flex-shrink: 0;
+}
+
+/* ── Search & Filters ── */
+.search-section {
+    padding: 12px 16px;
+    background: #1a2f4d;
+    border-bottom: 1px solid #2a3f5f;
+}
+
+.search-bar { margin-bottom: 10px; }
+.search-bar input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid #2a3f5f;
+    border-radius: 6px;
+    background: #0f1419;
+    color: #e0e0e0;
+    font-size: 0.9em;
+}
+.search-bar input::placeholder { color: #6a6a7a; }
+.search-bar input:focus { outline: none; border-color: #4fc3f7; }
+
+.filter-buttons { display: flex; gap: 6px; }
+.filter-btn {
+    padding: 5px 12px;
+    border: 1px solid #2a3f5f;
+    background: transparent;
+    color: #a0a0a0;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.82em;
+    font-weight: 500;
+    transition: all 0.15s;
+}
+.filter-btn:hover { border-color: #4fc3f7; color: #4fc3f7; }
+.filter-btn.active { background: #2196f3; border-color: #2196f3; color: white; }
+
+.player-count { font-size: 0.82em; color: #a0a0a0; }
+
+/* ── Players List ── */
+.players-list {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* ── Player Cards ── */
+.player-card {
+    padding: 10px 14px;
+    border-left: 3px solid #4fc3f7;
+    border-bottom: 1px solid #0f1419;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.15s;
+}
+
+.players-list .player-card:hover { background: #1a2535; }
+
+.team-roster .player-card {
+    border-radius: 5px;
+    margin-bottom: 6px;
+    border-bottom: none;
+    background: #1a2f4d;
+}
+
+.player-card.drafted { opacity: 0.85; }
+
+.player-info { flex: 1; min-width: 0; }
+.player-name { font-weight: 600; color: #fff; font-size: 0.92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-meta { font-size: 0.78em; color: #a0a0a0; display: flex; gap: 8px; margin-top: 2px; }
+
+.player-stats { text-align: right; flex-shrink: 0; }
+.player-adp { font-size: 0.75em; color: #607d8b; }
+.player-proj { font-size: 0.88em; font-weight: 600; color: #81c784; }
+
+/* ── Action Buttons on Cards ── */
+.player-actions { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+
+.btn-my-pick, .btn-taken {
+    padding: 5px 10px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.75em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s, background 0.15s;
+    white-space: nowrap;
+}
+
+.btn-my-pick { background: #1b5e20; color: #a5d6a7; }
+.btn-my-pick:hover { background: #2e7d32; }
+.btn-my-pick.dim { background: #1a2f4d; color: #546e7a; }
+.btn-my-pick.dim:hover { background: #1b5e20; color: #a5d6a7; }
+
+.btn-taken { background: #37474f; color: #90a4ae; }
+.btn-taken:hover { background: #455a64; }
+
+/* ── Position Colors ── */
+.pos-QB { border-left-color: #e91e63; }
+.pos-RB { border-left-color: #2196f3; }
+.pos-WR { border-left-color: #4caf50; }
+.pos-TE { border-left-color: #ff9800; }
+
+.pos-badge {
+    font-size: 0.7em;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+.pos-badge.pos-QB { background: #880e4f; color: #f48fb1; }
+.pos-badge.pos-RB { background: #0d47a1; color: #90caf9; }
+.pos-badge.pos-WR { background: #1b5e20; color: #a5d6a7; }
+.pos-badge.pos-TE { background: #e65100; color: #ffcc80; }
+
+/* ── Needs Panel ── */
+.needs-panel { margin-top: 0; }
+.team-needs { display: flex; gap: 12px; padding: 14px 16px; flex-wrap: wrap; }
+.need-item {
+    background: #1a2f4d;
+    padding: 10px 14px;
+    border-radius: 6px;
+    border-left: 3px solid #4fc3f7;
+    min-width: 60px;
+}
+.need-item .pos { font-weight: 700; color: #fff; display: block; font-size: 0.85em; }
+.need-item .count { font-size: 1.5em; color: #81c784; font-weight: 700; }
+
+/* ── Buttons ── */
+.btn {
+    padding: 9px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex: 1;
+}
+.btn-primary { background: #2196f3; color: white; }
+.btn-primary:hover { background: #1976d2; }
+.btn-success { background: #2e7d32; color: #c8e6c9; }
+.btn-success:hover { background: #388e3c; }
+.btn-secondary { background: #455a64; color: #cfd8dc; }
+.btn-secondary:hover { background: #546e7a; }
+.btn-large { padding: 12px 20px; font-size: 1em; }
+
+/* ── Misc ── */
+.empty-state { color: #546e7a; text-align: center; padding: 20px; font-style: italic; font-size: 0.9em; }
+.loading { color: #546e7a; padding: 20px; text-align: center; }
+
+.complete-banner {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background: #2e7d32;
+    color: #c8e6c9;
+    padding: 12px 20px;
+    text-align: center;
+    font-weight: 600;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.complete-banner input {
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: none;
+    background: #1b5e20;
+    color: #c8e6c9;
+    font-size: 0.85em;
+    outline: none;
+}
+.complete-banner input::placeholder { color: #81c784; }
+.complete-banner button {
+    padding: 5px 14px;
+    background: #c8e6c9;
+    color: #1b5e20;
+    border: none;
+    border-radius: 4px;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 0.85em;
+}
+.complete-banner button:disabled { opacity: 0.6; cursor: default; }
+.complete-banner a { color: #a5d6a7; font-size: 0.85em; }
+
+.exposure-badge {
+    display: inline-block;
+    font-size: 0.68em;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #37474f;
+    color: #90a4ae;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+
+/* ── Scrollbars ── */
+.team-roster::-webkit-scrollbar,
+.players-list::-webkit-scrollbar { width: 6px; }
+.team-roster::-webkit-scrollbar-track,
+.players-list::-webkit-scrollbar-track { background: #0f1419; }
+.team-roster::-webkit-scrollbar-thumb,
+.players-list::-webkit-scrollbar-thumb { background: #2a3f5f; border-radius: 3px; }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+    .main-content { grid-template-columns: 1fr; }
+}

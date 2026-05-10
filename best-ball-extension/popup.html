@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Best Ball Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <span>🏈 Best Ball Assistant</span>
+  </div>
+
+  <div class="section">
+    <h3>Draft Setup</h3>
+
+    <div class="form-group">
+      <label>Number of Teams</label>
+      <select id="numTeams">
+        <option value="8">8 teams</option>
+        <option value="10">10 teams</option>
+        <option value="12" selected>12 teams</option>
+        <option value="14">14 teams</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Your Draft Position</label>
+      <select id="myPosition"></select>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Stacking Strategy</h3>
+    <p class="hint">Boosts pass-catchers (WR/TE) from your QB's team in recommendations.</p>
+
+    <div class="form-group">
+      <label>Stack Intensity</label>
+      <select id="stackIntensity">
+        <option value="off">Off — pure ADP/positional value</option>
+        <option value="light">Light — small nudge toward stackmates</option>
+        <option value="medium" selected>Medium — balanced (recommended)</option>
+        <option value="heavy">Heavy — aggressively stack your QB</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Diversification (across drafts)</label>
+      <select id="diversifyStrength">
+        <option value="0">Off — ignore past exposure</option>
+        <option value="0.3">Light — small penalty for over-drafted players</option>
+        <option value="0.5" selected>Medium — balanced (recommended)</option>
+        <option value="0.8">Heavy — strongly avoid repeat picks</option>
+      </select>
+    </div>
+
+    <button id="saveBtn" class="btn-primary">Save & Start Draft</button>
+    <div id="savedMsg" class="saved-msg" style="display:none">✓ Saved</div>
+  </div>
+
+  <div class="section">
+    <h3>Player Data</h3>
+    <p class="hint">Players are bundled from the local cache. Re-run <code>generate_players.py</code> to refresh.</p>
+    <div id="playerInfo" class="player-info"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

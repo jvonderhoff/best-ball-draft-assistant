@@ -1,0 +1,32 @@
+{
+  "manifest_version": 2,
+  "name": "Best Ball Draft Assistant",
+  "version": "1.0",
+  "description": "Live pick recommendations overlaid on your DraftKings Best Ball draft",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["*://*.draftkings.com/*"],
+      "js": ["players.js", "recommender.js", "content.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_title": "Best Ball Assistant"
+  },
+  "icons": {
+    "48": "icons/icon.svg",
+    "96": "icons/icon.svg"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "bestball-assistant@local",
+      "strict_min_version": "109.0"
+    }
+  }
+}
