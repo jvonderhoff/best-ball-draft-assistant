@@ -630,15 +630,19 @@ function getDKTimerEl() {
 
 function parseDKTimerText(text) {
   if (!text) return null;
-  const t = text.trim().toLowerCase();
-  // "on the clock" / "your pick" / "pick now" → it's my turn
-  if (/on the clock|your pick|pick now|you're up/i.test(t)) return { myTurn: true, label: t };
-  // Countdown like "1:23" or "0:45"
+  const t = text.trim();
+  // "on the clock" / "your pick" → my turn
+  if (/on the clock|your pick|pick now|you're up/i.test(t)) return { myTurn: true, label: 'On the clock!' };
+  // "PK 0" or "PK 1" → effectively my turn
+  const pkMatch = t.match(/^PK\s*(\d+)$/i);
+  if (pkMatch) {
+    const picks = parseInt(pkMatch[1]);
+    if (picks <= 1) return { myTurn: true, label: 'On the clock!' };
+    return { myTurn: false, label: `${picks} picks away` };
+  }
+  // Countdown timer "1:23"
   const timeMatch = t.match(/(\d+):(\d+)/);
-  if (timeMatch) return { myTurn: false, label: t, seconds: parseInt(timeMatch[1]) * 60 + parseInt(timeMatch[2]) };
-  // Plain number of seconds
-  const secMatch = t.match(/^(\d+)s?$/);
-  if (secMatch) return { myTurn: false, label: t, seconds: parseInt(secMatch[1]) };
+  if (timeMatch) return { myTurn: false, label: t };
   return { myTurn: false, label: t };
 }
 
