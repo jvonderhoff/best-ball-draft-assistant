@@ -130,12 +130,20 @@ function getLastNameLookup() {
 }
 
 function parsePickFromBoardText(text) {
-  // "C. McCaffreyRBSF" | "J. Smith-NjigbaWRSEA" | "J. Cook IIIRBBUF"
+  // "C. McCaffreyRBSF" | "J. Smith-NjigbaWRSEA" | "J. Cook IIIRBBUF" | "K. AllenWRFA"
   const m = text.match(/([A-Z]\.\s*[A-Za-z][A-Za-z '.‑\-]*?)\s*(QB|RB|WR|TE)\s*([A-Z]{2,3})/);
   if (!m) return null;
-  let lastName = m[1].replace(/^[A-Z]\.\s*/, '').replace(/\s+(Jr\.?|Sr\.?|II|III|IV|V)\s*$/i, '').trim().toLowerCase();
-  const key = `${lastName}_${m[2]}_${m[3]}`;
-  return getLastNameLookup()[key] || null;
+  const lastName = m[1].replace(/^[A-Z]\.\s*/, '').replace(/\s+(Jr\.?|Sr\.?|II|III|IV|V)\s*$/i, '').trim().toLowerCase();
+  const pos = m[2], team = m[3];
+  const lookup = getLastNameLookup();
+  // Exact match (team on roster)
+  const exact = lookup[`${lastName}_${pos}_${team}`];
+  if (exact) return exact;
+  // FA or unmatched team — fall back to last name + position only
+  for (const [key, p] of Object.entries(lookup)) {
+    if (key.startsWith(`${lastName}_${pos}_`)) return p;
+  }
+  return null;
 }
 
 function readDraftBoard() {
