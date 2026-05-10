@@ -122,18 +122,9 @@ function scanPageForDraftedPlayers() {
   return found;
 }
 
-// ── Auto-detection via MutationObserver ───────────────────────────────────────
+// ── Pick detection ────────────────────────────────────────────────────────────
 
-const toastedPlayers = new Set();
-
-function extractPlayerFromText(text) {
-  if (!text || text.length < 4 || text.length > 120) return null;
-  const lower = text.toLowerCase();
-  for (const [name, player] of Object.entries(playerNameMap)) {
-    if (lower.includes(name)) return player;
-  }
-  return null;
-}
+let lastDetectedPick = null;
 
 function showDetectionToast(player) {
   const existing = document.getElementById('bba-toast');
@@ -153,10 +144,10 @@ function showDetectionToast(player) {
   toast.querySelector('.bba-my-pick').addEventListener('click', () => { myPick(player.id); toast.remove(); });
   toast.querySelector('.bba-taken').addEventListener('click', () => { markTaken(player.id); toast.remove(); });
   toast.querySelector('.bba-toast-dismiss').addEventListener('click', () => toast.remove());
-  setTimeout(() => toast?.remove(), 10000);
+  setTimeout(() => { if (document.getElementById('bba-toast') === toast) toast.remove(); }, 15000);
 }
 
-// Extract player from DK pick element: "Jalen Hurts | QB <span>PHI</span>"
+// Extract player from DK pick text: "Jalen Hurts | QB PHI" or "Jalen Hurts | QB <span>PHI</span>"
 function extractPlayerFromPickElement(el) {
   if (!el) return null;
   const text = el.textContent || '';
@@ -166,64 +157,48 @@ function extractPlayerFromPickElement(el) {
   return playerNameMap[name] || null;
 }
 
-// Find the player div next to a "Last Pick:" label
-function getPlayerFromLastPickLabel(labelEl) {
-  // Sibling pattern: <div class="...last-pick">Last Pick: </div><div>Name | POS TEAM</div>
-  const sibling = labelEl.nextElementSibling;
-  if (sibling) return extractPlayerFromPickElement(sibling);
-  // Sometimes the label and player share a parent — check parent's next sibling
-  const parentSib = labelEl.parentElement?.nextElementSibling;
-  if (parentSib) return extractPlayerFromPickElement(parentSib);
+// Polling-based pick detection — more reliable than MutationObserver for React apps
+// DK React updates existing nodes in-place; childList mutations often don't fire.
+
+let lastPickPollText = '';
+let pickPollInterval = null;
+
+function findLastPickElement() {
+  // Primary: find the "Last Pick:" label div and read its neighbour
+  const labelEl = document.querySelector('[class*="last-pick"], [class*="last-drafted"]');
+  if (labelEl) {
+    const playerEl = labelEl.nextElementSibling || labelEl.parentElement?.nextElementSibling;
+    if (playerEl) return playerEl;
+  }
+
+  // Fallback: scan for any visible element containing " | " (pick history rows)
+  const candidates = document.querySelectorAll('[class*="PickOrder"] div, [class*="pick-order"] div');
+  for (const el of candidates) {
+    if (el.textContent?.includes(' | ') && el.children.length <= 2) return el;
+  }
   return null;
 }
 
-let lastDetectedPick = null;
+function pollForLastPick() {
+  const playerEl = findLastPickElement();
+  if (!playerEl) return;
 
-function onMutation(mutations) {
-  if (!state.isSetup) return;
+  const text = playerEl.textContent?.trim();
+  if (!text || text === lastPickPollText) return;
+  lastPickPollText = text;
 
-  for (const mutation of mutations) {
-    for (const node of mutation.addedNodes) {
-      if (node.nodeType !== Node.ELEMENT_NODE) continue;
+  const player = extractPlayerFromPickElement(playerEl);
+  if (!player) return;
+  if (player.id === lastDetectedPick) return;
+  if (state.drafted.has(player.id)) return; // already tracked
 
-      // Primary: "Last Pick:" label appearing means a pick just happened
-      const lastPickLabels = node.querySelectorAll
-        ? [
-            ...node.querySelectorAll('[class*="last-pick"], [class*="last-drafted"]'),
-            ...(node.className?.includes?.('last-pick') || node.className?.includes?.('last-drafted') ? [node] : [])
-          ]
-        : [];
+  lastDetectedPick = player.id;
+  showDetectionToast(player);
+}
 
-      for (const label of lastPickLabels) {
-        const player = getPlayerFromLastPickLabel(label);
-        if (!player || player.id === lastDetectedPick) continue;
-        if (!state.available.find(p => p.id === player.id)) continue;
-        lastDetectedPick = player.id;
-        toastedPlayers.add(player.id);
-        showDetectionToast(player);
-      }
-
-      // Fallback: any new element with " | " pipe pattern (covers pick history rows)
-      if (!lastPickLabels.length) {
-        const player = extractPlayerFromPickElement(node);
-        if (player && state.available.find(p => p.id === player.id) && !toastedPlayers.has(player.id)) {
-          toastedPlayers.add(player.id);
-          showDetectionToast(player);
-        }
-        // Also check children
-        if (node.querySelectorAll) {
-          for (const child of node.querySelectorAll('[class*="PickOrder"]')) {
-            const p = extractPlayerFromPickElement(child.parentElement);
-            if (p && state.available.find(x => x.id === p.id) && !toastedPlayers.has(p.id)) {
-              toastedPlayers.add(p.id);
-              showDetectionToast(p);
-              break;
-            }
-          }
-        }
-      }
-    }
-  }
+function startPickPoller() {
+  if (pickPollInterval) clearInterval(pickPollInterval);
+  pickPollInterval = setInterval(pollForLastPick, 1500);
 }
 
 // ── Overlay UI ────────────────────────────────────────────────────────────────
@@ -296,7 +271,6 @@ function createOverlay() {
   document.getElementById('bba-toggle').addEventListener('click', togglePanel);
   document.getElementById('bba-close').addEventListener('click', togglePanel);
   document.getElementById('bba-undo').addEventListener('click', undoLast);
-  document.getElementById('bba-open-setup').addEventListener('click', () => bAPI.runtime.sendMessage({ action: 'openPopup' }));
 
   document.getElementById('bba-set-pick').addEventListener('click', () => {
     const val = document.getElementById('bba-pick-input').value;
@@ -393,7 +367,12 @@ function render() {
 }
 
 function renderSetupBanner() {
-  document.getElementById('bba-setup-banner').style.display = state.isSetup ? 'none' : 'flex';
+  const banner = document.getElementById('bba-setup-banner');
+  if (state.isSetup) { banner.style.display = 'none'; return; }
+  const count = state.available.length;
+  banner.style.display = 'flex';
+  banner.innerHTML = `<span>⚙️ Not configured (${count} players loaded) — </span><a id="bba-open-setup">open setup</a>`;
+  document.getElementById('bba-open-setup').addEventListener('click', () => bAPI.runtime.sendMessage({ action: 'openPopup' }));
 }
 
 function renderSyncBar() {
@@ -837,8 +816,7 @@ function init() {
     loadExposure().then(() => {
       createOverlay();
       render();
-      const observer = new MutationObserver(onMutation);
-      observer.observe(document.body, { childList: true, subtree: true });
+      startPickPoller();
       startTimerWatcher();
       // Try to auto-detect draft position (React app may not be rendered yet)
       tryAutoDetectPosition().then(() => {
