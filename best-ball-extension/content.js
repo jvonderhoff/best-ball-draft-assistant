@@ -12,6 +12,7 @@ let state = {
   overallPick: 1,
   numTeams: null,
   myPosition: null,
+  dkUsername: '',
   stackIntensity: 'medium',
   diversifyStrength: 0.5,
   isSetup: false,
@@ -52,12 +53,13 @@ function initPlayers() {
 }
 
 function loadSettings(cb) {
-  bAPI.storage.local.get(['numTeams', 'myPosition', 'stackIntensity', 'diversifyStrength'], result => {
+  bAPI.storage.local.get(['numTeams', 'myPosition', 'dkUsername', 'stackIntensity', 'diversifyStrength'], result => {
     if (result.numTeams && result.myPosition) {
       state.numTeams   = result.numTeams;
       state.myPosition = result.myPosition;
       state.isSetup    = true;
     }
+    state.dkUsername        = result.dkUsername        || '';
     state.stackIntensity    = result.stackIntensity    || 'medium';
     state.diversifyStrength = result.diversifyStrength != null ? result.diversifyStrength : 0.5;
     cb();
@@ -164,18 +166,18 @@ let lastPickPollText = '';
 let pickPollInterval = null;
 
 function findLastPickElement() {
-  // Primary: find the "Last Pick:" label div and read its neighbour
-  const labelEl = document.querySelector('[class*="last-pick"], [class*="last-drafted"]');
-  if (labelEl) {
-    const playerEl = labelEl.nextElementSibling || labelEl.parentElement?.nextElementSibling;
-    if (playerEl) return playerEl;
-  }
+  // DOM confirmed from live draft:
+  // <div class="PickOrder_pick-order__last-drafted-player">
+  //   <div class="PickOrder_pick-order__last-drafted-player__last-pick">Last Pick: </div>
+  //   <div>Keenan Allen | WR <span class="PickOrder_normal-weight">FA</span></div>
+  // </div>
+  const labelEl = document.querySelector('[class*="last-drafted-player__last-pick"]');
+  if (labelEl?.nextElementSibling) return labelEl.nextElementSibling;
 
-  // Fallback: scan for any visible element containing " | " (pick history rows)
-  const candidates = document.querySelectorAll('[class*="PickOrder"] div, [class*="pick-order"] div');
-  for (const el of candidates) {
-    if (el.textContent?.includes(' | ') && el.children.length <= 2) return el;
-  }
+  // Fallback: second child of the container
+  const container = document.querySelector('[class*="last-drafted-player"]');
+  if (container?.children?.length >= 2) return container.children[1];
+
   return null;
 }
 
@@ -585,6 +587,7 @@ bAPI.runtime.onMessage.addListener(msg => {
   if (msg.action === 'settingsUpdated') {
     state.numTeams          = msg.numTeams;
     state.myPosition        = msg.myPosition;
+    state.dkUsername        = msg.dkUsername        || '';
     state.stackIntensity    = msg.stackIntensity    || 'medium';
     state.diversifyStrength = msg.diversifyStrength != null ? msg.diversifyStrength : 0.5;
     state.isSetup           = true;
@@ -593,6 +596,7 @@ bAPI.runtime.onMessage.addListener(msg => {
     state.myTeam       = [];
     state.overallPick  = 1;
     state.isComplete   = false;
+    autoPositionDetected = true; // user confirmed setup manually
     render();
   }
 });
@@ -620,41 +624,23 @@ function tryDetectPositionFromMvcVars() {
   return numTeams ? { position: null, numTeams } : null;
 }
 
-// Strategy 2: Scan draft board DOM for "YOU" / username column
+// Strategy 2: scan the scrollable pick order cards for my username
 function tryDetectPositionFromDOM() {
-  // DraftKings renders the pick order as a horizontal list of team columns.
-  // The current user's column is labelled with their username or "YOU".
-  const mv = window.mvcVars;
-  const username = (mv?.currentUser?.displayName || mv?.user?.displayName || '').toLowerCase();
+  if (!state.dkUsername) return null;
+  const me = state.dkUsername.toLowerCase();
+  const numTeams = state.numTeams || 12;
 
-  // Look for a column header containing "YOU" or the username
-  const candidates = [...document.querySelectorAll('[class*="PickOrder"], [class*="pick-order"], [class*="DraftOrder"], [class*="draft-order"]')];
-  for (const container of candidates) {
-    const cols = container.children;
-    for (let i = 0; i < cols.length; i++) {
-      const text = cols[i].textContent.toLowerCase();
-      if (text.includes('you') || (username && text.includes(username))) {
-        return { position: i + 1, numTeams: cols.length };
-      }
-    }
+  // Cards: "Pick 234jvonderhoff" — find my next pick and back-calculate position
+  const cards = [...document.querySelectorAll('.PickOrder_pick-order__scrollable-pick-card-container')];
+  for (const card of cards) {
+    const parsed = parseStickyCard(card.textContent.trim());
+    if (!parsed) continue;
+    if (!parsed.username.toLowerCase().startsWith(me.slice(0, 5))) continue;
+    const round = Math.ceil(parsed.pickNum / numTeams);
+    const pickInRound = ((parsed.pickNum - 1) % numTeams) + 1;
+    const position = round % 2 === 0 ? numTeams - pickInRound + 1 : pickInRound;
+    return { position, numTeams };
   }
-
-  // Wider search: any element whose text is literally "YOU"
-  const result = document.evaluate(
-    "//*[normalize-space(text())='YOU' or normalize-space(text())='you']",
-    document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
-  );
-  const youEl = result.singleNodeValue;
-  if (youEl) {
-    // Walk up to find siblings to count position
-    const parent = youEl.closest('[class*="pick-order"], [class*="PickOrder"], [class*="draft-order"], [class*="DraftOrder"]');
-    if (parent?.parentElement) {
-      const siblings = [...parent.parentElement.children];
-      const idx = siblings.indexOf(parent);
-      if (idx >= 0) return { position: idx + 1, numTeams: siblings.length };
-    }
-  }
-
   return null;
 }
 
@@ -721,74 +707,89 @@ async function tryAutoDetectPosition() {
   }
 }
 
-// ── DraftKings turn timer watcher ─────────────────────────────────────────────
-
-// XPath confirmed from live draft: countdown / "on the clock" span
-const DK_TIMER_XPATH = '/html/body/div[3]/div/div/div/div/div[2]/div[1]/div[2]/div[1]/span';
-
-function getDKTimerEl() {
-  const result = document.evaluate(DK_TIMER_XPATH, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-  return result.singleNodeValue;
-}
-
-function parseDKTimerText(text) {
-  if (!text) return null;
-  const t = text.trim();
-  // "on the clock" / "your pick" → my turn
-  if (/on the clock|your pick|pick now|you're up/i.test(t)) return { myTurn: true, label: 'On the clock!', pkValue: 0 };
-  // "PK 0" or "PK 1" → effectively my turn
-  const pkMatch = t.match(/^PK\s*(\d+)$/i);
-  if (pkMatch) {
-    const picks = parseInt(pkMatch[1]);
-    if (picks <= 1) return { myTurn: true, label: 'On the clock!', pkValue: picks };
-    return { myTurn: false, label: `${picks} picks away`, pkValue: picks };
-  }
-  // Countdown timer "1:23"
-  const timeMatch = t.match(/(\d+):(\d+)/);
-  if (timeMatch) return { myTurn: false, label: t, pkValue: null };
-  return { myTurn: false, label: t, pkValue: null };
-}
+// ── DraftKings pick order watcher ─────────────────────────────────────────────
+// Polls the sticky "On the clock" card which DK always keeps visible.
+// DOM confirmed: .PickOrder_pick-order__sticky-user-card-container
+//   text: "On the clock: Pick 231LopesGotGame2-90"
+// This gives us: current pick number (to sync state.overallPick) and who's on clock.
 
 let dkTimerInterval = null;
-let lastTimerText = '';
-let pkAutoDetectDone = false;
+let lastStickyText = '';
+
+// Parse "...Pick 231SomeUsername..." → { pickNum, username }
+function parseStickyCard(text) {
+  const match = text.match(/Pick\s+(\d+)([A-Za-z0-9_@.\-]+)/);
+  if (!match) return null;
+  return { pickNum: parseInt(match[1]), username: match[2] };
+}
+
+// Find my upcoming pick card in the scrollable list
+function findMyPickCard() {
+  if (!state.dkUsername) return null;
+  const me = state.dkUsername.toLowerCase();
+  const cards = [...document.querySelectorAll('.PickOrder_pick-order__scrollable-pick-card-container')];
+  for (const card of cards) {
+    const parsed = parseStickyCard(card.textContent.trim());
+    if (parsed && parsed.username.toLowerCase().startsWith(me.slice(0, 6))) return parsed;
+  }
+  return null;
+}
 
 function startTimerWatcher() {
   if (dkTimerInterval) clearInterval(dkTimerInterval);
   dkTimerInterval = setInterval(() => {
-    const el = getDKTimerEl();
-    if (!el) return;
-    const text = el.textContent?.trim();
-    if (!text || text === lastTimerText) return;
-    lastTimerText = text;
+    const stickyEl = document.querySelector('.PickOrder_pick-order__sticky-user-card-container');
+    if (!stickyEl) return;
 
-    const parsed = parseDKTimerText(text);
+    const text = stickyEl.textContent?.trim();
+    if (!text || text === lastStickyText) return;
+    lastStickyText = text;
+
+    const parsed = parseStickyCard(text);
     if (!parsed) return;
 
-    // Strategy 3: infer position from first observed PK value in round 1
-    if (!state.isSetup && !autoPositionDetected && !pkAutoDetectDone && parsed.pkValue != null && parsed.pkValue > 1) {
-      pkAutoDetectDone = true;
-      const detected = tryDetectPositionFromPK(parsed.pkValue);
-      if (detected?.position) {
+    // Sync pick counter from DK's own UI — keeps us accurate mid-draft
+    if (parsed.pickNum > 0) state.overallPick = parsed.pickNum;
+
+    // Auto-detect draft position from pick order if username is set
+    if (!state.isSetup && !autoPositionDetected && state.dkUsername) {
+      const myCard = findMyPickCard();
+      if (myCard) {
+        const numTeams = state.numTeams || 12;
+        const round = Math.ceil(myCard.pickNum / numTeams);
+        const pickInRound = ((myCard.pickNum - 1) % numTeams) + 1;
+        const position = round % 2 === 0 ? numTeams - pickInRound + 1 : pickInRound;
         autoPositionDetected = true;
-        showPositionDetectedBanner(detected.position, detected.numTeams);
+        showPositionDetectedBanner(position, numTeams);
       }
     }
 
-    // Sync my turn state from DK directly
     const bar = document.getElementById('bba-turn-bar');
     if (!bar || state.isComplete) return;
 
-    if (parsed.myTurn) {
+    // Determine if it's my turn
+    const onClockText = text.toLowerCase();
+    const isOnClock = onClockText.includes('on the clock');
+    let myTurn = false;
+
+    if (state.dkUsername) {
+      // Username match is most reliable
+      myTurn = isOnClock && onClockText.includes(state.dkUsername.toLowerCase());
+    } else if (state.isSetup) {
+      myTurn = isMyTurn(state.overallPick, state.numTeams, state.myPosition);
+    }
+
+    if (myTurn) {
       bar.className = 'bba-turn-mine';
       bar.textContent = `YOUR PICK  •  Round ${currentRound(state.overallPick, state.numTeams)}  •  ${state.myTeam.length + 1}/20`;
-      // Re-render suggestion in case it wasn't showing
       renderSuggestion();
       renderList();
-    } else if (parsed.label) {
+    } else {
       bar.className = 'bba-turn-waiting';
-      const round = currentRound(state.overallPick, state.numTeams);
-      bar.textContent = `Round ${round}  •  ${parsed.label}  •  ${state.drafted.size} off board`;
+      const round = currentRound(state.overallPick, state.numTeams || 12);
+      const myCard = findMyPickCard();
+      const away = myCard ? myCard.pickNum - parsed.pickNum : '?';
+      bar.textContent = `Round ${round}  •  ${away} picks away  •  ${state.drafted.size} off board`;
     }
   }, 1000);
 }

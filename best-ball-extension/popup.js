@@ -1,12 +1,13 @@
 const bAPI = typeof browser !== 'undefined' ? browser : chrome;
 
-const numTeamsEl       = document.getElementById('numTeams');
-const myPositionEl     = document.getElementById('myPosition');
+const numTeamsEl          = document.getElementById('numTeams');
+const myPositionEl        = document.getElementById('myPosition');
+const dkUsernameEl        = document.getElementById('dkUsername');
 const stackIntensityEl    = document.getElementById('stackIntensity');
 const diversifyStrengthEl = document.getElementById('diversifyStrength');
-const saveBtn          = document.getElementById('saveBtn');
-const savedMsg         = document.getElementById('savedMsg');
-const playerInfo       = document.getElementById('playerInfo');
+const saveBtn             = document.getElementById('saveBtn');
+const savedMsg            = document.getElementById('savedMsg');
+const playerInfo          = document.getElementById('playerInfo');
 
 function populatePositions() {
   const n = parseInt(numTeamsEl.value);
@@ -20,29 +21,29 @@ function populatePositions() {
 }
 
 function loadSaved() {
-  bAPI.storage.local.get(['numTeams', 'myPosition', 'stackIntensity'], result => {
+  bAPI.storage.local.get(['numTeams', 'myPosition', 'dkUsername', 'stackIntensity', 'diversifyStrength'], result => {
     if (result.numTeams) {
       numTeamsEl.value = result.numTeams;
       populatePositions();
     }
-    if (result.myPosition) {
-      myPositionEl.value = result.myPosition;
-    }
+    if (result.myPosition) myPositionEl.value = result.myPosition;
+    if (result.dkUsername)  dkUsernameEl.value = result.dkUsername;
     if (result.stackIntensity)    stackIntensityEl.value    = result.stackIntensity;
     if (result.diversifyStrength != null) diversifyStrengthEl.value = result.diversifyStrength;
   });
 }
 
 function save() {
-  const numTeams       = parseInt(numTeamsEl.value);
-  const myPosition     = parseInt(myPositionEl.value);
+  const numTeams          = parseInt(numTeamsEl.value);
+  const myPosition        = parseInt(myPositionEl.value);
+  const dkUsername        = dkUsernameEl.value.trim();
   const stackIntensity    = stackIntensityEl.value;
   const diversifyStrength = parseFloat(diversifyStrengthEl.value);
 
-  bAPI.storage.local.set({ numTeams, myPosition, stackIntensity, diversifyStrength }, () => {
+  bAPI.storage.local.set({ numTeams, myPosition, dkUsername, stackIntensity, diversifyStrength }, () => {
     bAPI.tabs.query({ url: '*://*.draftkings.com/*' }, tabs => {
       tabs.forEach(tab => {
-        bAPI.tabs.sendMessage(tab.id, { action: 'settingsUpdated', numTeams, myPosition, stackIntensity, diversifyStrength })
+        bAPI.tabs.sendMessage(tab.id, { action: 'settingsUpdated', numTeams, myPosition, dkUsername, stackIntensity, diversifyStrength })
           .catch(() => {});
       });
     });
