@@ -373,6 +373,10 @@ function createOverlay() {
         </div>
         <div id="bba-sync-status" style="font-size:0.72em;color:#78909c;margin-top:4px"></div>
       </div>
+      <div id="bba-resync-link" style="display:none;padding:2px 12px 4px;font-size:0.72em;color:#78909c">
+        <a id="bba-scan-link" style="cursor:pointer;color:#4fc3f7;text-decoration:none">↻ Resync board</a>
+        <span id="bba-resync-status" style="margin-left:8px"></span>
+      </div>
 
       <div id="bba-turn-bar"></div>
       <div id="bba-suggestion"></div>
@@ -419,6 +423,14 @@ function createOverlay() {
     status.textContent = found > 0
       ? `Marked ${found} players as drafted — ${state.available.length} remaining`
       : 'No new drafted players detected on page';
+  });
+
+  document.getElementById('bba-scan-link').addEventListener('click', () => {
+    const status = document.getElementById('bba-resync-status');
+    status.textContent = 'Scanning…';
+    const found = scanPageForDraftedPlayers();
+    status.textContent = found > 0 ? `+${found} synced` : 'Up to date';
+    setTimeout(() => { status.textContent = ''; }, 3000);
   });
 
   document.getElementById('bba-search').addEventListener('input', e => {
@@ -510,8 +522,22 @@ function renderSetupBanner() {
 }
 
 function renderSyncBar() {
-  // Show sync bar whenever set up (useful mid-draft and at start)
-  document.getElementById('bba-sync-bar').style.display = state.isSetup ? 'block' : 'none';
+  const manualBar  = document.getElementById('bba-sync-bar');
+  const resyncLink = document.getElementById('bba-resync-link');
+  if (!state.isSetup) {
+    manualBar.style.display  = 'none';
+    resyncLink.style.display = 'none';
+    return;
+  }
+  if (autoPositionDetected && state.myPosition) {
+    // Position is known — hide the manual pick# bar, show a subtle resync link instead
+    manualBar.style.display  = 'none';
+    resyncLink.style.display = 'block';
+  } else {
+    // Still waiting for auto-detection — show manual controls as fallback
+    manualBar.style.display  = 'block';
+    resyncLink.style.display = 'none';
+  }
 }
 
 function renderTurnBar() {
