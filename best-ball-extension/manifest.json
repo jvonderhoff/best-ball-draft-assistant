@@ -10,6 +10,11 @@
   "content_scripts": [
     {
       "matches": ["*://*.draftkings.com/*"],
+      "js": ["pick-interceptor.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["*://*.draftkings.com/*"],
       "js": ["players.js", "recommender.js", "content.js"],
       "css": ["overlay.css"],
       "run_at": "document_idle"

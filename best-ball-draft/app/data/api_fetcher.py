@@ -1,15 +1,17 @@
 """
-Fetches NFL player data from the Sleeper API, with ADP from Fantasy Football Calculator.
-Docs: https://docs.sleeper.com/ | https://fantasyfootballcalculator.com/api
+Fetches NFL player data from the Sleeper API, with ADP from FantasyPros best ball table
+(DraftKings column, falling back to consensus AVG for players DK hasn't ranked).
 """
 import json
 import os
+import re
 import requests
+from html.parser import HTMLParser
 
 CACHE_PATH = os.path.join(os.path.dirname(__file__), 'player_cache.json')
 SLEEPER_STATE_URL = 'https://api.sleeper.app/v1/state/nfl'
 SLEEPER_PLAYERS_URL = 'https://api.sleeper.app/v1/players/nfl'
-FFC_ADP_URL = 'https://fantasyfootballcalculator.com/api/v1/adp/ppr?teams=12&year={year}'
+FP_BEST_BALL_URL = 'https://www.fantasypros.com/nfl/adp/best-ball-overall.php'
 
 SKILL_POSITIONS = {'QB', 'RB', 'WR', 'TE'}
 
@@ -74,39 +76,101 @@ def _fetch_players():
     return resp.json()
 
 
-def _fetch_ffc_adp(season: str) -> dict:
+class _TableParser(HTMLParser):
+    """Extracts rows from the first HTML table encountered."""
+    def __init__(self):
+        super().__init__()
+        self.in_table = False
+        self.in_tr = False
+        self.in_cell = False
+        self.rows = []
+        self._row = []
+        self._cell = ''
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'table':
+            self.in_table = True
+        if self.in_table and tag == 'tr':
+            self.in_tr = True
+            self._row = []
+        if self.in_tr and tag in ('td', 'th'):
+            self.in_cell = True
+            self._cell = ''
+
+    def handle_endtag(self, tag):
+        if tag == 'table':
+            self.in_table = False
+        if self.in_table and tag == 'tr':
+            self.in_tr = False
+            if self._row:
+                self.rows.append(self._row[:])
+        if self.in_tr and tag in ('td', 'th'):
+            self.in_cell = False
+            self._row.append(self._cell.strip())
+
+    def handle_data(self, data):
+        if self.in_cell:
+            self._cell += data
+
+
+def _fetch_fp_adp(season: str) -> dict:
     """
-    Fetch PPR ADP from Fantasy Football Calculator.
+    Scrape FantasyPros best ball ADP page.
     Returns a dict keyed by normalized player name -> adp float.
+    Uses DraftKings column; falls back to consensus AVG for unranked players.
     Falls back to empty dict on failure.
     """
     try:
-        url = FFC_ADP_URL.format(year=season)
-        resp = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+        resp = requests.get(FP_BEST_BALL_URL, timeout=15, headers={
+            'User-Agent': 'Mozilla/5.0',
+            'Referer': 'https://www.fantasypros.com/',
+        })
         resp.raise_for_status()
-        players = resp.json().get('players', [])
-        return {_normalize_name(p['name']): p['adp'] for p in players if p.get('adp')}
+        parser = _TableParser()
+        parser.feed(resp.text)
+        if not parser.rows:
+            return {}
+        header = parser.rows[0]
+        try:
+            dk_col  = header.index('DraftKings')
+            avg_col = header.index('AVG')
+            name_col = header.index('Player Team')
+        except ValueError:
+            return {}
+        result = {}
+        for row in parser.rows[1:]:
+            if len(row) <= max(dk_col, avg_col, name_col):
+                continue
+            # "Bijan Robinson ATL" — strip trailing team abbreviation
+            raw_name = re.sub(r'\s+[A-Z]{2,3}$', '', row[name_col]).strip()
+            dk_val  = row[dk_col].strip()
+            avg_val = row[avg_col].strip()
+            adp_str = dk_val if dk_val and dk_val not in ('-', 'N/A', '') else avg_val
+            try:
+                result[_normalize_name(raw_name)] = float(adp_str)
+            except (ValueError, TypeError):
+                pass
+        return result
     except Exception:
         return {}
 
 
 def _normalize_name(name: str) -> str:
     """Lowercase, strip punctuation, collapse whitespace for fuzzy name matching."""
-    import re
     name = name.lower()
     name = re.sub(r"['\.\-]", '', name)
     return re.sub(r'\s+', ' ', name).strip()
 
 
 def fetch_players(force_refresh=False):
-    """Return cached players, or fetch from Sleeper + FFC if force_refresh=True or no cache exists."""
+    """Return cached players, or fetch from Sleeper + FantasyPros if force_refresh=True or no cache exists."""
     cached = _load_cache()
     if cached and not force_refresh:
         return cached
 
     season = fetch_nfl_season()
     raw_players = _fetch_players()
-    ffc_adp = _fetch_ffc_adp(season)
+    fp_adp = _fetch_fp_adp(season)
 
     players = []
     for pid, p in raw_players.items():
@@ -137,25 +201,22 @@ def fetch_players(force_refresh=False):
             'season': season,
         })
 
-    # Merge real ADP from FFC where available
-    ffc_hits = 0
+    # Merge real ADP from FantasyPros best ball where available
     for p in players:
         key = _normalize_name(p['name'])
-        if key in ffc_adp:
-            p['adp'] = ffc_adp[key]
-            ffc_hits += 1
+        if key in fp_adp:
+            p['adp'] = fp_adp[key]
 
-    # Players without FFC ADP get synthetic fallback from Sleeper search_rank
+    # Players without FantasyPros ADP get synthetic fallback from Sleeper search_rank
     sleeper_lookup = {
         f"{v.get('first_name', '')} {v.get('last_name', '')}".strip(): v.get('search_rank') or 9999
         for v in raw_players.values()
     }
-    max_ffc_adp = max((p['adp'] for p in players if p['adp'] is not None), default=250)
+    max_fp_adp = max((p['adp'] for p in players if p['adp'] is not None), default=250)
     for p in players:
         if p['adp'] is None:
             sr = sleeper_lookup.get(p['name'], 9999)
-            # Place unranked players after all FFC-ranked players
-            p['adp'] = max_ffc_adp + sr
+            p['adp'] = max_fp_adp + sr
 
     # Sort by ADP, then assign sequential integers and position-based projections
     players.sort(key=lambda p: p['adp'])
