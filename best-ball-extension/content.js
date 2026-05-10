@@ -52,16 +52,16 @@ function initPlayers() {
   });
 }
 
+const NUM_TEAMS = 12; // DraftKings best ball is always 12 teams
+
 function loadSettings(cb) {
-  bAPI.storage.local.get(['numTeams', 'myPosition', 'dkUsername', 'stackIntensity', 'diversifyStrength'], result => {
-    if (result.numTeams && result.myPosition) {
-      state.numTeams   = result.numTeams;
-      state.myPosition = result.myPosition;
-      state.isSetup    = true;
-    }
+  bAPI.storage.local.get(['dkUsername', 'stackIntensity', 'diversifyStrength'], result => {
+    state.numTeams          = NUM_TEAMS;
     state.dkUsername        = result.dkUsername        || '';
     state.stackIntensity    = result.stackIntensity    || 'medium';
     state.diversifyStrength = result.diversifyStrength != null ? result.diversifyStrength : 0.5;
+    // Username alone is enough to activate the board; position is auto-detected
+    state.isSetup = !!state.dkUsername;
     cb();
   });
 }
@@ -644,18 +644,18 @@ function renderStacks(listEl) {
 
 bAPI.runtime.onMessage.addListener(msg => {
   if (msg.action === 'settingsUpdated') {
-    state.numTeams          = msg.numTeams;
-    state.myPosition        = msg.myPosition;
+    state.numTeams          = NUM_TEAMS;
     state.dkUsername        = msg.dkUsername        || '';
     state.stackIntensity    = msg.stackIntensity    || 'medium';
     state.diversifyStrength = msg.diversifyStrength != null ? msg.diversifyStrength : 0.5;
-    state.isSetup           = true;
+    state.isSetup           = !!state.dkUsername;
+    state.myPosition        = null; // will be re-detected
+    autoPositionDetected    = false;
     state.available    = [...PLAYERS];
     state.drafted      = new Set();
     state.myTeam       = [];
     state.overallPick  = 1;
     state.isComplete   = false;
-    autoPositionDetected = true; // user confirmed setup manually
     render();
   }
 });
@@ -667,27 +667,16 @@ let autoPositionDetected = false;
 // Strategy 1: Read window.mvcVars for any position data DK embeds on the page
 function tryDetectPositionFromMvcVars() {
   const mv = window.mvcVars;
-  if (!mv) return null;
-
-  const sd = mv.snakeDraft;
-  if (!sd) return null;
-
-  // numTeams from contest config
-  const numTeams = sd.contestData?.maxEntries || sd.numTeams || sd.teamCount || null;
-
-  // DK sometimes puts the user's draft slot directly in mvcVars
-  const entry = sd.draftEntry || sd.entry || sd.userEntry || sd.myEntry;
+  if (!mv?.snakeDraft) return null;
+  const entry = mv.snakeDraft.draftEntry || mv.snakeDraft.entry || mv.snakeDraft.userEntry || mv.snakeDraft.myEntry;
   const pos = entry?.draftPosition ?? entry?.pickPosition ?? entry?.slotPosition ?? entry?.draftSlot ?? null;
-  if (pos && pos > 0) return { position: pos, numTeams: numTeams || 12 };
-
-  return numTeams ? { position: null, numTeams } : null;
+  return (pos && pos > 0) ? { position: pos } : null;
 }
 
 // Strategy 2: scan the scrollable pick order cards for my username
 function tryDetectPositionFromDOM() {
   if (!state.dkUsername) return null;
   const me = state.dkUsername.toLowerCase();
-  const numTeams = state.numTeams || 12;
 
   // Cards: "Pick 234jvonderhoff" — find my next pick and back-calculate position
   const cards = [...document.querySelectorAll('.PickOrder_pick-order__scrollable-pick-card-container')];
@@ -695,73 +684,33 @@ function tryDetectPositionFromDOM() {
     const parsed = parseStickyCard(card.textContent.trim());
     if (!parsed) continue;
     if (!parsed.username.toLowerCase().startsWith(me.slice(0, 5))) continue;
-    const round = Math.ceil(parsed.pickNum / numTeams);
-    const pickInRound = ((parsed.pickNum - 1) % numTeams) + 1;
-    const position = round % 2 === 0 ? numTeams - pickInRound + 1 : pickInRound;
-    return { position, numTeams };
+    const round = Math.ceil(parsed.pickNum / NUM_TEAMS);
+    const pickInRound = ((parsed.pickNum - 1) % NUM_TEAMS) + 1;
+    const position = round % 2 === 0 ? NUM_TEAMS - pickInRound + 1 : pickInRound;
+    return { position, numTeams: NUM_TEAMS };
   }
   return null;
 }
 
-// Strategy 3: infer from "PK X" timer at start of round 1
-// At overallPick O in round 1, PK X means our next pick is at O + X, so position = O + X
-function tryDetectPositionFromPK(pkValue) {
-  const numTeams = state.numTeams || tryDetectPositionFromMvcVars()?.numTeams || 12;
-  // Only reliable in round 1
-  if (state.overallPick > numTeams) return null;
-  const position = state.overallPick + pkValue;
-  if (position < 1 || position > numTeams) return null;
-  return { position, numTeams };
-}
-
-function showPositionDetectedBanner(position, numTeams) {
-  if (document.getElementById('bba-pos-banner')) return;
-  const banner = document.createElement('div');
-  banner.id = 'bba-pos-banner';
-  banner.className = 'bba-toast';
-  banner.style.cssText = 'bottom:auto;top:80px;';
-  banner.innerHTML = `
-    <span>🎯 Pick #<strong>${position}</strong> of ${numTeams} detected</span>
-    <button class="bba-toast-btn bba-my-pick" id="bba-pos-confirm">Use this</button>
-    <button class="bba-toast-dismiss" id="bba-pos-dismiss">✕</button>
-  `;
-  document.body.appendChild(banner);
-
-  document.getElementById('bba-pos-confirm').addEventListener('click', () => {
-    bAPI.storage.local.set({ numTeams, myPosition: position }, () => {
-      state.numTeams   = numTeams;
-      state.myPosition = position;
-      state.isSetup    = true;
-      autoPositionDetected = true;
-      banner.remove();
-      render();
-    });
-  });
-  document.getElementById('bba-pos-dismiss').addEventListener('click', () => {
-    autoPositionDetected = false;
-    banner.remove();
-  });
-}
 
 async function tryAutoDetectPosition() {
-  if (state.isSetup || autoPositionDetected) return;
+  if (autoPositionDetected || state.myPosition) return;
 
-  // Strategy 1 — mvcVars
+  // Strategy 1 — mvcVars (fastest, no DOM needed)
   const fromVars = tryDetectPositionFromMvcVars();
   if (fromVars?.position) {
     autoPositionDetected = true;
-    showPositionDetectedBanner(fromVars.position, fromVars.numTeams);
+    state.myPosition = fromVars.position;
+    render();
     return;
   }
 
-  // Apply numTeams from mvcVars even if no position yet
-  if (fromVars?.numTeams && !state.numTeams) state.numTeams = fromVars.numTeams;
-
-  // Strategy 2 — DOM
+  // Strategy 2 — pick order cards (requires React to have rendered)
   const fromDOM = tryDetectPositionFromDOM();
   if (fromDOM?.position) {
     autoPositionDetected = true;
-    showPositionDetectedBanner(fromDOM.position, fromDOM.numTeams);
+    state.myPosition = fromDOM.position;
+    render();
     return;
   }
 }
@@ -816,16 +765,16 @@ function startTimerWatcher() {
     // Sync pick counter from DK's own UI — keeps us accurate mid-draft
     if (parsed.pickNum > 0) state.overallPick = parsed.pickNum;
 
-    // Auto-detect draft position from pick order if username is set
-    if (!state.isSetup && !autoPositionDetected && state.dkUsername) {
+    // Auto-detect draft position from the pick order cards (no banner — silent)
+    if (!autoPositionDetected && state.dkUsername && !state.myPosition) {
       const myCard = findMyPickCard();
       if (myCard) {
-        const numTeams = state.numTeams || 12;
-        const round = Math.ceil(myCard.pickNum / numTeams);
-        const pickInRound = ((myCard.pickNum - 1) % numTeams) + 1;
-        const position = round % 2 === 0 ? numTeams - pickInRound + 1 : pickInRound;
+        const round = Math.ceil(myCard.pickNum / NUM_TEAMS);
+        const pickInRound = ((myCard.pickNum - 1) % NUM_TEAMS) + 1;
+        const position = round % 2 === 0 ? NUM_TEAMS - pickInRound + 1 : pickInRound;
         autoPositionDetected = true;
-        showPositionDetectedBanner(position, numTeams);
+        state.myPosition = position;
+        render();
       }
     }
 
