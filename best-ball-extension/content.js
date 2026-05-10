@@ -156,17 +156,28 @@ function showDetectionToast(player) {
   setTimeout(() => toast?.remove(), 10000);
 }
 
-// Extract player name from DraftKings pick element:
-// Format: "Jalen Hurts | QB <span class="PickOrder_normal-weight">PHI</span>"
+// Extract player from DK pick element: "Jalen Hurts | QB <span>PHI</span>"
 function extractPlayerFromPickElement(el) {
   if (!el) return null;
-  // Look for the DK pick format — text contains " | " separator
   const text = el.textContent || '';
   const pipeIdx = text.indexOf(' | ');
   if (pipeIdx === -1) return null;
   const name = text.slice(0, pipeIdx).trim().toLowerCase();
   return playerNameMap[name] || null;
 }
+
+// Find the player div next to a "Last Pick:" label
+function getPlayerFromLastPickLabel(labelEl) {
+  // Sibling pattern: <div class="...last-pick">Last Pick: </div><div>Name | POS TEAM</div>
+  const sibling = labelEl.nextElementSibling;
+  if (sibling) return extractPlayerFromPickElement(sibling);
+  // Sometimes the label and player share a parent — check parent's next sibling
+  const parentSib = labelEl.parentElement?.nextElementSibling;
+  if (parentSib) return extractPlayerFromPickElement(parentSib);
+  return null;
+}
+
+let lastDetectedPick = null;
 
 function onMutation(mutations) {
   if (!state.isSetup) return;
@@ -175,27 +186,40 @@ function onMutation(mutations) {
     for (const node of mutation.addedNodes) {
       if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-      // Primary: look for DK's PickOrder_normal-weight spans (team badge on pick rows)
-      const teamSpans = node.querySelectorAll
-        ? node.querySelectorAll('.PickOrder_normal-weight, [class*="PickOrder"]')
+      // Primary: "Last Pick:" label appearing means a pick just happened
+      const lastPickLabels = node.querySelectorAll
+        ? [
+            ...node.querySelectorAll('[class*="last-pick"], [class*="last-drafted"]'),
+            ...(node.className?.includes?.('last-pick') || node.className?.includes?.('last-drafted') ? [node] : [])
+          ]
         : [];
 
-      for (const span of teamSpans) {
-        const parent = span.parentElement;
-        const player = extractPlayerFromPickElement(parent);
-        if (!player) continue;
+      for (const label of lastPickLabels) {
+        const player = getPlayerFromLastPickLabel(label);
+        if (!player || player.id === lastDetectedPick) continue;
         if (!state.available.find(p => p.id === player.id)) continue;
-        if (toastedPlayers.has(player.id)) continue;
+        lastDetectedPick = player.id;
         toastedPlayers.add(player.id);
         showDetectionToast(player);
       }
 
-      // Also check the node itself if it matches the pipe pattern
-      if (!teamSpans.length) {
+      // Fallback: any new element with " | " pipe pattern (covers pick history rows)
+      if (!lastPickLabels.length) {
         const player = extractPlayerFromPickElement(node);
         if (player && state.available.find(p => p.id === player.id) && !toastedPlayers.has(player.id)) {
           toastedPlayers.add(player.id);
           showDetectionToast(player);
+        }
+        // Also check children
+        if (node.querySelectorAll) {
+          for (const child of node.querySelectorAll('[class*="PickOrder"]')) {
+            const p = extractPlayerFromPickElement(child.parentElement);
+            if (p && state.available.find(x => x.id === p.id) && !toastedPlayers.has(p.id)) {
+              toastedPlayers.add(p.id);
+              showDetectionToast(p);
+              break;
+            }
+          }
         }
       }
     }
