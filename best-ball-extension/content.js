@@ -156,27 +156,47 @@ function showDetectionToast(player) {
   setTimeout(() => toast?.remove(), 10000);
 }
 
+// Extract player name from DraftKings pick element:
+// Format: "Jalen Hurts | QB <span class="PickOrder_normal-weight">PHI</span>"
+function extractPlayerFromPickElement(el) {
+  if (!el) return null;
+  // Look for the DK pick format — text contains " | " separator
+  const text = el.textContent || '';
+  const pipeIdx = text.indexOf(' | ');
+  if (pipeIdx === -1) return null;
+  const name = text.slice(0, pipeIdx).trim().toLowerCase();
+  return playerNameMap[name] || null;
+}
+
 function onMutation(mutations) {
   if (!state.isSetup) return;
 
   for (const mutation of mutations) {
     for (const node of mutation.addedNodes) {
-      if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.TEXT_NODE) continue;
+      if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-      const root = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-      if (!root) continue;
+      // Primary: look for DK's PickOrder_normal-weight spans (team badge on pick rows)
+      const teamSpans = node.querySelectorAll
+        ? node.querySelectorAll('.PickOrder_normal-weight, [class*="PickOrder"]')
+        : [];
 
-      // Walk all text nodes within this new element
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      let textNode;
-      while ((textNode = walker.nextNode())) {
-        const player = extractPlayerFromText(textNode.textContent);
+      for (const span of teamSpans) {
+        const parent = span.parentElement;
+        const player = extractPlayerFromPickElement(parent);
         if (!player) continue;
         if (!state.available.find(p => p.id === player.id)) continue;
         if (toastedPlayers.has(player.id)) continue;
         toastedPlayers.add(player.id);
         showDetectionToast(player);
-        break;
+      }
+
+      // Also check the node itself if it matches the pipe pattern
+      if (!teamSpans.length) {
+        const player = extractPlayerFromPickElement(node);
+        if (player && state.available.find(p => p.id === player.id) && !toastedPlayers.has(player.id)) {
+          toastedPlayers.add(player.id);
+          showDetectionToast(player);
+        }
       }
     }
   }
