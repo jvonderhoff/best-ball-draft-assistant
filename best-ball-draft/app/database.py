@@ -19,7 +19,8 @@ def init_db():
                 num_teams   INTEGER,
                 my_position INTEGER,
                 proj_pts    INTEGER,
-                contest     TEXT
+                contest     TEXT,
+                dk_draft_id TEXT
             );
 
             CREATE TABLE IF NOT EXISTS draft_picks (
@@ -34,15 +35,28 @@ def init_db():
                 pick_number INTEGER
             );
         """)
+        # Migrate existing installs that don't have dk_draft_id yet
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(drafts)").fetchall()]
+        if 'dk_draft_id' not in cols:
+            conn.execute("ALTER TABLE drafts ADD COLUMN dk_draft_id TEXT")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_dk_draft_id ON drafts(dk_draft_id) WHERE dk_draft_id IS NOT NULL")
 
 
-def save_draft(num_teams, my_position, proj_pts, picks, contest=''):
-    """Save a completed draft. picks = list of player dicts."""
+def save_draft(num_teams, my_position, proj_pts, picks, contest='', dk_draft_id=None):
+    """
+    Save a completed draft. picks = list of player dicts.
+    If dk_draft_id is provided and already exists, the save is skipped (returns None).
+    """
     with get_db() as conn:
-        cur = conn.execute(
-            "INSERT INTO drafts (num_teams, my_position, proj_pts, contest) VALUES (?,?,?,?)",
-            (num_teams, my_position, proj_pts, contest)
-        )
+        try:
+            cur = conn.execute(
+                """INSERT INTO drafts (num_teams, my_position, proj_pts, contest, dk_draft_id)
+                   VALUES (?,?,?,?,?)""",
+                (num_teams, my_position, proj_pts, contest, dk_draft_id)
+            )
+        except sqlite3.IntegrityError:
+            # dk_draft_id already exists — duplicate, skip silently
+            return None
         draft_id = cur.lastrowid
         conn.executemany(
             """INSERT INTO draft_picks
