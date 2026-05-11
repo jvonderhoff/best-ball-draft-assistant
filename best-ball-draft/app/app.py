@@ -1,4 +1,5 @@
 from flask import Flask, render_template, jsonify, request
+from flask_cors import CORS
 from app.draft import DraftState
 from app.database import init_db, save_draft, get_all_drafts, get_exposure, delete_draft
 import os
@@ -10,6 +11,7 @@ app = Flask(__name__,
     static_folder=os.path.join(basedir, 'static')
 )
 app.secret_key = 'best-ball-secret-key-2024'
+CORS(app)
 
 init_db()
 draft_state = DraftState()
