@@ -21,12 +21,19 @@ let state = {
 
 let exposure = {};
 
+// Send a message to background.js which relays it to the native db_writer.py.
+// No HTTP server needed — Firefox launches db_writer.py on demand.
+function nativeCall(msg) {
+  return new Promise(resolve => {
+    bAPI.runtime.sendMessage(msg, response => resolve(response || { ok: false }));
+  });
+}
+
 async function loadExposure() {
   try {
-    const resp = await fetch('http://localhost:8000/api/drafts/exposure');
-    if (!resp.ok) return;
-    const data = await resp.json();
-    exposure = data.players || {};
+    const result = await nativeCall({ action: 'getExposure' });
+    if (!result.ok) return;
+    exposure = result.data?.players || {};
   } catch (_) {}
 }
 
@@ -36,23 +43,39 @@ function getDKDraftId() {
   return m ? m[1] : null;
 }
 
+// True when this tab was opened by the extension's "Get lineups" flow.
+const IS_AUTO_TAB = new URLSearchParams(location.search).get('bba_auto') === '1';
+
 async function saveDraftToFlask({ contest = '', silent = false } = {}) {
-  if (!state.myTeam.length) return false;
+  if (!state.myTeam.length) {
+    console.log('[BBA] saveDraftToFlask: no picks in myTeam — skipping');
+    return false;
+  }
+  const draftId = getDKDraftId();
+  console.log('[BBA] saveDraftToFlask: posting', state.myTeam.length, 'picks for draft', draftId);
   try {
-    const resp = await fetch('http://localhost:8000/api/drafts/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        dk_draft_id: getDKDraftId(),
-        my_position: state.myPosition || 0,
-        picks: state.myTeam,
-        contest,
-      }),
+    const result = await nativeCall({
+      action: 'saveDraft',
+      dk_draft_id: draftId,
+      my_position: state.myPosition || 0,
+      picks: state.myTeam,
+      contest,
     });
-    const json = await resp.json();
-    if (!silent && json.duplicate) console.log('[BBA] Draft already saved, skipping.');
-    return resp.ok;
-  } catch (_) { return false; }
+    if (result.duplicate) {
+      console.log('[BBA] Draft already in DB, skipping.');
+    } else if (result.ok) {
+      console.log('[BBA] Draft saved — id', result.draft_id);
+    } else {
+      console.log('[BBA] Save failed:', result);
+    }
+    if (IS_AUTO_TAB && (result.ok || result.duplicate)) {
+      setTimeout(() => bAPI.runtime.sendMessage({ action: 'closeTab' }), 1500);
+    }
+    return result.ok;
+  } catch (err) {
+    console.log('[BBA] saveDraftToFlask error:', err);
+    return false;
+  }
 }
 
 let playerNameMap = {};
@@ -165,6 +188,8 @@ function readDraftBoard() {
   const columns = [...document.querySelectorAll('.DraftBoardColumn_draft-board-column')];
   if (!columns.length) return { myPicks: 0, takenPicks: 0 };
 
+  console.log('[BBA] readDraftBoard: found', columns.length, 'columns, username:', state.dkUsername);
+
   let myPicks = 0, takenPicks = 0;
 
   for (const col of columns) {
@@ -172,6 +197,7 @@ function readDraftBoard() {
     if (kids.length < 2) continue;
     const headerText = kids[0].textContent.toLowerCase();
     const isMe = state.dkUsername && headerText.startsWith(state.dkUsername.toLowerCase().slice(0, 8));
+    if (isMe) console.log('[BBA] my column header:', JSON.stringify(headerText), '— picks in col:', kids.length - 1);
 
     for (let i = 1; i < kids.length; i++) {
       const player = parsePickFromBoardText(kids[i].textContent);
@@ -182,6 +208,12 @@ function readDraftBoard() {
       if (isMe) { state.myTeam.push(player); myPicks++; }
       else takenPicks++;
     }
+  }
+
+  console.log('[BBA] readDraftBoard result: myPicks', myPicks, 'takenPicks', takenPicks, 'isComplete', state.myTeam.length >= 20);
+  if (myPicks === 0 && takenPicks > 0) {
+    console.log('[BBA] WARNING: found other picks but none for me — check username. Column headers:',
+      columns.map(c => JSON.stringify(c.children[0]?.textContent?.slice(0, 20))));
   }
 
   if (myPicks + takenPicks > 0) {
@@ -327,18 +359,14 @@ async function syncDraftGroup(draftGroupId) {
 async function importPicksFromAPIResponse(draftGroupId, myPicks) {
   if (!myPicks.length) return false;
   try {
-    const resp = await fetch('http://localhost:8000/api/drafts/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        dk_draft_id: draftGroupId,
-        my_position: 0,
-        picks: myPicks,
-        contest: `DK draft ${draftGroupId}`,
-      }),
+    const result = await nativeCall({
+      action: 'saveDraft',
+      dk_draft_id: draftGroupId,
+      my_position: 0,
+      picks: myPicks,
+      contest: `DK draft ${draftGroupId}`,
     });
-    const json = await resp.json();
-    return resp.ok && !json.duplicate;
+    return result.ok && !result.duplicate;
   } catch (_) { return false; }
 }
 
@@ -397,6 +425,9 @@ async function fetchAndSyncMyContests() {
 
 function processDKResponse(url, data) {
   if (!data || typeof data !== 'object') return;
+
+  // Log every intercepted API call so we can see what data DK sends on a completed draft page
+  console.log('[BBA] API intercepted:', url, Object.keys(data));
 
   // ── Contest-list detection ───────────────────────────────────────────────
   if (/contest|entries|lineup|mycontest/i.test(url)) {
@@ -1073,14 +1104,57 @@ function startTimerWatcher() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+// On completed-draft pages DK shows a "Lineup" tab by default; the board DOM only
+// exists after clicking "Draftboard". Click it automatically so readDraftBoard() works.
+function tryClickDraftboardTab() {
+  const candidates = [
+    ...document.querySelectorAll('[role="tab"]'),
+    ...document.querySelectorAll('button'),
+    ...document.querySelectorAll('a'),
+    ...document.querySelectorAll('li'),
+    ...document.querySelectorAll('[class*="tab"]'),
+  ];
+  for (const el of candidates) {
+    if (/draft\s*board/i.test(el.textContent.trim())) {
+      console.log('[BBA] clicking draftboard tab:', el.tagName, JSON.stringify(el.textContent.trim()));
+      el.click();
+      return true;
+    }
+  }
+  console.log('[BBA] draftboard tab not found — tabs on page:',
+    candidates.filter(el => el.textContent.trim().length < 30).map(el => el.textContent.trim()).filter(Boolean).slice(0, 15)
+  );
+  return false;
+}
+
+// Dedicated board-read loop — runs independently of position detection.
+// Keeps trying until 20 picks are found or MAX_ATTEMPTS is reached.
+let _boardReadAttempts = 0;
+const _MAX_BOARD_ATTEMPTS = 12;
+
+function scheduleBoardRead(delay = 2000) {
+  if (state.isComplete || _boardReadAttempts >= _MAX_BOARD_ATTEMPTS) return;
+  setTimeout(() => {
+    _boardReadAttempts++;
+    const columns = document.querySelectorAll('.DraftBoardColumn_draft-board-column');
+    if (!columns.length) {
+      tryClickDraftboardTab();
+      scheduleBoardRead(1500);
+      return;
+    }
+    const { myPicks, takenPicks } = readDraftBoard();
+    if (!state.isComplete && myPicks + takenPicks === 0) {
+      scheduleBoardRead(2000);
+    }
+  }, delay);
+}
+
 let autoDetectRetryTimer = null;
 
 function scheduleAutoDetectRetry(delay = 3000) {
   if (autoDetectRetryTimer) return;
   autoDetectRetryTimer = setTimeout(() => {
     autoDetectRetryTimer = null;
-    // Read draft board on every retry — picks may have rendered since last attempt
-    readDraftBoard();
     if (!autoPositionDetected) {
       tryAutoDetectPosition().then(() => {
         if (!autoPositionDetected) scheduleAutoDetectRetry(5000);
@@ -1098,8 +1172,8 @@ function init() {
       render();
       startPickPoller();
       startTimerWatcher();
-      // Read board + detect position (React app may not be rendered yet — retry if needed)
-      readDraftBoard();
+      // Start board-read loop: tries tab click + board read until 20 picks found
+      scheduleBoardRead(500);
       tryAutoDetectPosition().then(() => {
         if (!autoPositionDetected) scheduleAutoDetectRetry(3000);
       });
