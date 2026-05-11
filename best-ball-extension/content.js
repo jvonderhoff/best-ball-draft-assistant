@@ -284,87 +284,121 @@ function _extractDraftGroupIds(data) {
   return [...ids];
 }
 
-// Fetch picks for one draft group ID directly from DK's API (authenticated via browser session).
-async function _fetchDKDraftPicks(draftGroupId) {
-  const paths = [
-    `https://api.draftkings.com/drafts/v1/draftgroups/${draftGroupId}/picks`,
-    `https://api.draftkings.com/drafts/v1/draftgroups/${draftGroupId}/selections`,
-    `https://api.draftkings.com/lineups/v1/lineup/${draftGroupId}`,
-  ];
-  for (const url of paths) {
-    try {
-      const resp = await fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } });
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      console.log('[BBA] picks response from', url, data);
-      return data;
-    } catch (_) {}
+// Check whether a candidate ID is a best ball snake draft (not a DFS contest).
+// Strategy: fetch /draft/snake/{id} and inspect the final URL after redirects.
+// DFS contest IDs will redirect to /draft/contest/{id}; snake draft IDs stay on /draft/snake/.
+// Falls back to scanning the HTML for distinguishing strings.
+async function _isBestBallDraft(draftGroupId) {
+  try {
+    const resp = await fetch(`https://www.draftkings.com/draft/snake/${draftGroupId}`, {
+      credentials: 'include',
+    });
+    if (!resp.ok) return false;
+    // If the server redirected us to a /draft/contest/ URL, it's a DFS contest
+    if (resp.url.includes('/draft/contest/')) return false;
+    // Scan the HTML for DFS-specific strings
+    const html = await resp.text();
+    if (html.includes('/draft/contest/')) return false;
+    // A valid snake draft page URL will contain /draft/snake/
+    return resp.url.includes('/draft/snake/') || /best.?ball/i.test(html);
+  } catch (_) {
+    return false;
   }
-  return null;
 }
 
-// Import picks from one DK draft group into Flask.
+// Open a best ball draft in a new tab so the extension can read the board and auto-import.
+// Returns true if a tab was opened (pick import happens asynchronously in that tab).
 async function syncDraftGroup(draftGroupId) {
-  if (_syncedDraftIds.has(draftGroupId)) return;
-  _syncedDraftIds.add(draftGroupId);
+  if (_syncedDraftIds.has(draftGroupId)) return false;
 
-  const data = await _fetchDKDraftPicks(draftGroupId);
-  if (!data) return;
-
-  // Build pick list — try common response shapes
-  const pickList = data.picks || data.selections || data.draftPicks ||
-                   data.data?.picks || data.payload?.picks || [];
-  if (!pickList.length) return;
-
-  const myPicks = [];
-  for (const pick of pickList) {
-    const player = _extractPlayerFromPickObj(pick);
-    if (!player) continue;
-    if (_isMyPickObj(pick)) myPicks.push(player);
+  const isBestBall = await _isBestBallDraft(draftGroupId);
+  if (!isBestBall) {
+    console.log('[BBA] skipping non-best-ball ID:', draftGroupId);
+    return false;
   }
 
-  if (myPicks.length < 1) return;
-
-  await fetch('http://localhost:8000/api/drafts/import', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      dk_draft_id: draftGroupId,
-      my_position: 0,
-      picks: myPicks,
-      contest: `DK draft ${draftGroupId}`,
-    }),
-  }).catch(() => {});
+  _syncedDraftIds.add(draftGroupId);
+  console.log('[BBA] opening best ball draft in new tab:', draftGroupId);
+  bAPI.runtime.sendMessage({ action: 'openTab', url: `https://www.draftkings.com/draft/snake/${draftGroupId}` });
+  return true;
 }
 
-// Proactively fetch the user's my-contests list from DK (runs when on mycontests page).
+// Called by processDKResponse when it detects picks from an API response (live draft path).
+async function importPicksFromAPIResponse(draftGroupId, myPicks) {
+  if (!myPicks.length) return false;
+  try {
+    const resp = await fetch('http://localhost:8000/api/drafts/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dk_draft_id: draftGroupId,
+        my_position: 0,
+        picks: myPicks,
+        contest: `DK draft ${draftGroupId}`,
+      }),
+    });
+    const json = await resp.json();
+    return resp.ok && !json.duplicate;
+  } catch (_) { return false; }
+}
+
+// ── "Get lineups" button injected on mycontests page ─────────────────────────
+
+function injectGetLineupsButton() {
+  if (document.getElementById('bba-get-lineups')) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'bba-get-lineups';
+  btn.textContent = '🏈 Get lineups';
+  Object.assign(btn.style, {
+    position: 'fixed', bottom: '20px', right: '20px', zIndex: '999999',
+    padding: '10px 18px', background: '#4fc3f7', color: '#0a0e1a',
+    border: 'none', borderRadius: '6px', fontWeight: '700',
+    fontSize: '14px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+  });
+
+  btn.addEventListener('click', async () => {
+    btn.textContent = '⏳ Syncing…';
+    btn.disabled = true;
+    const count = await fetchAndSyncMyContests();
+    btn.textContent = count > 0 ? `✓ Imported ${count} draft(s)` : '⚠ No drafts found — check console';
+    btn.disabled = false;
+    setTimeout(() => { btn.textContent = '🏈 Get lineups'; }, 4000);
+  });
+
+  document.body.appendChild(btn);
+}
+
+// Scan the mycontests DOM for draft IDs, then sync picks for each.
 async function fetchAndSyncMyContests() {
-  if (!state.dkUsername) return;
-  const endpoints = [
-    'https://api.draftkings.com/contests/v1/contests/user?sport=NFL&maxResultsCount=100',
-    `https://api.draftkings.com/entries/v1/entries?username=${encodeURIComponent(state.dkUsername)}&sport=NFL&maxResultsCount=100`,
-    'https://api.draftkings.com/lineups/v1/getuserdraftlineups?sport=NFL',
-  ];
-  for (const url of endpoints) {
-    try {
-      const resp = await fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } });
-      if (!resp.ok) { console.log('[BBA] mycontests probe', resp.status, url); continue; }
-      const data = await resp.json();
-      console.log('[BBA] mycontests response from', url, data);
-      const ids = _extractDraftGroupIds(data);
-      console.log('[BBA] found draft group IDs:', ids);
-      for (const id of ids) syncDraftGroup(id);
-      if (ids.length) break;
-    } catch (e) { console.log('[BBA] mycontests fetch error', url, e); }
+  const html = document.body.innerHTML;
+
+  // Scan for any 9-digit number starting with 1 that looks like a DK draft group ID
+  const allIds = [...new Set(
+    [...html.matchAll(/\b(1\d{8})\b/g)].map(m => m[1])
+  )];
+  console.log('[BBA] candidate IDs found:', allIds);
+
+  if (!allIds.length) {
+    console.log('[BBA] No candidate IDs found in page HTML');
+    return 0;
   }
+
+  // Clear session dedup so a manual button click always retries
+  allIds.forEach(id => _syncedDraftIds.delete(id));
+
+  let imported = 0;
+  for (const id of allIds) {
+    const ok = await syncDraftGroup(id);
+    if (ok) imported++;
+  }
+  return imported;
 }
 
 function processDKResponse(url, data) {
   if (!data || typeof data !== 'object') return;
 
   // ── Contest-list detection ───────────────────────────────────────────────
-  // When the user visits mycontests, DK fires API calls that contain their
-  // contest/entry list. We extract draft group IDs and sync picks for each.
   if (/contest|entries|lineup|mycontest/i.test(url)) {
     const ids = _extractDraftGroupIds(data);
     if (ids.length) {
@@ -1058,9 +1092,6 @@ function scheduleAutoDetectRetry(delay = 3000) {
 function init() {
   initPlayers();
 
-  // Listen for DK API responses captured by pick-interceptor.js (page context)
-  window.addEventListener('__bba_api', e => processDKResponse(e.detail.url, e.detail.data));
-
   loadSettings(() => {
     loadExposure().then(() => {
       createOverlay();
@@ -1076,19 +1107,30 @@ function init() {
   });
 }
 
-function onPageLoad() {
+// ── Navigation & startup ──────────────────────────────────────────────────────
+
+// Register the API interceptor once for the entire lifetime of the content script.
+// pick-interceptor.js wraps fetch/XHR at document_start so events can arrive before
+// init() runs — the listener must be registered as early as possible.
+window.addEventListener('__bba_api', e => processDKResponse(e.detail.url, e.detail.data));
+
+let _lastHref = '';
+
+function onLocationChange() {
   const href = location.href;
+  if (href === _lastHref) return;
+  _lastHref = href;
+
   if (/draftkings\.com\/(draft|lineup)/.test(href)) {
     if (!document.getElementById('bba-root')) init();
   } else if (/draftkings\.com\/mycontests/.test(href)) {
-    // On the mycontests page: register the interceptor and sync past drafts.
-    window.addEventListener('__bba_api', e => processDKResponse(e.detail.url, e.detail.data));
-    loadSettings(() => {
-      // Give DK's page JS time to fire its own API calls first, then also probe proactively.
-      setTimeout(fetchAndSyncMyContests, 2000);
-    });
+    console.log('[BBA] mycontests page detected');
+    loadSettings(() => injectGetLineupsButton());
   }
 }
 
-onPageLoad();
-window.addEventListener('popstate', onPageLoad);
+// DK uses React Router (pushState) for internal navigation — popstate alone is not enough.
+// Poll location.href at a low rate to catch SPA navigations.
+onLocationChange();
+setInterval(onLocationChange, 1000);
+window.addEventListener('popstate', onLocationChange);
