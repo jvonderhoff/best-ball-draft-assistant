@@ -28,14 +28,43 @@ BYE_WEEKS_2026 = {
     'SF': 9,   'TB': 11,  'TEN': 5,  'WAS': 14,
 }
 
-# Season projection ranges by position (top-1 to depth cutoff), DK PPR scoring
-_PROJ_RANGES = {
-    'QB':  (380, 120),
-    'RB':  (290,  30),
-    'WR':  (250,  25),
-    'TE':  (190,  20),
+# Playoff schedule weeks 15, 16, 17 — opponent abbreviation or None for bye.
+# TODO: fill in once the official 2026 NFL schedule is released.
+# Format: team -> (week15_opp, week16_opp, week17_opp)
+PLAYOFF_SCHEDULE_2026 = {
+    'ARI': (None, None, None),
+    'ATL': (None, None, None),
+    'BAL': (None, None, None),
+    'BUF': (None, None, None),
+    'CAR': (None, None, None),
+    'CHI': (None, None, None),
+    'CIN': (None, None, None),
+    'CLE': (None, None, None),
+    'DAL': (None, None, None),
+    'DEN': (None, None, None),
+    'DET': (None, None, None),
+    'GB':  (None, None, None),
+    'HOU': (None, None, None),
+    'IND': (None, None, None),
+    'JAX': (None, None, None),
+    'KC':  (None, None, None),
+    'LAC': (None, None, None),
+    'LAR': (None, None, None),
+    'LV':  (None, None, None),
+    'MIA': (None, None, None),
+    'MIN': (None, None, None),
+    'NE':  (None, None, None),
+    'NO':  (None, None, None),
+    'NYG': (None, None, None),
+    'NYJ': (None, None, None),
+    'PHI': (None, None, None),
+    'PIT': (None, None, None),
+    'SEA': (None, None, None),
+    'SF':  (None, None, None),
+    'TB':  (None, None, None),
+    'TEN': (None, None, None),
+    'WAS': (None, None, None),
 }
-
 
 def fetch_nfl_season() -> str:
     """Return the current NFL season year from Sleeper (e.g. '2026')."""
@@ -45,14 +74,6 @@ def fetch_nfl_season() -> str:
         return resp.json().get('season', '2026')
     except Exception:
         return '2026'
-
-
-def _estimate_projection(pos_rank: int, pos: str) -> int:
-    """Estimate season DK PPR points from position rank using a power-law decay."""
-    top, floor = _PROJ_RANGES.get(pos, (200, 20))
-    decay = 0.88  # ~12% drop per rank step
-    raw = top * (decay ** (pos_rank - 1))
-    return round(max(floor, raw))
 
 
 def _load_cache():
@@ -190,6 +211,7 @@ def fetch_players(force_refresh=False):
         if not name:
             continue
 
+        schedule = PLAYOFF_SCHEDULE_2026.get(team, (None, None, None))
         players.append({
             'id': f"sleeper_{pid}",
             'name': name,
@@ -197,8 +219,10 @@ def fetch_players(force_refresh=False):
             'team': team,
             'bye': BYE_WEEKS_2026.get(team, 0),
             'adp': None,
-            'dk_proj': 0,
             'season': season,
+            'week15': schedule[0],
+            'week16': schedule[1],
+            'week17': schedule[2],
         })
 
     # Merge real ADP from FantasyPros best ball where available
@@ -218,13 +242,10 @@ def fetch_players(force_refresh=False):
             sr = sleeper_lookup.get(p['name'], 9999)
             p['adp'] = max_fp_adp + sr
 
-    # Sort by ADP, then assign sequential integers and position-based projections
+    # Sort by ADP, then assign sequential integers
     players.sort(key=lambda p: p['adp'])
-    pos_counters = {pos: 0 for pos in SKILL_POSITIONS}
     for i, p in enumerate(players, 1):
         p['adp'] = i
-        pos_counters[p['pos']] += 1
-        p['dk_proj'] = _estimate_projection(pos_counters[p['pos']], p['pos'])
 
     _save_cache(players, season)
     return players

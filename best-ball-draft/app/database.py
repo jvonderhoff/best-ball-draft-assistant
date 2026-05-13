@@ -7,6 +7,7 @@ DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'drafts.db')
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
@@ -18,7 +19,6 @@ def init_db():
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 num_teams   INTEGER,
                 my_position INTEGER,
-                proj_pts    INTEGER,
                 contest     TEXT,
                 dk_draft_id TEXT
             );
@@ -31,18 +31,36 @@ def init_db():
                 pos         TEXT,
                 team        TEXT,
                 adp         INTEGER,
-                dk_proj     INTEGER,
-                pick_number INTEGER
+                pick_number INTEGER,
+                round       INTEGER,
+                week15      TEXT,
+                week16      TEXT,
+                week17      TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS players (
+                player_id  TEXT PRIMARY KEY,
+                name       TEXT,
+                pos        TEXT,
+                team       TEXT,
+                adp        REAL,
+                week15     TEXT,
+                week16     TEXT,
+                week17     TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        # Migrate existing installs that don't have dk_draft_id yet
         cols = [r[1] for r in conn.execute("PRAGMA table_info(drafts)").fetchall()]
         if 'dk_draft_id' not in cols:
             conn.execute("ALTER TABLE drafts ADD COLUMN dk_draft_id TEXT")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_dk_draft_id ON drafts(dk_draft_id) WHERE dk_draft_id IS NOT NULL")
+        pick_cols = [r[1] for r in conn.execute("PRAGMA table_info(draft_picks)").fetchall()]
+        for col in ('week15', 'week16', 'week17'):
+            if col not in pick_cols:
+                conn.execute(f"ALTER TABLE draft_picks ADD COLUMN {col} TEXT")
 
 
-def save_draft(num_teams, my_position, proj_pts, picks, contest='', dk_draft_id=None):
+def save_draft(num_teams, my_position, picks, contest='', dk_draft_id=None):
     """
     Save a completed draft. picks = list of player dicts.
     If dk_draft_id is provided and already exists, the save is skipped (returns None).
@@ -50,25 +68,43 @@ def save_draft(num_teams, my_position, proj_pts, picks, contest='', dk_draft_id=
     with get_db() as conn:
         try:
             cur = conn.execute(
-                """INSERT INTO drafts (num_teams, my_position, proj_pts, contest, dk_draft_id)
-                   VALUES (?,?,?,?,?)""",
-                (num_teams, my_position, proj_pts, contest, dk_draft_id)
+                "INSERT INTO drafts (num_teams, my_position, contest, dk_draft_id) VALUES (?,?,?,?)",
+                (num_teams, my_position, contest, dk_draft_id)
             )
         except sqlite3.IntegrityError:
-            # dk_draft_id already exists — duplicate, skip silently
             return None
         draft_id = cur.lastrowid
         conn.executemany(
-            """INSERT INTO draft_picks
-               (draft_id, player_id, player_name, pos, team, adp, dk_proj, pick_number)
-               VALUES (?,?,?,?,?,?,?,?)""",
+            "INSERT INTO draft_picks (draft_id, player_id, player_name, pos, team, adp, pick_number, round, week15, week16, week17) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             [
-                (draft_id, p['id'], p['name'], p['pos'], p['team'],
-                 p.get('adp', 0), p.get('dk_proj', 0), i + 1)
+                (draft_id, p['id'], p['name'], p['pos'], p['team'], p.get('adp', 0), p.get('pick_number'), i + 1,
+                 p.get('week15'), p.get('week16'), p.get('week17'))
                 for i, p in enumerate(picks)
             ]
         )
         return draft_id
+
+
+def refresh_players(players):
+    """Upsert current player data (ADP, schedule weeks) into the players reference table."""
+    with get_db() as conn:
+        conn.executemany("""
+            INSERT INTO players (player_id, name, pos, team, adp, week15, week16, week17, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(player_id) DO UPDATE SET
+                name       = excluded.name,
+                pos        = excluded.pos,
+                team       = excluded.team,
+                adp        = excluded.adp,
+                week15     = excluded.week15,
+                week16     = excluded.week16,
+                week17     = excluded.week17,
+                updated_at = excluded.updated_at
+        """, [(p['id'], p['name'], p['pos'], p['team'], p.get('adp'),
+               p.get('week15'), p.get('week16'), p.get('week17'))
+              for p in players])
+    return len(players)
 
 
 def get_all_drafts():
@@ -87,10 +123,6 @@ def get_all_drafts():
 
 
 def get_exposure():
-    """
-    Returns exposure data per player across all saved drafts.
-    exposure_rate = times_drafted / total_drafts  (0.0 – 1.0)
-    """
     with get_db() as conn:
         total = conn.execute("SELECT COUNT(*) FROM drafts").fetchone()[0]
         if total == 0:

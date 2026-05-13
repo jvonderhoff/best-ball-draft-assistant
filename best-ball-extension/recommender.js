@@ -100,7 +100,7 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
   }
   if (!best) return null;
 
-  let reason = `Best ${best.pos} available — ADP ${best.adp}, ${best.dk_proj} proj pts`;
+  let reason = `Best ${best.pos} available — ADP ${best.adp}`;
   if (['WR', 'TE'].includes(best.pos) && qbTeams.has(best.team)) {
     reason += ` · stacks with your ${best.team} QB`;
   } else if (best.pos === 'QB' && passCatcherCount(best.team, myTeam) > 0) {

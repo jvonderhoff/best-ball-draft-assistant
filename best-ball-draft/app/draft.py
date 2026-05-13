@@ -144,7 +144,7 @@ class DraftState:
         scored.sort(key=lambda x: x[1], reverse=True)
         best_player, value = scored[0]
 
-        reason = f"Strong {best_player['pos']} value (ADP: {best_player['adp']}, Proj: {best_player['dk_proj']}pts)"
+        reason = f"Strong {best_player['pos']} value (ADP: {best_player['adp']})"
         if exposure:
             exp = exposure.get(best_player['id'], {})
             if exp.get('exposure_rate', 0) > 0:
@@ -152,9 +152,6 @@ class DraftState:
                 reason += f" · {pct}% exposure"
 
         return {'player': best_player, 'reason': reason, 'value_score': value}
-
-    def calculate_team_projection(self):
-        return sum(p.get('dk_proj', 0) for p in self.my_team)
 
     def get_unique_teams(self):
         return set(p['team'] for p in self.my_team)
