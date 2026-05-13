@@ -192,6 +192,21 @@ function parsePlayerFromBoardText(text) {
   return null;
 }
 
+// Try to extract the contest name from the DK draft page.
+// DK usually puts "Contest Name | DraftKings" in the page title.
+function getDKContestName() {
+  const title = document.title || '';
+  const stripped = title.replace(/\s*\|\s*draftkings.*$/i, '').trim();
+  if (stripped && stripped.toLowerCase() !== 'draftkings') return stripped;
+
+  // Fallback: look for a heading element that contains contest-like text
+  for (const sel of ['h1', '[class*="contest-name"]', '[class*="league-name"]', '[class*="draft-title"]']) {
+    const el = document.querySelector(sel);
+    if (el?.textContent?.trim()) return el.textContent.trim();
+  }
+  return '';
+}
+
 function readDraftBoard() {
   const columns = [...document.querySelectorAll('.DraftBoardColumn_draft-board-column')];
   if (!columns.length) return { myPicks: 0, takenPicks: 0 };
@@ -200,11 +215,20 @@ function readDraftBoard() {
 
   let myPicks = 0, takenPicks = 0;
 
-  for (const col of columns) {
+  for (let colIdx = 0; colIdx < columns.length; colIdx++) {
+    const col = columns[colIdx];
     const kids = [...col.children];
     if (kids.length < 2) continue;
     const headerText = kids[0].textContent.toLowerCase();
     const isMe = state.dkUsername && headerText.startsWith(state.dkUsername.toLowerCase().slice(0, 8));
+
+    // Derive draft position from column index — DK renders columns left-to-right, pick 1 to N
+    if (isMe && !state.myPosition) {
+      state.myPosition = colIdx + 1;
+      autoPositionDetected = true;
+      console.log('[BBA] my_position detected from board column:', state.myPosition);
+    }
+
     if (isMe) console.log('[BBA] my column header:', JSON.stringify(headerText), '— picks in col:', kids.length - 1);
 
     for (let i = 1; i < kids.length; i++) {
@@ -235,7 +259,7 @@ function readDraftBoard() {
     state.overallPick = Math.max(state.overallPick, state.drafted.size + 1);
     state.isComplete = state.myTeam.length >= 20;
     render();
-    if (state.isComplete) saveDraftToFlask({ silent: true }).then(ok => { if (ok) loadExposure(); });
+    if (state.isComplete) saveDraftToFlask({ silent: true, contest: getDKContestName() }).then(ok => { if (ok) loadExposure(); });
   }
   return { myPicks, takenPicks };
 }
