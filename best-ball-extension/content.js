@@ -37,6 +37,14 @@ async function loadExposure() {
   } catch (_) {}
 }
 
+async function refreshPlayersInDB() {
+  if (typeof PLAYERS === 'undefined' || !PLAYERS.length) return;
+  try {
+    const result = await nativeCall({ action: 'refreshPlayers', players: PLAYERS });
+    console.log('[BBA] refreshPlayers:', result.ok ? `${result.count} players upserted` : result.error);
+  } catch (_) {}
+}
+
 function getDKDraftId() {
   // Extract draft ID from URL: /draft/snake/190384827
   const m = location.pathname.match(/\/draft\/snake\/(\d+)/);
@@ -69,7 +77,7 @@ async function saveDraftToFlask({ contest = '', silent = false } = {}) {
       console.log('[BBA] Save failed:', result);
     }
     if (IS_AUTO_TAB && (result.ok || result.duplicate)) {
-      setTimeout(() => bAPI.runtime.sendMessage({ action: 'closeTab' }), 1500);
+      setTimeout(() => bAPI.runtime.sendMessage({ action: 'closeTab' }), 5000);
     }
     return result.ok;
   } catch (err) {
@@ -94,7 +102,7 @@ const NUM_TEAMS = 12; // DraftKings best ball is always 12 teams
 function loadSettings(cb) {
   bAPI.storage.local.get(['dkUsername', 'stackIntensity', 'diversifyStrength'], result => {
     state.numTeams          = NUM_TEAMS;
-    state.dkUsername        = result.dkUsername        || '';
+    state.dkUsername        = result.dkUsername        || 'jvonderhoff';
     state.stackIntensity    = result.stackIntensity    || 'medium';
     state.diversifyStrength = result.diversifyStrength != null ? result.diversifyStrength : 0.5;
     // Username alone is enough to activate the board; position is auto-detected
@@ -149,7 +157,9 @@ function setCurrentPick(n) {
 // ── Draft board reader ────────────────────────────────────────────────────────
 // Reads the DraftBoardColumn_draft-board-column grid DK renders once picks happen.
 // Each column: child[0] = header ("jvonderhoffQB3RB6WR8TE3"), child[1..20] = picks.
-// Each pick child text: "1.7 7 C. McCaffrey RB SF" (all concatenated, no spaces).
+// Each pick cell contains a [class*="pick-number"] child with the overall pick number (e.g. "7").
+// The cell textContent concatenates slot + player info with no spaces, so we read the
+// pick number from the DOM element directly rather than parsing the concatenated string.
 
 let lastNameLookup = null;
 
@@ -167,17 +177,15 @@ function getLastNameLookup() {
   return lastNameLookup;
 }
 
-function parsePickFromBoardText(text) {
-  // "C. McCaffreyRBSF" | "J. Smith-NjigbaWRSEA" | "J. Cook IIIRBBUF" | "K. AllenWRFA"
+// Returns the matched player from the concatenated board cell text.
+function parsePlayerFromBoardText(text) {
   const m = text.match(/([A-Z]\.\s*[A-Za-z][A-Za-z '.‑\-]*?)\s*(QB|RB|WR|TE)\s*([A-Z]{2,3})/);
   if (!m) return null;
   const lastName = m[1].replace(/^[A-Z]\.\s*/, '').replace(/\s+(Jr\.?|Sr\.?|II|III|IV|V)\s*$/i, '').trim().toLowerCase();
   const pos = m[2], team = m[3];
   const lookup = getLastNameLookup();
-  // Exact match (team on roster)
   const exact = lookup[`${lastName}_${pos}_${team}`];
   if (exact) return exact;
-  // FA or unmatched team — fall back to last name + position only
   for (const [key, p] of Object.entries(lookup)) {
     if (key.startsWith(`${lastName}_${pos}_`)) return p;
   }
@@ -200,12 +208,19 @@ function readDraftBoard() {
     if (isMe) console.log('[BBA] my column header:', JSON.stringify(headerText), '— picks in col:', kids.length - 1);
 
     for (let i = 1; i < kids.length; i++) {
-      const player = parsePickFromBoardText(kids[i].textContent);
+      const cell = kids[i];
+      const player = parsePlayerFromBoardText(cell.textContent);
+
+      // Prefer the dedicated pick-number element DK renders (avoids text-concatenation ambiguity).
+      // Falls back to null — the DB can live without it if the element isn't present.
+      const pickNumEl = cell.querySelector('[class*="pick-number"]');
+      const pick_number = pickNumEl ? parseInt(pickNumEl.textContent.trim(), 10) || null : null;
+
       if (!player || state.drafted.has(player.id)) continue;
 
       state.drafted.add(player.id);
       state.available = state.available.filter(p => p.id !== player.id);
-      if (isMe) { state.myTeam.push(player); myPicks++; }
+      if (isMe) { state.myTeam.push({ ...player, pick_number }); myPicks++; }
       else takenPicks++;
     }
   }
@@ -566,15 +581,6 @@ function createOverlay() {
         <a id="bba-open-setup">open setup</a>
       </div>
 
-      <div id="bba-sync-bar" style="display:none">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <span>Pick #</span>
-          <input id="bba-pick-input" type="number" min="1" max="240" placeholder="e.g. 47" style="width:60px;background:#0f1419;border:1px solid #2a3f5f;color:#e0e0e0;border-radius:3px;padding:3px 6px;font-size:0.82em;" />
-          <button id="bba-set-pick" class="bba-sync-btn">Set</button>
-          <button id="bba-scan-page" class="bba-sync-btn">Scan page</button>
-        </div>
-        <div id="bba-sync-status" style="font-size:0.72em;color:#78909c;margin-top:4px"></div>
-      </div>
       <div id="bba-resync-link" style="display:none;padding:2px 12px 4px;font-size:0.72em;color:#78909c">
         <a id="bba-scan-link" style="cursor:pointer;color:#4fc3f7;text-decoration:none">↻ Resync board</a>
         <span id="bba-resync-status" style="margin-left:8px"></span>
@@ -611,21 +617,6 @@ function createOverlay() {
   document.getElementById('bba-toggle').addEventListener('click', togglePanel);
   document.getElementById('bba-close').addEventListener('click', togglePanel);
   document.getElementById('bba-undo').addEventListener('click', undoLast);
-
-  document.getElementById('bba-set-pick').addEventListener('click', () => {
-    const val = document.getElementById('bba-pick-input').value;
-    setCurrentPick(val);
-    document.getElementById('bba-sync-status').textContent = `Pick set to #${state.overallPick}`;
-  });
-
-  document.getElementById('bba-scan-page').addEventListener('click', () => {
-    const status = document.getElementById('bba-sync-status');
-    status.textContent = 'Scanning…';
-    const found = scanPageForDraftedPlayers();
-    status.textContent = found > 0
-      ? `Marked ${found} players as drafted — ${state.available.length} remaining`
-      : 'No new drafted players detected on page';
-  });
 
   document.getElementById('bba-scan-link').addEventListener('click', () => {
     const status = document.getElementById('bba-resync-status');
@@ -724,22 +715,8 @@ function renderSetupBanner() {
 }
 
 function renderSyncBar() {
-  const manualBar  = document.getElementById('bba-sync-bar');
   const resyncLink = document.getElementById('bba-resync-link');
-  if (!state.isSetup) {
-    manualBar.style.display  = 'none';
-    resyncLink.style.display = 'none';
-    return;
-  }
-  if (autoPositionDetected && state.myPosition) {
-    // Position is known — hide the manual pick# bar, show a subtle resync link instead
-    manualBar.style.display  = 'none';
-    resyncLink.style.display = 'block';
-  } else {
-    // Still waiting for auto-detection — show manual controls as fallback
-    manualBar.style.display  = 'block';
-    resyncLink.style.display = 'none';
-  }
+  resyncLink.style.display = (state.isSetup && autoPositionDetected && state.myPosition) ? 'block' : 'none';
 }
 
 function renderTurnBar() {
@@ -785,7 +762,7 @@ function renderSuggestion() {
     <div class="bba-rec-body">
       <div>
         <div class="bba-rec-name">${p.name} <span class="bba-pos bba-pos-${p.pos}">${p.pos}</span></div>
-        <div class="bba-rec-meta">${p.team} · Bye ${p.bye} · ADP ${p.adp} · ${p.dk_proj} pts</div>
+        <div class="bba-rec-meta">${p.team} · Bye ${p.bye} · ADP ${p.adp}</div>
         <div class="bba-rec-reason">${rec.reason}</div>
       </div>
       <button class="bba-btn-pick" data-id="${p.id}">My Pick</button>
@@ -842,7 +819,7 @@ function renderList() {
       <div class="bba-player-row bba-pos-border-${p.pos}${isQBStack ? ' bba-is-stack' : ''}">
         <div class="bba-player-info">
           <div class="bba-player-name">${p.name} <span class="bba-pos bba-pos-${p.pos}">${p.pos}</span>${stackBadge}${expBadge}</div>
-          <div class="bba-player-meta">${p.team} · ADP ${p.adp} · ${p.dk_proj} pts</div>
+          <div class="bba-player-meta">${p.team} · ADP ${p.adp}</div>
         </div>
         <div class="bba-player-btns">
           <button class="bba-btn-pick ${myTurn ? '' : 'bba-dim'}" data-id="${p.id}">My Pick</button>
@@ -868,10 +845,9 @@ function renderTeam(listEl) {
   }
   const byPos = {};
   state.myTeam.forEach(p => { (byPos[p.pos] = byPos[p.pos] || []).push(p); });
-  const proj = state.myTeam.reduce((sum, p) => sum + (p.dk_proj || 0), 0);
   listEl.innerHTML =
     `<div style="padding:8px 12px;font-size:0.75em;color:#4fc3f7;border-bottom:1px solid #2a3f5f">
-      ${state.myTeam.length} players · ${proj} proj pts
+      ${state.myTeam.length} players
     </div>` +
     ['QB', 'RB', 'WR', 'TE'].map(pos => {
       if (!byPos[pos]) return '';
@@ -880,7 +856,7 @@ function renderTeam(listEl) {
           <div class="bba-player-row bba-pos-border-${p.pos} bba-drafted">
             <div class="bba-player-info">
               <div class="bba-player-name">${p.name}</div>
-              <div class="bba-player-meta">${p.team} · Bye ${p.bye} · ${p.dk_proj} pts</div>
+              <div class="bba-player-meta">${p.team} · Bye ${p.bye}</div>
             </div>
           </div>`).join('');
     }).join('');
@@ -917,7 +893,7 @@ function renderStacks(listEl) {
           <div class="bba-player-row bba-pos-border-${p.pos} bba-is-stack">
             <div class="bba-player-info">
               <div class="bba-player-name">${p.name} <span class="bba-pos bba-pos-${p.pos}">${p.pos}</span></div>
-              <div class="bba-player-meta">${p.team} · ADP ${p.adp} · ${p.dk_proj} pts</div>
+              <div class="bba-player-meta">${p.team} · ADP ${p.adp}</div>
             </div>
             <div class="bba-player-btns">
               <button class="bba-btn-pick" data-id="${p.id}">My Pick</button>
@@ -1167,7 +1143,7 @@ function init() {
   initPlayers();
 
   loadSettings(() => {
-    loadExposure().then(() => {
+    Promise.all([loadExposure(), refreshPlayersInDB()]).then(() => {
       createOverlay();
       render();
       startPickPoller();

@@ -11,7 +11,7 @@ const playerInfo          = document.getElementById('playerInfo');
 
 function loadSaved() {
   bAPI.storage.local.get(['dkUsername', 'stackIntensity', 'diversifyStrength'], result => {
-    if (result.dkUsername)  dkUsernameEl.value = result.dkUsername;
+    dkUsernameEl.value = result.dkUsername || 'jvonderhoff';
     if (result.stackIntensity)    stackIntensityEl.value    = result.stackIntensity;
     if (result.diversifyStrength != null) diversifyStrengthEl.value = result.diversifyStrength;
   });

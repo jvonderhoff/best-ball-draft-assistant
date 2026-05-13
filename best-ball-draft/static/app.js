@@ -146,7 +146,7 @@ function renderSuggestion() {
     suggestionContent.innerHTML = `
         <div class="suggestion-player">
             <div class="player-name">${p.name} <span class="pos-badge pos-${p.pos}">${p.pos}</span></div>
-            <div class="player-meta">${p.team} &nbsp;|&nbsp; Bye: ${p.bye} &nbsp;|&nbsp; ADP: ${p.adp} &nbsp;|&nbsp; ${p.dk_proj} pts</div>
+            <div class="player-meta">${p.team} &nbsp;|&nbsp; Bye: ${p.bye} &nbsp;|&nbsp; ADP: ${p.adp}</div>
             <div class="suggestion-reason">${s.suggestion.reason}</div>
         </div>
         <button class="btn btn-success suggestion-draft-btn" onclick="pickPlayer('${p.id}')">My Pick</button>
@@ -209,9 +209,6 @@ function renderTeam() {
                         <div class="player-name">${p.name}</div>
                         <div class="player-meta"><span>${p.team}</span><span>Bye ${p.bye}</span></div>
                     </div>
-                    <div class="player-stats">
-                        <div class="player-proj">${p.dk_proj} pts</div>
-                    </div>
                 </div>`;
         });
     });
@@ -251,7 +248,6 @@ function renderPlayers() {
             </div>
             <div class="player-stats">
                 <div class="player-adp">ADP ${p.adp}</div>
-                <div class="player-proj">${p.dk_proj} pts</div>
             </div>
             <div class="player-actions">
                 <button class="btn-my-pick ${isMyTurn ? '' : 'dim'}" onclick="pickPlayer('${p.id}')">My Pick</button>

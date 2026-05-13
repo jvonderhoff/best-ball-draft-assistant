@@ -31,6 +31,7 @@ def send_msg(data):
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
@@ -41,7 +42,6 @@ def ensure_schema(conn):
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             num_teams   INTEGER,
             my_position INTEGER,
-            proj_pts    INTEGER,
             contest     TEXT,
             dk_draft_id TEXT
         );
@@ -53,8 +53,22 @@ def ensure_schema(conn):
             pos         TEXT,
             team        TEXT,
             adp         INTEGER,
-            dk_proj     INTEGER,
-            pick_number INTEGER
+            pick_number INTEGER,
+            round       INTEGER,
+            week15      TEXT,
+            week16      TEXT,
+            week17      TEXT
+        );
+        CREATE TABLE IF NOT EXISTS players (
+            player_id  TEXT PRIMARY KEY,
+            name       TEXT,
+            pos        TEXT,
+            team       TEXT,
+            adp        REAL,
+            week15     TEXT,
+            week16     TEXT,
+            week17     TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
     cols = [r[1] for r in conn.execute("PRAGMA table_info(drafts)").fetchall()]
@@ -64,34 +78,73 @@ def ensure_schema(conn):
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_dk_draft_id "
         "ON drafts(dk_draft_id) WHERE dk_draft_id IS NOT NULL"
     )
+    pick_cols = [r[1] for r in conn.execute("PRAGMA table_info(draft_picks)").fetchall()]
+    for col in ('week15', 'week16', 'week17'):
+        if col not in pick_cols:
+            conn.execute(f"ALTER TABLE draft_picks ADD COLUMN {col} TEXT")
 
 
 def handle_save_draft(msg):
     picks = msg.get('picks', [])
     if not picks:
         return {'ok': False, 'error': 'no picks'}
-    proj_pts = sum(p.get('dk_proj', 0) for p in picks)
     with get_db() as conn:
         ensure_schema(conn)
         try:
             cur = conn.execute(
-                "INSERT INTO drafts (num_teams, my_position, proj_pts, contest, dk_draft_id) "
-                "VALUES (?,?,?,?,?)",
+                "INSERT INTO drafts (num_teams, my_position, contest, dk_draft_id) VALUES (?,?,?,?)",
                 (msg.get('num_teams', 12), msg.get('my_position', 0),
-                 proj_pts, msg.get('contest', ''), msg.get('dk_draft_id'))
+                 msg.get('contest', ''), msg.get('dk_draft_id'))
             )
         except sqlite3.IntegrityError:
+            # Draft already exists — backfill any NULL pick_number values
+            row = conn.execute(
+                "SELECT id FROM drafts WHERE dk_draft_id=?", (msg.get('dk_draft_id'),)
+            ).fetchone()
+            if row:
+                draft_id = row['id']
+                for p in picks:
+                    if p.get('pick_number') is not None:
+                        conn.execute(
+                            "UPDATE draft_picks SET pick_number=? WHERE draft_id=? AND player_id=?",
+                            (p['pick_number'], draft_id, p.get('id'))
+                        )
             return {'ok': True, 'duplicate': True}
         draft_id = cur.lastrowid
         conn.executemany(
             "INSERT INTO draft_picks "
-            "(draft_id, player_id, player_name, pos, team, adp, dk_proj, pick_number) "
-            "VALUES (?,?,?,?,?,?,?,?)",
+            "(draft_id, player_id, player_name, pos, team, adp, pick_number, round, week15, week16, week17) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             [(draft_id, p.get('id'), p.get('name'), p.get('pos'), p.get('team'),
-              p.get('adp', 0), p.get('dk_proj', 0), i + 1)
+              p.get('adp', 0), p.get('pick_number'), i + 1,
+              p.get('week15'), p.get('week16'), p.get('week17'))
              for i, p in enumerate(picks)]
         )
     return {'ok': True, 'draft_id': draft_id}
+
+
+def handle_refresh_players(msg):
+    players = msg.get('players', [])
+    if not players:
+        return {'ok': False, 'error': 'no players'}
+    with get_db() as conn:
+        ensure_schema(conn)
+        conn.executemany("""
+            INSERT INTO players (player_id, name, pos, team, adp, week15, week16, week17, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(player_id) DO UPDATE SET
+                name       = excluded.name,
+                pos        = excluded.pos,
+                team       = excluded.team,
+                adp        = excluded.adp,
+                week15     = excluded.week15,
+                week16     = excluded.week16,
+                week17     = excluded.week17,
+                updated_at = excluded.updated_at
+        """, [(p.get('id'), p.get('name'), p.get('pos'), p.get('team'),
+               p.get('adp'), p.get('week15'), p.get('week16'), p.get('week17'))
+              for p in players])
+    return {'ok': True, 'count': len(players)}
 
 
 def handle_get_exposure():
@@ -125,6 +178,8 @@ def main():
         send_msg(handle_save_draft(msg))
     elif action == 'getExposure':
         send_msg(handle_get_exposure())
+    elif action == 'refreshPlayers':
+        send_msg(handle_refresh_players(msg))
     else:
         send_msg({'ok': False, 'error': f'unknown action: {action}'})
 
