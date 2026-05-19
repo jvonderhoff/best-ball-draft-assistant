@@ -178,14 +178,31 @@ function getLastNameLookup() {
 }
 
 // Returns the matched player from the concatenated board cell text.
+// Format: "16.3183B. Robinson Jr.RBATL(BYE 11)"
+// Step 1: find position+team anchor, Step 2: look backwards for the name.
 function parsePlayerFromBoardText(text) {
-  const m = text.match(/([A-Z]\.\s*[A-Za-z][A-Za-z '.‑\-]*?)\s*(QB|RB|WR|TE)\s*([A-Z]{2,3})/);
-  if (!m) return null;
-  const lastName = m[1].replace(/^[A-Z]\.\s*/, '').replace(/\s+(Jr\.?|Sr\.?|II|III|IV|V)\s*$/i, '').trim().toLowerCase();
-  const pos = m[2], team = m[3];
+  // Step 1 — find pos and team anchor (e.g. "RBATL")
+  const posTeamM = text.match(/(QB|RB|WR|TE)([A-Z]{2,3})/);
+  if (!posTeamM) return null;
+
+  const pos  = posTeamM[1];
+  const team = posTeamM[2];
+
+  // Step 2 — extract text before the position, find "X. Name" pattern
+  const before = text.slice(0, posTeamM.index);
+  const nameM  = before.match(/[A-Z]\.\s*([\w][A-Za-z'.‑\- ]*)/);
+  if (!nameM) return null;
+
+  // Step 3 — strip generation suffix (Jr./Sr./II/III), take final word as last name
+  const fullName = nameM[1]
+    .replace(/\s*(Jr\.?|Sr\.?|II|III|IV|V)\s*$/i, '')
+    .trim();
+  const lastName = fullName.split(/\s+/).pop().toLowerCase();
+
   const lookup = getLastNameLookup();
-  const exact = lookup[`${lastName}_${pos}_${team}`];
+  const exact  = lookup[`${lastName}_${pos}_${team}`];
   if (exact) return exact;
+  // Fallback: ignore team in case of trades or stale team data
   for (const [key, p] of Object.entries(lookup)) {
     if (key.startsWith(`${lastName}_${pos}_`)) return p;
   }
@@ -211,8 +228,6 @@ function readDraftBoard() {
   const columns = [...document.querySelectorAll('.DraftBoardColumn_draft-board-column')];
   if (!columns.length) return { myPicks: 0, takenPicks: 0 };
 
-  console.log('[BBA] readDraftBoard: found', columns.length, 'columns, username:', state.dkUsername);
-
   let myPicks = 0, takenPicks = 0;
 
   for (let colIdx = 0; colIdx < columns.length; colIdx++) {
@@ -226,17 +241,13 @@ function readDraftBoard() {
     if (isMe && !state.myPosition) {
       state.myPosition = colIdx + 1;
       autoPositionDetected = true;
-      console.log('[BBA] my_position detected from board column:', state.myPosition);
     }
-
-    if (isMe) console.log('[BBA] my column header:', JSON.stringify(headerText), '— picks in col:', kids.length - 1);
 
     for (let i = 1; i < kids.length; i++) {
       const cell = kids[i];
       const player = parsePlayerFromBoardText(cell.textContent);
 
       // Prefer the dedicated pick-number element DK renders (avoids text-concatenation ambiguity).
-      // Falls back to null — the DB can live without it if the element isn't present.
       const pickNumEl = cell.querySelector('[class*="pick-number"]');
       const pick_number = pickNumEl ? parseInt(pickNumEl.textContent.trim(), 10) || null : null;
 
@@ -247,12 +258,6 @@ function readDraftBoard() {
       if (isMe) { state.myTeam.push({ ...player, pick_number }); myPicks++; }
       else takenPicks++;
     }
-  }
-
-  console.log('[BBA] readDraftBoard result: myPicks', myPicks, 'takenPicks', takenPicks, 'isComplete', state.myTeam.length >= 20);
-  if (myPicks === 0 && takenPicks > 0) {
-    console.log('[BBA] WARNING: found other picks but none for me — check username. Column headers:',
-      columns.map(c => JSON.stringify(c.children[0]?.textContent?.slice(0, 20))));
   }
 
   if (myPicks + takenPicks > 0) {
@@ -580,9 +585,6 @@ function startPickPoller() {
 
 let overlayEl = null;
 let overlayOpen = true;
-let searchQuery = '';
-let posFilter = '';
-let activeTab = 'board';
 
 function createOverlay() {
   if (document.getElementById('bba-root')) return;
@@ -612,25 +614,6 @@ function createOverlay() {
 
       <div id="bba-turn-bar"></div>
       <div id="bba-suggestion"></div>
-
-      <div id="bba-tabs">
-        <button class="bba-tab active" data-tab="board">Top Picks</button>
-        <button class="bba-tab" data-tab="team">My Team (<span id="bba-team-count">0</span>)</button>
-        <button class="bba-tab" data-tab="stacks">Stacks</button>
-      </div>
-
-      <div id="bba-search-row">
-        <input id="bba-search" type="text" placeholder="Search player or team…" />
-        <div id="bba-filters">
-          <button class="bba-filter active" data-pos="">All</button>
-          <button class="bba-filter" data-pos="QB">QB</button>
-          <button class="bba-filter" data-pos="RB">RB</button>
-          <button class="bba-filter" data-pos="WR">WR</button>
-          <button class="bba-filter" data-pos="TE">TE</button>
-        </div>
-      </div>
-
-      <div id="bba-list"></div>
       <div id="bba-resize-handle" title="Drag to resize"></div>
     </div>
   `;
@@ -648,29 +631,6 @@ function createOverlay() {
     const found = scanPageForDraftedPlayers();
     status.textContent = found > 0 ? `+${found} synced` : 'Up to date';
     setTimeout(() => { status.textContent = ''; }, 3000);
-  });
-
-  document.getElementById('bba-search').addEventListener('input', e => {
-    searchQuery = e.target.value;
-    renderList();
-  });
-
-  root.querySelectorAll('.bba-tab').forEach(btn => {
-    btn.addEventListener('click', e => {
-      root.querySelectorAll('.bba-tab').forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active');
-      activeTab = e.target.dataset.tab;
-      renderList();
-    });
-  });
-
-  root.querySelectorAll('.bba-filter').forEach(btn => {
-    btn.addEventListener('click', e => {
-      root.querySelectorAll('.bba-filter').forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active');
-      posFilter = e.target.dataset.pos;
-      renderList();
-    });
   });
 
   makeDraggable(document.getElementById('bba-header'), document.getElementById('bba-panel'));
@@ -725,8 +685,6 @@ function render() {
   renderSyncBar();
   renderTurnBar();
   renderSuggestion();
-  document.getElementById('bba-team-count').textContent = state.myTeam.length;
-  renderList();
 }
 
 function renderSetupBanner() {
@@ -751,8 +709,8 @@ function renderTurnBar() {
     return;
   }
   if (state.isComplete) {
-    bar.className = 'bba-turn-mine';
-    bar.textContent = `✓ Draft complete! ${state.myTeam.length} players · auto-saved`;
+    bar.className = 'bba-turn-waiting';
+    bar.textContent = `✓ Draft complete · ${state.myTeam.length} picks · next targets below`;
     return;
   }
 
@@ -773,166 +731,51 @@ function renderTurnBar() {
 
 function renderSuggestion() {
   const box = document.getElementById('bba-suggestion');
-  const myTurn = state.isSetup && isMyTurn(state.overallPick, state.numTeams, state.myPosition);
-  if (!myTurn || state.isComplete) { box.style.display = 'none'; return; }
+  if (!state.isSetup || !state.available.length) { box.style.display = 'none'; return; }
 
-  const rec = getRecommendation(state.available, state.myTeam, state.myTeam.length + 1, state.stackIntensity, exposure, state.diversifyStrength);
-  if (!rec) { box.style.display = 'none'; return; }
+  const recs = getTopRecommendations(state.available, state.myTeam, state.myTeam.length + 1, state.stackIntensity, exposure, state.diversifyStrength, 5);
+  if (!recs.length) { box.style.display = 'none'; return; }
 
-  const p = rec.player;
+  const [top, ...rest] = recs;
+  const p = top.player;
+
+  const restHTML = rest.map(r => `
+    <div class="bba-rec-alt">
+      <div class="bba-rec-alt-info">
+        <span class="bba-rec-alt-name">${r.player.name}</span>
+        <span class="bba-pos bba-pos-${r.player.pos}">${r.player.pos}</span>
+        <span class="bba-rec-alt-meta">${r.player.team} · ADP ${r.player.adp}</span>
+        ${r.reason ? `<span class="bba-rec-alt-reason">${r.reason}</span>` : ''}
+      </div>
+      <div class="bba-rec-alt-btns">
+        <button class="bba-btn-pick-sm" data-id="${r.player.id}">Pick</button>
+        <button class="bba-btn-taken-sm" data-id="${r.player.id}">✕</button>
+      </div>
+    </div>
+  `).join('');
+
+  const myTurn = isMyTurn(state.overallPick, state.numTeams, state.myPosition);
   box.style.display = 'block';
   box.innerHTML = `
-    <div class="bba-rec-label">Top Recommendation</div>
+    <div class="bba-rec-label">${myTurn ? 'Your Pick' : 'Target'}</div>
     <div class="bba-rec-body">
       <div>
         <div class="bba-rec-name">${p.name} <span class="bba-pos bba-pos-${p.pos}">${p.pos}</span></div>
         <div class="bba-rec-meta">${p.team} · Bye ${p.bye} · ADP ${p.adp}</div>
-        <div class="bba-rec-reason">${rec.reason}</div>
+        ${top.reason ? `<div class="bba-rec-reason">${top.reason}</div>` : ''}
       </div>
       <button class="bba-btn-pick" data-id="${p.id}">My Pick</button>
     </div>
+    <div class="bba-rec-alts">${restHTML}</div>
   `;
+
   box.querySelector('.bba-btn-pick').addEventListener('click', e => myPick(e.target.dataset.id));
+  box.querySelectorAll('.bba-btn-pick-sm').forEach(btn =>
+    btn.addEventListener('click', e => { myPick(e.currentTarget.dataset.id); }));
+  box.querySelectorAll('.bba-btn-taken-sm').forEach(btn =>
+    btn.addEventListener('click', e => { markTaken(e.currentTarget.dataset.id); }));
 }
 
-function renderList() {
-  const listEl = document.getElementById('bba-list');
-  if (activeTab === 'team')   { renderTeam(listEl);   return; }
-  if (activeTab === 'stacks') { renderStacks(listEl);  return; }
-
-  const myTurn   = state.isSetup && isMyTurn(state.overallPick, state.numTeams, state.myPosition);
-  const needs    = getTeamNeeds(state.myTeam);
-  const qbTeams  = getMyQBTeams(state.myTeam);
-  const myTeamSet = new Set(state.myTeam.map(p => p.team));
-
-  // Only show available (non-drafted) players
-  let players = [...state.available];
-  if (posFilter) players = players.filter(p => p.pos === posFilter);
-
-  const isSearching = searchQuery.trim().length > 0;
-  if (isSearching) {
-    const q = searchQuery.toLowerCase();
-    players = players.filter(p => p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q));
-  }
-
-  if (myTurn) {
-    players.sort((a, b) =>
-      calculateValue(b, needs, state.myTeam.length + 1, state.myTeam, state.stackIntensity) -
-      calculateValue(a, needs, state.myTeam.length + 1, state.myTeam, state.stackIntensity)
-    );
-  } else {
-    players.sort((a, b) => a.adp - b.adp);
-  }
-
-  const display = isSearching ? players.slice(0, 30) : players.slice(0, 10);
-
-  if (!display.length) {
-    listEl.innerHTML = `<div class="bba-empty">${isSearching ? 'No players found' : 'All players drafted!'}</div>`;
-    return;
-  }
-
-  listEl.innerHTML = display.map(p => {
-    const isQBStack   = ['WR', 'TE'].includes(p.pos) && qbTeams.has(p.team);
-    const hasTeammate = myTeamSet.has(p.team);
-    const stackBadge  = isQBStack
-      ? `<span class="bba-stack-badge bba-stack-qb">STACK</span>`
-      : hasTeammate ? `<span class="bba-stack-badge bba-stack-team">+${p.team}</span>` : '';
-    const exp = exposure[p.id];
-    const expBadge = exp ? `<span class="bba-exp-badge">${Math.round(exp.exposure_rate * 100)}%</span>` : '';
-    return `
-      <div class="bba-player-row bba-pos-border-${p.pos}${isQBStack ? ' bba-is-stack' : ''}">
-        <div class="bba-player-info">
-          <div class="bba-player-name">${p.name} <span class="bba-pos bba-pos-${p.pos}">${p.pos}</span>${stackBadge}${expBadge}</div>
-          <div class="bba-player-meta">${p.team} · ADP ${p.adp}</div>
-        </div>
-        <div class="bba-player-btns">
-          <button class="bba-btn-pick ${myTurn ? '' : 'bba-dim'}" data-id="${p.id}">My Pick</button>
-          <button class="bba-btn-taken" data-id="${p.id}">Taken</button>
-        </div>
-      </div>`;
-  }).join('');
-
-  if (!isSearching && players.length > 10) {
-    listEl.innerHTML += `<div class="bba-empty" style="font-size:0.72em;padding:10px">${players.length - 10} more — search to find them</div>`;
-  }
-
-  listEl.querySelectorAll('.bba-btn-pick').forEach(btn =>
-    btn.addEventListener('click', e => myPick(e.currentTarget.dataset.id)));
-  listEl.querySelectorAll('.bba-btn-taken').forEach(btn =>
-    btn.addEventListener('click', e => markTaken(e.currentTarget.dataset.id)));
-}
-
-function renderTeam(listEl) {
-  if (!state.myTeam.length) {
-    listEl.innerHTML = '<div class="bba-empty">No picks yet — use "My Pick" to add players</div>';
-    return;
-  }
-  const byPos = {};
-  state.myTeam.forEach(p => { (byPos[p.pos] = byPos[p.pos] || []).push(p); });
-  listEl.innerHTML =
-    `<div style="padding:8px 12px;font-size:0.75em;color:#4fc3f7;border-bottom:1px solid #2a3f5f">
-      ${state.myTeam.length} players
-    </div>` +
-    ['QB', 'RB', 'WR', 'TE'].map(pos => {
-      if (!byPos[pos]) return '';
-      return `<div class="bba-pos-group">${pos} (${byPos[pos].length})</div>` +
-        byPos[pos].map(p => `
-          <div class="bba-player-row bba-pos-border-${p.pos} bba-drafted">
-            <div class="bba-player-info">
-              <div class="bba-player-name">${p.name}</div>
-              <div class="bba-player-meta">${p.team} · Bye ${p.bye}</div>
-            </div>
-          </div>`).join('');
-    }).join('');
-}
-
-function renderStacks(listEl) {
-  const stacks  = getStackSummary(state.myTeam);
-  const qbTeams = getMyQBTeams(state.myTeam);
-
-  if (!stacks.length && !state.myTeam.length) {
-    listEl.innerHTML = '<div class="bba-empty">Draft players to see stacking opportunities</div>';
-    return;
-  }
-
-  let html = '';
-  if (stacks.length) {
-    html += '<div class="bba-stack-section-label">Your Stacks</div>';
-    stacks.forEach(({ team, positions, players }) => {
-      html += `
-        <div class="bba-stack-card">
-          <div class="bba-stack-team-name">${team} <span class="bba-stack-positions">${positions}</span></div>
-          ${players.map(p => `<div class="bba-stack-player">${p.name} (${p.pos})</div>`).join('')}
-        </div>`;
-    });
-  }
-
-  if (qbTeams.size) {
-    const stackmates = state.available
-      .filter(p => ['WR', 'TE'].includes(p.pos) && qbTeams.has(p.team))
-      .sort((a, b) => a.adp - b.adp);
-    html += '<div class="bba-stack-section-label">Available Stackmates</div>';
-    html += stackmates.length
-      ? stackmates.map(p => `
-          <div class="bba-player-row bba-pos-border-${p.pos} bba-is-stack">
-            <div class="bba-player-info">
-              <div class="bba-player-name">${p.name} <span class="bba-pos bba-pos-${p.pos}">${p.pos}</span></div>
-              <div class="bba-player-meta">${p.team} · ADP ${p.adp}</div>
-            </div>
-            <div class="bba-player-btns">
-              <button class="bba-btn-pick" data-id="${p.id}">My Pick</button>
-              <button class="bba-btn-taken" data-id="${p.id}">Taken</button>
-            </div>
-          </div>`).join('')
-      : '<div class="bba-empty">None left on the board</div>';
-  }
-
-  listEl.innerHTML = html || '<div class="bba-empty">No QB drafted yet</div>';
-  listEl.querySelectorAll('.bba-btn-pick').forEach(btn =>
-    btn.addEventListener('click', e => myPick(e.currentTarget.dataset.id)));
-  listEl.querySelectorAll('.bba-btn-taken').forEach(btn =>
-    btn.addEventListener('click', e => markTaken(e.currentTarget.dataset.id)));
-}
 
 // ── Listen for settings changes from popup ────────────────────────────────────
 
@@ -1091,7 +934,6 @@ function startTimerWatcher() {
       bar.className = 'bba-turn-mine';
       bar.textContent = `YOUR PICK  •  Round ${currentRound(state.overallPick, state.numTeams)}  •  ${state.myTeam.length + 1}/20`;
       renderSuggestion();
-      renderList();
     } else {
       bar.className = 'bba-turn-waiting';
       const round = currentRound(state.overallPick, state.numTeams || 12);
