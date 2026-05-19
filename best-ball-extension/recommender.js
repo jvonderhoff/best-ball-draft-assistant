@@ -42,6 +42,50 @@ function getTeamNeeds(myTeam) {
   return needs;
 }
 
+// ── Playoff schedule stacking ─────────────────────────────────────────────────
+// Bonus for owning players from both teams in the same playoff game.
+// Week 17 gets the highest emphasis since it's the fantasy championship.
+
+const PLAYOFF_BONUS = { week17: 1.15, week16: 1.08, week15: 1.04 };
+const PLAYOFF_BONUS_CAP = 1.40;
+
+// Returns true if p1 and p2 are in the same game in a given week.
+function samePlayoffGame(p1, p2, week) {
+  const key = `week${week}`;
+  // p1's opponent is p2's team, or vice versa (same game, both directions)
+  return (p1[key] && p1[key] === p2.team) || (p2[key] && p2[key] === p1.team);
+}
+
+// Returns a multiplier > 1.0 if this player shares playoff games with current team members.
+function getPlayoffBonus(player, myTeam) {
+  if (!myTeam.length) return 1.0;
+  // Only apply when we actually have schedule data
+  if (!player.week15 && !player.week16 && !player.week17) return 1.0;
+
+  let mult = 1.0;
+  for (const mine of myTeam) {
+    for (const week of [17, 16, 15]) {
+      if (samePlayoffGame(player, mine, week)) {
+        mult *= PLAYOFF_BONUS[`week${week}`];
+      }
+    }
+  }
+  return Math.min(mult, PLAYOFF_BONUS_CAP);
+}
+
+// Returns a description of the strongest playoff game overlap, or null.
+function playoffStackReason(player, myTeam) {
+  // Find the highest-value week where this player shares a game with a teammate
+  for (const week of [17, 16, 15]) {
+    const partners = myTeam.filter(m => samePlayoffGame(player, m, week));
+    if (partners.length) {
+      const names = partners.map(p => p.name.split(' ').pop()).join(', ');
+      return `playoff Wk${week} game stack w/ ${names}`;
+    }
+  }
+  return null;
+}
+
 // ── Core value calculation ────────────────────────────────────────────────────
 
 function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium') {
@@ -59,7 +103,7 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const round = Math.floor(myPickNumber / 5) + 1;
   if (round <= 3) mult *= 1.1;
 
-  // Stacking bonus
+  // Same-team stacking bonus (QB + pass-catchers)
   const s = STACK_SETTINGS[stackIntensity] || STACK_SETTINGS.medium;
   if (myTeam && stackIntensity !== 'off') {
     const qbTeams = getMyQBTeams(myTeam);
@@ -78,6 +122,9 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
       if (catchers >= 1) mult *= s.qbPull;
     }
   }
+
+  // Playoff game stack bonus — week 17 weighted most heavily
+  mult *= getPlayoffBonus(player, myTeam);
 
   return adpValue * mult;
 }
@@ -106,11 +153,45 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
   } else if (best.pos === 'QB' && passCatcherCount(best.team, myTeam) > 0) {
     reason += ` · completes your ${best.team} stack`;
   }
+  const playoffReason = playoffStackReason(best, myTeam);
+  if (playoffReason) reason += ` · ${playoffReason}`;
   if (exposure[best.id]?.exposure_rate > 0) {
     reason += ` · ${Math.round(exposure[best.id].exposure_rate * 100)}% exposure`;
   }
 
   return { player: best, reason };
+}
+
+// Returns the top N recommendations sorted by value score.
+function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, n = 5) {
+  if (!available.length) return [];
+  const needs = getTeamNeeds(myTeam);
+  const qbTeams = getMyQBTeams(myTeam);
+
+  const scored = available.map(p => {
+    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity);
+    if (diversifyStrength > 0 && exposure[p.id]) {
+      val *= (1 - exposure[p.id].exposure_rate * diversifyStrength);
+    }
+
+    let reason = '';
+    if (['WR', 'TE'].includes(p.pos) && qbTeams.has(p.team)) {
+      reason = `stacks w/ your ${p.team} QB`;
+    } else if (p.pos === 'QB' && passCatcherCount(p.team, myTeam) > 0) {
+      reason = `completes ${p.team} stack`;
+    }
+    const pr = playoffStackReason(p, myTeam);
+    if (pr) reason = reason ? `${reason} · ${pr}` : pr;
+    if (exposure[p.id]?.exposure_rate > 0) {
+      const expStr = `${Math.round(exposure[p.id].exposure_rate * 100)}% exp`;
+      reason = reason ? `${reason} · ${expStr}` : expStr;
+    }
+
+    return { player: p, value: val, reason };
+  });
+
+  scored.sort((a, b) => b.value - a.value);
+  return scored.slice(0, n);
 }
 
 // ── Stack summary (for overlay display) ──────────────────────────────────────

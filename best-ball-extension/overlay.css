@@ -124,104 +124,54 @@
 #bba-suggestion {
   background: #0d2618;
   border-bottom: 2px solid #2e7d32;
-  padding: 10px 12px;
+  padding: 10px 12px 6px;
   flex-shrink: 0;
 }
-.bba-rec-label { font-size: 0.72em; font-weight: 700; color: #4caf50; letter-spacing: 0.06em; margin-bottom: 6px; }
-.bba-rec-body { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.bba-rec-name { font-weight: 700; font-size: 0.95em; color: #fff; margin-bottom: 3px; }
+.bba-rec-label { font-size: 0.72em; font-weight: 700; color: #4caf50; letter-spacing: 0.06em; margin-bottom: 6px; text-transform: uppercase; }
+
+/* Top pick — emphasized */
+.bba-rec-body { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.bba-rec-name { font-weight: 700; font-size: 1.05em; color: #fff; margin-bottom: 3px; }
 .bba-rec-meta { font-size: 0.78em; color: #90a4ae; margin-bottom: 2px; }
-.bba-rec-reason { font-size: 0.75em; color: #607d8b; font-style: italic; }
+.bba-rec-reason { font-size: 0.74em; color: #607d8b; font-style: italic; }
 
-/* ── Tabs ── */
-#bba-tabs {
-  display: flex;
-  background: #1a2f4d;
-  border-bottom: 1px solid #2a3f5f;
-  flex-shrink: 0;
-}
-.bba-tab {
-  flex: 1;
-  padding: 8px;
-  background: none;
-  border: none;
-  color: #78909c;
-  font-size: 0.82em;
-  font-weight: 600;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.15s;
-}
-.bba-tab.active { color: #4fc3f7; border-bottom-color: #4fc3f7; }
-.bba-tab:hover { color: #e0e0e0; }
-
-/* ── Search & filters ── */
-#bba-search-row {
-  padding: 8px 10px;
-  background: #141e2b;
-  border-bottom: 1px solid #2a3f5f;
-  flex-shrink: 0;
-}
-#bba-search {
-  width: 100%;
-  background: #0f1419;
-  border: 1px solid #2a3f5f;
-  border-radius: 4px;
-  color: #e0e0e0;
-  padding: 6px 8px;
-  font-size: 0.82em;
-  margin-bottom: 6px;
-  outline: none;
-}
-#bba-search:focus { border-color: #4fc3f7; }
-#bba-search::placeholder { color: #546e7a; }
-#bba-filters { display: flex; gap: 4px; }
-.bba-filter {
-  padding: 3px 10px;
-  background: none;
-  border: 1px solid #2a3f5f;
-  border-radius: 12px;
-  color: #78909c;
-  font-size: 0.75em;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.bba-filter:hover { border-color: #4fc3f7; color: #4fc3f7; }
-.bba-filter.active { background: #1565c0; border-color: #1565c0; color: #fff; }
-
-/* ── Player list ── */
-#bba-list { overflow-y: auto; flex: 1; }
-
-.bba-player-row {
+/* Alt picks #2–5 */
+.bba-rec-alts { border-top: 1px solid #1b3a2a; padding-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+.bba-rec-alt {
   display: flex;
   align-items: center;
-  padding: 8px 10px;
-  border-left: 3px solid transparent;
-  border-bottom: 1px solid #0f1419;
+  justify-content: space-between;
   gap: 8px;
-  transition: background 0.12s;
+  padding: 4px 2px;
+  border-radius: 4px;
 }
-.bba-player-row:hover { background: #141e2b; }
-.bba-player-row.bba-drafted { opacity: 0.75; }
-
-.bba-pos-group {
-  padding: 4px 10px 2px;
+.bba-rec-alt:hover { background: #0f2e1e; }
+.bba-rec-alt-info { flex: 1; min-width: 0; font-size: 0.8em; color: #b0bec5; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.bba-rec-alt-name { font-weight: 600; color: #e0e0e0; }
+.bba-rec-alt-meta { color: #546e7a; }
+.bba-rec-alt-reason { color: #455a64; font-style: italic; font-size: 0.9em; width: 100%; }
+.bba-rec-alt-btns { display: flex; gap: 4px; flex-shrink: 0; }
+.bba-btn-pick-sm {
+  padding: 3px 8px;
+  background: #1b5e20;
+  color: #a5d6a7;
+  border: none;
+  border-radius: 3px;
   font-size: 0.72em;
   font-weight: 700;
-  color: #546e7a;
-  letter-spacing: 0.06em;
-  background: #0f1419;
+  cursor: pointer;
 }
-
-.bba-player-info { flex: 1; min-width: 0; }
-.bba-player-name { font-size: 0.85em; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bba-player-meta { font-size: 0.73em; color: #78909c; margin-top: 1px; }
-
-/* ── Position border colors ── */
-.bba-pos-border-QB { border-left-color: #e91e63; }
-.bba-pos-border-RB { border-left-color: #2196f3; }
-.bba-pos-border-WR { border-left-color: #4caf50; }
-.bba-pos-border-TE { border-left-color: #ff9800; }
+.bba-btn-pick-sm:hover { background: #2e7d32; }
+.bba-btn-taken-sm {
+  padding: 3px 7px;
+  background: #263238;
+  color: #78909c;
+  border: none;
+  border-radius: 3px;
+  font-size: 0.72em;
+  cursor: pointer;
+}
+.bba-btn-taken-sm:hover { background: #37474f; color: #b0bec5; }
 
 /* ── Position badges ── */
 .bba-pos { font-size: 0.65em; font-weight: 700; padding: 1px 5px; border-radius: 3px; vertical-align: middle; margin-left: 3px; }
@@ -230,31 +180,21 @@
 .bba-pos-WR { background: #1b5e20; color: #a5d6a7; }
 .bba-pos-TE { background: #e65100; color: #ffcc80; }
 
-/* ── Player action buttons ── */
-.bba-player-btns { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
-
-.bba-btn-pick, .bba-btn-taken, .bba-btn-pick.bba-rec {
-  padding: 4px 8px;
+/* ── Suggestion pick button ── */
+.bba-btn-pick {
+  padding: 8px 14px;
+  background: #1b5e20;
+  color: #a5d6a7;
   border: none;
   border-radius: 3px;
-  font-size: 0.72em;
+  font-size: 0.85em;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s;
+  flex-shrink: 0;
 }
-.bba-btn-pick { background: #1b5e20; color: #a5d6a7; }
 .bba-btn-pick:hover { background: #2e7d32; }
-.bba-btn-pick.bba-dim { background: #1a2f4d; color: #546e7a; }
-.bba-btn-pick.bba-dim:hover { background: #1b5e20; color: #a5d6a7; }
-.bba-btn-taken { background: #263238; color: #78909c; }
-.bba-btn-taken:hover { background: #37474f; color: #b0bec5; }
-
-/* Suggestion pick button (larger) */
-.bba-btn-pick[style], button.bba-btn-pick.bba-rec {
-  padding: 8px 14px;
-  font-size: 0.85em;
-}
 
 /* ── Resize handle ── */
 #bba-resize-handle {
@@ -299,59 +239,6 @@
   to   { opacity: 1; transform: translateX(0); }
 }
 
-/* ── Stack badges on player rows ── */
-.bba-stack-badge {
-  font-size: 0.62em;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 3px;
-  vertical-align: middle;
-  margin-left: 4px;
-  letter-spacing: 0.04em;
-}
-.bba-stack-qb   { background: #1a237e; color: #90caf9; }
-.bba-stack-team { background: #263238; color: #80cbc4; }
-
-.bba-is-stack { background: #0d1a2e; }
-.bba-is-stack:hover { background: #111f36; }
-
-/* ── Stacks tab ── */
-.bba-stack-section-label {
-  padding: 6px 10px 3px;
-  font-size: 0.72em;
-  font-weight: 700;
-  color: #546e7a;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  background: #0f1419;
-}
-
-.bba-stack-card {
-  background: #0d1a2e;
-  border-left: 3px solid #1565c0;
-  margin: 4px 8px;
-  border-radius: 4px;
-  padding: 8px 10px;
-}
-.bba-stack-team-name {
-  font-weight: 700;
-  color: #90caf9;
-  font-size: 0.88em;
-  margin-bottom: 4px;
-}
-.bba-stack-positions {
-  font-size: 0.75em;
-  color: #546e7a;
-  font-weight: 400;
-  margin-left: 6px;
-}
-.bba-stack-player {
-  font-size: 0.78em;
-  color: #b0bec5;
-  padding-left: 6px;
-  line-height: 1.6;
-}
-
 /* ── Exposure badge ── */
 .bba-exp-badge {
   font-size: 0.60em;
@@ -363,10 +250,3 @@
   vertical-align: middle;
   margin-left: 3px;
 }
-
-.bba-empty { color: #546e7a; text-align: center; padding: 24px; font-size: 0.85em; font-style: italic; }
-
-/* ── Scrollbar ── */
-#bba-list::-webkit-scrollbar { width: 5px; }
-#bba-list::-webkit-scrollbar-track { background: #0f1419; }
-#bba-list::-webkit-scrollbar-thumb { background: #2a3f5f; border-radius: 3px; }
