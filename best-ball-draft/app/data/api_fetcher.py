@@ -413,18 +413,29 @@ def _fetch_fp_adp() -> dict:
         if not parser.rows:
             return {}
         header = parser.rows[0]
-        try:
-            dk_col   = header.index('DraftKings')
-            avg_col  = header.index('AVG')
-            name_col = header.index('Player Team')
-        except ValueError:
+        # Column headers change slightly (e.g. "Player Team" vs "Player Team (Bye)")
+        # so find them by prefix/substring match instead of exact equality.
+        def _find_col(headers, *keywords):
+            for kw in keywords:
+                for i, h in enumerate(headers):
+                    if kw.lower() in h.lower():
+                        return i
+            return None
+
+        dk_col   = _find_col(header, 'DraftKings')
+        avg_col  = _find_col(header, 'AVG')
+        name_col = _find_col(header, 'Player Team', 'Player')
+        if dk_col is None or avg_col is None or name_col is None:
+            print(f'  [FP] could not identify columns: {header}')
             return {}
         result = {}
         for row in parser.rows[1:]:
             if len(row) <= max(dk_col, avg_col, name_col):
                 continue
-            # "Bijan Robinson ATL" — strip trailing team abbreviation
-            raw_name = re.sub(r'\s+[A-Z]{2,3}$', '', row[name_col]).strip()
+            # "Bijan Robinson ATL (11)" — strip trailing bye "(N)" then team abbreviation
+            raw_name = row[name_col]
+            raw_name = re.sub(r'\s*\(\d+\)\s*$', '', raw_name)      # strip "(11)"
+            raw_name = re.sub(r'\s+[A-Z]{2,3}$', '', raw_name).strip()  # strip "ATL"
             dk_val   = row[dk_col].strip()
             avg_val  = row[avg_col].strip()
             adp_str  = dk_val if dk_val and dk_val not in ('-', 'N/A', '') else avg_val
@@ -444,10 +455,13 @@ def fetch_players(force_refresh=False):
     Return player list.  Uses cache unless force_refresh=True or no cache exists.
 
     Data pipeline:
-      1. Fetch players from DraftKings rankings (primary — ensures name/team consistency)
-      2. If DK fetch fails, fall back to FantasyPros ADP page for name+ADP
-      3. Enrich every player with bye week + playoff schedule from static 2026 tables
-      4. Assign sequential integer ADP, sort by rank
+      1. Fetch players + salary rank from DraftKings lineup CSV (names/teams are exact
+         matches to what DK renders on the draft board)
+      2. Merge in FantasyPros DK best-ball ADP — this is the actual ADP shown on the
+         DK rankings page, expressed as float pick numbers (e.g. 12.3).
+         Players not ranked by FP fall back to DK salary rank.
+      3. Sort by merged ADP, then assign sequential integer ADP (1 = best).
+      4. Enrich with bye week + playoff schedule from static 2026 tables.
     """
     cached = _load_cache()
     if cached and not force_refresh:
@@ -456,54 +470,61 @@ def fetch_players(force_refresh=False):
     print('Fetching player data from DraftKings...')
     dk_players = fetch_dk_players()
 
-    if dk_players:
-        print(f'  ✓ DraftKings: {len(dk_players)} players')
-        # DK players already have name/pos/team/adp from the fetch
-        players = []
-        for i, p in enumerate(dk_players, 1):
-            team = p['team']
-            schedule = PLAYOFF_SCHEDULE_2026.get(team, (None, None, None))
-            # Prefer the stable DK player ID; fall back to rank-based ID
-            player_id = p.get('dk_id') or f'dk_{i}'
-            players.append({
-                'id':     player_id,
-                'name':   p['name'],
-                'pos':    p['pos'],
-                'team':   team,
-                'bye':    BYE_WEEKS_2026.get(team, 0),
-                'adp':    p['adp'] if p['adp'] is not None else i,
-                'season': '2026',
-                'week15': schedule[0],
-                'week16': schedule[1],
-                'week17': schedule[2],
-            })
-    else:
-        # Fallback: use FantasyPros for both player list and ADP
-        print('  DraftKings fetch failed — falling back to FantasyPros...')
-        fp_adp = _fetch_fp_adp()
-        if not fp_adp:
-            print('  ERROR: both DraftKings and FantasyPros fetches failed.')
-            return cached or []
-        players = []
-        for norm_name, adp in fp_adp.items():
-            # FantasyPros doesn't give us pos/team in _fetch_fp_adp — skip positions unknown
-            # (this path is last-resort only)
-            players.append({
-                'id':     f'fp_{_normalize_name(norm_name).replace(" ", "_")}',
-                'name':   norm_name,
-                'pos':    'UNK',
-                'team':   'UNK',
-                'bye':    0,
-                'adp':    adp,
-                'season': '2026',
-                'week15': None,
-                'week16': None,
-                'week17': None,
-            })
-        print(f'  ✓ FantasyPros fallback: {len(players)} players (no pos/team data)')
+    if not dk_players:
+        print('  ERROR: DraftKings fetch failed — cannot continue.')
+        return cached or []
 
-    # Sort by ADP and re-number sequentially so adp is a clean 1-N integer rank
-    players.sort(key=lambda p: p['adp'] if p['adp'] else 9999)
+    print(f'  ✓ DraftKings: {len(dk_players)} players (sorted by DK salary rank)')
+
+    # Build normalized name → FP ADP lookup
+    print('Fetching ADP from FantasyPros (DraftKings column)...')
+    fp_adp = _fetch_fp_adp()
+    fp_matched = 0
+    if fp_adp:
+        print(f'  ✓ FantasyPros: {len(fp_adp)} players with DK ADP')
+    else:
+        print('  FantasyPros ADP unavailable — using DK salary rank as ADP')
+
+    players = []
+    for dk_p in dk_players:
+        team     = dk_p['team']
+        schedule = PLAYOFF_SCHEDULE_2026.get(team, (None, None, None))
+        player_id = dk_p.get('dk_id') or f'dk_{int(dk_p["adp"])}'
+
+        # Try to find a real ADP from FantasyPros using normalized name matching.
+        # DK names ("Brian Robinson Jr.") and FP names ("Brian Robinson") can differ
+        # slightly, so try the full name first, then drop generation suffix.
+        adp = dk_p['adp']  # default: DK salary rank
+        if fp_adp:
+            norm = _normalize_name(dk_p['name'])
+            if norm in fp_adp:
+                adp = fp_adp[norm]
+                fp_matched += 1
+            else:
+                # Try without Jr./Sr./II/III suffix
+                norm_no_suffix = re.sub(r'\s+(?:jr|sr|ii|iii|iv|v)$', '', norm).strip()
+                if norm_no_suffix in fp_adp:
+                    adp = fp_adp[norm_no_suffix]
+                    fp_matched += 1
+
+        players.append({
+            'id':     player_id,
+            'name':   dk_p['name'],
+            'pos':    dk_p['pos'],
+            'team':   team,
+            'bye':    BYE_WEEKS_2026.get(team, 0),
+            'adp':    adp,
+            'season': '2026',
+            'week15': schedule[0],
+            'week16': schedule[1],
+            'week17': schedule[2],
+        })
+
+    if fp_adp:
+        print(f'  ✓ ADP merged: {fp_matched}/{len(players)} players have FantasyPros DK ADP')
+
+    # Sort by ADP ascending, then re-number as sequential integers
+    players.sort(key=lambda p: p['adp'])
     for i, p in enumerate(players, 1):
         p['adp'] = i
 
