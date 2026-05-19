@@ -168,11 +168,21 @@ function getLastNameLookup() {
   lastNameLookup = {};
   for (const player of (typeof PLAYERS !== 'undefined' ? PLAYERS : [])) {
     const parts = player.name.split(' ');
-    // Strip generation suffixes (Jr, Sr, II, III, IV) before keying by last name
     let last = parts[parts.length - 1];
-    if (/^(Jr\.?|Sr\.?|II|III|IV|V)$/i.test(last)) last = parts[parts.length - 2] || last;
-    const key = `${last.toLowerCase()}_${player.pos}_${player.team}`;
-    if (!lastNameLookup[key]) lastNameLookup[key] = player;
+    const hasSuffix = /^(Jr\.?|Sr\.?|II|III|IV|V)$/i.test(last);
+    const suffix = hasSuffix ? last.toLowerCase().replace(/\./g, '') : null;
+    if (hasSuffix) last = parts[parts.length - 2] || last;
+
+    const baseKey = `${last.toLowerCase()}_${player.pos}_${player.team}`;
+    // Only store the base key if no entry yet (lower ADP wins on collision)
+    if (!lastNameLookup[baseKey]) lastNameLookup[baseKey] = player;
+
+    // Also store a suffix-qualified key so "B. Robinson Jr." finds Brian,
+    // not Bijan, when both are RB/ATL.
+    if (suffix) {
+      const suffixKey = `${last.toLowerCase()}_${suffix}_${player.pos}_${player.team}`;
+      lastNameLookup[suffixKey] = player;
+    }
   }
   return lastNameLookup;
 }
@@ -193,14 +203,26 @@ function parsePlayerFromBoardText(text) {
   const nameM  = before.match(/[A-Z]\.\s*([\w][A-Za-z'.‑\- ]*)/);
   if (!nameM) return null;
 
-  // Step 3 — strip generation suffix (Jr./Sr./II/III), take final word as last name
-  const fullName = nameM[1]
-    .replace(/\s*(Jr\.?|Sr\.?|II|III|IV|V)\s*$/i, '')
-    .trim();
+  // Step 3 — detect generation suffix, strip it, take final word as last name
+  const suffixM  = nameM[1].match(/\s+(Jr\.?|Sr\.?|II|III|IV|V)\s*$/i);
+  const suffix   = suffixM ? suffixM[1].toLowerCase().replace(/\./g, '') : null;
+  const fullName = nameM[1].replace(/\s*(Jr\.?|Sr\.?|II|III|IV|V)\s*$/i, '').trim();
   const lastName = fullName.split(/\s+/).pop().toLowerCase();
 
   const lookup = getLastNameLookup();
-  const exact  = lookup[`${lastName}_${pos}_${team}`];
+
+  // Try suffix-qualified key first — disambiguates same-last-name same-team players
+  // (e.g. Bijan Robinson vs Brian Robinson Jr., both RB/ATL)
+  if (suffix) {
+    const suffixKey = `${lastName}_${suffix}_${pos}_${team}`;
+    if (lookup[suffixKey]) return lookup[suffixKey];
+    // Fallback: suffix key ignoring team
+    for (const [key, p] of Object.entries(lookup)) {
+      if (key.startsWith(`${lastName}_${suffix}_${pos}_`)) return p;
+    }
+  }
+
+  const exact = lookup[`${lastName}_${pos}_${team}`];
   if (exact) return exact;
   // Fallback: ignore team in case of trades or stale team data
   for (const [key, p] of Object.entries(lookup)) {
