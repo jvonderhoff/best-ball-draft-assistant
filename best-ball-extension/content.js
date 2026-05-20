@@ -684,11 +684,6 @@ function createOverlay() {
         <a id="bba-open-setup">open setup</a>
       </div>
 
-      <div id="bba-resync-link" style="display:none;padding:2px 12px 4px;font-size:0.72em;color:#78909c">
-        <a id="bba-scan-link" style="cursor:pointer;color:#4fc3f7;text-decoration:none">↻ Resync board</a>
-        <span id="bba-resync-status" style="margin-left:8px"></span>
-      </div>
-
       <div id="bba-turn-bar"></div>
       <div id="bba-suggestion"></div>
       <div id="bba-resize-handle" title="Drag to resize"></div>
@@ -701,14 +696,6 @@ function createOverlay() {
   document.getElementById('bba-toggle').addEventListener('click', togglePanel);
   document.getElementById('bba-close').addEventListener('click', togglePanel);
   document.getElementById('bba-undo').addEventListener('click', undoLast);
-
-  document.getElementById('bba-scan-link').addEventListener('click', () => {
-    const status = document.getElementById('bba-resync-status');
-    status.textContent = 'Scanning…';
-    const found = scanPageForDraftedPlayers();
-    status.textContent = found > 0 ? `+${found} synced` : 'Up to date';
-    setTimeout(() => { status.textContent = ''; }, 3000);
-  });
 
   makeDraggable(document.getElementById('bba-header'), document.getElementById('bba-panel'));
   makeResizable(document.getElementById('bba-resize-handle'), document.getElementById('bba-panel'));
@@ -831,7 +818,6 @@ function startStackHighlightObserver() {
 function render() {
   if (!overlayEl) return;
   renderSetupBanner();
-  renderSyncBar();
   renderTurnBar();
   renderSuggestion();
   highlightStackPlayers();
@@ -844,11 +830,6 @@ function renderSetupBanner() {
   banner.style.display = 'flex';
   banner.innerHTML = `<span>⚙️ Not configured (${count} players loaded) — </span><a id="bba-open-setup">open setup</a>`;
   document.getElementById('bba-open-setup').addEventListener('click', () => bAPI.runtime.sendMessage({ action: 'openPopup' }));
-}
-
-function renderSyncBar() {
-  const resyncLink = document.getElementById('bba-resync-link');
-  resyncLink.style.display = (state.isSetup && autoPositionDetected && state.myPosition) ? 'block' : 'none';
 }
 
 function renderTurnBar() {

@@ -127,14 +127,27 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const adpValue = Math.max(0, 100 - player.adp);
   const pos = player.pos;
 
-  // Position/need multiplier
+  // ADP is the primary signal — no positional bias at the start of the draft.
+  // As picks accumulate, compare actual roster composition to ideal pace.
+  // Positions behind pace get a proportional boost; positions ahead get a penalty.
+  // This means the engine only develops a position preference once you've shown one.
+  const targets = { QB: 2, RB: 8, WR: 8, TE: 2 };
+  const totalDrafted = myTeam.length;
   let mult = 1.0;
-  if (pos === 'QB')      mult = needs.QB > 0 ? 0.9 : 0.6;
-  else if (pos === 'RB') mult = needs.RB > 0 ? 1.3 : 1.0;
-  else if (pos === 'WR') mult = needs.WR > 0 ? 1.2 : 0.9;
-  else if (pos === 'TE') mult = needs.TE > 0 ? 1.1 : 0.7;
 
-  // Early-round value boost
+  if (totalDrafted > 0) {
+    const pace  = totalDrafted / 20;                          // 0→1 as roster fills
+    const ideal = (targets[pos] || 0) * pace;                // where you should be
+    const actual = myTeam.filter(p => p.pos === pos).length;
+    const deficit = ideal - actual;                           // + = behind, - = ahead
+    // Max ±15% adjustment, grows with imbalance
+    mult += Math.max(-0.15, Math.min(0.15, deficit * 0.07));
+  }
+
+  // Hard discount when a position slot is fully filled
+  if ((needs[pos] || 0) === 0) mult = Math.min(mult, 0.65);
+
+  // Early-round boost (position-agnostic — amplifies stacking/playoff bonuses)
   const round = Math.floor(myPickNumber / 5) + 1;
   if (round <= 3) mult *= 1.1;
 
