@@ -86,20 +86,68 @@ function playoffStackReason(player, myTeam) {
   return null;
 }
 
+// ── Bye week helpers ──────────────────────────────────────────────────────────
+
+// Returns a map of bye_week -> count of players on that week
+function getByeWeekCounts(myTeam) {
+  const counts = {};
+  for (const p of myTeam) {
+    if (p.bye) counts[p.bye] = (counts[p.bye] || 0) + 1;
+  }
+  return counts;
+}
+
+// Penalty multiplier when adding a player whose bye week is already crowded.
+// 0-2 players on same bye: no penalty
+// 3 players: mild penalty (0.90)
+// 4 players: moderate penalty (0.80)
+// 5+ players: heavy penalty (0.70) — effectively steers away
+function getByeWeekPenalty(player, myTeam) {
+  if (!player.bye) return 1.0;
+  const counts = getByeWeekCounts(myTeam);
+  const existing = counts[player.bye] || 0;
+  if (existing <= 2) return 1.0;
+  if (existing === 3) return 0.90;
+  if (existing === 4) return 0.80;
+  return 0.70;
+}
+
+// Returns a warning string if this player would create a bye week crunch, else null.
+function byeWeekWarning(player, myTeam) {
+  if (!player.bye) return null;
+  const counts = getByeWeekCounts(myTeam);
+  const existing = counts[player.bye] || 0;
+  if (existing < 2) return null;
+  return `${existing + 1} players on bye wk${player.bye}`;
+}
+
 // ── Core value calculation ────────────────────────────────────────────────────
 
 function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium') {
   const adpValue = Math.max(0, 100 - player.adp);
   const pos = player.pos;
 
-  // Position/need multiplier
+  // ADP is the primary signal — no positional bias at the start of the draft.
+  // As picks accumulate, compare actual roster composition to ideal pace.
+  // Positions behind pace get a proportional boost; positions ahead get a penalty.
+  // This means the engine only develops a position preference once you've shown one.
+  const targets = { QB: 2, RB: 8, WR: 8, TE: 2 };
+  const totalDrafted = myTeam.length;
   let mult = 1.0;
-  if (pos === 'QB')      mult = needs.QB > 0 ? 0.9 : 0.6;
-  else if (pos === 'RB') mult = needs.RB > 0 ? 1.3 : 1.0;
-  else if (pos === 'WR') mult = needs.WR > 0 ? 1.2 : 0.9;
-  else if (pos === 'TE') mult = needs.TE > 0 ? 1.1 : 0.7;
 
-  // Early-round value boost
+  if (totalDrafted > 0) {
+    const pace  = totalDrafted / 20;                          // 0→1 as roster fills
+    const ideal = (targets[pos] || 0) * pace;                // where you should be
+    const actual = myTeam.filter(p => p.pos === pos).length;
+    const deficit = ideal - actual;                           // + = behind, - = ahead
+    // Max ±15% adjustment, grows with imbalance
+    mult += Math.max(-0.15, Math.min(0.15, deficit * 0.07));
+  }
+
+  // Hard discount when a position slot is fully filled
+  if ((needs[pos] || 0) === 0) mult = Math.min(mult, 0.65);
+
+  // Early-round boost (position-agnostic — amplifies stacking/playoff bonuses)
   const round = Math.floor(myPickNumber / 5) + 1;
   if (round <= 3) mult *= 1.1;
 
@@ -126,6 +174,9 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   // Playoff game stack bonus — week 17 weighted most heavily
   mult *= getPlayoffBonus(player, myTeam);
 
+  // Bye week penalty — discourage stacking too many players on the same bye
+  mult *= getByeWeekPenalty(player, myTeam);
+
   return adpValue * mult;
 }
 
@@ -135,9 +186,12 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
   if (!available.length) return null;
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
+  const myQBCount = myTeam.filter(p => p.pos === 'QB').length;
+  const pool = myQBCount >= 3 ? available.filter(p => p.pos !== 'QB') : available;
+  if (!pool.length) return null;
 
   let best = null, bestVal = -1;
-  for (const p of available) {
+  for (const p of pool) {
     let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity);
     // Diversification penalty
     if (diversifyStrength > 0 && exposure[p.id]) {
@@ -158,6 +212,8 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
   if (exposure[best.id]?.exposure_rate > 0) {
     reason += ` · ${Math.round(exposure[best.id].exposure_rate * 100)}% exposure`;
   }
+  const byeWarn = byeWeekWarning(best, myTeam);
+  if (byeWarn) reason += ` · ⚠ ${byeWarn}`;
 
   return { player: best, reason };
 }
@@ -167,8 +223,11 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
   if (!available.length) return [];
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
+  const myQBCount = myTeam.filter(p => p.pos === 'QB').length;
+  const pool = myQBCount >= 3 ? available.filter(p => p.pos !== 'QB') : available;
+  if (!pool.length) return [];
 
-  const scored = available.map(p => {
+  const scored = pool.map(p => {
     let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity);
     if (diversifyStrength > 0 && exposure[p.id]) {
       val *= (1 - exposure[p.id].exposure_rate * diversifyStrength);
@@ -186,6 +245,8 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
       const expStr = `${Math.round(exposure[p.id].exposure_rate * 100)}% exp`;
       reason = reason ? `${reason} · ${expStr}` : expStr;
     }
+    const byeWarn = byeWeekWarning(p, myTeam);
+    if (byeWarn) reason = reason ? `${reason} · ⚠ ${byeWarn}` : `⚠ ${byeWarn}`;
 
     return { player: p, value: val, reason };
   });

@@ -148,6 +148,61 @@ function undoLast() {
   render();
 }
 
+// ── Queue management ──────────────────────────────────────────────────────────
+
+// Finds the player's row in DK's available-player list and clicks its queue button.
+// The Add to Queue icon SVG has aria-label="Add to Queue icon".
+// It may only appear on hover — we dispatch a mouseenter first to reveal it.
+function addToDKQueue(player) {
+  const lastName = player.name.split(' ').filter(w => !/^(Jr\.?|Sr\.?|II|III|IV|V)$/i.test(w)).pop() || '';
+  const nameEls = [...document.querySelectorAll('[class*="PlayerCell_player-name"]')];
+
+  console.log('[BBA] addToDKQueue', player.name, '— scanning', nameEls.length, 'name elements');
+
+  for (const nameEl of nameEls) {
+    // Walk up manually past BaseTable__row-cell to reach the full BaseTable__row
+    let row = nameEl.parentElement;
+    while (row) {
+      const cls = row.className || '';
+      if (cls.includes('BaseTable__row') && !cls.includes('BaseTable__row-cell')) break;
+      row = row.parentElement;
+    }
+    if (!row) continue;
+
+    // Match by last name + position + team
+    const rowText = row.textContent;
+    if (!rowText.includes(lastName)) continue;
+    if (!rowText.includes(player.pos)) continue;
+    if (!rowText.includes(player.team)) continue;
+
+    console.log('[BBA] Found row for', player.name, row);
+
+    // Hover the row first — DK may hide the queue icon until mouseenter
+    row.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+
+    // Give React a tick to show the button, then click it
+    setTimeout(() => {
+      const qSvg = row.querySelector('[aria-label="Add to Queue icon"]') ||
+                   document.querySelector('[aria-label="Add to Queue icon"]');
+      const qBtn = qSvg ? (qSvg.closest('button') || qSvg.parentElement || qSvg) : null;
+
+      if (qBtn) {
+        qBtn.click();
+        console.log('[BBA] ✓ Clicked queue button for', player.name);
+      } else {
+        console.log('[BBA] ✗ Queue icon not found after hover for', player.name,
+          '— all SVGs in row:', [...row.querySelectorAll('svg')].map(s => s.getAttribute('aria-label')));
+      }
+    }, 80);
+
+    return true;
+  }
+
+  console.log('[BBA] ✗ No matching row found for', player.name, '(lastName:', lastName, 'pos:', player.pos, 'team:', player.team, ')');
+  return false;
+}
+
 // Jump to a specific overall pick (mid-draft re-sync)
 function setCurrentPick(n) {
   state.overallPick = Math.max(1, parseInt(n) || 1);
@@ -629,11 +684,6 @@ function createOverlay() {
         <a id="bba-open-setup">open setup</a>
       </div>
 
-      <div id="bba-resync-link" style="display:none;padding:2px 12px 4px;font-size:0.72em;color:#78909c">
-        <a id="bba-scan-link" style="cursor:pointer;color:#4fc3f7;text-decoration:none">↻ Resync board</a>
-        <span id="bba-resync-status" style="margin-left:8px"></span>
-      </div>
-
       <div id="bba-turn-bar"></div>
       <div id="bba-suggestion"></div>
       <div id="bba-resize-handle" title="Drag to resize"></div>
@@ -646,14 +696,6 @@ function createOverlay() {
   document.getElementById('bba-toggle').addEventListener('click', togglePanel);
   document.getElementById('bba-close').addEventListener('click', togglePanel);
   document.getElementById('bba-undo').addEventListener('click', undoLast);
-
-  document.getElementById('bba-scan-link').addEventListener('click', () => {
-    const status = document.getElementById('bba-resync-status');
-    status.textContent = 'Scanning…';
-    const found = scanPageForDraftedPlayers();
-    status.textContent = found > 0 ? `+${found} synced` : 'Up to date';
-    setTimeout(() => { status.textContent = ''; }, 3000);
-  });
 
   makeDraggable(document.getElementById('bba-header'), document.getElementById('bba-panel'));
   makeResizable(document.getElementById('bba-resize-handle'), document.getElementById('bba-panel'));
@@ -776,7 +818,6 @@ function startStackHighlightObserver() {
 function render() {
   if (!overlayEl) return;
   renderSetupBanner();
-  renderSyncBar();
   renderTurnBar();
   renderSuggestion();
   highlightStackPlayers();
@@ -789,11 +830,6 @@ function renderSetupBanner() {
   banner.style.display = 'flex';
   banner.innerHTML = `<span>⚙️ Not configured (${count} players loaded) — </span><a id="bba-open-setup">open setup</a>`;
   document.getElementById('bba-open-setup').addEventListener('click', () => bAPI.runtime.sendMessage({ action: 'openPopup' }));
-}
-
-function renderSyncBar() {
-  const resyncLink = document.getElementById('bba-resync-link');
-  resyncLink.style.display = (state.isSetup && autoPositionDetected && state.myPosition) ? 'block' : 'none';
 }
 
 function renderTurnBar() {
@@ -831,10 +867,9 @@ function renderSuggestion() {
   const recs = getTopRecommendations(state.available, state.myTeam, state.myTeam.length + 1, state.stackIntensity, exposure, state.diversifyStrength, 5);
   if (!recs.length) { box.style.display = 'none'; return; }
 
-  const [top, ...rest] = recs;
-  const p = top.player;
+  const myTurn = isMyTurn(state.overallPick, state.numTeams, state.myPosition);
 
-  const restHTML = rest.map(r => `
+  const recsHTML = recs.map(r => `
     <div class="bba-rec-alt">
       <div class="bba-rec-alt-info">
         <span class="bba-rec-alt-name">${r.player.name}</span>
@@ -842,33 +877,21 @@ function renderSuggestion() {
         <span class="bba-rec-alt-meta">${r.player.team} · ADP ${r.player.adp}</span>
         ${r.reason ? `<span class="bba-rec-alt-reason">${r.reason}</span>` : ''}
       </div>
-      <div class="bba-rec-alt-btns">
-        <button class="bba-btn-pick-sm" data-id="${r.player.id}">Pick</button>
-        <button class="bba-btn-taken-sm" data-id="${r.player.id}">✕</button>
-      </div>
+      <button class="bba-btn-queue-sm" data-id="${r.player.id}">+ Queue</button>
     </div>
   `).join('');
 
-  const myTurn = isMyTurn(state.overallPick, state.numTeams, state.myPosition);
   box.style.display = 'block';
   box.innerHTML = `
-    <div class="bba-rec-label">${myTurn ? 'Your Pick' : 'Target'}</div>
-    <div class="bba-rec-body">
-      <div>
-        <div class="bba-rec-name">${p.name} <span class="bba-pos bba-pos-${p.pos}">${p.pos}</span></div>
-        <div class="bba-rec-meta">${p.team} · Bye ${p.bye} · ADP ${p.adp}</div>
-        ${top.reason ? `<div class="bba-rec-reason">${top.reason}</div>` : ''}
-      </div>
-      <button class="bba-btn-pick" data-id="${p.id}">My Pick</button>
-    </div>
-    <div class="bba-rec-alts">${restHTML}</div>
+    <div class="bba-rec-label">${myTurn ? 'Your Pick' : 'Suggestions'}</div>
+    <div class="bba-rec-alts">${recsHTML}</div>
   `;
 
-  box.querySelector('.bba-btn-pick').addEventListener('click', e => myPick(e.target.dataset.id));
-  box.querySelectorAll('.bba-btn-pick-sm').forEach(btn =>
-    btn.addEventListener('click', e => { myPick(e.currentTarget.dataset.id); }));
-  box.querySelectorAll('.bba-btn-taken-sm').forEach(btn =>
-    btn.addEventListener('click', e => { markTaken(e.currentTarget.dataset.id); }));
+  box.querySelectorAll('.bba-btn-queue-sm').forEach(btn =>
+    btn.addEventListener('click', e => {
+      const player = state.available.find(p => p.id === e.currentTarget.dataset.id);
+      if (player) addToDKQueue(player);
+    }));
 }
 
 
@@ -1064,25 +1087,16 @@ function tryClickDraftboardTab() {
   return false;
 }
 
-// Dedicated board-read loop — runs independently of position detection.
-// Keeps trying until 20 picks are found or MAX_ATTEMPTS is reached.
-let _boardReadAttempts = 0;
-const _MAX_BOARD_ATTEMPTS = 12;
-
+// One-shot board read — only runs if the draftboard tab is already visible.
+// We never auto-click the tab; the user stays on whatever tab they choose.
+// Live pick tracking works via pollForLastPick() regardless of active tab.
+// The "↻ Resync board" link in the overlay lets the user trigger a manual
+// sync after switching to the Draftboard tab themselves.
 function scheduleBoardRead(delay = 2000) {
-  if (state.isComplete || _boardReadAttempts >= _MAX_BOARD_ATTEMPTS) return;
   setTimeout(() => {
-    _boardReadAttempts++;
     const columns = document.querySelectorAll('.DraftBoardColumn_draft-board-column');
-    if (!columns.length) {
-      tryClickDraftboardTab();
-      scheduleBoardRead(1500);
-      return;
-    }
-    const { myPicks, takenPicks } = readDraftBoard();
-    if (!state.isComplete && myPicks + takenPicks === 0) {
-      scheduleBoardRead(2000);
-    }
+    if (columns.length) readDraftBoard();
+    // No retry — don't touch the tab navigation
   }, delay);
 }
 
