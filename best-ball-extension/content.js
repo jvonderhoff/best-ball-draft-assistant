@@ -657,6 +657,7 @@ function createOverlay() {
 
   makeDraggable(document.getElementById('bba-header'), document.getElementById('bba-panel'));
   makeResizable(document.getElementById('bba-resize-handle'), document.getElementById('bba-panel'));
+  startStackHighlightObserver();
 }
 
 function togglePanel() {
@@ -699,6 +700,77 @@ function makeResizable(handle, target) {
   });
 }
 
+// ── Stack highlighting — DK player list tab ───────────────────────────────────
+// Injects a left-border highlight on player rows whose team matches a team
+// already on my roster.  Works by scanning for team-abbreviation text nodes
+// inside player rows, so it doesn't depend on DK's internal class names.
+
+let _stackHighlightStyle = null;
+let _stackHighlightObserver = null;
+
+function _ensureStackStyles() {
+  if (_stackHighlightStyle) return;
+  _stackHighlightStyle = document.createElement('style');
+  _stackHighlightStyle.id = 'bba-stack-highlight-style';
+  _stackHighlightStyle.textContent = `
+    .bba-stack-name { color: #81c784 !important; font-weight: 700 !important; }
+  `;
+  document.head.appendChild(_stackHighlightStyle);
+}
+
+function highlightStackPlayers() {
+  if (!state.myTeam.length) return;
+  _ensureStackStyles();
+
+  const myTeams = new Set(state.myTeam.map(p => p.team));
+  const teamPattern = /^[A-Z]{2,3}$/;
+
+  // Reset previous highlights
+  document.querySelectorAll('.bba-stack-name').forEach(el => {
+    el.classList.remove('bba-stack-name');
+  });
+
+  // DOM structure confirmed from live DK draft room:
+  //   PlayerCell_player-name-container
+  //     ← PlayerCell_player-details-container
+  //       ← PlayerCell_player-cell  (one grid cell)
+  //         ← BaseTable__row-cell   (sibling cells hold pos, team, etc.)
+  //           ← BaseTable__row      (full player row — scan this for team text)
+  //             ← BaseTable__body   (the available-player list)
+  //
+  // The roster section doesn't use PlayerCell_ classes, so scoping to
+  // PlayerCell_player-name-container naturally excludes it.
+
+  const nameEls = [...document.querySelectorAll('[class*="PlayerCell_player-name-container"]')];
+  if (!nameEls.length) return;
+
+  for (const nameEl of nameEls) {
+    // Walk up to the full row so we can see all cells (team is in a sibling cell)
+    const row = nameEl.closest('[class*="BaseTable__row"]');
+    if (!row) continue;
+
+    const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+    let node, foundTeam = null;
+    while ((node = walker.nextNode())) {
+      const t = node.textContent.trim();
+      if (teamPattern.test(t) && myTeams.has(t)) { foundTeam = t; break; }
+    }
+    if (!foundTeam) continue;
+
+    nameEl.classList.add('bba-stack-name');
+  }
+}
+
+function startStackHighlightObserver() {
+  if (_stackHighlightObserver) return;
+
+  // Re-highlight whenever DK updates its player list (React re-renders)
+  _stackHighlightObserver = new MutationObserver(() => {
+    if (state.myTeam.length) highlightStackPlayers();
+  });
+  _stackHighlightObserver.observe(document.body, { childList: true, subtree: true });
+}
+
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 function render() {
@@ -707,6 +779,7 @@ function render() {
   renderSyncBar();
   renderTurnBar();
   renderSuggestion();
+  highlightStackPlayers();
 }
 
 function renderSetupBanner() {

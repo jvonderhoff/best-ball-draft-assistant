@@ -129,18 +129,10 @@ def handle_refresh_players(msg):
         return {'ok': False, 'error': 'no players'}
     with get_db() as conn:
         ensure_schema(conn)
+        conn.execute("DELETE FROM players")
         conn.executemany("""
             INSERT INTO players (player_id, name, pos, team, adp, week15, week16, week17, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(player_id) DO UPDATE SET
-                name       = excluded.name,
-                pos        = excluded.pos,
-                team       = excluded.team,
-                adp        = excluded.adp,
-                week15     = excluded.week15,
-                week16     = excluded.week16,
-                week17     = excluded.week17,
-                updated_at = excluded.updated_at
         """, [(p.get('id'), p.get('name'), p.get('pos'), p.get('team'),
                p.get('adp'), p.get('week15'), p.get('week16'), p.get('week17'))
               for p in players])

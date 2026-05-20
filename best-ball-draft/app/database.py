@@ -87,20 +87,12 @@ def save_draft(num_teams, my_position, picks, contest='', dk_draft_id=None):
 
 
 def refresh_players(players):
-    """Upsert current player data (ADP, schedule weeks) into the players reference table."""
+    """Replace the players table with fresh data (clears stale rows first)."""
     with get_db() as conn:
+        conn.execute("DELETE FROM players")
         conn.executemany("""
             INSERT INTO players (player_id, name, pos, team, adp, week15, week16, week17, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(player_id) DO UPDATE SET
-                name       = excluded.name,
-                pos        = excluded.pos,
-                team       = excluded.team,
-                adp        = excluded.adp,
-                week15     = excluded.week15,
-                week16     = excluded.week16,
-                week17     = excluded.week17,
-                updated_at = excluded.updated_at
         """, [(p['id'], p['name'], p['pos'], p['team'], p.get('adp'),
                p.get('week15'), p.get('week16'), p.get('week17'))
               for p in players])
