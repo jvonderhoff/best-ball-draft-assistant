@@ -86,6 +86,41 @@ function playoffStackReason(player, myTeam) {
   return null;
 }
 
+// ── Bye week helpers ──────────────────────────────────────────────────────────
+
+// Returns a map of bye_week -> count of players on that week
+function getByeWeekCounts(myTeam) {
+  const counts = {};
+  for (const p of myTeam) {
+    if (p.bye) counts[p.bye] = (counts[p.bye] || 0) + 1;
+  }
+  return counts;
+}
+
+// Penalty multiplier when adding a player whose bye week is already crowded.
+// 0-2 players on same bye: no penalty
+// 3 players: mild penalty (0.90)
+// 4 players: moderate penalty (0.80)
+// 5+ players: heavy penalty (0.70) — effectively steers away
+function getByeWeekPenalty(player, myTeam) {
+  if (!player.bye) return 1.0;
+  const counts = getByeWeekCounts(myTeam);
+  const existing = counts[player.bye] || 0;
+  if (existing <= 2) return 1.0;
+  if (existing === 3) return 0.90;
+  if (existing === 4) return 0.80;
+  return 0.70;
+}
+
+// Returns a warning string if this player would create a bye week crunch, else null.
+function byeWeekWarning(player, myTeam) {
+  if (!player.bye) return null;
+  const counts = getByeWeekCounts(myTeam);
+  const existing = counts[player.bye] || 0;
+  if (existing < 2) return null;
+  return `${existing + 1} players on bye wk${player.bye}`;
+}
+
 // ── Core value calculation ────────────────────────────────────────────────────
 
 function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium') {
@@ -126,6 +161,9 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   // Playoff game stack bonus — week 17 weighted most heavily
   mult *= getPlayoffBonus(player, myTeam);
 
+  // Bye week penalty — discourage stacking too many players on the same bye
+  mult *= getByeWeekPenalty(player, myTeam);
+
   return adpValue * mult;
 }
 
@@ -158,6 +196,8 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
   if (exposure[best.id]?.exposure_rate > 0) {
     reason += ` · ${Math.round(exposure[best.id].exposure_rate * 100)}% exposure`;
   }
+  const byeWarn = byeWeekWarning(best, myTeam);
+  if (byeWarn) reason += ` · ⚠ ${byeWarn}`;
 
   return { player: best, reason };
 }
@@ -186,6 +226,8 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
       const expStr = `${Math.round(exposure[p.id].exposure_rate * 100)}% exp`;
       reason = reason ? `${reason} · ${expStr}` : expStr;
     }
+    const byeWarn = byeWeekWarning(p, myTeam);
+    if (byeWarn) reason = reason ? `${reason} · ⚠ ${byeWarn}` : `⚠ ${byeWarn}`;
 
     return { player: p, value: val, reason };
   });
