@@ -713,14 +713,7 @@ function _ensureStackStyles() {
   _stackHighlightStyle = document.createElement('style');
   _stackHighlightStyle.id = 'bba-stack-highlight-style';
   _stackHighlightStyle.textContent = `
-    .bba-stack-row {
-      border-left: 3px solid #4fc3f7 !important;
-      background: rgba(79,195,247,0.07) !important;
-    }
-    .bba-stack-row-owned {
-      border-left: 3px solid #81c784 !important;
-      background: rgba(129,199,132,0.10) !important;
-    }
+    .bba-stack-name { color: #81c784 !important; font-weight: 700 !important; }
   `;
   document.head.appendChild(_stackHighlightStyle);
 }
@@ -732,26 +725,37 @@ function highlightStackPlayers() {
   const myTeams = new Set(state.myTeam.map(p => p.team));
   const teamPattern = /^[A-Z]{2,3}$/;
 
-  // DK uses "PlayerCell_player-name" inside player rows.
-  // Find each name element, walk up to its row container, then scan the
-  // whole row for a team-abbreviation text node.
-  const nameEls = [...document.querySelectorAll('[class*="PlayerCell_player-name"], [class*="player-name__"]')];
-
   // Reset previous highlights
-  document.querySelectorAll('.bba-stack-row, .bba-stack-row-owned').forEach(el => {
-    el.classList.remove('bba-stack-row', 'bba-stack-row-owned');
+  document.querySelectorAll('.bba-stack-name').forEach(el => {
+    el.classList.remove('bba-stack-name');
   });
 
+  // Scope only to the available-player list, not the roster/lineup sections.
+  // DK renders the available list in a container distinct from the roster panel.
+  const SCOPE_SELECTORS = [
+    '[class*="PlayerList_"]',
+    '[class*="player-list"]',
+    '[class*="available-players"]',
+    '[class*="AvailablePlayers"]',
+  ];
+  let scope = null;
+  for (const sel of SCOPE_SELECTORS) {
+    const el = document.querySelector(sel);
+    if (el) { scope = el; break; }
+  }
+  // If we can't find a scoped container, bail rather than touching the roster
+  if (!scope) return;
+
+  const nameEls = [...scope.querySelectorAll('[class*="PlayerCell_player-name"]')];
   if (!nameEls.length) return;
 
   for (const nameEl of nameEls) {
-    // The row container is a few levels up from the name element
-    const row = nameEl.closest('[class*="PlayerCell_player-cell"], [class*="player-cell__"]')
+    // Walk up to the row container to find the team abbreviation text
+    const row = nameEl.closest('[class*="PlayerCell_player-cell"]')
                || nameEl.parentElement?.parentElement?.parentElement
                || nameEl.parentElement;
     if (!row) continue;
 
-    // Walk all text nodes in the row to find a team abbreviation
     const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
     let node, foundTeam = null;
     while ((node = walker.nextNode())) {
@@ -760,10 +764,8 @@ function highlightStackPlayers() {
     }
     if (!foundTeam) continue;
 
-    // Green = I already own someone from this team; blue = potential stack partner
-    row.classList.add(state.myTeam.some(p => p.team === foundTeam)
-      ? 'bba-stack-row-owned'
-      : 'bba-stack-row');
+    // Highlight just the player name text green
+    nameEl.classList.add('bba-stack-name');
   }
 }
 
