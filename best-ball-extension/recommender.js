@@ -173,9 +173,12 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
   if (!available.length) return null;
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
+  const myQBCount = myTeam.filter(p => p.pos === 'QB').length;
+  const pool = myQBCount >= 3 ? available.filter(p => p.pos !== 'QB') : available;
+  if (!pool.length) return null;
 
   let best = null, bestVal = -1;
-  for (const p of available) {
+  for (const p of pool) {
     let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity);
     // Diversification penalty
     if (diversifyStrength > 0 && exposure[p.id]) {
@@ -207,8 +210,11 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
   if (!available.length) return [];
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
+  const myQBCount = myTeam.filter(p => p.pos === 'QB').length;
+  const pool = myQBCount >= 3 ? available.filter(p => p.pos !== 'QB') : available;
+  if (!pool.length) return [];
 
-  const scored = available.map(p => {
+  const scored = pool.map(p => {
     let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity);
     if (diversifyStrength > 0 && exposure[p.id]) {
       val *= (1 - exposure[p.id].exposure_rate * diversifyStrength);
