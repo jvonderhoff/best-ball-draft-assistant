@@ -151,17 +151,6 @@
 .bba-rec-alt-meta { color: #546e7a; }
 .bba-rec-alt-reason { color: #455a64; font-style: italic; font-size: 0.9em; width: 100%; }
 .bba-rec-alt-btns { display: flex; gap: 4px; flex-shrink: 0; }
-.bba-btn-pick-sm {
-  padding: 3px 8px;
-  background: #1b5e20;
-  color: #a5d6a7;
-  border: none;
-  border-radius: 3px;
-  font-size: 0.72em;
-  font-weight: 700;
-  cursor: pointer;
-}
-.bba-btn-pick-sm:hover { background: #2e7d32; }
 .bba-btn-taken-sm {
   padding: 3px 7px;
   background: #263238;
@@ -179,22 +168,6 @@
 .bba-pos-RB { background: #0d47a1; color: #90caf9; }
 .bba-pos-WR { background: #1b5e20; color: #a5d6a7; }
 .bba-pos-TE { background: #e65100; color: #ffcc80; }
-
-/* ── Suggestion pick button ── */
-.bba-btn-pick {
-  padding: 8px 14px;
-  background: #1b5e20;
-  color: #a5d6a7;
-  border: none;
-  border-radius: 3px;
-  font-size: 0.85em;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s;
-  flex-shrink: 0;
-}
-.bba-btn-pick:hover { background: #2e7d32; }
 
 /* ── Resize handle ── */
 #bba-resize-handle {
@@ -238,6 +211,20 @@
   from { opacity: 0; transform: translateX(20px); }
   to   { opacity: 1; transform: translateX(0); }
 }
+
+/* "+ Queue" button on suggestions */
+.bba-btn-queue-sm {
+  padding: 3px 8px;
+  background: #0d2f4a;
+  color: #4fc3f7;
+  border: 1px solid #1565c0;
+  border-radius: 3px;
+  font-size: 0.72em;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bba-btn-queue-sm:hover { background: #1565c0; color: #fff; }
 
 /* ── Exposure badge ── */
 .bba-exp-badge {
