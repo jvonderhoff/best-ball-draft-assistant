@@ -730,30 +730,23 @@ function highlightStackPlayers() {
     el.classList.remove('bba-stack-name');
   });
 
-  // Scope only to the available-player list, not the roster/lineup sections.
-  // DK renders the available list in a container distinct from the roster panel.
-  const SCOPE_SELECTORS = [
-    '[class*="PlayerList_"]',
-    '[class*="player-list"]',
-    '[class*="available-players"]',
-    '[class*="AvailablePlayers"]',
-  ];
-  let scope = null;
-  for (const sel of SCOPE_SELECTORS) {
-    const el = document.querySelector(sel);
-    if (el) { scope = el; break; }
-  }
-  // If we can't find a scoped container, bail rather than touching the roster
-  if (!scope) return;
+  // DOM structure confirmed from live DK draft room:
+  //   PlayerCell_player-name-container
+  //     ← PlayerCell_player-details-container
+  //       ← PlayerCell_player-cell  (one grid cell)
+  //         ← BaseTable__row-cell   (sibling cells hold pos, team, etc.)
+  //           ← BaseTable__row      (full player row — scan this for team text)
+  //             ← BaseTable__body   (the available-player list)
+  //
+  // The roster section doesn't use PlayerCell_ classes, so scoping to
+  // PlayerCell_player-name-container naturally excludes it.
 
-  const nameEls = [...scope.querySelectorAll('[class*="PlayerCell_player-name"]')];
+  const nameEls = [...document.querySelectorAll('[class*="PlayerCell_player-name-container"]')];
   if (!nameEls.length) return;
 
   for (const nameEl of nameEls) {
-    // Walk up to the row container to find the team abbreviation text
-    const row = nameEl.closest('[class*="PlayerCell_player-cell"]')
-               || nameEl.parentElement?.parentElement?.parentElement
-               || nameEl.parentElement;
+    // Walk up to the full row so we can see all cells (team is in a sibling cell)
+    const row = nameEl.closest('[class*="BaseTable__row"]');
     if (!row) continue;
 
     const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
@@ -764,7 +757,6 @@ function highlightStackPlayers() {
     }
     if (!foundTeam) continue;
 
-    // Highlight just the player name text green
     nameEl.classList.add('bba-stack-name');
   }
 }
