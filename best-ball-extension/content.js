@@ -657,6 +657,7 @@ function createOverlay() {
 
   makeDraggable(document.getElementById('bba-header'), document.getElementById('bba-panel'));
   makeResizable(document.getElementById('bba-resize-handle'), document.getElementById('bba-panel'));
+  startStackHighlightObserver();
 }
 
 function togglePanel() {
@@ -699,6 +700,96 @@ function makeResizable(handle, target) {
   });
 }
 
+// ── Stack highlighting — DK player list tab ───────────────────────────────────
+// Injects a left-border highlight on player rows whose team matches a team
+// already on my roster.  Works by scanning for team-abbreviation text nodes
+// inside player rows, so it doesn't depend on DK's internal class names.
+
+let _stackHighlightStyle = null;
+let _stackHighlightObserver = null;
+
+function _ensureStackStyles() {
+  if (_stackHighlightStyle) return;
+  _stackHighlightStyle = document.createElement('style');
+  _stackHighlightStyle.id = 'bba-stack-highlight-style';
+  _stackHighlightStyle.textContent = `
+    .bba-stack-row {
+      border-left: 3px solid #4fc3f7 !important;
+      background: rgba(79,195,247,0.07) !important;
+    }
+    .bba-stack-row-owned {
+      border-left: 3px solid #81c784 !important;
+      background: rgba(129,199,132,0.10) !important;
+    }
+  `;
+  document.head.appendChild(_stackHighlightStyle);
+}
+
+function highlightStackPlayers() {
+  if (!state.myTeam.length) return;
+  _ensureStackStyles();
+
+  // Teams I own at least one player from
+  const myTeams = new Set(state.myTeam.map(p => p.team));
+
+  // DK renders the available-player list in several possible containers.
+  // We probe a prioritised list of selectors and use the first match that
+  // contains multiple children (i.e. looks like a player list).
+  const PLAYER_ROW_SELECTORS = [
+    '[class*="player-list"] [class*="player"]',
+    '[class*="PlayerList"] [class*="Player"]',
+    '[class*="available"] [class*="player"]',
+    '[class*="draftable"]',
+    '[class*="player-item"]',
+    '[class*="PlayerItem"]',
+    '[class*="roster-select"] li',
+  ];
+
+  // Collect candidate row elements
+  let rows = [];
+  for (const sel of PLAYER_ROW_SELECTORS) {
+    try {
+      const found = [...document.querySelectorAll(sel)];
+      if (found.length > 5) { rows = found; break; }
+    } catch (_) {}
+  }
+
+  if (!rows.length) return;
+
+  // Reset previous highlights
+  document.querySelectorAll('.bba-stack-row, .bba-stack-row-owned').forEach(el => {
+    el.classList.remove('bba-stack-row', 'bba-stack-row-owned');
+  });
+
+  // Team abbreviations are 2-3 uppercase letters; build a quick regex
+  const teamPattern = /^[A-Z]{2,3}$/;
+
+  for (const row of rows) {
+    // Walk all text nodes looking for a standalone team abbreviation
+    const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+    let node, foundTeam = null;
+    while ((node = walker.nextNode())) {
+      const t = node.textContent.trim();
+      if (teamPattern.test(t) && myTeams.has(t)) { foundTeam = t; break; }
+    }
+    if (!foundTeam) continue;
+
+    // Green if I already own a player from this team, blue for other stack targets
+    const ownedOnTeam = state.myTeam.filter(p => p.team === foundTeam);
+    row.classList.add(ownedOnTeam.length > 0 ? 'bba-stack-row-owned' : 'bba-stack-row');
+  }
+}
+
+function startStackHighlightObserver() {
+  if (_stackHighlightObserver) return;
+
+  // Re-highlight whenever DK updates its player list (React re-renders)
+  _stackHighlightObserver = new MutationObserver(() => {
+    if (state.myTeam.length) highlightStackPlayers();
+  });
+  _stackHighlightObserver.observe(document.body, { childList: true, subtree: true });
+}
+
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 function render() {
@@ -707,6 +798,7 @@ function render() {
   renderSyncBar();
   renderTurnBar();
   renderSuggestion();
+  highlightStackPlayers();
 }
 
 function renderSetupBanner() {
