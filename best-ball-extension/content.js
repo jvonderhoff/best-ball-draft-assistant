@@ -729,43 +729,29 @@ function highlightStackPlayers() {
   if (!state.myTeam.length) return;
   _ensureStackStyles();
 
-  // Teams I own at least one player from
   const myTeams = new Set(state.myTeam.map(p => p.team));
+  const teamPattern = /^[A-Z]{2,3}$/;
 
-  // DK renders the available-player list in several possible containers.
-  // We probe a prioritised list of selectors and use the first match that
-  // contains multiple children (i.e. looks like a player list).
-  const PLAYER_ROW_SELECTORS = [
-    '[class*="player-list"] [class*="player"]',
-    '[class*="PlayerList"] [class*="Player"]',
-    '[class*="available"] [class*="player"]',
-    '[class*="draftable"]',
-    '[class*="player-item"]',
-    '[class*="PlayerItem"]',
-    '[class*="roster-select"] li',
-  ];
-
-  // Collect candidate row elements
-  let rows = [];
-  for (const sel of PLAYER_ROW_SELECTORS) {
-    try {
-      const found = [...document.querySelectorAll(sel)];
-      if (found.length > 5) { rows = found; break; }
-    } catch (_) {}
-  }
-
-  if (!rows.length) return;
+  // DK uses "PlayerCell_player-name" inside player rows.
+  // Find each name element, walk up to its row container, then scan the
+  // whole row for a team-abbreviation text node.
+  const nameEls = [...document.querySelectorAll('[class*="PlayerCell_player-name"], [class*="player-name__"]')];
 
   // Reset previous highlights
   document.querySelectorAll('.bba-stack-row, .bba-stack-row-owned').forEach(el => {
     el.classList.remove('bba-stack-row', 'bba-stack-row-owned');
   });
 
-  // Team abbreviations are 2-3 uppercase letters; build a quick regex
-  const teamPattern = /^[A-Z]{2,3}$/;
+  if (!nameEls.length) return;
 
-  for (const row of rows) {
-    // Walk all text nodes looking for a standalone team abbreviation
+  for (const nameEl of nameEls) {
+    // The row container is a few levels up from the name element
+    const row = nameEl.closest('[class*="PlayerCell_player-cell"], [class*="player-cell__"]')
+               || nameEl.parentElement?.parentElement?.parentElement
+               || nameEl.parentElement;
+    if (!row) continue;
+
+    // Walk all text nodes in the row to find a team abbreviation
     const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
     let node, foundTeam = null;
     while ((node = walker.nextNode())) {
@@ -774,9 +760,10 @@ function highlightStackPlayers() {
     }
     if (!foundTeam) continue;
 
-    // Green if I already own a player from this team, blue for other stack targets
-    const ownedOnTeam = state.myTeam.filter(p => p.team === foundTeam);
-    row.classList.add(ownedOnTeam.length > 0 ? 'bba-stack-row-owned' : 'bba-stack-row');
+    // Green = I already own someone from this team; blue = potential stack partner
+    row.classList.add(state.myTeam.some(p => p.team === foundTeam)
+      ? 'bba-stack-row-owned'
+      : 'bba-stack-row');
   }
 }
 
