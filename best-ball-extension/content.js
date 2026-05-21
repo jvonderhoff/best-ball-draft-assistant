@@ -627,16 +627,31 @@ function findLastPickElement() {
 
 function pollForLastPick() {
   const playerEl = findLastPickElement();
-  if (!playerEl) return;
+  if (!playerEl) {
+    // Log once every 30s so we know if the element is simply missing
+    if (!pollForLastPick._noElLogged || Date.now() - pollForLastPick._noElLogged > 30000) {
+      pollForLastPick._noElLogged = Date.now();
+      console.log('[BBA] pollForLastPick: last-pick element not found in DOM');
+    }
+    return;
+  }
 
   const text = playerEl.textContent?.trim();
   if (!text || text === lastPickPollText) return;
   lastPickPollText = text;
 
+  console.log('[BBA] Last pick text:', text);
+
   const player = extractPlayerFromPickElement(playerEl);
-  if (!player || player.id === lastDetectedPick || state.drafted.has(player.id)) return;
+  if (!player) {
+    console.log('[BBA] Could not match player from text:', JSON.stringify(text),
+      '— parsed name:', JSON.stringify(text.slice(0, text.indexOf(' | ')).trim().toLowerCase()));
+    return;
+  }
+  if (player.id === lastDetectedPick || state.drafted.has(player.id)) return;
 
   lastDetectedPick = player.id;
+  console.log('[BBA] Detected pick:', player.name, player.pos, player.team);
 
   if (state.dkUsername) {
     // Auto-classify: if the user who was just on the clock is me, it's my pick
@@ -1087,17 +1102,36 @@ function tryClickDraftboardTab() {
   return false;
 }
 
-// One-shot board read — only runs if the draftboard tab is already visible.
-// We never auto-click the tab; the user stays on whatever tab they choose.
-// Live pick tracking works via pollForLastPick() regardless of active tab.
-// The "↻ Resync board" link in the overlay lets the user trigger a manual
-// sync after switching to the Draftboard tab themselves.
+// On load: click the Draftboard tab once to sync all picks, then never touch
+// tab navigation again. The user can navigate freely after initial sync.
 function scheduleBoardRead(delay = 2000) {
   setTimeout(() => {
     const columns = document.querySelectorAll('.DraftBoardColumn_draft-board-column');
-    if (columns.length) readDraftBoard();
-    // No retry — don't touch the tab navigation
+    if (columns.length) {
+      readDraftBoard();
+    } else {
+      tryClickDraftboardTab();
+      setTimeout(() => readDraftBoard(), 1500);
+    }
   }, delay);
+}
+
+// Passively watch for the DraftBoardColumn elements to appear in the DOM.
+// When the user switches to the Draftboard tab (even briefly), we auto-read
+// the full board and catch up on any picks pollForLastPick missed.
+// Never auto-clicks anything — user navigates freely.
+let _boardTabWatcher = null;
+function startBoardTabWatcher() {
+  if (_boardTabWatcher) return;
+  let lastColumnCount = 0;
+  _boardTabWatcher = setInterval(() => {
+    if (state.isComplete) { clearInterval(_boardTabWatcher); return; }
+    const columns = document.querySelectorAll('.DraftBoardColumn_draft-board-column');
+    if (columns.length && columns.length !== lastColumnCount) {
+      lastColumnCount = columns.length;
+      readDraftBoard();
+    }
+  }, 1500);
 }
 
 let autoDetectRetryTimer = null;
@@ -1123,8 +1157,8 @@ function init() {
       render();
       startPickPoller();
       startTimerWatcher();
-      // Start board-read loop: tries tab click + board read until 20 picks found
       scheduleBoardRead(500);
+      startBoardTabWatcher();
       tryAutoDetectPosition().then(() => {
         if (!autoPositionDetected) scheduleAutoDetectRetry(3000);
       });

@@ -1,7 +1,8 @@
 """
 Fetches NFL player data from DraftKings rankings page.
 Primary source: https://www.draftkings.com/draft/rankings/NFL/<DK_RANKINGS_ID>
-Fallback ADP:  FantasyPros best ball (DraftKings column)
+  - Uses Playwright to load the JS-rendered page and intercept API responses
+  - Falls back to the DK lineup CSV (salary rank as proxy ADP)
 
 Update DK_RANKINGS_ID each season — find it in the URL of the DK best ball rankings page.
 """
@@ -11,10 +12,8 @@ import json
 import os
 import re
 import requests
-from html.parser import HTMLParser
 
 CACHE_PATH = os.path.join(os.path.dirname(__file__), 'player_cache.json')
-FP_BEST_BALL_URL = 'https://www.fantasypros.com/nfl/adp/best-ball-overall.php'
 
 # ── DraftKings rankings config ─────────────────────────────────────────────────
 # Update this ID each season — taken from the URL on DK's rankings page.
@@ -216,14 +215,17 @@ def _dk_obj_to_player(obj: dict):
     ).strip().upper()
     if not team or team in ('FA', 'N/A'):
         return None
-    # ADP / rank
+    # ADP / rank — try every field name DK might use
     adp = None
-    rank = obj.get('rank') or obj.get('ranking') or obj.get('overallRank')
-    if rank:
-        try:
-            adp = float(rank)
-        except (ValueError, TypeError):
-            pass
+    for key in ('adp', 'avgDraftPosition', 'averageDraftPosition',
+                'rank', 'ranking', 'overallRank', 'draftPosition', 'pickNumber'):
+        val = obj.get(key)
+        if val is not None:
+            try:
+                adp = float(val)
+                break
+            except (ValueError, TypeError):
+                pass
     return {'name': name, 'pos': pos, 'team': team, 'adp': adp}
 
 
@@ -289,163 +291,248 @@ def _extract_dk_json_players(html: str) -> list:
     return []
 
 
+# ── DraftKings Playwright scraper ─────────────────────────────────────────────
+
+def _get_firefox_dk_cookies() -> list:
+    """
+    Read DraftKings session cookies from Firefox's SQLite cookie store.
+    Returns Playwright-compatible cookie dicts so the browser loads DK authenticated.
+    Copies the DB before opening it since Firefox may have it locked.
+    """
+    import glob, shutil, sqlite3, tempfile
+    patterns = [
+        '~/Library/Application Support/Firefox/Profiles/*.default-release*/cookies.sqlite',
+        '~/Library/Application Support/Firefox/Profiles/*.default/cookies.sqlite',
+        '~/.mozilla/firefox/*.default-release*/cookies.sqlite',
+        '~/.mozilla/firefox/*.default/cookies.sqlite',
+    ]
+    db_path = None
+    for pat in patterns:
+        matches = glob.glob(os.path.expanduser(pat))
+        if matches:
+            db_path = matches[0]
+            break
+    if not db_path:
+        print('  [Playwright] Firefox cookie DB not found')
+        return []
+
+    tmp = tempfile.mktemp(suffix='.sqlite')
+    try:
+        shutil.copy2(db_path, tmp)
+        conn = sqlite3.connect(tmp)
+        rows = conn.execute(
+            'SELECT name, value, host, path, expiry, isSecure, isHttpOnly '
+            'FROM moz_cookies WHERE host LIKE "%draftkings%"'
+        ).fetchall()
+        conn.close()
+    except Exception as e:
+        print(f'  [Playwright] cookie read error: {e}')
+        return []
+    finally:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+
+    cookies = []
+    for name, value, domain, path, expiry, secure, http_only in rows:
+        cookies.append({
+            'name': name, 'value': value,
+            'domain': domain if domain.startswith('.') else f'.{domain}',
+            'path': path or '/',
+            # Firefox stores expiry in ms; Playwright wants seconds
+            'expires': int(expiry / 1000) if expiry and expiry > 0 else -1,
+            'secure': bool(secure),
+            'httpOnly': bool(http_only),
+            'sameSite': 'None',
+        })
+    print(f'  [Playwright] loaded {len(cookies)} DK cookies from Firefox')
+    return cookies
+
+
+def _parse_dk_api_responses(responses: dict) -> list:
+    """
+    Parse the two key DK API responses captured from the rankings page:
+      - rankings/v1/.../playerpool  → averageDraftPosition, rank, name, pos
+      - draftgroups/v1/.../draftables → teamAbbreviation, draftableId, playerId
+
+    Merges them by playerId, deduplicates (draftables has one row per roster slot),
+    and returns {id, name, pos, team, adp} dicts sorted by adp.
+    """
+    # playerPool is a dict {draftablePlayers: [...]}, not a list directly
+    playerpool = (responses.get('playerpool', {})
+                           .get('playerPool', {})
+                           .get('draftablePlayers', []))
+    draftables_list = responses.get('draftables', {}).get('draftables', [])
+
+    if not playerpool:
+        return []
+
+    # Build draftableId → {pos, team} and playerId → draftableId from draftables.
+    # draftables has one entry per roster slot per player; we deduplicate by playerId.
+    draftable_map = {}  # draftableId → {pos, team, playerId}
+    pid_to_did    = {}  # playerId    → first draftableId seen
+    pid_to_team   = {}  # playerId    → teamAbbreviation
+    for d in draftables_list:
+        did = d.get('draftableId')
+        pid = d.get('playerId')
+        pos = (d.get('position') or '').strip().upper()
+        team = (d.get('teamAbbreviation') or d.get('teamAbbrev') or '').strip().upper()
+        if did:
+            draftable_map[did] = {'pos': pos, 'team': team, 'pid': pid}
+        if pid:
+            pid_to_team.setdefault(pid, team)
+            pid_to_did.setdefault(pid, did)
+
+    players = []
+    seen = set()
+    for p in playerpool:
+        pid = p.get('playerId')
+        if not pid or pid in seen:
+            continue
+        seen.add(pid)
+
+        name = (p.get('displayName') or
+                f"{p.get('firstName','')} {p.get('lastName','')}".strip())
+        if not name:
+            continue
+
+        # Position comes from draftables via the draftableId in draftableRosterPositions.
+        # draftableRosterPositions is a list of dicts: [{draftableId, rosterPositionId, ...}]
+        pos = None
+        for slot in (p.get('draftableRosterPositions') or []):
+            did = slot.get('draftableId') if isinstance(slot, dict) else None
+            if did and draftable_map.get(did, {}).get('pos') in SKILL_POSITIONS:
+                pos = draftable_map[did]['pos']
+                break
+        # Fallback: look up by playerId directly
+        if not pos:
+            did = pid_to_did.get(pid)
+            if did:
+                pos = draftable_map.get(did, {}).get('pos', '')
+        if pos not in SKILL_POSITIONS:
+            continue
+
+        team = pid_to_team.get(pid, '').upper()
+        if not team or team in ('FA', 'N/A', ''):
+            continue
+
+        adp = p.get('averageDraftPosition') or p.get('rank')
+        try:
+            adp = float(adp) if adp is not None else None
+        except (ValueError, TypeError):
+            adp = None
+
+        did = pid_to_did.get(pid)
+        dk_id = f'dk_{did}' if did else f'dk_{pid}'
+        players.append({'name': name, 'pos': pos, 'team': team, 'adp': adp, 'dk_id': dk_id})
+
+    players_with_adp = [p for p in players if p['adp'] is not None]
+    if players_with_adp:
+        players_with_adp.sort(key=lambda p: p['adp'])
+        return players_with_adp
+    return players
+
+
+def _fetch_dk_rankings_playwright(ranking_id: str = DK_RANKINGS_ID) -> list:
+    """
+    Load DK's rankings page with Playwright (authenticated via Firefox cookies).
+    Intercepts the playerpool API response (real ADP) and draftables (team info).
+    Returns {name, pos, team, adp, dk_id} dicts sorted by adp, or [] on failure.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print('  [Playwright] not installed — run: pip install playwright && playwright install chromium')
+        return []
+
+    url = f'https://www.draftkings.com/draft/rankings/NFL/{ranking_id}'
+    print(f'  [Playwright] loading {url}')
+
+    dk_cookies = _get_firefox_dk_cookies()
+    responses = {}  # keyed by 'playerpool' and 'draftables'
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        context = browser.new_context(
+            user_agent=(
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+            )
+        )
+        if dk_cookies:
+            context.add_cookies(dk_cookies)
+
+        page = context.new_page()
+
+        def _on_response(response):
+            url_lower = response.url.lower()
+            ct = response.headers.get('content-type', '')
+            if 'json' not in ct:
+                return
+            try:
+                if 'playerpool' in url_lower:
+                    responses['playerpool'] = response.json()
+                    print(f'  [Playwright] captured playerpool ({len(response.body())} bytes)')
+                elif 'draftables' in url_lower and 'draftables' not in responses:
+                    responses['draftables'] = response.json()
+                    print(f'  [Playwright] captured draftables ({len(response.body())} bytes)')
+            except Exception:
+                pass
+
+        page.on('response', _on_response)
+
+        try:
+            page.goto(url, wait_until='domcontentloaded', timeout=20000)
+            page.wait_for_timeout(6000)
+        except Exception as e:
+            print(f'  [Playwright] navigation warning: {e}')
+
+        browser.close()
+
+    if not responses:
+        print('  [Playwright] no API responses captured — is Firefox logged in to DK?')
+        return []
+
+    players = _parse_dk_api_responses(responses)
+    if players:
+        has_adp = sum(1 for p in players if p['adp'] is not None)
+        print(f'  [Playwright] ✓ {len(players)} players, {has_adp} with ADP')
+    else:
+        print('  [Playwright] parsing returned no players')
+    return players
+
+
 # ── DraftKings fetch orchestrator ──────────────────────────────────────────────
 
 def fetch_dk_players(ranking_id: str = DK_RANKINGS_ID) -> list:
     """
-    Fetch the DK player pool from their rankings page.
-    Tries several strategies in order:
-      1. Lineup available-players CSV  (works if ID is a draft-group ID)
-      2. Rankings export CSV           (works if DK exposes a CSV export)
-      3. JSON embedded in the rankings page HTML
-    Returns a list of dicts with keys: name, pos, team, adp (adp may be None).
-    Returns [] on total failure — caller should fall back to FantasyPros.
+    Fetch the DK player pool with real ADP from the rankings page.
+    Strategy 1: Playwright — loads the JS-rendered page, intercepts API responses
+    Strategy 2: Lineup CSV — salary rank used as ADP proxy (no Playwright needed)
+    Returns list of {name, pos, team, adp} dicts, adp may be None on full failure.
     """
+    # Strategy 1 — Playwright (real ADP from DK's rankings page)
+    players = _fetch_dk_rankings_playwright(ranking_id)
+    if players:
+        return players
+
+    # Strategy 2 — lineup CSV with salary rank as ADP proxy
     session = requests.Session()
     session.headers.update(_DK_HEADERS)
-
-    # Strategy 1 — lineup CSV (draft-group ID path)
     url = f'https://www.draftkings.com/lineup/getavailableplayerscsv?draftGroupId={ranking_id}'
-    print(f'  [DK] trying lineup CSV: {url}')
+    print(f'  [DK] falling back to lineup CSV: {url}')
     try:
         r = session.get(url, timeout=15)
         if r.ok and len(r.text) > 200 and ',' in r.text[:500]:
             players = _parse_dk_lineup_csv(r.text)
             if players:
-                print(f'  [DK] lineup CSV: {len(players)} players')
+                print(f'  [DK] lineup CSV: {len(players)} players (salary rank as ADP)')
                 return players
-            print(f'  [DK] lineup CSV returned data but parsed 0 skill-pos players')
-            print(f'  [DK] first 300 chars: {r.text[:300]}')
     except Exception as e:
         print(f'  [DK] lineup CSV error: {e}')
 
-    # Strategy 2 — rankings export CSV
-    url = f'https://www.draftkings.com/rankings/get-rankings-csv?rankingTypeId={ranking_id}'
-    print(f'  [DK] trying rankings CSV: {url}')
-    try:
-        r = session.get(url, timeout=15)
-        if r.ok and len(r.text) > 200 and ',' in r.text[:500]:
-            players = _parse_dk_rankings_csv(r.text)
-            if players:
-                print(f'  [DK] rankings CSV: {len(players)} players')
-                return players
-            print(f'  [DK] rankings CSV first 300 chars: {r.text[:300]}')
-    except Exception as e:
-        print(f'  [DK] rankings CSV error: {e}')
-
-    # Strategy 3 — scrape the rankings page and extract embedded JSON
-    url = f'https://www.draftkings.com/draft/rankings/NFL/{ranking_id}'
-    print(f'  [DK] trying rankings page HTML: {url}')
-    try:
-        r = session.get(url, timeout=20)
-        if r.ok:
-            players = _extract_dk_json_players(r.text)
-            if players:
-                print(f'  [DK] page JSON: {len(players)} players')
-                return players
-            # Dump a snippet to help diagnose
-            print(f'  [DK] no player JSON found — page title: '
-                  f'{re.search(r"<title>(.*?)</title>", r.text, re.I) and re.search(r"<title>(.*?)</title>", r.text, re.I).group(1)}')
-            print(f'  [DK] page length: {len(r.text)} bytes')
-        else:
-            print(f'  [DK] rankings page returned HTTP {r.status_code}')
-    except Exception as e:
-        print(f'  [DK] rankings page error: {e}')
-
     return []
-
-
-# ── FantasyPros fallback (ADP only) ───────────────────────────────────────────
-
-class _TableParser(HTMLParser):
-    """Extracts rows from the first HTML table encountered."""
-    def __init__(self):
-        super().__init__()
-        self.in_table = self.in_tr = self.in_cell = False
-        self.rows = []
-        self._row = []
-        self._cell = ''
-
-    def handle_starttag(self, tag, attrs):
-        if tag == 'table':
-            self.in_table = True
-        if self.in_table and tag == 'tr':
-            self.in_tr = True; self._row = []
-        if self.in_tr and tag in ('td', 'th'):
-            self.in_cell = True; self._cell = ''
-
-    def handle_endtag(self, tag):
-        if tag == 'table':
-            self.in_table = False
-        if self.in_table and tag == 'tr':
-            self.in_tr = False
-            if self._row:
-                self.rows.append(self._row[:])
-        if self.in_tr and tag in ('td', 'th'):
-            self.in_cell = False
-            self._row.append(self._cell.strip())
-
-    def handle_data(self, data):
-        if self.in_cell:
-            self._cell += data
-
-
-def _normalize_name(name: str) -> str:
-    name = name.lower()
-    name = re.sub(r"['\.\-]", '', name)
-    return re.sub(r'\s+', ' ', name).strip()
-
-
-def _fetch_fp_adp() -> dict:
-    """
-    Scrape FantasyPros best ball ADP page.
-    Returns dict: normalized_name -> adp float.
-    Uses DraftKings column; falls back to consensus AVG.
-    """
-    try:
-        resp = requests.get(FP_BEST_BALL_URL, timeout=15, headers={
-            'User-Agent': 'Mozilla/5.0',
-            'Referer': 'https://www.fantasypros.com/',
-        })
-        resp.raise_for_status()
-        parser = _TableParser()
-        parser.feed(resp.text)
-        if not parser.rows:
-            return {}
-        header = parser.rows[0]
-        # Column headers change slightly (e.g. "Player Team" vs "Player Team (Bye)")
-        # so find them by prefix/substring match instead of exact equality.
-        def _find_col(headers, *keywords):
-            for kw in keywords:
-                for i, h in enumerate(headers):
-                    if kw.lower() in h.lower():
-                        return i
-            return None
-
-        dk_col   = _find_col(header, 'DraftKings')
-        avg_col  = _find_col(header, 'AVG')
-        name_col = _find_col(header, 'Player Team', 'Player')
-        if dk_col is None or avg_col is None or name_col is None:
-            print(f'  [FP] could not identify columns: {header}')
-            return {}
-        result = {}
-        for row in parser.rows[1:]:
-            if len(row) <= max(dk_col, avg_col, name_col):
-                continue
-            # "Bijan Robinson ATL (11)" — strip trailing bye "(N)" then team abbreviation
-            raw_name = row[name_col]
-            raw_name = re.sub(r'\s*\(\d+\)\s*$', '', raw_name)      # strip "(11)"
-            raw_name = re.sub(r'\s+[A-Z]{2,3}$', '', raw_name).strip()  # strip "ATL"
-            dk_val   = row[dk_col].strip()
-            avg_val  = row[avg_col].strip()
-            adp_str  = dk_val if dk_val and dk_val not in ('-', 'N/A', '') else avg_val
-            try:
-                result[_normalize_name(raw_name)] = float(adp_str)
-            except (ValueError, TypeError):
-                pass
-        return result
-    except Exception:
-        return {}
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
@@ -455,12 +542,10 @@ def fetch_players(force_refresh=False):
     Return player list.  Uses cache unless force_refresh=True or no cache exists.
 
     Data pipeline:
-      1. Fetch players + salary rank from DraftKings lineup CSV (names/teams are exact
-         matches to what DK renders on the draft board)
-      2. Merge in FantasyPros DK best-ball ADP — this is the actual ADP shown on the
-         DK rankings page, expressed as float pick numbers (e.g. 12.3).
-         Players not ranked by FP fall back to DK salary rank.
-      3. Sort by merged ADP, then assign sequential integer ADP (1 = best).
+      1. Playwright loads DK's JS-rendered rankings page and intercepts the API
+         response — gives real DK best ball ADP directly from the source.
+      2. Falls back to DK lineup CSV (salary rank as ADP proxy) if Playwright fails.
+      3. Sort by ADP ascending, assign sequential integer ADP (1 = best).
       4. Enrich with bye week + playoff schedule from static 2026 tables.
     """
     cached = _load_cache()
@@ -474,38 +559,14 @@ def fetch_players(force_refresh=False):
         print('  ERROR: DraftKings fetch failed — cannot continue.')
         return cached or []
 
-    print(f'  ✓ DraftKings: {len(dk_players)} players (sorted by DK salary rank)')
-
-    # Build normalized name → FP ADP lookup
-    print('Fetching ADP from FantasyPros (DraftKings column)...')
-    fp_adp = _fetch_fp_adp()
-    fp_matched = 0
-    if fp_adp:
-        print(f'  ✓ FantasyPros: {len(fp_adp)} players with DK ADP')
-    else:
-        print('  FantasyPros ADP unavailable — using DK salary rank as ADP')
+    print(f'  ✓ {len(dk_players)} players fetched')
 
     players = []
-    for dk_p in dk_players:
+    for i, dk_p in enumerate(dk_players, 1):
         team     = dk_p['team']
         schedule = PLAYOFF_SCHEDULE_2026.get(team, (None, None, None))
-        player_id = dk_p.get('dk_id') or f'dk_{int(dk_p["adp"])}'
-
-        # Try to find a real ADP from FantasyPros using normalized name matching.
-        # DK names ("Brian Robinson Jr.") and FP names ("Brian Robinson") can differ
-        # slightly, so try the full name first, then drop generation suffix.
-        adp = dk_p['adp']  # default: DK salary rank
-        if fp_adp:
-            norm = _normalize_name(dk_p['name'])
-            if norm in fp_adp:
-                adp = fp_adp[norm]
-                fp_matched += 1
-            else:
-                # Try without Jr./Sr./II/III suffix
-                norm_no_suffix = re.sub(r'\s+(?:jr|sr|ii|iii|iv|v)$', '', norm).strip()
-                if norm_no_suffix in fp_adp:
-                    adp = fp_adp[norm_no_suffix]
-                    fp_matched += 1
+        player_id = dk_p.get('dk_id') or f'dk_{i}'
+        adp = dk_p.get('adp') or i
 
         players.append({
             'id':     player_id,
@@ -519,9 +580,6 @@ def fetch_players(force_refresh=False):
             'week16': schedule[1],
             'week17': schedule[2],
         })
-
-    if fp_adp:
-        print(f'  ✓ ADP merged: {fp_matched}/{len(players)} players have FantasyPros DK ADP')
 
     # Sort by ADP ascending, then re-number as sequential integers
     players.sort(key=lambda p: p['adp'])
