@@ -247,5 +247,23 @@ def export_rankings_to_extension():
         return jsonify({'error': str(e)}), 500
 
 
+# ── Analysis ──────────────────────────────────────────────────────────────────
+
+@app.route('/analysis')
+def analysis_page():
+    return render_template('analysis.html')
+
+
+@app.route('/api/analysis', methods=['GET'])
+def get_analysis():
+    try:
+        from app.analysis import get_analysis_data
+        force = request.args.get('refresh', '').lower() in ('1', 'true', 'yes')
+        players = get_analysis_data(force_refresh=force)
+        return jsonify({'ok': True, 'players': players, 'count': len(players)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

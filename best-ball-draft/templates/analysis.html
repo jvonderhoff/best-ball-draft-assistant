@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Best Ball — Player Analysis</title>
+  <style>
+    :root {
+      --bg: #0f1419; --surface: #1a2535; --border: #2a3f5f;
+      --text: #e0e0e0; --muted: #78909c; --accent: #4fc3f7;
+      --green: #4caf50; --amber: #ffc107; --red: #ef5350;
+      --elite: #ffd700; --strong: #4caf50; --solid: #4fc3f7;
+      --spec: #ff9800; --flier: #78909c;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+    /* ── Nav ── */
+    nav { background: #111e2e; border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; gap: 24px; height: 48px; }
+    nav a { color: var(--muted); text-decoration: none; font-size: 0.88em; font-weight: 600; padding: 4px 0; border-bottom: 2px solid transparent; }
+    nav a:hover { color: var(--text); }
+    nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .nav-brand { color: var(--accent); font-weight: 700; font-size: 1em; margin-right: 8px; }
+
+    /* ── Page layout ── */
+    .page { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+    .page-header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+    .page-title { font-size: 1.3em; font-weight: 700; color: var(--accent); }
+    .page-sub { font-size: 0.8em; color: var(--muted); margin-top: 3px; }
+
+    /* ── Controls ── */
+    .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .search-box {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: 6px 12px; font-size: 0.85em; width: 200px;
+      outline: none;
+    }
+    .search-box:focus { border-color: var(--accent); }
+    .btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: 6px 14px; font-size: 0.82em; font-weight: 600;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-refresh { border-color: #1565c0; color: var(--accent); }
+    .btn-refresh:hover { background: #1565c0; color: #fff; }
+    .btn-refresh:disabled { opacity: 0.5; cursor: wait; }
+
+    /* ── Position tabs ── */
+    .pos-tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+    .pos-tab {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 20px; padding: 4px 14px; font-size: 0.8em; font-weight: 700;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .pos-tab:hover { color: var(--text); border-color: #4a6080; }
+    .pos-tab.active { border-color: var(--accent); color: var(--accent); background: #0d1f33; }
+
+    /* ── Stats bar ── */
+    .stats-bar { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+    .stat-chip {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 14px; font-size: 0.8em;
+    }
+    .stat-chip strong { color: var(--accent); }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
+    thead { background: #111e2e; position: sticky; top: 0; z-index: 1; }
+    th {
+      padding: 10px 10px; text-align: left; color: var(--muted); font-weight: 700;
+      font-size: 0.78em; letter-spacing: 0.04em; border-bottom: 1px solid var(--border);
+      cursor: pointer; white-space: nowrap; user-select: none;
+    }
+    th:hover { color: var(--text); }
+    th.sorted { color: var(--accent); }
+    th .sort-arrow { margin-left: 3px; font-size: 0.8em; }
+    td { padding: 8px 10px; border-bottom: 1px solid #1a2535; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #151f2e; }
+
+    /* ── Tier badge ── */
+    .tier {
+      display: inline-block; padding: 2px 7px; border-radius: 10px;
+      font-size: 0.72em; font-weight: 700; letter-spacing: 0.04em; white-space: nowrap;
+    }
+    .tier-Elite   { background: #3d3000; color: var(--elite);  border: 1px solid #7a6000; }
+    .tier-Strong  { background: #1b3a1b; color: var(--strong); border: 1px solid #2e6b2e; }
+    .tier-Solid   { background: #0d2638; color: var(--solid);  border: 1px solid #1a5070; }
+    .tier-Speculative { background: #3d2200; color: var(--spec); border: 1px solid #7a4400; }
+    .tier-Flier   { background: #1e2a33; color: var(--flier); border: 1px solid #354555; }
+
+    /* ── Pos badge ── */
+    .pos { font-size: 0.7em; font-weight: 700; padding: 1px 5px; border-radius: 3px; }
+    .pos-QB { background: #880e4f; color: #f48fb1; }
+    .pos-RB { background: #0d47a1; color: #90caf9; }
+    .pos-WR { background: #1b5e20; color: #a5d6a7; }
+    .pos-TE { background: #e65100; color: #ffcc80; }
+
+    /* ── Score bars ── */
+    .score-bar-wrap { display: flex; align-items: center; gap: 6px; }
+    .score-bar { height: 4px; border-radius: 2px; flex-shrink: 0; }
+    .score-val { font-weight: 600; color: var(--text); min-width: 34px; }
+    .composite-val { font-weight: 700; font-size: 1.05em; color: var(--accent); }
+
+    /* ── Delta ── */
+    .delta { font-weight: 700; font-size: 0.9em; }
+    .delta-pos { color: var(--green); }   /* undervalued */
+    .delta-neg { color: var(--red); }     /* overvalued */
+    .delta-zero { color: var(--muted); }
+
+    /* ── Loading/empty ── */
+    .loading, .error-msg, .empty-msg {
+      text-align: center; padding: 60px 20px; color: var(--muted); font-size: 0.9em;
+    }
+    .error-msg { color: var(--red); }
+    .spinner {
+      width: 32px; height: 32px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.7s linear infinite; margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Sleeper link indicator ── */
+    .no-data { color: #37474f; font-style: italic; font-size: 0.85em; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span class="nav-brand">⚡ BBA</span>
+  <a href="/">Draft</a>
+  <a href="/history">History</a>
+  <a href="/rankings">Rankings</a>
+  <a href="/analysis" class="active">Analysis</a>
+</nav>
+
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Player Analysis</div>
+      <div class="page-sub">Composite score: 2025 performance (45%) · ADP value (30%) · durability (15%) · playoff schedule (10%)</div>
+    </div>
+    <div class="controls">
+      <input class="search-box" id="search" type="text" placeholder="Search player or team…">
+      <button class="btn btn-refresh" id="refresh-btn" onclick="loadData(true)">↻ Refresh Stats</button>
+    </div>
+  </div>
+
+  <div class="pos-tabs" id="pos-tabs">
+    <button class="pos-tab active" data-pos="">All</button>
+    <button class="pos-tab" data-pos="QB">QB</button>
+    <button class="pos-tab" data-pos="RB">RB</button>
+    <button class="pos-tab" data-pos="WR">WR</button>
+    <button class="pos-tab" data-pos="TE">TE</button>
+  </div>
+
+  <div class="stats-bar" id="stats-bar" style="display:none">
+    <div class="stat-chip">Total: <strong id="stat-total">—</strong></div>
+    <div class="stat-chip">Elite: <strong id="stat-elite">—</strong></div>
+    <div class="stat-chip">Strong: <strong id="stat-strong">—</strong></div>
+    <div class="stat-chip">Solid: <strong id="stat-solid">—</strong></div>
+    <div class="stat-chip">Avg Composite: <strong id="stat-avg">—</strong></div>
+  </div>
+
+  <div class="table-wrap">
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      Fetching 2025 Sleeper stats…
+    </div>
+    <div class="error-msg" id="error-msg" style="display:none"></div>
+    <table id="analysis-table" style="display:none">
+      <thead>
+        <tr>
+          <th data-col="analysis_rank" class="sorted"># <span class="sort-arrow">▼</span></th>
+          <th data-col="name">Player</th>
+          <th data-col="pos">Pos</th>
+          <th data-col="composite">Score <span class="sort-arrow"></span></th>
+          <th data-col="tier">Tier</th>
+          <th data-col="value_delta">Δ ADP <span class="sort-arrow"></span></th>
+          <th data-col="adp">DK ADP <span class="sort-arrow"></span></th>
+          <th data-col="pts_half_ppr">Half-PPR <span class="sort-arrow"></span></th>
+          <th data-col="gp">GP <span class="sort-arrow"></span></th>
+          <th data-col="perf_score">Perf <span class="sort-arrow"></span></th>
+          <th data-col="durability">Dur <span class="sort-arrow"></span></th>
+          <th data-col="schedule_score">Sched <span class="sort-arrow"></span></th>
+          <th data-col="rush_yd">Rush Yd <span class="sort-arrow"></span></th>
+          <th data-col="rec_yd">Rec Yd <span class="sort-arrow"></span></th>
+          <th data-col="pass_yd">Pass Yd <span class="sort-arrow"></span></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="empty-msg" id="empty-msg" style="display:none">No players match your filter.</div>
+  </div>
+</div>
+
+<script>
+let allPlayers = [];
+let sortCol = 'analysis_rank';
+let sortDir = 1;   // 1 = asc, -1 = desc
+let activePos = '';
+let searchQ = '';
+
+// ── Load data ─────────────────────────────────────────────────────────────────
+
+async function loadData(forceRefresh = false) {
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+  btn.textContent = '↻ Loading…';
+  document.getElementById('loading').style.display = '';
+  document.getElementById('analysis-table').style.display = 'none';
+  document.getElementById('error-msg').style.display = 'none';
+  document.getElementById('empty-msg').style.display = 'none';
+  document.getElementById('stats-bar').style.display = 'none';
+
+  try {
+    const url = '/api/analysis' + (forceRefresh ? '?refresh=1' : '');
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!res.ok || !json.ok) throw new Error(json.error || 'Unknown error');
+    allPlayers = json.players;
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('stats-bar').style.display = '';
+    document.getElementById('analysis-table').style.display = '';
+    renderTable();
+  } catch (e) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error-msg').style.display = '';
+    document.getElementById('error-msg').textContent = '⚠ ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Refresh Stats';
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function renderTable() {
+  let rows = allPlayers.filter(p => {
+    if (activePos && p.pos !== activePos) return false;
+    if (searchQ) {
+      const q = searchQ.toLowerCase();
+      if (!p.name.toLowerCase().includes(q) && !p.team.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  rows.sort((a, b) => {
+    let av = a[sortCol] ?? (sortDir === 1 ? Infinity : -Infinity);
+    let bv = b[sortCol] ?? (sortDir === 1 ? Infinity : -Infinity);
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    return av < bv ? -sortDir : av > bv ? sortDir : 0;
+  });
+
+  // Stats bar
+  const showing = rows;
+  document.getElementById('stat-total').textContent = showing.length;
+  document.getElementById('stat-elite').textContent = showing.filter(p => p.tier === 'Elite').length;
+  document.getElementById('stat-strong').textContent = showing.filter(p => p.tier === 'Strong').length;
+  document.getElementById('stat-solid').textContent = showing.filter(p => p.tier === 'Solid').length;
+  const avgComp = showing.length ? (showing.reduce((s, p) => s + p.composite, 0) / showing.length).toFixed(1) : '—';
+  document.getElementById('stat-avg').textContent = avgComp;
+
+  const tbody = document.getElementById('tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '';
+    document.getElementById('analysis-table').style.display = 'none';
+    document.getElementById('empty-msg').style.display = '';
+    return;
+  }
+  document.getElementById('analysis-table').style.display = '';
+  document.getElementById('empty-msg').style.display = 'none';
+
+  tbody.innerHTML = rows.map((p, i) => {
+    const delta = p.value_delta;
+    let deltaStr, deltaCls;
+    if (delta > 0)       { deltaStr = `+${delta}`; deltaCls = 'delta-pos'; }
+    else if (delta < 0)  { deltaStr = `${delta}`;  deltaCls = 'delta-neg'; }
+    else                 { deltaStr = '—';           deltaCls = 'delta-zero'; }
+
+    const hasStats = p.pts_half_ppr > 0;
+
+    const barColor = (val) => {
+      if (val >= 70) return '#4caf50';
+      if (val >= 40) return '#4fc3f7';
+      if (val >= 20) return '#ff9800';
+      return '#546e7a';
+    };
+
+    const miniBar = (val, max = 100, color) => {
+      const w = Math.round(Math.min(val, max) / max * 60);
+      return `<div class="score-bar" style="width:${w}px;background:${color || barColor(val)}"></div>`;
+    };
+
+    const statCell = (val, fallback = '—') => val ? val.toLocaleString() : `<span class="no-data">${fallback}</span>`;
+
+    return `
+      <tr>
+        <td style="color:var(--muted);font-weight:700">${p.analysis_rank}</td>
+        <td>
+          <span style="font-weight:600;color:var(--text)">${p.name}</span>
+          <span style="color:var(--muted);font-size:0.82em;margin-left:5px">${p.team}</span>
+        </td>
+        <td><span class="pos pos-${p.pos}">${p.pos}</span></td>
+        <td>
+          <div class="score-bar-wrap">
+            ${miniBar(p.composite, 100, barColor(p.composite))}
+            <span class="composite-val">${p.composite}</span>
+          </div>
+        </td>
+        <td><span class="tier tier-${p.tier.replace(' ','')}">${p.tier}</span></td>
+        <td><span class="delta ${deltaCls}">${deltaStr}</span></td>
+        <td style="color:var(--muted)">${p.adp ?? '—'}</td>
+        <td>${hasStats ? `<strong>${p.pts_half_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
+        <td>${hasStats ? p.gp : '<span class="no-data">—</span>'}</td>
+        <td>
+          <div class="score-bar-wrap">
+            ${miniBar(p.perf_score)}
+            <span class="score-val">${p.perf_score}</span>
+          </div>
+        </td>
+        <td>
+          <div class="score-bar-wrap">
+            ${miniBar(p.durability)}
+            <span class="score-val">${p.durability}</span>
+          </div>
+        </td>
+        <td>
+          <div class="score-bar-wrap">
+            ${miniBar(p.schedule_score)}
+            <span class="score-val">${p.schedule_score}</span>
+          </div>
+        </td>
+        <td>${statCell(p.rush_yd)}</td>
+        <td>${statCell(p.rec_yd)}</td>
+        <td>${statCell(p.pass_yd)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ── Sorting ───────────────────────────────────────────────────────────────────
+
+document.querySelectorAll('th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (sortCol === col) {
+      sortDir *= -1;
+    } else {
+      sortCol = col;
+      sortDir = col === 'analysis_rank' || col === 'adp' ? 1 : -1;
+    }
+    document.querySelectorAll('th[data-col]').forEach(t => {
+      t.classList.remove('sorted');
+      const arrow = t.querySelector('.sort-arrow');
+      if (arrow) arrow.textContent = '';
+    });
+    th.classList.add('sorted');
+    const arrow = th.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = sortDir === 1 ? '▼' : '▲';
+    renderTable();
+  });
+});
+
+// ── Position tabs ─────────────────────────────────────────────────────────────
+
+document.querySelectorAll('.pos-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pos-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activePos = btn.dataset.pos;
+    renderTable();
+  });
+});
+
+// ── Search ────────────────────────────────────────────────────────────────────
+
+document.getElementById('search').addEventListener('input', e => {
+  searchQ = e.target.value.trim();
+  renderTable();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+loadData();
+</script>
+</body>
+</html>
