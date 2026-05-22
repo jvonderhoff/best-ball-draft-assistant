@@ -160,6 +160,31 @@ def handle_get_exposure():
     return {'ok': True, 'data': {'total_drafts': total, 'players': players}}
 
 
+def handle_get_rankings():
+    with get_db() as conn:
+        ensure_schema(conn)
+        # Ensure player_rankings table exists
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS player_rankings (
+                player_id   TEXT PRIMARY KEY,
+                custom_rank INTEGER,
+                notes       TEXT DEFAULT '',
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        rows = conn.execute("""
+            SELECT p.player_id, p.name, p.pos, p.team, p.adp,
+                   p.week15, p.week16, p.week17,
+                   r.custom_rank
+            FROM players p
+            LEFT JOIN player_rankings r ON p.player_id = r.player_id
+            WHERE r.custom_rank IS NOT NULL
+            ORDER BY r.custom_rank
+        """).fetchall()
+        players = [dict(r) for r in rows]
+    return {'ok': True, 'data': players}
+
+
 def main():
     msg = read_msg()
     if not msg:
@@ -172,6 +197,8 @@ def main():
         send_msg(handle_get_exposure())
     elif action == 'refreshPlayers':
         send_msg(handle_refresh_players(msg))
+    elif action == 'getRankings':
+        send_msg(handle_get_rankings())
     else:
         send_msg({'ok': False, 'error': f'unknown action: {action}'})
 
