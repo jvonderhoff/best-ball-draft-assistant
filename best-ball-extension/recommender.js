@@ -1,15 +1,17 @@
 // Draft recommendation engine
 
 // ── Stack bonus multipliers by intensity ──────────────────────────────────────
-// First stacker  = first pass-catcher (WR/TE) drafted from your QB's team
-// Second stacker = second pass-catcher from same QB's team
-// QB pull        = boost to a QB when you already have his pass-catchers
+// first      = 1st pass-catcher (WR/TE) from your QB's team
+// second     = 2nd pass-catcher from same QB's team
+// qbPull     = QB whose pass-catchers you already own
+// cluster    = 2nd+ WR/TE from a team even without the QB (building a receiver room)
+// rbCorrel   = RB from a team where you already have other players (correlated scoring)
 
 const STACK_SETTINGS = {
-  off:        { first: 1.00, second: 1.00, qbPull: 1.00 },
-  light:      { first: 1.15, second: 1.05, qbPull: 1.10 },
-  medium:     { first: 1.25, second: 1.10, qbPull: 1.18 },
-  heavy:      { first: 1.40, second: 1.18, qbPull: 1.28 },
+  off:    { first: 1.00, second: 1.00, qbPull: 1.00, cluster: 1.00, rbCorrel: 1.00 },
+  light:  { first: 1.15, second: 1.05, qbPull: 1.10, cluster: 1.05, rbCorrel: 1.03 },
+  medium: { first: 1.25, second: 1.10, qbPull: 1.18, cluster: 1.10, rbCorrel: 1.05 },
+  heavy:  { first: 1.40, second: 1.18, qbPull: 1.28, cluster: 1.15, rbCorrel: 1.08 },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -152,23 +154,35 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const round = Math.floor(myPickNumber / 5) + 1;
   if (round <= 3) mult *= 1.1;
 
-  // Same-team stacking bonus (QB + pass-catchers)
+  // Same-team stacking bonuses
   const s = STACK_SETTINGS[stackIntensity] || STACK_SETTINGS.medium;
   if (myTeam && stackIntensity !== 'off') {
     const qbTeams = getMyQBTeams(myTeam);
+    const existingCatchers = passCatcherCount(player.team, myTeam);
+    const teamMates = myTeam.filter(p => p.team === player.team).length;
 
-    if (['WR', 'TE'].includes(pos) && qbTeams.has(player.team)) {
-      // Pass-catcher from one of my QB's teams
-      const existing = passCatcherCount(player.team, myTeam);
-      if (existing === 0)      mult *= s.first;   // first stacker
-      else if (existing === 1) mult *= s.second;  // second stacker (diminishing)
-      // 3+ stackers: no bonus (don't over-concentrate)
+    if (['WR', 'TE'].includes(pos)) {
+      if (qbTeams.has(player.team)) {
+        // Pass-catcher from one of my QB's teams — full QB-stack bonus
+        if (existingCatchers === 0)      mult *= s.first;
+        else if (existingCatchers === 1) mult *= s.second;
+        // 3+ pass-catchers from same QB's team: no bonus (over-concentrated)
+      } else if (existingCatchers >= 1) {
+        // Already have a pass-catcher from this team but no QB yet —
+        // building a receiver room; smaller bonus since correlation is QB-dependent
+        mult *= s.cluster;
+      }
     }
 
     if (pos === 'QB') {
       // QB whose pass-catchers I already own
-      const catchers = passCatcherCount(player.team, myTeam);
-      if (catchers >= 1) mult *= s.qbPull;
+      if (existingCatchers >= 1) mult *= s.qbPull;
+    }
+
+    if (pos === 'RB' && teamMates >= 1) {
+      // RB from a team I already have players on — correlated game-script value
+      // (smaller than pass-catcher stacking since RB/passing correlation is weaker)
+      mult *= s.rbCorrel;
     }
   }
 
@@ -237,8 +251,12 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
     let reason = '';
     if (['WR', 'TE'].includes(p.pos) && qbTeams.has(p.team)) {
       reason = `stacks w/ your ${p.team} QB`;
+    } else if (['WR', 'TE'].includes(p.pos) && passCatcherCount(p.team, myTeam) >= 1) {
+      reason = `builds ${p.team} receiver room`;
     } else if (p.pos === 'QB' && passCatcherCount(p.team, myTeam) > 0) {
       reason = `completes ${p.team} stack`;
+    } else if (p.pos === 'RB' && myTeam.some(t => t.team === p.team)) {
+      reason = `${p.team} game-script correlation`;
     }
     const pr = playoffStackReason(p, myTeam);
     if (pr) reason = reason ? `${reason} · ${pr}` : pr;
