@@ -371,7 +371,17 @@ function readDraftBoard() {
       const pickNumEl = cell.querySelector('[class*="pick-number"]');
       const pick_number = pickNumEl ? parseInt(pickNumEl.textContent.trim(), 10) || null : null;
 
-      if (!player || state.drafted.has(player.id)) continue;
+      if (!player) continue;
+
+      if (state.drafted.has(player.id)) {
+        // Already drafted — but if it's in my column and not yet in myTeam,
+        // it was mis-classified by the poller (race condition). Rescue it.
+        if (isMe && !state.myTeam.some(p => p.id === player.id)) {
+          state.myTeam.push({ ...player, pick_number });
+          myPicks++;
+        }
+        continue;
+      }
 
       state.drafted.add(player.id);
       state.available = state.available.filter(p => p.id !== player.id);
@@ -891,9 +901,14 @@ function highlightStackPlayers() {
 function startStackHighlightObserver() {
   if (_stackHighlightObserver) return;
 
-  // Re-highlight whenever DK updates its player list (React re-renders)
+  // Debounce: wait 120ms after the last DOM mutation before highlighting.
+  // React re-renders the player list in multiple batches; running mid-render
+  // means some rows aren't in the DOM yet and get missed.
+  let _highlightTimer = null;
   _stackHighlightObserver = new MutationObserver(() => {
-    if (state.myTeam.length) highlightStackPlayers();
+    if (!state.myTeam.length) return;
+    clearTimeout(_highlightTimer);
+    _highlightTimer = setTimeout(highlightStackPlayers, 120);
   });
   _stackHighlightObserver.observe(document.body, { childList: true, subtree: true });
 }
