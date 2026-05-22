@@ -88,23 +88,24 @@ function playoffStackReason(player, myTeam) {
 
 // ── Bye week helpers ──────────────────────────────────────────────────────────
 
-// Returns a map of bye_week -> count of players on that week
-function getByeWeekCounts(myTeam) {
+// Returns a map of bye_week -> count of players on that week,
+// excluding teammates of `player` (stacking the same team on the same bye is
+// an accepted cost of stacking, not something to penalize).
+function getByeWeekCounts(myTeam, excludeTeam = null) {
   const counts = {};
   for (const p of myTeam) {
-    if (p.bye) counts[p.bye] = (counts[p.bye] || 0) + 1;
+    if (p.bye && p.team !== excludeTeam) counts[p.bye] = (counts[p.bye] || 0) + 1;
   }
   return counts;
 }
 
 // Penalty multiplier when adding a player whose bye week is already crowded.
-// 0-2 players on same bye: no penalty
-// 3 players: mild penalty (0.90)
-// 4 players: moderate penalty (0.80)
-// 5+ players: heavy penalty (0.70) — effectively steers away
+// Teammates sharing the same bye are not counted — stacking is intentional.
+// 0-2 non-teammate players on same bye: no penalty
+// 3: mild penalty (0.90) | 4: moderate (0.80) | 5+: heavy (0.70)
 function getByeWeekPenalty(player, myTeam) {
   if (!player.bye) return 1.0;
-  const counts = getByeWeekCounts(myTeam);
+  const counts = getByeWeekCounts(myTeam, player.team);
   const existing = counts[player.bye] || 0;
   if (existing <= 2) return 1.0;
   if (existing === 3) return 0.90;
@@ -113,12 +114,13 @@ function getByeWeekPenalty(player, myTeam) {
 }
 
 // Returns a warning string if this player would create a bye week crunch, else null.
+// Teammates are excluded from the count for the same reason.
 function byeWeekWarning(player, myTeam) {
   if (!player.bye) return null;
-  const counts = getByeWeekCounts(myTeam);
+  const counts = getByeWeekCounts(myTeam, player.team);
   const existing = counts[player.bye] || 0;
   if (existing < 2) return null;
-  return `${existing + 1} players on bye wk${player.bye}`;
+  return `${existing + 1} non-teammate players on bye wk${player.bye}`;
 }
 
 // ── Core value calculation ────────────────────────────────────────────────────
