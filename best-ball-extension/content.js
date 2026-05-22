@@ -866,8 +866,14 @@ function highlightStackPlayers() {
   if (!nameEls.length) return;
 
   for (const nameEl of nameEls) {
-    // Walk up to the full row so we can see all cells (team is in a sibling cell)
-    const row = nameEl.closest('[class*="BaseTable__row"]');
+    // Walk up to the full row (skip BaseTable__row-cell — it only contains one cell,
+    // not the team abbreviation which lives in a sibling cell)
+    let row = nameEl.parentElement;
+    while (row) {
+      const cls = row.className || '';
+      if (cls.includes('BaseTable__row') && !cls.includes('BaseTable__row-cell')) break;
+      row = row.parentElement;
+    }
     if (!row) continue;
 
     const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
