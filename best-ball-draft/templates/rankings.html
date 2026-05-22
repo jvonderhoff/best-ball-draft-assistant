@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Player Rankings — Best Ball Assistant</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ── */
+    .nav {
+      background: #0f1419;
+      border-bottom: 1px solid #2a3f5f;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      height: 52px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-brand { font-weight: 700; color: #4fc3f7; font-size: 0.95em; white-space: nowrap; }
+    .nav a {
+      color: #78909c;
+      text-decoration: none;
+      font-size: 0.88em;
+      padding: 4px 0;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s;
+    }
+    .nav a:hover { color: #e0e0e0; }
+    .nav a.active { color: #4fc3f7; border-bottom-color: #4fc3f7; }
+    .nav-spacer { flex: 1; }
+
+    /* ── Page layout ── */
+    .page { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .page-title { font-size: 1.4em; font-weight: 700; color: #4fc3f7; }
+    .page-subtitle { font-size: 0.82em; color: #546e7a; margin-top: 2px; }
+
+    .header-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.85em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, background 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: #1565c0; color: #fff; }
+    .btn-success { background: #2e7d32; color: #a5d6a7; }
+    .btn-export  { background: #6a1b9a; color: #ce93d8; }
+    .btn-reset   { background: #263238; color: #78909c; }
+    .btn-sm { padding: 4px 10px; font-size: 0.78em; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .search-wrap { position: relative; flex: 1; min-width: 180px; max-width: 280px; }
+    .search-wrap input {
+      width: 100%;
+      background: #0f1419;
+      border: 1px solid #2a3f5f;
+      border-radius: 6px;
+      padding: 7px 10px 7px 30px;
+      color: #e0e0e0;
+      font-size: 0.85em;
+      outline: none;
+    }
+    .search-wrap input:focus { border-color: #4fc3f7; }
+    .search-icon {
+      position: absolute;
+      left: 9px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #546e7a;
+      font-size: 0.9em;
+    }
+
+    .pos-tabs { display: flex; gap: 4px; }
+    .pos-tab {
+      padding: 5px 12px;
+      border-radius: 4px;
+      border: 1px solid #2a3f5f;
+      background: #0f1419;
+      color: #78909c;
+      font-size: 0.8em;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .pos-tab:hover { border-color: #546e7a; color: #b0bec5; }
+    .pos-tab.active { background: #1a2f4d; border-color: #4fc3f7; color: #4fc3f7; }
+    .pos-tab[data-pos="QB"].active  { background: #3a0629; border-color: #f48fb1; color: #f48fb1; }
+    .pos-tab[data-pos="RB"].active  { background: #0d2a5e; border-color: #90caf9; color: #90caf9; }
+    .pos-tab[data-pos="WR"].active  { background: #0d3318; border-color: #a5d6a7; color: #a5d6a7; }
+    .pos-tab[data-pos="TE"].active  { background: #4a1c00; border-color: #ffcc80; color: #ffcc80; }
+
+    .toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .count-label { font-size: 0.78em; color: #546e7a; }
+
+    /* ── Status bar ── */
+    #statusBar {
+      font-size: 0.8em;
+      padding: 6px 12px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      display: none;
+    }
+    #statusBar.info  { background: #1a2f4d; color: #4fc3f7; display: block; }
+    #statusBar.ok    { background: #1b3a22; color: #a5d6a7; display: block; }
+    #statusBar.error { background: #3a1515; color: #ef9a9a; display: block; }
+
+    /* ── Table ── */
+    .table-wrap {
+      background: #0f1419;
+      border: 1px solid #2a3f5f;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    thead th {
+      background: #1a2f4d;
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 0.72em;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: #78909c;
+      text-transform: uppercase;
+      border-bottom: 1px solid #2a3f5f;
+      user-select: none;
+      white-space: nowrap;
+    }
+    thead th.sortable { cursor: pointer; }
+    thead th.sortable:hover { color: #b0bec5; }
+    thead th.sorted-asc::after  { content: ' ↑'; color: #4fc3f7; }
+    thead th.sorted-desc::after { content: ' ↓'; color: #4fc3f7; }
+
+    tbody tr {
+      border-bottom: 1px solid #1a2a3a;
+      transition: background 0.1s;
+      cursor: grab;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #131d2a; }
+    tbody tr.dragging { opacity: 0.4; cursor: grabbing; }
+    tbody tr.drag-over { border-top: 2px solid #4fc3f7; }
+
+    td { padding: 8px 12px; font-size: 0.85em; vertical-align: middle; }
+
+    .col-handle { width: 24px; color: #2a3f5f; font-size: 1em; cursor: grab; padding-right: 4px; }
+    .col-rank   { width: 80px; }
+    .col-name   { min-width: 160px; }
+    .col-pos    { width: 60px; }
+    .col-team   { width: 60px; color: #78909c; }
+    .col-adp    { width: 70px; color: #78909c; text-align: right; }
+    .col-delta  { width: 70px; text-align: right; }
+    .col-notes  { min-width: 160px; }
+    .col-action { width: 60px; text-align: center; }
+
+    /* Rank input */
+    .rank-input {
+      width: 54px;
+      background: #1a2a3a;
+      border: 1px solid #2a3f5f;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-size: 0.9em;
+      font-weight: 700;
+      padding: 3px 6px;
+      text-align: center;
+      outline: none;
+    }
+    .rank-input:focus { border-color: #4fc3f7; background: #1a2f4d; }
+    .rank-input.unranked { color: #37474f; border-color: #1e2d3a; }
+
+    /* Notes input */
+    .notes-input {
+      width: 100%;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      color: #90a4ae;
+      font-size: 0.82em;
+      padding: 3px 6px;
+      outline: none;
+      font-family: inherit;
+    }
+    .notes-input:focus { border-color: #2a3f5f; background: #1a2a3a; color: #e0e0e0; }
+    .notes-input::placeholder { color: #2a3f5f; }
+
+    /* Position badge */
+    .pos-badge {
+      font-size: 0.7em;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .pos-QB { background: #880e4f; color: #f48fb1; }
+    .pos-RB { background: #0d47a1; color: #90caf9; }
+    .pos-WR { background: #1b5e20; color: #a5d6a7; }
+    .pos-TE { background: #e65100; color: #ffcc80; }
+
+    /* Delta badge */
+    .delta-up   { color: #66bb6a; font-size: 0.8em; }
+    .delta-down { color: #ef5350; font-size: 0.8em; }
+    .delta-flat { color: #546e7a; font-size: 0.8em; }
+
+    /* Clear rank btn */
+    .btn-clear-rank {
+      background: none;
+      border: none;
+      color: #37474f;
+      cursor: pointer;
+      font-size: 1em;
+      padding: 2px 4px;
+      border-radius: 3px;
+      line-height: 1;
+    }
+    .btn-clear-rank:hover { color: #ef5350; background: #2a1515; }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #37474f;
+    }
+    .empty-state .emoji { font-size: 2.5em; margin-bottom: 12px; }
+
+    /* Unsaved dot */
+    .unsaved-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #ffa726;
+      margin-left: 6px;
+      vertical-align: middle;
+      display: none;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      display: none;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #0f1419;
+      border: 1px solid #2a3f5f;
+      border-radius: 10px;
+      padding: 28px 32px;
+      max-width: 400px;
+      width: 90%;
+    }
+    .modal h3 { color: #4fc3f7; margin-bottom: 8px; }
+    .modal p  { color: #78909c; font-size: 0.88em; margin-bottom: 20px; line-height: 1.5; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-brand">⚡ Best Ball Assistant</span>
+  <a href="/">Draft</a>
+  <a href="/history">History</a>
+  <a href="/rankings" class="active">Rankings</a>
+</nav>
+
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Player Rankings</div>
+      <div class="page-subtitle">Drag to reorder · Edit rank numbers · Changes auto-highlight until saved</div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-reset" id="resetBtn">Reset to DK ADP</button>
+      <button class="btn btn-export" id="exportBtn">Export to Extension</button>
+      <button class="btn btn-success" id="saveBtn">
+        Save Rankings
+        <span class="unsaved-dot" id="unsavedDot"></span>
+      </button>
+    </div>
+  </div>
+
+  <div id="statusBar"></div>
+
+  <div class="toolbar">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="Search players…">
+    </div>
+    <div class="pos-tabs">
+      <button class="pos-tab active" data-pos="ALL">All</button>
+      <button class="pos-tab" data-pos="QB">QB</button>
+      <button class="pos-tab" data-pos="RB">RB</button>
+      <button class="pos-tab" data-pos="WR">WR</button>
+      <button class="pos-tab" data-pos="TE">TE</button>
+    </div>
+    <div class="toolbar-right">
+      <span class="count-label" id="countLabel"></span>
+      <button class="btn btn-reset btn-sm" id="sortAdpBtn">Sort by DK ADP</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="rankingsTable">
+      <thead>
+        <tr>
+          <th class="col-handle"></th>
+          <th class="col-rank">My Rank</th>
+          <th class="col-name sortable" data-sort="name">Player</th>
+          <th class="col-pos">Pos</th>
+          <th class="col-team">Team</th>
+          <th class="col-adp sortable" data-sort="adp">DK ADP</th>
+          <th class="col-delta">vs ADP</th>
+          <th class="col-notes">Notes</th>
+          <th class="col-action"></th>
+        </tr>
+      </thead>
+      <tbody id="rankingsBody">
+        <tr><td colspan="9"><div class="empty-state"><div class="emoji">⏳</div>Loading…</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Confirm reset modal -->
+<div class="modal-overlay" id="resetModal">
+  <div class="modal">
+    <h3>Reset Rankings?</h3>
+    <p>This will clear all your custom ranks and revert to DK ADP order. Notes will be kept. This cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn btn-reset" id="resetCancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="resetConfirmBtn">Reset</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let allPlayers = [];    // full list from API
+let displayed  = [];    // currently shown rows (filtered/sorted)
+let dirty      = false;
+let filterPos  = 'ALL';
+let searchQ    = '';
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function setStatus(msg, type = 'info') {
+  const bar = document.getElementById('statusBar');
+  bar.textContent = msg;
+  bar.className = type;
+  if (type === 'ok') setTimeout(() => { bar.style.display = 'none'; bar.className = ''; }, 3000);
+}
+
+function markDirty() {
+  dirty = true;
+  document.getElementById('unsavedDot').style.display = 'inline-block';
+}
+function markClean() {
+  dirty = false;
+  document.getElementById('unsavedDot').style.display = 'none';
+}
+
+function posBadge(pos) {
+  return `<span class="pos-badge pos-${pos}">${pos}</span>`;
+}
+
+function deltaHtml(customRank, adp) {
+  if (customRank == null || adp == null) return '<span class="delta-flat">—</span>';
+  const d = adp - customRank;
+  if (d > 0)  return `<span class="delta-up">+${d} ▲</span>`;
+  if (d < 0)  return `<span class="delta-down">${d} ▼</span>`;
+  return `<span class="delta-flat">—</span>`;
+}
+
+// ── Load ───────────────────────────────────────────────────────────────────────
+async function loadRankings() {
+  try {
+    const res = await fetch('/api/rankings');
+    allPlayers = await res.json();
+    renderTable();
+  } catch (e) {
+    setStatus('Failed to load players: ' + e.message, 'error');
+  }
+}
+
+// ── Filter + render ────────────────────────────────────────────────────────────
+function getFiltered() {
+  let list = allPlayers;
+  if (filterPos !== 'ALL') list = list.filter(p => p.pos === filterPos);
+  if (searchQ) {
+    const q = searchQ.toLowerCase();
+    list = list.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.team.toLowerCase().includes(q)
+    );
+  }
+  return list;
+}
+
+function renderTable() {
+  displayed = getFiltered();
+  document.getElementById('countLabel').textContent = `${displayed.length} players`;
+
+  const tbody = document.getElementById('rankingsBody');
+  if (!displayed.length) {
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="emoji">🔍</div>No players match</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = displayed.map((p, i) => `
+    <tr draggable="true" data-id="${p.player_id}" data-idx="${i}">
+      <td class="col-handle" title="Drag to reorder">⠿</td>
+      <td class="col-rank">
+        <input class="rank-input ${p.custom_rank == null ? 'unranked' : ''}"
+               type="number" min="1" max="9999"
+               value="${p.custom_rank ?? ''}"
+               placeholder="—"
+               data-id="${p.player_id}"
+               data-orig="${p.custom_rank ?? ''}">
+      </td>
+      <td class="col-name">${p.name}</td>
+      <td class="col-pos">${posBadge(p.pos)}</td>
+      <td class="col-team">${p.team}</td>
+      <td class="col-adp">${p.adp ?? '—'}</td>
+      <td class="col-delta" data-id="${p.player_id}-delta">${deltaHtml(p.custom_rank, p.adp)}</td>
+      <td class="col-notes">
+        <input class="notes-input" type="text"
+               placeholder="Add notes…"
+               value="${escHtml(p.notes || '')}"
+               data-id="${p.player_id}"
+               data-field="notes">
+      </td>
+      <td class="col-action">
+        <button class="btn-clear-rank" data-id="${p.player_id}" title="Remove custom rank">✕</button>
+      </td>
+    </tr>
+  `).join('');
+
+  bindRowEvents(tbody);
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Row events ─────────────────────────────────────────────────────────────────
+function bindRowEvents(tbody) {
+  // Rank input changes
+  tbody.querySelectorAll('.rank-input').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const pid  = inp.dataset.id;
+      const val  = inp.value.trim() === '' ? null : parseInt(inp.value, 10);
+      updatePlayerField(pid, 'custom_rank', val);
+      inp.classList.toggle('unranked', val == null);
+      // Update delta cell
+      const p = allPlayers.find(p => p.player_id === pid);
+      if (p) {
+        p.custom_rank = val;
+        const deltaCell = tbody.querySelector(`[data-id="${pid}-delta"]`);
+        if (deltaCell) deltaCell.innerHTML = deltaHtml(val, p.adp);
+      }
+      markDirty();
+    });
+  });
+
+  // Notes input changes
+  tbody.querySelectorAll('.notes-input').forEach(inp => {
+    inp.addEventListener('blur', () => {
+      updatePlayerField(inp.dataset.id, 'notes', inp.value);
+      markDirty();
+    });
+  });
+
+  // Clear rank buttons
+  tbody.querySelectorAll('.btn-clear-rank').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pid = btn.dataset.id;
+      updatePlayerField(pid, 'custom_rank', null);
+      const rankInp = tbody.querySelector(`.rank-input[data-id="${pid}"]`);
+      if (rankInp) { rankInp.value = ''; rankInp.classList.add('unranked'); }
+      const p = allPlayers.find(p => p.player_id === pid);
+      if (p) {
+        p.custom_rank = null;
+        const deltaCell = tbody.querySelector(`[data-id="${pid}-delta"]`);
+        if (deltaCell) deltaCell.innerHTML = deltaHtml(null, p.adp);
+      }
+      markDirty();
+    });
+  });
+
+  // Drag-and-drop reorder
+  let dragSrc = null;
+  tbody.querySelectorAll('tr[draggable]').forEach(row => {
+    row.addEventListener('dragstart', e => {
+      dragSrc = row;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      tbody.querySelectorAll('tr').forEach(r => r.classList.remove('drag-over'));
+    });
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      tbody.querySelectorAll('tr').forEach(r => r.classList.remove('drag-over'));
+      if (row !== dragSrc) row.classList.add('drag-over');
+    });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!dragSrc || dragSrc === row) return;
+      row.classList.remove('drag-over');
+
+      // Reorder displayed array
+      const fromId = dragSrc.dataset.id;
+      const toId   = row.dataset.id;
+      const fromI  = displayed.findIndex(p => p.player_id === fromId);
+      const toI    = displayed.findIndex(p => p.player_id === toId);
+      if (fromI === -1 || toI === -1) return;
+
+      const [moved] = displayed.splice(fromI, 1);
+      displayed.splice(toI, 0, moved);
+
+      // Re-assign sequential custom ranks across the displayed list
+      displayed.forEach((p, i) => {
+        const globalP = allPlayers.find(a => a.player_id === p.player_id);
+        if (globalP) globalP.custom_rank = i + 1;
+        p.custom_rank = i + 1;
+      });
+
+      renderTable();
+      markDirty();
+    });
+  });
+}
+
+function updatePlayerField(pid, field, value) {
+  const p = allPlayers.find(p => p.player_id === pid);
+  if (p) p[field] = value;
+}
+
+// ── Save ───────────────────────────────────────────────────────────────────────
+async function saveRankings() {
+  const rankings = allPlayers.map(p => ({
+    player_id:   p.player_id,
+    custom_rank: p.custom_rank ?? null,
+    notes:       p.notes || '',
+  }));
+
+  setStatus('Saving…', 'info');
+  try {
+    const res = await fetch('/api/rankings/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rankings }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setStatus(`✓ Saved ${data.saved} player rankings`, 'ok');
+      markClean();
+    } else {
+      setStatus('Error: ' + (data.error || 'unknown'), 'error');
+    }
+  } catch (e) {
+    setStatus('Save failed: ' + e.message, 'error');
+  }
+}
+
+// ── Export ─────────────────────────────────────────────────────────────────────
+async function exportToExtension() {
+  const btn = document.getElementById('exportBtn');
+  btn.disabled = true;
+  setStatus('Exporting players.js…', 'info');
+  try {
+    const res = await fetch('/api/rankings/export', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      setStatus(`✓ Exported ${data.players} players to extension — reload the extension in about:debugging then refresh the DK tab`, 'ok');
+    } else {
+      setStatus('Export error: ' + (data.error || 'unknown'), 'error');
+    }
+  } catch (e) {
+    setStatus('Export failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Reset ──────────────────────────────────────────────────────────────────────
+async function resetToAdp() {
+  // Clear all custom ranks, keep notes
+  allPlayers.forEach(p => { p.custom_rank = null; });
+  renderTable();
+  await saveRankings();
+  setStatus('Rankings reset to DK ADP order', 'ok');
+}
+
+// ── Sort by DK ADP ─────────────────────────────────────────────────────────────
+function sortByAdp() {
+  allPlayers.sort((a, b) => (a.adp || 9999) - (b.adp || 9999));
+  allPlayers.forEach((p, i) => { p.custom_rank = i + 1; });
+  renderTable();
+  markDirty();
+}
+
+// ── Header sort ────────────────────────────────────────────────────────────────
+let sortCol = null, sortDir = 1;
+document.querySelectorAll('thead th.sortable').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.sort;
+    if (sortCol === col) sortDir *= -1; else { sortCol = col; sortDir = 1; }
+    document.querySelectorAll('thead th').forEach(h => h.classList.remove('sorted-asc','sorted-desc'));
+    th.classList.add(sortDir === 1 ? 'sorted-asc' : 'sorted-desc');
+    allPlayers.sort((a, b) => {
+      let va = a[col], vb = b[col];
+      if (col === 'name') return sortDir * (va || '').localeCompare(vb || '');
+      return sortDir * ((va ?? 9999) - (vb ?? 9999));
+    });
+    renderTable();
+  });
+});
+
+// ── Keyboard save ─────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    saveRankings();
+  }
+});
+
+// ── Wire up controls ───────────────────────────────────────────────────────────
+document.getElementById('saveBtn').addEventListener('click', saveRankings);
+document.getElementById('exportBtn').addEventListener('click', exportToExtension);
+document.getElementById('sortAdpBtn').addEventListener('click', sortByAdp);
+document.getElementById('resetBtn').addEventListener('click', () => {
+  document.getElementById('resetModal').classList.add('open');
+});
+document.getElementById('resetCancelBtn').addEventListener('click', () => {
+  document.getElementById('resetModal').classList.remove('open');
+});
+document.getElementById('resetConfirmBtn').addEventListener('click', () => {
+  document.getElementById('resetModal').classList.remove('open');
+  resetToAdp();
+});
+
+document.querySelectorAll('.pos-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.pos-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    filterPos = tab.dataset.pos;
+    renderTable();
+  });
+});
+
+document.getElementById('searchInput').addEventListener('input', e => {
+  searchQ = e.target.value.trim();
+  renderTable();
+});
+
+// Warn on exit if unsaved
+window.addEventListener('beforeunload', e => {
+  if (dirty) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+loadRankings();
+</script>
+</body>
+</html>

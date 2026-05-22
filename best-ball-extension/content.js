@@ -17,9 +17,12 @@ let state = {
   diversifyStrength: 0.5,
   isSetup: false,
   isComplete: false,
+  useCustomRankings: false,  // toggle: custom rankings vs DK ADP
 };
 
 let exposure = {};
+// Map of player_id → custom_rank (populated when custom rankings are loaded)
+let customRankMap = {};
 
 // Send a message to background.js which relays it to the native db_writer.py.
 // No HTTP server needed — Firefox launches db_writer.py on demand.
@@ -35,6 +38,46 @@ async function loadExposure() {
     if (!result.ok) return;
     exposure = result.data?.players || {};
   } catch (_) {}
+}
+
+async function loadCustomRankings() {
+  try {
+    const result = await nativeCall({ action: 'getRankings' });
+    if (!result.ok || !result.data?.length) {
+      console.log('[BBA] No custom rankings found in DB');
+      return false;
+    }
+    // Build player_id → custom_rank map
+    customRankMap = {};
+    result.data.forEach(r => { customRankMap[r.player_id] = r.custom_rank; });
+    console.log(`[BBA] Loaded ${Object.keys(customRankMap).length} custom rankings`);
+    return true;
+  } catch (e) {
+    console.log('[BBA] loadCustomRankings error:', e);
+    return false;
+  }
+}
+
+// Apply or remove custom ranking ADPs from state.available.
+// When active, players with a custom rank get that rank as their adp;
+// players without one are pushed to the back (high adp number).
+function applyRankingMode() {
+  if (state.useCustomRankings && Object.keys(customRankMap).length) {
+    const maxRank = Math.max(...Object.values(customRankMap));
+    state.available = state.available.map(p => ({
+      ...p,
+      adp: customRankMap[p.id] ?? (maxRank + (p.adp || 999)),
+    }));
+  } else {
+    // Restore original ADPs from PLAYERS
+    const adpLookup = {};
+    if (typeof PLAYERS !== 'undefined') PLAYERS.forEach(p => { adpLookup[p.id] = p.adp; });
+    state.available = state.available.map(p => ({
+      ...p,
+      adp: adpLookup[p.id] ?? p.adp,
+    }));
+  }
+  state.available.sort((a, b) => a.adp - b.adp);
 }
 
 async function refreshPlayersInDB() {
@@ -328,7 +371,17 @@ function readDraftBoard() {
       const pickNumEl = cell.querySelector('[class*="pick-number"]');
       const pick_number = pickNumEl ? parseInt(pickNumEl.textContent.trim(), 10) || null : null;
 
-      if (!player || state.drafted.has(player.id)) continue;
+      if (!player) continue;
+
+      if (state.drafted.has(player.id)) {
+        // Already drafted — but if it's in my column and not yet in myTeam,
+        // it was mis-classified by the poller (race condition). Rescue it.
+        if (isMe && !state.myTeam.some(p => p.id === player.id)) {
+          state.myTeam.push({ ...player, pick_number });
+          myPicks++;
+        }
+        continue;
+      }
 
       state.drafted.add(player.id);
       state.available = state.available.filter(p => p.id !== player.id);
@@ -689,6 +742,7 @@ function createOverlay() {
       <div id="bba-header">
         <span id="bba-title">🏈 Best Ball</span>
         <div style="display:flex;gap:6px;align-items:center">
+          <button id="bba-ranking-toggle" title="Switch between DK ADP and your custom rankings">ADP</button>
           <button id="bba-undo" title="Undo last pick">↩</button>
           <button id="bba-close">✕</button>
         </div>
@@ -711,6 +765,26 @@ function createOverlay() {
   document.getElementById('bba-toggle').addEventListener('click', togglePanel);
   document.getElementById('bba-close').addEventListener('click', togglePanel);
   document.getElementById('bba-undo').addEventListener('click', undoLast);
+  document.getElementById('bba-ranking-toggle').addEventListener('click', async () => {
+    const btn = document.getElementById('bba-ranking-toggle');
+    if (!state.useCustomRankings) {
+      btn.textContent = '⏳';
+      btn.disabled = true;
+      const loaded = await loadCustomRankings();
+      if (!loaded) {
+        btn.textContent = 'ADP';
+        btn.disabled = false;
+        btn.title = 'No custom rankings saved — set them at localhost:8000/rankings';
+        return;
+      }
+      state.useCustomRankings = true;
+    } else {
+      state.useCustomRankings = false;
+    }
+    applyRankingMode();
+    updateRankingToggleBtn();
+    render();
+  });
 
   makeDraggable(document.getElementById('bba-header'), document.getElementById('bba-panel'));
   makeResizable(document.getElementById('bba-resize-handle'), document.getElementById('bba-panel'));
@@ -802,8 +876,14 @@ function highlightStackPlayers() {
   if (!nameEls.length) return;
 
   for (const nameEl of nameEls) {
-    // Walk up to the full row so we can see all cells (team is in a sibling cell)
-    const row = nameEl.closest('[class*="BaseTable__row"]');
+    // Walk up to the full row (skip BaseTable__row-cell — it only contains one cell,
+    // not the team abbreviation which lives in a sibling cell)
+    let row = nameEl.parentElement;
+    while (row) {
+      const cls = row.className || '';
+      if (cls.includes('BaseTable__row') && !cls.includes('BaseTable__row-cell')) break;
+      row = row.parentElement;
+    }
     if (!row) continue;
 
     const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
@@ -821,14 +901,34 @@ function highlightStackPlayers() {
 function startStackHighlightObserver() {
   if (_stackHighlightObserver) return;
 
-  // Re-highlight whenever DK updates its player list (React re-renders)
+  // Debounce: wait 120ms after the last DOM mutation before highlighting.
+  // React re-renders the player list in multiple batches; running mid-render
+  // means some rows aren't in the DOM yet and get missed.
+  let _highlightTimer = null;
   _stackHighlightObserver = new MutationObserver(() => {
-    if (state.myTeam.length) highlightStackPlayers();
+    if (!state.myTeam.length) return;
+    clearTimeout(_highlightTimer);
+    _highlightTimer = setTimeout(highlightStackPlayers, 120);
   });
   _stackHighlightObserver.observe(document.body, { childList: true, subtree: true });
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
+
+function updateRankingToggleBtn() {
+  const btn = document.getElementById('bba-ranking-toggle');
+  if (!btn) return;
+  btn.disabled = false;
+  if (state.useCustomRankings) {
+    btn.textContent = 'My Ranks';
+    btn.title = 'Using your custom rankings — click to switch to DK ADP';
+    btn.style.color = '#4fc3f7';
+  } else {
+    btn.textContent = 'ADP';
+    btn.title = 'Using DK ADP — click to switch to your custom rankings';
+    btn.style.color = '';
+  }
+}
 
 function render() {
   if (!overlayEl) return;
@@ -889,7 +989,7 @@ function renderSuggestion() {
       <div class="bba-rec-alt-info">
         <span class="bba-rec-alt-name">${r.player.name}</span>
         <span class="bba-pos bba-pos-${r.player.pos}">${r.player.pos}</span>
-        <span class="bba-rec-alt-meta">${r.player.team} · ADP ${r.player.adp}</span>
+        <span class="bba-rec-alt-meta">${r.player.team} · ${state.useCustomRankings ? 'Rank' : 'ADP'} ${Math.round(r.player.adp)}</span>
         ${r.reason ? `<span class="bba-rec-alt-reason">${r.reason}</span>` : ''}
       </div>
       <button class="bba-btn-queue-sm" data-id="${r.player.id}">+ Queue</button>

@@ -29,7 +29,7 @@ bAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     bAPI.tabs.remove(sender.tab.id);
   }
 
-  if (msg.action === 'saveDraft' || msg.action === 'getExposure') {
+  if (['saveDraft', 'getExposure', 'refreshPlayers', 'getRankings'].includes(msg.action)) {
     callNative(msg).then(sendResponse);
     return true; // keep channel open for async response
   }

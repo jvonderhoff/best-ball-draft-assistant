@@ -67,6 +67,21 @@
 }
 #bba-close:hover, #bba-undo:hover { background: #2a3f5f; color: #fff; }
 
+#bba-ranking-toggle {
+  background: #0d1f33;
+  border: 1px solid #2a3f5f;
+  color: #78909c;
+  cursor: pointer;
+  font-size: 0.72em;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  transition: all 0.15s;
+}
+#bba-ranking-toggle:hover:not(:disabled) { border-color: #4fc3f7; color: #4fc3f7; }
+#bba-ranking-toggle:disabled { opacity: 0.5; cursor: wait; }
+
 /* ── Setup banner ── */
 #bba-setup-banner {
   background: #1a1a00;

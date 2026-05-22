@@ -46,7 +46,7 @@ function getTeamNeeds(myTeam) {
 // Bonus for owning players from both teams in the same playoff game.
 // Week 17 gets the highest emphasis since it's the fantasy championship.
 
-const PLAYOFF_BONUS = { week17: 1.15, week16: 1.08, week15: 1.04 };
+const PLAYOFF_BONUS = { week17: 1.15, week16: 1.04, week15: 1.02 };
 const PLAYOFF_BONUS_CAP = 1.40;
 
 // Returns true if p1 and p2 are in the same game in a given week.
@@ -127,15 +127,14 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const adpValue = Math.max(0, 100 - player.adp);
   const pos = player.pos;
 
-  // ADP is the primary signal — no positional bias at the start of the draft.
-  // As picks accumulate, compare actual roster composition to ideal pace.
-  // Positions behind pace get a proportional boost; positions ahead get a penalty.
-  // This means the engine only develops a position preference once you've shown one.
-  const targets = { QB: 2, RB: 8, WR: 8, TE: 2 };
+  // ADP is the primary signal. RB and WR are treated as a single interchangeable
+  // pool — they compete on pure ADP with no positional tilt between them.
+  // Pace-based adjustment only applies to QB and TE (genuinely scarce/capped slots).
+  const targets = { QB: 2, TE: 2 };
   const totalDrafted = myTeam.length;
   let mult = 1.0;
 
-  if (totalDrafted > 0) {
+  if (totalDrafted > 0 && (pos === 'QB' || pos === 'TE')) {
     const pace  = totalDrafted / 20;                          // 0→1 as roster fills
     const ideal = (targets[pos] || 0) * pace;                // where you should be
     const actual = myTeam.filter(p => p.pos === pos).length;
