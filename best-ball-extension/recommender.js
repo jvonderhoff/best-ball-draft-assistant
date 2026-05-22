@@ -46,7 +46,7 @@ function getTeamNeeds(myTeam) {
 // Bonus for owning players from both teams in the same playoff game.
 // Week 17 gets the highest emphasis since it's the fantasy championship.
 
-const PLAYOFF_BONUS = { week17: 1.15, week16: 1.08, week15: 1.04 };
+const PLAYOFF_BONUS = { week17: 1.15, week16: 1.04, week15: 1.02 };
 const PLAYOFF_BONUS_CAP = 1.40;
 
 // Returns true if p1 and p2 are in the same game in a given week.
