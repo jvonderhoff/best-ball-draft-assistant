@@ -34,7 +34,7 @@ function passCatcherCount(team, myTeam) {
 function getTeamNeeds(myTeam) {
   const counts = {};
   myTeam.forEach(p => { counts[p.pos] = (counts[p.pos] || 0) + 1; });
-  const targets = { QB: 2, RB: 8, WR: 8, TE: 2 };
+  const targets = { QB: 2, RB: 6, WR: 8, TE: 2 };
   const needs = {};
   for (const [pos, target] of Object.entries(targets)) {
     needs[pos] = Math.max(0, target - (counts[pos] || 0));
