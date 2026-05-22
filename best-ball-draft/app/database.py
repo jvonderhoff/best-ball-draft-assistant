@@ -14,6 +14,13 @@ def get_db():
 def init_db():
     with get_db() as conn:
         conn.executescript("""
+            CREATE TABLE IF NOT EXISTS player_rankings (
+                player_id   TEXT PRIMARY KEY,
+                custom_rank INTEGER,
+                notes       TEXT DEFAULT '',
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS drafts (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -144,3 +151,48 @@ def get_exposure():
 def delete_draft(draft_id):
     with get_db() as conn:
         conn.execute("DELETE FROM drafts WHERE id=?", (draft_id,))
+
+
+# ── Player rankings ───────────────────────────────────────────────────────────
+
+def get_rankings():
+    """
+    Return all players joined with their custom rankings.
+    Players without a custom rank get custom_rank = NULL (sorted last).
+    """
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT p.player_id, p.name, p.pos, p.team, p.adp,
+                   p.week15, p.week16, p.week17,
+                   r.custom_rank, COALESCE(r.notes, '') AS notes
+            FROM players p
+            LEFT JOIN player_rankings r ON p.player_id = r.player_id
+            ORDER BY COALESCE(r.custom_rank, 9999), p.adp
+        """).fetchall()
+        return [dict(r) for r in rows]
+
+
+def save_rankings(rankings):
+    """
+    Upsert a list of {player_id, custom_rank, notes} dicts.
+    rankings with custom_rank=None are deleted (unranked).
+    """
+    with get_db() as conn:
+        for r in rankings:
+            pid  = r.get('player_id')
+            rank = r.get('custom_rank')
+            notes = r.get('notes', '') or ''
+            if not pid:
+                continue
+            if rank is None:
+                conn.execute("DELETE FROM player_rankings WHERE player_id=?", (pid,))
+            else:
+                conn.execute("""
+                    INSERT INTO player_rankings (player_id, custom_rank, notes, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(player_id) DO UPDATE SET
+                        custom_rank = excluded.custom_rank,
+                        notes       = excluded.notes,
+                        updated_at  = CURRENT_TIMESTAMP
+                """, (pid, int(rank), notes))
+    return len(rankings)
