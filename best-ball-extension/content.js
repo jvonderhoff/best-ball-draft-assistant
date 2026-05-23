@@ -743,6 +743,7 @@ function pollForLastPick() {
   } else {
     showDetectionToast(player);
   }
+
 }
 
 function startPickPoller() {
@@ -767,6 +768,7 @@ function createOverlay() {
         <span id="bba-title">🏈 Best Ball</span>
         <div style="display:flex;gap:6px;align-items:center">
           <button id="bba-ranking-toggle" title="Switch between DK ADP and your custom rankings">ADP</button>
+          <button id="bba-resync" title="Resync picks from draft board">⟳</button>
           <button id="bba-undo" title="Undo last pick">↩</button>
           <button id="bba-close">✕</button>
         </div>
@@ -808,6 +810,22 @@ function createOverlay() {
     applyRankingMode();
     updateRankingToggleBtn();
     render();
+  });
+
+  document.getElementById('bba-resync').addEventListener('click', () => {
+    const btn = document.getElementById('bba-resync');
+    btn.style.opacity = '0.5';
+    // Only read the board if the columns are already visible — never auto-navigate
+    const cols = document.querySelectorAll('.DraftBoardColumn_draft-board-column');
+    if (cols.length) {
+      readDraftBoard();
+      setTimeout(() => { btn.style.opacity = ''; highlightStackPlayers(); }, 300);
+    } else {
+      // Board tab not active — prompt user to switch to it manually
+      btn.style.opacity = '';
+      btn.title = 'Switch to the Draftboard tab first, then click ⟳';
+      setTimeout(() => { btn.title = 'Resync picks from draft board'; }, 4000);
+    }
   });
 
   makeDraggable(document.getElementById('bba-header'), document.getElementById('bba-panel'));

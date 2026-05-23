@@ -115,14 +115,16 @@ function getByeWeekPenalty(player, myTeam) {
   return 0.70;
 }
 
-// Returns a warning string if this player would create a bye week crunch, else null.
-// Teammates are excluded from the count for the same reason.
+// Returns a warning string if drafting this player would create a bye week crunch, else null.
+// `existing` = non-teammate players already on that bye week (not counting the candidate).
+// After drafting, total would be existing + 1. Only warn when that total hits 3+.
 function byeWeekWarning(player, myTeam) {
   if (!player.bye) return null;
-  const counts = getByeWeekCounts(myTeam, player.team);
-  const existing = counts[player.bye] || 0;
-  if (existing < 2) return null;
-  return `${existing + 1} non-teammate players on bye wk${player.bye}`;
+  const clashers = myTeam.filter(p => p.bye === player.bye && p.team !== player.team);
+  const afterDraft = clashers.length + 1;
+  if (afterDraft < 3) return null;
+  const names = clashers.map(p => p.name.split(' ').pop()).join(', ');
+  return `bye wk${player.bye} clash: ${names}`;
 }
 
 // ── Core value calculation ────────────────────────────────────────────────────
@@ -131,24 +133,56 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const adpValue = Math.max(0, 100 - player.adp);
   const pos = player.pos;
 
-  // ADP is the primary signal. RB and WR are treated as a single interchangeable
-  // pool — they compete on pure ADP with no positional tilt between them.
-  // Pace-based adjustment only applies to QB and TE (genuinely scarce/capped slots).
-  const targets = { QB: 2, TE: 2 };
+  // ADP is the primary signal. RB and WR compete on pure ADP.
+  // QB and TE get urgency-based adjustments since they fill capped slots.
+  const TE_TARGET = 2;
+  const QB_TARGET = 2;
   const totalDrafted = myTeam.length;
   let mult = 1.0;
 
-  if (totalDrafted > 0 && (pos === 'QB' || pos === 'TE')) {
-    const pace  = totalDrafted / 20;                          // 0→1 as roster fills
-    const ideal = (targets[pos] || 0) * pace;                // where you should be
-    const actual = myTeam.filter(p => p.pos === pos).length;
-    const deficit = ideal - actual;                           // + = behind, - = ahead
-    // Max ±15% adjustment, grows with imbalance
+  // TE urgency — scales sharply with how many TEs still needed vs picks remaining.
+  // Round 13, 0 TEs → need 2 in 8 picks (25% urgency) → ×1.75
+  // Round 15, 0 TEs → need 2 in 6 picks (33% urgency) → ×2.00
+  // Round 18, 0 TEs → need 2 in 3 picks (67% urgency) → ×3.00 (massive)
+  // Round 13, 1 TE  → need 1 in 8 picks (12.5% urgency) → ×1.38
+  // Already have 2 TEs → no urgency bonus
+  if (pos === 'TE') {
+    const myTEs     = myTeam.filter(p => p.pos === 'TE').length;
+    const teNeeded  = Math.max(0, TE_TARGET - myTEs);
+    const picksLeft = Math.max(1, 20 - totalDrafted);
+    if (teNeeded > 0) {
+      const urgency = teNeeded / picksLeft;   // 0→1; higher = more desperate
+      mult *= (1 + Math.min(urgency * 3.0, 2.0));  // up to ×3.0 at max urgency
+    }
+  }
+
+  // QB pace adjustment — mild ±15% based on whether you're ahead/behind target pace.
+  if (pos === 'QB' && totalDrafted > 0) {
+    const pace    = totalDrafted / 20;
+    const ideal   = QB_TARGET * pace;
+    const actual  = myTeam.filter(p => p.pos === 'QB').length;
+    const deficit = ideal - actual;
     mult += Math.max(-0.15, Math.min(0.15, deficit * 0.07));
   }
 
   // Hard discount when a position slot is fully filled
   if ((needs[pos] || 0) === 0) mult = Math.min(mult, 0.65);
+
+  // Early QB saturation penalty — if you already have 2 QBs in the first 12 rounds,
+  // heavily devalue additional QBs so scarce RB/WR/TE value isn't wasted on a 3rd QB.
+  // The penalty eases after round 12 since late QB3s have minimal cost.
+  //   2 QBs in rounds 1-6:  ×0.25 (very steep — locked in early)
+  //   2 QBs in rounds 7-12: ×0.45 (still significant)
+  //   2 QBs in rounds 13+:  no extra penalty (cheap dart throw)
+  if (pos === 'QB') {
+    const myQBs   = myTeam.filter(p => p.pos === 'QB').length;
+    const userRnd = myTeam.length + 1;
+    if (myQBs >= 2) {
+      if (userRnd <= 6)       mult *= 0.25;
+      else if (userRnd <= 12) mult *= 0.45;
+      // rounds 13+ — let normal needs/ADP logic decide
+    }
+  }
 
   // Early-round boost (position-agnostic — amplifies stacking/playoff bonuses)
   const round = myTeam.length + 1;   // user's current round

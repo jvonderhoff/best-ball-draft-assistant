@@ -190,6 +190,7 @@
           <th data-col="composite">Score <span class="sort-arrow"></span></th>
           <th data-col="tier">Tier</th>
           <th data-col="adp">DK ADP <span class="sort-arrow"></span></th>
+          <th data-col="custom_rank" title="Your personal rank from the Rankings page">My Rank <span class="sort-arrow"></span></th>
           <th data-col="proj_rank" title="Overall rank by Sleeper 2026 projected PPR pts">Proj Rank <span class="sort-arrow"></span></th>
           <th data-col="market_delta" title="DK ADP minus projection rank. + = market too low (buy), − = market too high (sell)">Mkt Δ <span class="sort-arrow"></span></th>
           <th data-col="proj_pts_ppr" title="Sleeper 2026 projected full-PPR points">Proj PPR <span class="sort-arrow"></span></th>
@@ -422,6 +423,7 @@ function renderTable() {
         </td>
         <td><span class="tier tier-${p.tier.replace(' ','')}">${p.tier}</span></td>
         <td style="color:var(--muted)">${p.adp ?? '—'}</td>
+        <td style="color:${p.custom_rank ? 'var(--accent)' : 'var(--muted)'};font-weight:${p.custom_rank ? '700' : '400'}">${p.custom_rank ?? '<span class="no-data">—</span>'}</td>
         <td style="color:var(--muted)">${p.proj_rank ?? '<span class="no-data">—</span>'}</td>
         <td><span class="delta ${mdCls}" title="DK ADP ${p.adp} vs proj rank ${p.proj_rank ?? '?'}">${mdStr}</span></td>
         <td>${hasProj ? `<strong style="color:#b0bec5">${p.proj_pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
@@ -463,7 +465,7 @@ document.querySelectorAll('th[data-col]').forEach(th => {
       sortDir *= -1;
     } else {
       sortCol = col;
-      sortDir = col === 'analysis_rank' || col === 'adp' ? 1 : -1;
+      sortDir = col === 'analysis_rank' || col === 'adp' || col === 'custom_rank' || col === 'proj_rank' ? 1 : -1;
     }
     document.querySelectorAll('th[data-col]').forEach(t => {
       t.classList.remove('sorted');
