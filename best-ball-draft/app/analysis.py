@@ -1,15 +1,21 @@
 """
 Player analysis module.
-Pulls 2025 season stats from the Sleeper API and combines them with
-our 2026 DK ADP + playoff schedule data to produce a composite
-"season potential" score for each player.
+Pulls from the Sleeper API:
+  - 2025 actual season stats (performance baseline)
+  - 2026 season projections (market consensus expectation)
+Combines with our 2026 DK ADP + playoff schedule data to produce:
+  - Composite "season potential" score
+  - Market delta: where projections say a player should go vs their DK ADP
+Scoring is full PPR.
 """
 import re
 import requests
-from app.database import get_db
+from app.database import get_db, get_all_props
+from app.data.betting_fetcher import props_to_fantasy_pts
 
-SLEEPER_STATS_URL  = 'https://api.sleeper.app/v1/stats/nfl/regular/2025'
-SLEEPER_PLAYERS_URL = 'https://api.sleeper.app/v1/players/nfl'
+SLEEPER_STATS_URL       = 'https://api.sleeper.app/v1/stats/nfl/regular/2025'
+SLEEPER_PLAYERS_URL     = 'https://api.sleeper.app/v1/players/nfl'
+SLEEPER_PROJ_URL        = 'https://api.sleeper.app/v1/projections/nfl/regular/2026'
 SKILL_POSITIONS = {'QB', 'RB', 'WR', 'TE'}
 
 _sleeper_cache = {}   # module-level cache so we only fetch once per process
@@ -24,35 +30,43 @@ def _normalize(name: str) -> str:
 
 
 def _fetch_sleeper():
-    """Return (stats_dict, meta_dict) from Sleeper API, cached after first call."""
+    """Return (stats_dict, meta_dict, projections_dict) from Sleeper API, cached."""
     if _sleeper_cache:
-        return _sleeper_cache.get('stats', {}), _sleeper_cache.get('meta', {})
+        return (_sleeper_cache.get('stats', {}),
+                _sleeper_cache.get('meta', {}),
+                _sleeper_cache.get('projections', {}))
     try:
-        rs = requests.get(SLEEPER_STATS_URL,  timeout=12)
-        rm = requests.get(SLEEPER_PLAYERS_URL, timeout=20)
-        stats = rs.json() if rs.ok else {}
-        meta  = rm.json() if rm.ok else {}
-        # Filter meta to skill positions only to keep size manageable
+        rs = requests.get(SLEEPER_STATS_URL,   timeout=12)
+        rm = requests.get(SLEEPER_PLAYERS_URL,  timeout=20)
+        rp = requests.get(SLEEPER_PROJ_URL,     timeout=20)
+        stats       = rs.json() if rs.ok else {}
+        meta        = rm.json() if rm.ok else {}
+        projections = rp.json() if rp.ok else {}
+        # Filter meta to skill positions only
         meta = {k: v for k, v in meta.items()
                 if v.get('position') in SKILL_POSITIONS}
-        _sleeper_cache['stats'] = stats
-        _sleeper_cache['meta']  = meta
-        print(f'  [Analysis] Sleeper: {len(stats)} stat rows, {len(meta)} skill players')
+        _sleeper_cache['stats']       = stats
+        _sleeper_cache['meta']        = meta
+        _sleeper_cache['projections'] = projections
+        print(f'  [Analysis] Sleeper stats: {len(stats)} rows | '
+              f'players: {len(meta)} skill | projections: {len(projections)}')
     except Exception as e:
         print(f'  [Analysis] Sleeper fetch error: {e}')
-        stats, meta = {}, {}
-    return stats, meta
+        stats, meta, projections = {}, {}, {}
+    return stats, meta, projections
 
 
 def _build_sleeper_lookup(stats, meta):
     """
     Build a normalized-name → stat dict for quick lookups.
     Only includes players with meaningful fantasy points.
+    Also returns a sleeper_id → name_key mapping for projection matching.
     """
     lookup = {}
+    id_to_key = {}
     for pid, m in meta.items():
         s = stats.get(pid, {})
-        pts = s.get('pts_half_ppr') or 0
+        pts = s.get('pts_ppr') or 0
         gp  = s.get('gp') or 0
         if pts < 10:   # skip kickers, practice squad, etc.
             continue
@@ -60,23 +74,24 @@ def _build_sleeper_lookup(stats, meta):
         if not name_key:
             continue
         obj = {
-            'sleeper_id':    pid,
-            'pts_half_ppr':  round(float(pts), 1),
-            'gp':            int(gp),
-            'rush_yd':       int(s.get('rush_yd') or 0),
-            'rush_td':       int(s.get('rush_td') or 0),
-            'rec_yd':        int(s.get('rec_yd') or 0),
-            'rec_td':        int(s.get('rec_td') or 0),
-            'rec':           int(s.get('rec') or 0),
-            'pass_yd':       int(s.get('pass_yd') or 0),
-            'pass_td':       int(s.get('pass_td') or 0),
-            'pass_int':      int(s.get('pass_int') or 0),
-            'pos_rank':      int(s.get('pos_rank_half_ppr') or 999),
+            'sleeper_id':  pid,
+            'pts_ppr':     round(float(pts), 1),
+            'gp':          int(gp),
+            'rush_yd':     int(s.get('rush_yd') or 0),
+            'rush_td':     int(s.get('rush_td') or 0),
+            'rec_yd':      int(s.get('rec_yd') or 0),
+            'rec_td':      int(s.get('rec_td') or 0),
+            'rec':         int(s.get('rec') or 0),
+            'pass_yd':     int(s.get('pass_yd') or 0),
+            'pass_td':     int(s.get('pass_td') or 0),
+            'pass_int':    int(s.get('pass_int') or 0),
+            'pos_rank':    int(s.get('pos_rank_half_ppr') or 999),
         }
         # If a name appears twice, keep the higher-scoring one
-        if name_key not in lookup or obj['pts_half_ppr'] > lookup[name_key]['pts_half_ppr']:
+        if name_key not in lookup or obj['pts_ppr'] > lookup[name_key]['pts_ppr']:
             lookup[name_key] = obj
-    return lookup
+            id_to_key[pid] = name_key
+    return lookup, id_to_key
 
 
 def _playoff_score(player: dict) -> float:
@@ -89,14 +104,14 @@ def _playoff_score(player: dict) -> float:
 
 def get_analysis_data(force_refresh: bool = False):
     """
-    Return a list of player dicts enriched with 2025 stats and composite scores.
-    Sorted by composite_score descending.
+    Return a list of player dicts enriched with 2025 actuals, 2026 projections,
+    composite scores, and market delta. Sorted by composite_score descending.
     """
     if force_refresh:
         _sleeper_cache.clear()
 
-    stats, meta = _fetch_sleeper()
-    sl_lookup   = _build_sleeper_lookup(stats, meta)
+    stats, meta, projections = _fetch_sleeper()
+    sl_lookup, id_to_key     = _build_sleeper_lookup(stats, meta)
 
     # Pull players + custom rankings from DB
     with get_db() as conn:
@@ -112,33 +127,116 @@ def get_analysis_data(force_refresh: bool = False):
 
     players = [dict(r) for r in rows]
 
-    # Match to Sleeper stats by normalized name
+    # ── Match 2025 actuals by normalized name ─────────────────────────────────
     for p in players:
         key = _normalize(p['name'])
         sl  = sl_lookup.get(key)
         if sl:
             p.update(sl)
         else:
-            # Zero-fill so every player has the same keys
             p.update({
-                'sleeper_id': None, 'pts_half_ppr': 0, 'gp': 0,
+                'sleeper_id': None, 'pts_ppr': 0, 'gp': 0,
                 'rush_yd': 0, 'rush_td': 0, 'rec_yd': 0, 'rec_td': 0,
                 'rec': 0, 'pass_yd': 0, 'pass_td': 0, 'pass_int': 0,
                 'pos_rank': 999,
             })
 
-    # ── Scoring ────────────────────────────────────────────────────────────────
-    # Normalise pts_half_ppr per position so QB vs RB vs WR are comparable
+    # ── Match 2026 projections by Sleeper player ID ───────────────────────────
+    # Build a name → sleeper_id map from the full meta (includes players with
+    # low 2025 stats who may still have 2026 projections, e.g. rookies).
+    name_to_pid = {}
+    for pid, m in meta.items():
+        nk = _normalize(m.get('full_name') or m.get('search_full_name') or '')
+        if nk and nk not in name_to_pid:
+            name_to_pid[nk] = pid
+
+    for p in players:
+        sid = p.get('sleeper_id')
+        # Fall back to name lookup for players not matched via stats
+        if not sid:
+            sid = name_to_pid.get(_normalize(p['name']))
+
+        proj = projections.get(sid, {}) if sid else {}
+        p['proj_pts_ppr']  = round(float(proj.get('pts_ppr')  or 0), 1)
+        p['proj_rush_yd']  = int(proj.get('rush_yd')  or 0)
+        p['proj_rec_yd']   = int(proj.get('rec_yd')   or 0)
+        p['proj_rec']      = int(proj.get('rec')       or 0)
+        p['proj_rush_td']  = int(proj.get('rush_td')  or 0)
+        p['proj_rec_td']   = int(proj.get('rec_td')   or 0)
+        p['proj_pass_yd']  = int(proj.get('pass_yd')  or 0)
+        p['proj_pass_td']  = int(proj.get('pass_td')  or 0)
+        p['proj_gp']       = round(float(proj.get('gp') or 0), 1)
+
+    # ── Market delta: projected rank vs DK ADP ────────────────────────────────
+    # Rank all players who have projections by proj_pts_ppr (position-agnostic
+    # overall rank, since DK ADP is also overall).
+    proj_players = sorted(
+        [p for p in players if p['proj_pts_ppr'] > 0],
+        key=lambda x: -x['proj_pts_ppr']
+    )
+    for rank, p in enumerate(proj_players, 1):
+        p['proj_rank'] = rank
+
+    for p in players:
+        if 'proj_rank' not in p:
+            p['proj_rank'] = None
+        # market_delta: positive = market is too LOW (undervalued by DK ADP)
+        #               negative = market is too HIGH (overvalued)
+        if p['proj_rank'] and p.get('adp'):
+            p['market_delta'] = round(p['adp'] - p['proj_rank'])
+        else:
+            p['market_delta'] = None
+
+    # ── Betting prop lines (from DB, scraped separately) ─────────────────────
+    all_props = get_all_props()   # {player_name: {prop_type: {line, ...}}}
+
+    # Build a normalized-name → raw-name lookup for fuzzy matching
+    props_norm = {_normalize(k): k for k in all_props}
+
+    for p in players:
+        key = _normalize(p['name'])
+        raw_key = props_norm.get(key)
+        pdata = all_props.get(raw_key, {}) if raw_key else {}
+
+        # Flatten lines into player dict
+        prop_keys = ('rush_yd', 'rec_yd', 'rec', 'rush_td', 'rec_td', 'pass_yd', 'pass_td', 'pass_int')
+        for pk in prop_keys:
+            entry = pdata.get(pk, {})
+            p[f'prop_{pk}'] = entry.get('line') if isinstance(entry, dict) else None
+        p['prop_over_odds']  = None  # reserved for future display
+        p['prop_updated_at'] = (pdata.get(list(pdata.keys())[0], {}) or {}).get('updated_at') if pdata else None
+
+        # Implied full-PPR points from the prop lines
+        p['prop_implied_ppr'] = props_to_fantasy_pts(pdata) if pdata else None
+
+    # Rank players by prop-implied PPR (where available) for market delta
+    prop_ranked = sorted(
+        [p for p in players if p.get('prop_implied_ppr')],
+        key=lambda x: -x['prop_implied_ppr']
+    )
+    for rank, p in enumerate(prop_ranked, 1):
+        p['prop_rank'] = rank
+
+    for p in players:
+        if 'prop_rank' not in p:
+            p['prop_rank'] = None
+        if p.get('prop_rank') and p.get('adp'):
+            p['prop_adp_delta'] = round(p['adp'] - p['prop_rank'])  # + = market too low
+        else:
+            p['prop_adp_delta'] = None
+
+    # ── Composite scoring ─────────────────────────────────────────────────────
+    # Normalise 2025 pts_ppr per position so QB vs RB vs WR are comparable
     pos_max = {}
     for pos in SKILL_POSITIONS:
-        vals = [p['pts_half_ppr'] for p in players if p['pos'] == pos and p['pts_half_ppr'] > 0]
+        vals = [p['pts_ppr'] for p in players if p['pos'] == pos and p['pts_ppr'] > 0]
         pos_max[pos] = max(vals) if vals else 1
 
     total = len(players)
 
     for p in players:
         adp   = p.get('adp') or total
-        pts   = p['pts_half_ppr']
+        pts   = p['pts_ppr']
         gp    = p['gp']
         pos   = p['pos']
 

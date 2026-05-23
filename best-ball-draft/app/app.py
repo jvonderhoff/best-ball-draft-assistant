@@ -1,7 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 from app.draft import DraftState
-from app.database import init_db, save_draft, get_all_drafts, get_exposure, delete_draft, get_rankings, save_rankings
+from app.database import init_db, save_draft, get_all_drafts, get_exposure, delete_draft, get_rankings, save_rankings, save_props, get_all_props
 import json
 import os
 
@@ -245,6 +245,27 @@ def export_rankings_to_extension():
         return jsonify({'ok': True, 'players': len(output), 'path': ext_path})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ── Betting props ─────────────────────────────────────────────────────────────
+
+@app.route('/api/props', methods=['GET'])
+def get_props():
+    return jsonify(get_all_props())
+
+
+@app.route('/api/props/refresh', methods=['POST'])
+def refresh_props():
+    try:
+        from app.data.betting_fetcher import fetch_season_props
+        props = fetch_season_props(verbose=True)
+        if not props:
+            return jsonify({'ok': False, 'error': 'No props scraped — DK Sportsbook may have changed or season props not yet posted'}), 200
+        count = save_props(props)
+        return jsonify({'ok': True, 'players': len(props), 'rows': count})
+    except Exception as e:
+        import traceback
+        return jsonify({'ok': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
 
 
 # ── Analysis ──────────────────────────────────────────────────────────────────

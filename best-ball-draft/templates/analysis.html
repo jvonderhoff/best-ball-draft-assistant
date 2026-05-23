@@ -140,11 +140,12 @@
   <div class="page-header">
     <div>
       <div class="page-title">Player Analysis</div>
-      <div class="page-sub">Composite score: 2025 performance (45%) · ADP value (30%) · durability (15%) · playoff schedule (10%)</div>
+      <div class="page-sub">Composite score: 2025 full-PPR performance (45%) · ADP value (30%) · durability (15%) · playoff schedule (10%) · Market Δ = DK ADP vs Sleeper 2026 projection rank</div>
     </div>
     <div class="controls">
       <input class="search-box" id="search" type="text" placeholder="Search player or team…">
       <button class="btn btn-refresh" id="refresh-btn" onclick="loadData(true)">↻ Refresh Stats</button>
+      <button class="btn" id="props-btn" onclick="fetchProps()" style="border-color:#7b1fa2;color:#ce93d8" title="Scrape DK Sportsbook season prop lines (takes ~30s)">📊 Fetch Betting Lines</button>
     </div>
   </div>
 
@@ -178,16 +179,27 @@
           <th data-col="pos">Pos</th>
           <th data-col="composite">Score <span class="sort-arrow"></span></th>
           <th data-col="tier">Tier</th>
-          <th data-col="value_delta">Δ ADP <span class="sort-arrow"></span></th>
           <th data-col="adp">DK ADP <span class="sort-arrow"></span></th>
-          <th data-col="pts_half_ppr">Half-PPR <span class="sort-arrow"></span></th>
+          <th data-col="proj_rank" title="Overall rank by Sleeper 2026 projected PPR pts">Proj Rank <span class="sort-arrow"></span></th>
+          <th data-col="market_delta" title="DK ADP minus projection rank. + = market too low (buy), − = market too high (sell)">Mkt Δ <span class="sort-arrow"></span></th>
+          <th data-col="proj_pts_ppr" title="Sleeper 2026 projected full-PPR points">Proj PPR <span class="sort-arrow"></span></th>
+          <th data-col="pts_ppr" title="2025 actual full-PPR points">2025 PPR <span class="sort-arrow"></span></th>
           <th data-col="gp">GP <span class="sort-arrow"></span></th>
           <th data-col="perf_score">Perf <span class="sort-arrow"></span></th>
           <th data-col="durability">Dur <span class="sort-arrow"></span></th>
           <th data-col="schedule_score">Sched <span class="sort-arrow"></span></th>
-          <th data-col="rush_yd">Rush Yd <span class="sort-arrow"></span></th>
-          <th data-col="rec_yd">Rec Yd <span class="sort-arrow"></span></th>
-          <th data-col="pass_yd">Pass Yd <span class="sort-arrow"></span></th>
+          <th data-col="proj_rec_yd" title="Sleeper projected receiving yards">Proj RecYd <span class="sort-arrow"></span></th>
+          <th data-col="proj_rush_yd" title="Sleeper projected rushing yards">Proj RuYd <span class="sort-arrow"></span></th>
+          <th data-col="proj_pass_yd" title="Sleeper projected passing yards">Proj PaYd <span class="sort-arrow"></span></th>
+          <th style="border-left:2px solid #4a235a" data-col="prop_implied_ppr" title="Full-PPR points implied by DK Sportsbook prop lines">Prop PPR <span class="sort-arrow"></span></th>
+          <th data-col="prop_adp_delta" title="DK ADP vs prop-implied rank. + = market too low (buy), − = too high (sell)">Prop Δ <span class="sort-arrow"></span></th>
+          <th data-col="prop_rush_yd" title="DK Sportsbook season rushing yards O/U">Prop RuYd <span class="sort-arrow"></span></th>
+          <th data-col="prop_rec_yd" title="DK Sportsbook season receiving yards O/U">Prop RecYd <span class="sort-arrow"></span></th>
+          <th data-col="prop_rec" title="DK Sportsbook season receptions O/U">Prop Rec <span class="sort-arrow"></span></th>
+          <th data-col="prop_rush_td" title="DK Sportsbook season rushing TDs O/U">Prop RuTD <span class="sort-arrow"></span></th>
+          <th data-col="prop_rec_td" title="DK Sportsbook season receiving TDs O/U">Prop RecTD <span class="sort-arrow"></span></th>
+          <th data-col="prop_pass_yd" title="DK Sportsbook season passing yards O/U">Prop PaYd <span class="sort-arrow"></span></th>
+          <th data-col="prop_pass_td" title="DK Sportsbook season passing TDs O/U">Prop PaTD <span class="sort-arrow"></span></th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -202,6 +214,61 @@ let sortCol = 'analysis_rank';
 let sortDir = 1;   // 1 = asc, -1 = desc
 let activePos = '';
 let searchQ = '';
+
+// ── Prop helpers ──────────────────────────────────────────────────────────────
+
+function propLine(val) {
+  if (val == null) return '<span class="no-data">—</span>';
+  return val % 1 === 0 ? val : val.toFixed(1);
+}
+
+function propCols(p) {
+  const hasProp = p.prop_implied_ppr != null;
+
+  const pd = p.prop_adp_delta;
+  let pdStr, pdCls;
+  if (pd == null)     { pdStr = '—';      pdCls = 'delta-zero'; }
+  else if (pd > 0)    { pdStr = `+${pd}`; pdCls = 'delta-pos'; }
+  else if (pd < 0)    { pdStr = `${pd}`;  pdCls = 'delta-neg'; }
+  else                { pdStr = '0';       pdCls = 'delta-zero'; }
+
+  return `
+    <td style="border-left:2px solid #4a235a">${hasProp ? `<strong style="color:#ce93d8">${p.prop_implied_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
+    <td><span class="delta ${pdCls}">${pdStr}</span></td>
+    <td>${propLine(p.prop_rush_yd)}</td>
+    <td>${propLine(p.prop_rec_yd)}</td>
+    <td>${propLine(p.prop_rec)}</td>
+    <td>${propLine(p.prop_rush_td)}</td>
+    <td>${propLine(p.prop_rec_td)}</td>
+    <td>${propLine(p.prop_pass_yd)}</td>
+    <td>${propLine(p.prop_pass_td)}</td>
+  `;
+}
+
+// ── Fetch betting lines ───────────────────────────────────────────────────────
+
+async function fetchProps() {
+  const btn = document.getElementById('props-btn');
+  btn.disabled = true;
+  btn.textContent = '📊 Scraping DK… (~30s)';
+  try {
+    const res = await fetch('/api/props/refresh', { method: 'POST' });
+    const json = await res.json();
+    if (json.ok) {
+      btn.textContent = `📊 Lines fetched (${json.players} players)`;
+      // Reload data to show the new props
+      await loadData(false);
+    } else {
+      btn.textContent = '📊 Fetch Betting Lines';
+      alert('Props fetch issue: ' + (json.error || 'unknown'));
+    }
+  } catch (e) {
+    btn.textContent = '📊 Fetch Betting Lines';
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 // ── Load data ─────────────────────────────────────────────────────────────────
 
@@ -282,7 +349,7 @@ function renderTable() {
     else if (delta < 0)  { deltaStr = `${delta}`;  deltaCls = 'delta-neg'; }
     else                 { deltaStr = '—';           deltaCls = 'delta-zero'; }
 
-    const hasStats = p.pts_half_ppr > 0;
+    const hasStats = p.pts_ppr > 0;
 
     const barColor = (val) => {
       if (val >= 70) return '#4caf50';
@@ -297,6 +364,16 @@ function renderTable() {
     };
 
     const statCell = (val, fallback = '—') => val ? val.toLocaleString() : `<span class="no-data">${fallback}</span>`;
+
+    // Market delta display
+    const md = p.market_delta;
+    let mdStr, mdCls;
+    if (md == null)      { mdStr = '—';      mdCls = 'delta-zero'; }
+    else if (md > 0)     { mdStr = `+${md}`; mdCls = 'delta-pos'; }   // market too low — buy
+    else if (md < 0)     { mdStr = `${md}`;  mdCls = 'delta-neg'; }   // market too high — sell
+    else                 { mdStr = '0';       mdCls = 'delta-zero'; }
+
+    const hasProj = p.proj_pts_ppr > 0;
 
     return `
       <tr>
@@ -313,9 +390,11 @@ function renderTable() {
           </div>
         </td>
         <td><span class="tier tier-${p.tier.replace(' ','')}">${p.tier}</span></td>
-        <td><span class="delta ${deltaCls}">${deltaStr}</span></td>
         <td style="color:var(--muted)">${p.adp ?? '—'}</td>
-        <td>${hasStats ? `<strong>${p.pts_half_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
+        <td style="color:var(--muted)">${p.proj_rank ?? '<span class="no-data">—</span>'}</td>
+        <td><span class="delta ${mdCls}" title="DK ADP ${p.adp} vs proj rank ${p.proj_rank ?? '?'}">${mdStr}</span></td>
+        <td>${hasProj ? `<strong style="color:#b0bec5">${p.proj_pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
+        <td>${hasStats ? `<strong>${p.pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
         <td>${hasStats ? p.gp : '<span class="no-data">—</span>'}</td>
         <td>
           <div class="score-bar-wrap">
@@ -335,9 +414,10 @@ function renderTable() {
             <span class="score-val">${p.schedule_score}</span>
           </div>
         </td>
-        <td>${statCell(p.rush_yd)}</td>
-        <td>${statCell(p.rec_yd)}</td>
-        <td>${statCell(p.pass_yd)}</td>
+        <td>${hasProj && p.proj_rec_yd  ? p.proj_rec_yd.toLocaleString()  : '<span class="no-data">—</span>'}</td>
+        <td>${hasProj && p.proj_rush_yd ? p.proj_rush_yd.toLocaleString() : '<span class="no-data">—</span>'}</td>
+        <td>${hasProj && p.proj_pass_yd ? p.proj_pass_yd.toLocaleString() : '<span class="no-data">—</span>'}</td>
+        ${propCols(p)}
       </tr>
     `;
   }).join('');
