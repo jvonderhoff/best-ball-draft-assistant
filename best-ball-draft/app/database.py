@@ -14,6 +14,18 @@ def get_db():
 def init_db():
     with get_db() as conn:
         conn.executescript("""
+            CREATE TABLE IF NOT EXISTS player_props (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_name TEXT    NOT NULL,
+                prop_type   TEXT    NOT NULL,
+                line        REAL,
+                over_odds   TEXT,
+                under_odds  TEXT,
+                book        TEXT    DEFAULT 'DraftKings',
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(player_name, prop_type, book)
+            );
+
             CREATE TABLE IF NOT EXISTS player_rankings (
                 player_id   TEXT PRIMARY KEY,
                 custom_rank INTEGER,
@@ -151,6 +163,53 @@ def get_exposure():
 def delete_draft(draft_id):
     with get_db() as conn:
         conn.execute("DELETE FROM drafts WHERE id=?", (draft_id,))
+
+
+# ── Player props ─────────────────────────────────────────────────────────────
+
+def save_props(props_by_player: dict):
+    """
+    Upsert props from {player_name: {prop_type: {line, over_odds, under_odds}}}.
+    """
+    with get_db() as conn:
+        count = 0
+        for player_name, prop_types in props_by_player.items():
+            for prop_type, data in prop_types.items():
+                if not isinstance(data, dict):
+                    continue
+                conn.execute("""
+                    INSERT INTO player_props (player_name, prop_type, line, over_odds, under_odds, updated_at)
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(player_name, prop_type, book) DO UPDATE SET
+                        line       = excluded.line,
+                        over_odds  = excluded.over_odds,
+                        under_odds = excluded.under_odds,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (player_name, prop_type, data.get('line'),
+                      str(data.get('over_odds') or ''), str(data.get('under_odds') or '')))
+                count += 1
+    return count
+
+
+def get_all_props():
+    """Return all props as {player_name: {prop_type: {line, over_odds, under_odds, updated_at}}}."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT player_name, prop_type, line, over_odds, under_odds, updated_at "
+            "FROM player_props ORDER BY player_name, prop_type"
+        ).fetchall()
+    result = {}
+    for r in rows:
+        pn = r['player_name']
+        if pn not in result:
+            result[pn] = {}
+        result[pn][r['prop_type']] = {
+            'line':       r['line'],
+            'over_odds':  r['over_odds'],
+            'under_odds': r['under_odds'],
+            'updated_at': r['updated_at'],
+        }
+    return result
 
 
 # ── Player rankings ───────────────────────────────────────────────────────────
