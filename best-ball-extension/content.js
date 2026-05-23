@@ -769,6 +769,7 @@ function createOverlay() {
         <div style="display:flex;gap:6px;align-items:center">
           <button id="bba-ranking-toggle" title="Switch between DK ADP and your custom rankings">ADP</button>
           <button id="bba-resync" title="Resync picks from draft board">⟳</button>
+          <button id="bba-save" title="Save draft to DB">💾</button>
           <button id="bba-undo" title="Undo last pick">↩</button>
           <button id="bba-close">✕</button>
         </div>
@@ -826,6 +827,28 @@ function createOverlay() {
       btn.title = 'Switch to the Draftboard tab first, then click ⟳';
       setTimeout(() => { btn.title = 'Resync picks from draft board'; }, 4000);
     }
+  });
+
+  document.getElementById('bba-save').addEventListener('click', async () => {
+    const btn = document.getElementById('bba-save');
+    if (!state.myTeam.length) {
+      // No picks tracked — try reading the board first
+      const cols = document.querySelectorAll('.DraftBoardColumn_draft-board-column');
+      if (cols.length) {
+        readDraftBoard();
+        await new Promise(r => setTimeout(r, 400));
+      }
+    }
+    if (!state.myTeam.length) {
+      btn.title = 'No picks found — switch to Draftboard tab and click ⟳ first';
+      setTimeout(() => { btn.title = 'Save draft to DB'; }, 4000);
+      return;
+    }
+    btn.style.opacity = '0.5';
+    const ok = await saveDraftToFlask({ contest: getDKContestName(), silent: false });
+    btn.style.opacity = '';
+    btn.title = ok ? '✓ Saved!' : 'Save failed — check console';
+    setTimeout(() => { btn.title = 'Save draft to DB'; }, 3000);
   });
 
   makeDraggable(document.getElementById('bba-header'), document.getElementById('bba-panel'));
