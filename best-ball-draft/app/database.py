@@ -40,7 +40,8 @@ def init_db():
                 my_position INTEGER,
                 contest     TEXT,
                 dk_draft_id TEXT,
-                entry_fee   REAL
+                entry_fee   REAL,
+                drafted_at  TEXT
             );
 
             CREATE TABLE IF NOT EXISTS draft_picks (
@@ -75,6 +76,8 @@ def init_db():
             conn.execute("ALTER TABLE drafts ADD COLUMN dk_draft_id TEXT")
         if 'entry_fee' not in cols:
             conn.execute("ALTER TABLE drafts ADD COLUMN entry_fee REAL")
+        if 'drafted_at' not in cols:
+            conn.execute("ALTER TABLE drafts ADD COLUMN drafted_at TEXT")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_dk_draft_id ON drafts(dk_draft_id) WHERE dk_draft_id IS NOT NULL")
         pick_cols = [r[1] for r in conn.execute("PRAGMA table_info(draft_picks)").fetchall()]
         for col in ('week15', 'week16', 'week17'):

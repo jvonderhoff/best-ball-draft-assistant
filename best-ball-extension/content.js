@@ -17,6 +17,7 @@ let state = {
   diversifyStrength: 0.5,
   isSetup: false,
   isComplete: false,
+  draftedAt: null,    // ISO timestamp of when pick 20 was detected
   useCustomRankings: false,  // toggle: custom rankings vs DK ADP
 };
 
@@ -116,6 +117,7 @@ async function saveDraftToFlask({ contest = '', silent = false } = {}) {
     const result = await nativeCall({
       action: 'saveDraft',
       dk_draft_id: draftId,
+      drafted_at: state.draftedAt || new Date().toISOString(),
       my_position: state.myPosition || 0,
       picks: state.myTeam,
       contest,
@@ -165,12 +167,19 @@ function loadSettings(cb) {
 
 // ── Draft actions ─────────────────────────────────────────────────────────────
 
+function setComplete() {
+  if (!state.isComplete && state.myTeam.length >= 20) {
+    state.isComplete = true;
+    if (!state.draftedAt) state.draftedAt = new Date().toISOString();
+  }
+}
+
 function markTaken(playerId, silent = false) {
   if (state.drafted.has(playerId)) return;
   state.drafted.add(playerId);
   state.available = state.available.filter(p => p.id !== playerId);
   state.overallPick++;
-  state.isComplete = state.myTeam.length >= 20;
+  setComplete();
   if (!silent) render();
 }
 
@@ -181,7 +190,7 @@ function myPick(playerId) {
   state.available = state.available.filter(p => p.id !== playerId);
   state.myTeam.push(player);
   state.overallPick++;
-  state.isComplete = state.myTeam.length >= 20;
+  setComplete();
   render();
   if (state.isComplete) saveDraftToFlask({ silent: true });
 }
@@ -423,7 +432,7 @@ function readDraftBoard() {
 
   if (myPicks + takenPicks > 0) {
     state.overallPick = Math.max(state.overallPick, state.drafted.size + 1);
-    state.isComplete = state.myTeam.length >= 20;
+    setComplete();
     render();
     if (state.isComplete) saveDraftToFlask({ silent: true, contest: getDKContestName() }).then(ok => { if (ok) loadExposure(); });
   }
@@ -669,7 +678,7 @@ function processDKResponse(url, data) {
 
     if (applied > 0) {
       state.overallPick = Math.max(state.overallPick, state.drafted.size + 1);
-      state.isComplete = state.myTeam.length >= 20;
+      setComplete();
       if (overlayEl) render();
       if (state.isComplete) saveDraftToFlask({ silent: true }).then(ok => { if (ok) loadExposure(); });
       return;
