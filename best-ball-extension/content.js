@@ -26,9 +26,16 @@ let customRankMap = {};
 
 // Send a message to background.js which relays it to the native db_writer.py.
 // No HTTP server needed — Firefox launches db_writer.py on demand.
-function nativeCall(msg) {
+function nativeCall(msg, timeoutMs = 5000) {
   return new Promise(resolve => {
-    bAPI.runtime.sendMessage(msg, response => resolve(response || { ok: false }));
+    const timer = setTimeout(() => {
+      console.log('[BBA] nativeCall timeout for action:', msg.action);
+      resolve({ ok: false, error: 'timeout' });
+    }, timeoutMs);
+    bAPI.runtime.sendMessage(msg, response => {
+      clearTimeout(timer);
+      resolve(response || { ok: false });
+    });
   });
 }
 
@@ -1317,7 +1324,10 @@ function init() {
   initPlayers();
 
   loadSettings(() => {
-    Promise.all([loadExposure(), refreshPlayersInDB()]).then(() => {
+    // loadExposure is needed for the overlay (exposure rates); refreshPlayersInDB is
+    // a background sync and must not block the overlay from appearing.
+    refreshPlayersInDB();  // fire-and-forget
+    loadExposure().then(() => {
       createOverlay();
       render();
       startPickPoller();
