@@ -979,7 +979,7 @@ function renderSuggestion() {
   const box = document.getElementById('bba-suggestion');
   if (!state.isSetup || !state.available.length) { box.style.display = 'none'; return; }
 
-  const recs = getTopRecommendations(state.available, state.myTeam, state.myTeam.length + 1, state.stackIntensity, exposure, state.diversifyStrength, 5);
+  const recs = getTopRecommendations(state.available, state.myTeam, state.overallPick, state.stackIntensity, exposure, state.diversifyStrength, 5);
   if (!recs.length) { box.style.display = 'none'; return; }
 
   const myTurn = isMyTurn(state.overallPick, state.numTeams, state.myPosition);

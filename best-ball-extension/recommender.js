@@ -151,7 +151,7 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   if ((needs[pos] || 0) === 0) mult = Math.min(mult, 0.65);
 
   // Early-round boost (position-agnostic — amplifies stacking/playoff bonuses)
-  const round = Math.floor(myPickNumber / 5) + 1;
+  const round = myTeam.length + 1;   // user's current round
   if (round <= 3) mult *= 1.1;
 
   // Same-team stacking bonuses
@@ -192,17 +192,46 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   // Bye week penalty — discourage stacking too many players on the same bye
   mult *= getByeWeekPenalty(player, myTeam);
 
+  // Value-steal boost: player still available past their ADP.
+  // myPickNumber is the overall pick; player.adp is also overall — apples to apples.
+  // Normalise gap by the user's current round so early steals punch harder per pick.
+  //   normalizedValue = valueGap / userRound
+  //   boost = normalizedValue × 0.20, capped at 60%
+  // Examples (12-team):
+  //   R1 overall pick 6,  ADP 3  → gap=3, round=1 → 3/1=3.0 → ×1.60 (cap)
+  //   R1 overall pick 6,  ADP 4  → gap=2, round=1 → 2/1=2.0 → ×1.40
+  //   R4 overall pick 45, ADP 35 → gap=10, round=4 → 10/4=2.5 → ×1.50
+  //   R8 overall pick 90, ADP 80 → gap=10, round=8 → 10/8=1.25 → ×1.25
+  //   R8 overall pick 90, ADP 87 → gap=3,  round=8 → 3/8=0.38 → ×1.08
+  const valueGap  = myPickNumber - (player.adp || myPickNumber);
+  const userRound = myTeam.length + 1;   // user's picks made + 1 = current round
+  if (valueGap > 0) {
+    const normalizedValue = valueGap / userRound;
+    mult *= (1 + Math.min(normalizedValue * 0.20, 0.60));
+  }
+
   return adpValue * mult;
 }
 
 // ── Recommendation ────────────────────────────────────────────────────────────
+
+// In the first 10 rounds only consider players whose ADP is within 10 picks
+// of the current overall pick — avoids over-drafting late-round values early.
+const EARLY_ROUND_LIMIT  = 10;   // apply filter while user has < 10 picks
+const ADP_REACH_WINDOW   = 10;   // max picks beyond current pick to suggest
+
+function _applyReachFilter(pool, myTeam, myPickNumber) {
+  if (myTeam.length >= EARLY_ROUND_LIMIT) return pool;   // rounds 11+ — no filter
+  return pool.filter(p => !p.adp || p.adp <= myPickNumber + ADP_REACH_WINDOW);
+}
 
 function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5) {
   if (!available.length) return null;
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
   const myQBCount = myTeam.filter(p => p.pos === 'QB').length;
-  const pool = myQBCount >= 3 ? available.filter(p => p.pos !== 'QB') : available;
+  let pool = myQBCount >= 3 ? available.filter(p => p.pos !== 'QB') : available;
+  pool = _applyReachFilter(pool, myTeam, myPickNumber);
   if (!pool.length) return null;
 
   let best = null, bestVal = -1;
@@ -216,7 +245,11 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
   }
   if (!best) return null;
 
+  const bestGap      = myPickNumber - (best.adp || myPickNumber);
+  const bestRound    = myTeam.length + 1;
+  const gapThreshold = Math.max(2, bestRound);  // R1→2, R4→4, R8→8
   let reason = `Best ${best.pos} available — ADP ${best.adp}`;
+  if (bestGap >= gapThreshold) reason += ` · 🔥 ${bestGap} picks of value`;
   if (['WR', 'TE'].includes(best.pos) && qbTeams.has(best.team)) {
     reason += ` · stacks with your ${best.team} QB`;
   } else if (best.pos === 'QB' && passCatcherCount(best.team, myTeam) > 0) {
@@ -239,7 +272,8 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
   const myQBCount = myTeam.filter(p => p.pos === 'QB').length;
-  const pool = myQBCount >= 3 ? available.filter(p => p.pos !== 'QB') : available;
+  let pool = myQBCount >= 3 ? available.filter(p => p.pos !== 'QB') : available;
+  pool = _applyReachFilter(pool, myTeam, myPickNumber);
   if (!pool.length) return [];
 
   const scored = pool.map(p => {
@@ -248,15 +282,18 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
       val *= (1 - exposure[p.id].exposure_rate * diversifyStrength);
     }
 
-    let reason = '';
+    const gap          = myPickNumber - (p.adp || myPickNumber);
+    const pRound       = myTeam.length + 1;
+    const pGapThresh   = Math.max(2, pRound);
+    let reason = gap >= pGapThresh ? `🔥 ${gap} picks of value` : '';
     if (['WR', 'TE'].includes(p.pos) && qbTeams.has(p.team)) {
-      reason = `stacks w/ your ${p.team} QB`;
+      reason = reason ? `${reason} · stacks w/ your ${p.team} QB` : `stacks w/ your ${p.team} QB`;
     } else if (['WR', 'TE'].includes(p.pos) && passCatcherCount(p.team, myTeam) >= 1) {
-      reason = `builds ${p.team} receiver room`;
+      reason = reason ? `${reason} · builds ${p.team} receiver room` : `builds ${p.team} receiver room`;
     } else if (p.pos === 'QB' && passCatcherCount(p.team, myTeam) > 0) {
-      reason = `completes ${p.team} stack`;
+      reason = reason ? `${reason} · completes ${p.team} stack` : `completes ${p.team} stack`;
     } else if (p.pos === 'RB' && myTeam.some(t => t.team === p.team)) {
-      reason = `${p.team} game-script correlation`;
+      reason = reason ? `${reason} · ${p.team} game-script correlation` : `${p.team} game-script correlation`;
     }
     const pr = playoffStackReason(p, myTeam);
     if (pr) reason = reason ? `${reason} · ${pr}` : pr;
