@@ -103,7 +103,8 @@ async function saveDraftToFlask({ contest = '', silent = false } = {}) {
     return false;
   }
   const draftId = getDKDraftId();
-  console.log('[BBA] saveDraftToFlask: posting', state.myTeam.length, 'picks for draft', draftId);
+  const entryFee = getDKEntryFee();
+  console.log('[BBA] saveDraftToFlask: posting', state.myTeam.length, 'picks for draft', draftId, 'entry fee:', entryFee);
   try {
     const result = await nativeCall({
       action: 'saveDraft',
@@ -111,6 +112,7 @@ async function saveDraftToFlask({ contest = '', silent = false } = {}) {
       my_position: state.myPosition || 0,
       picks: state.myTeam,
       contest,
+      entry_fee: entryFee,
     });
     if (result.duplicate) {
       console.log('[BBA] Draft already in DB, skipping.');
@@ -342,6 +344,28 @@ function getDKContestName() {
     if (el?.textContent?.trim()) return el.textContent.trim();
   }
   return '';
+}
+
+// Try to extract the entry fee from the DK draft page.
+// Looks for dollar amounts like "$3", "$25", "$33" in the page.
+function getDKEntryFee() {
+  // Common DK selectors for entry fee
+  for (const sel of [
+    '[class*="entry-fee"]', '[class*="entryFee"]', '[class*="buy-in"]',
+    '[class*="buyin"]', '[class*="contest-fee"]',
+  ]) {
+    const el = document.querySelector(sel);
+    if (el) {
+      const m = el.textContent.match(/\$(\d+(?:\.\d+)?)/);
+      if (m) return parseFloat(m[1]);
+    }
+  }
+  // Fallback: scan all text nodes for a dollar amount near "entry" or "fee"
+  const allText = document.body?.innerText || '';
+  const feeMatch = allText.match(/entry\s+fee[^\n]{0,30}\$(\d+(?:\.\d+)?)/i)
+                || allText.match(/\$(\d+(?:\.\d+)?)[^\n]{0,20}entry/i);
+  if (feeMatch) return parseFloat(feeMatch[1]);
+  return null;
 }
 
 function readDraftBoard() {
