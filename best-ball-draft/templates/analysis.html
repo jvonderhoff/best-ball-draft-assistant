@@ -66,6 +66,15 @@
 
     /* ── Table ── */
     .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+    /* Freeze rank + player name columns when scrolling horizontally */
+    th.sticky, td.sticky {
+      position: sticky;
+      background: #111827;
+      z-index: 2;
+    }
+    thead th.sticky { background: #111e2e; z-index: 3; }
+    th.sticky-rank,  td.sticky-rank  { left: 0;    min-width: 36px; }
+    th.sticky-name,  td.sticky-name  { left: 36px; min-width: 160px; border-right: 1px solid #2a3a50; }
     table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
     thead { background: #111e2e; position: sticky; top: 0; z-index: 1; }
     th {
@@ -145,7 +154,8 @@
     <div class="controls">
       <input class="search-box" id="search" type="text" placeholder="Search player or team…">
       <button class="btn btn-refresh" id="refresh-btn" onclick="loadData(true)">↻ Refresh Stats</button>
-      <button class="btn" id="props-btn" onclick="fetchProps()" style="border-color:#7b1fa2;color:#ce93d8" title="Scrape DK Sportsbook season prop lines (takes ~30s)">📊 Fetch Betting Lines</button>
+      <button class="btn" id="dk-btn" onclick="fetchProps('dk')" style="border-color:#7b1fa2;color:#ce93d8" title="Scrape DK Sportsbook season prop lines (takes ~30s)">📊 Fetch DK Lines</button>
+      <button class="btn" id="ud-btn" onclick="fetchProps('ud')" style="border-color:#1565c0;color:#90caf9" title="Fetch Underdog Fantasy season prop lines">🐶 Fetch Underdog Lines</button>
     </div>
   </div>
 
@@ -174,8 +184,8 @@
     <table id="analysis-table" style="display:none">
       <thead>
         <tr>
-          <th data-col="analysis_rank" class="sorted"># <span class="sort-arrow">▼</span></th>
-          <th data-col="name">Player</th>
+          <th data-col="analysis_rank" class="sorted sticky sticky-rank"># <span class="sort-arrow">▼</span></th>
+          <th data-col="name" class="sticky sticky-name">Player</th>
           <th data-col="pos">Pos</th>
           <th data-col="composite">Score <span class="sort-arrow"></span></th>
           <th data-col="tier">Tier</th>
@@ -191,15 +201,24 @@
           <th data-col="proj_rec_yd" title="Sleeper projected receiving yards">Proj RecYd <span class="sort-arrow"></span></th>
           <th data-col="proj_rush_yd" title="Sleeper projected rushing yards">Proj RuYd <span class="sort-arrow"></span></th>
           <th data-col="proj_pass_yd" title="Sleeper projected passing yards">Proj PaYd <span class="sort-arrow"></span></th>
-          <th style="border-left:2px solid #4a235a" data-col="prop_implied_ppr" title="Full-PPR points implied by DK Sportsbook prop lines">Prop PPR <span class="sort-arrow"></span></th>
-          <th data-col="prop_adp_delta" title="DK ADP vs prop-implied rank. + = market too low (buy), − = too high (sell)">Prop Δ <span class="sort-arrow"></span></th>
-          <th data-col="prop_rush_yd" title="DK Sportsbook season rushing yards O/U">Prop RuYd <span class="sort-arrow"></span></th>
-          <th data-col="prop_rec_yd" title="DK Sportsbook season receiving yards O/U">Prop RecYd <span class="sort-arrow"></span></th>
-          <th data-col="prop_rec" title="DK Sportsbook season receptions O/U">Prop Rec <span class="sort-arrow"></span></th>
-          <th data-col="prop_rush_td" title="DK Sportsbook season rushing TDs O/U">Prop RuTD <span class="sort-arrow"></span></th>
-          <th data-col="prop_rec_td" title="DK Sportsbook season receiving TDs O/U">Prop RecTD <span class="sort-arrow"></span></th>
-          <th data-col="prop_pass_yd" title="DK Sportsbook season passing yards O/U">Prop PaYd <span class="sort-arrow"></span></th>
-          <th data-col="prop_pass_td" title="DK Sportsbook season passing TDs O/U">Prop PaTD <span class="sort-arrow"></span></th>
+          <th style="border-left:2px solid #4a235a" data-col="dk_prop_ppr" title="Full-PPR points implied by DK Sportsbook prop lines">DK PPR <span class="sort-arrow"></span></th>
+          <th data-col="dk_prop_adp_delta" title="DK ADP vs DK prop-implied rank. + = market too low (buy)">DK Δ <span class="sort-arrow"></span></th>
+          <th data-col="dk_rush_yd" title="DK season rushing yards O/U">DK RuYd <span class="sort-arrow"></span></th>
+          <th data-col="dk_rec_yd" title="DK season receiving yards O/U">DK RecYd <span class="sort-arrow"></span></th>
+          <th data-col="dk_rec" title="DK season receptions O/U">DK Rec <span class="sort-arrow"></span></th>
+          <th data-col="dk_rush_td" title="DK season rushing TDs O/U">DK RuTD <span class="sort-arrow"></span></th>
+          <th data-col="dk_rec_td" title="DK season receiving TDs O/U">DK RecTD <span class="sort-arrow"></span></th>
+          <th data-col="dk_pass_yd" title="DK season passing yards O/U">DK PaYd <span class="sort-arrow"></span></th>
+          <th data-col="dk_pass_td" title="DK season passing TDs O/U">DK PaTD <span class="sort-arrow"></span></th>
+          <th style="border-left:2px solid #1a3a5c" data-col="ud_prop_ppr" title="Full-PPR points implied by Underdog Fantasy prop lines">UD PPR <span class="sort-arrow"></span></th>
+          <th data-col="ud_prop_adp_delta" title="DK ADP vs Underdog prop-implied rank. + = market too low (buy)">UD Δ <span class="sort-arrow"></span></th>
+          <th data-col="ud_rush_yd" title="Underdog season rushing yards O/U">UD RuYd <span class="sort-arrow"></span></th>
+          <th data-col="ud_rec_yd" title="Underdog season receiving yards O/U">UD RecYd <span class="sort-arrow"></span></th>
+          <th data-col="ud_rec" title="Underdog season receptions O/U">UD Rec <span class="sort-arrow"></span></th>
+          <th data-col="ud_rush_td" title="Underdog season rushing TDs O/U">UD RuTD <span class="sort-arrow"></span></th>
+          <th data-col="ud_rec_td" title="Underdog season receiving TDs O/U">UD RecTD <span class="sort-arrow"></span></th>
+          <th data-col="ud_pass_yd" title="Underdog season passing yards O/U">UD PaYd <span class="sort-arrow"></span></th>
+          <th data-col="ud_pass_td" title="Underdog season passing TDs O/U">UD PaTD <span class="sort-arrow"></span></th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -222,48 +241,60 @@ function propLine(val) {
   return val % 1 === 0 ? val : val.toFixed(1);
 }
 
-function propCols(p) {
-  const hasProp = p.prop_implied_ppr != null;
+function deltaCell(val) {
+  if (val == null) return '<span class="delta delta-zero">—</span>';
+  if (val > 0)     return `<span class="delta delta-pos">+${val}</span>`;
+  if (val < 0)     return `<span class="delta delta-neg">${val}</span>`;
+  return '<span class="delta delta-zero">0</span>';
+}
 
-  const pd = p.prop_adp_delta;
-  let pdStr, pdCls;
-  if (pd == null)     { pdStr = '—';      pdCls = 'delta-zero'; }
-  else if (pd > 0)    { pdStr = `+${pd}`; pdCls = 'delta-pos'; }
-  else if (pd < 0)    { pdStr = `${pd}`;  pdCls = 'delta-neg'; }
-  else                { pdStr = '0';       pdCls = 'delta-zero'; }
+function propCols(p) {
+  const dkPPR = p.dk_prop_ppr != null ? `<strong style="color:#ce93d8">${p.dk_prop_ppr}</strong>` : '<span class="no-data">—</span>';
+  const udPPR = p.ud_prop_ppr != null ? `<strong style="color:#90caf9">${p.ud_prop_ppr}</strong>` : '<span class="no-data">—</span>';
 
   return `
-    <td style="border-left:2px solid #4a235a">${hasProp ? `<strong style="color:#ce93d8">${p.prop_implied_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
-    <td><span class="delta ${pdCls}">${pdStr}</span></td>
-    <td>${propLine(p.prop_rush_yd)}</td>
-    <td>${propLine(p.prop_rec_yd)}</td>
-    <td>${propLine(p.prop_rec)}</td>
-    <td>${propLine(p.prop_rush_td)}</td>
-    <td>${propLine(p.prop_rec_td)}</td>
-    <td>${propLine(p.prop_pass_yd)}</td>
-    <td>${propLine(p.prop_pass_td)}</td>
+    <td style="border-left:2px solid #4a235a">${dkPPR}</td>
+    <td>${deltaCell(p.dk_prop_adp_delta)}</td>
+    <td>${propLine(p.dk_rush_yd)}</td>
+    <td>${propLine(p.dk_rec_yd)}</td>
+    <td>${propLine(p.dk_rec)}</td>
+    <td>${propLine(p.dk_rush_td)}</td>
+    <td>${propLine(p.dk_rec_td)}</td>
+    <td>${propLine(p.dk_pass_yd)}</td>
+    <td>${propLine(p.dk_pass_td)}</td>
+    <td style="border-left:2px solid #1a3a5c">${udPPR}</td>
+    <td>${deltaCell(p.ud_prop_adp_delta)}</td>
+    <td>${propLine(p.ud_rush_yd)}</td>
+    <td>${propLine(p.ud_rec_yd)}</td>
+    <td>${propLine(p.ud_rec)}</td>
+    <td>${propLine(p.ud_rush_td)}</td>
+    <td>${propLine(p.ud_rec_td)}</td>
+    <td>${propLine(p.ud_pass_yd)}</td>
+    <td>${propLine(p.ud_pass_td)}</td>
   `;
 }
 
 // ── Fetch betting lines ───────────────────────────────────────────────────────
 
-async function fetchProps() {
-  const btn = document.getElementById('props-btn');
+async function fetchProps(book) {
+  const isDK = book === 'dk';
+  const btn  = document.getElementById(isDK ? 'dk-btn' : 'ud-btn');
+  const url  = isDK ? '/api/props/refresh' : '/api/props/refresh/underdog';
+  const origText = btn.textContent;
   btn.disabled = true;
-  btn.textContent = '📊 Scraping DK… (~30s)';
+  btn.textContent = isDK ? '📊 Scraping DK… (~30s)' : '🐶 Fetching Underdog…';
   try {
-    const res = await fetch('/api/props/refresh', { method: 'POST' });
+    const res  = await fetch(url, { method: 'POST' });
     const json = await res.json();
     if (json.ok) {
-      btn.textContent = `📊 Lines fetched (${json.players} players)`;
-      // Reload data to show the new props
+      btn.textContent = `${isDK ? '📊' : '🐶'} ${json.players} players loaded`;
       await loadData(false);
     } else {
-      btn.textContent = '📊 Fetch Betting Lines';
+      btn.textContent = origText;
       alert('Props fetch issue: ' + (json.error || 'unknown'));
     }
   } catch (e) {
-    btn.textContent = '📊 Fetch Betting Lines';
+    btn.textContent = origText;
     alert('Error: ' + e.message);
   } finally {
     btn.disabled = false;
@@ -377,8 +408,8 @@ function renderTable() {
 
     return `
       <tr>
-        <td style="color:var(--muted);font-weight:700">${p.analysis_rank}</td>
-        <td>
+        <td class="sticky sticky-rank" style="color:var(--muted);font-weight:700">${p.analysis_rank}</td>
+        <td class="sticky sticky-name">
           <span style="font-weight:600;color:var(--text)">${p.name}</span>
           <span style="color:var(--muted);font-size:0.82em;margin-left:5px">${p.team}</span>
         </td>

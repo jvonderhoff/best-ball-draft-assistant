@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, redirect, url_for
 from flask_cors import CORS
 from app.draft import DraftState
 from app.database import init_db, save_draft, get_all_drafts, get_exposure, delete_draft, get_rankings, save_rankings, save_props, get_all_props
@@ -20,6 +20,10 @@ draft_state = DraftState()
 
 @app.route('/')
 def index():
+    return redirect(url_for('analysis_page'))
+
+@app.route('/draft')
+def draft():
     return render_template('index.html')
 
 
@@ -257,12 +261,26 @@ def get_props():
 @app.route('/api/props/refresh', methods=['POST'])
 def refresh_props():
     try:
-        from app.data.betting_fetcher import fetch_season_props
-        props = fetch_season_props(verbose=True)
+        from app.data.betting_fetcher import fetch_season_props as fetch_dk
+        props = fetch_dk(verbose=True)
         if not props:
             return jsonify({'ok': False, 'error': 'No props scraped — DK Sportsbook may have changed or season props not yet posted'}), 200
-        count = save_props(props)
-        return jsonify({'ok': True, 'players': len(props), 'rows': count})
+        count = save_props(props, book='DraftKings')
+        return jsonify({'ok': True, 'book': 'DraftKings', 'players': len(props), 'rows': count})
+    except Exception as e:
+        import traceback
+        return jsonify({'ok': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
+
+
+@app.route('/api/props/refresh/underdog', methods=['POST'])
+def refresh_props_underdog():
+    try:
+        from app.data.underdog_fetcher import fetch_season_props as fetch_ud
+        props = fetch_ud(verbose=True)
+        if not props:
+            return jsonify({'ok': False, 'error': 'No props returned from Underdog'}), 200
+        count = save_props(props, book='Underdog')
+        return jsonify({'ok': True, 'book': 'Underdog', 'players': len(props), 'rows': count})
     except Exception as e:
         import traceback
         return jsonify({'ok': False, 'error': str(e), 'trace': traceback.format_exc()}), 500

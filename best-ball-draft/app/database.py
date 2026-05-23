@@ -39,7 +39,8 @@ def init_db():
                 num_teams   INTEGER,
                 my_position INTEGER,
                 contest     TEXT,
-                dk_draft_id TEXT
+                dk_draft_id TEXT,
+                entry_fee   REAL
             );
 
             CREATE TABLE IF NOT EXISTS draft_picks (
@@ -72,6 +73,8 @@ def init_db():
         cols = [r[1] for r in conn.execute("PRAGMA table_info(drafts)").fetchall()]
         if 'dk_draft_id' not in cols:
             conn.execute("ALTER TABLE drafts ADD COLUMN dk_draft_id TEXT")
+        if 'entry_fee' not in cols:
+            conn.execute("ALTER TABLE drafts ADD COLUMN entry_fee REAL")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_dk_draft_id ON drafts(dk_draft_id) WHERE dk_draft_id IS NOT NULL")
         pick_cols = [r[1] for r in conn.execute("PRAGMA table_info(draft_picks)").fetchall()]
         for col in ('week15', 'week16', 'week17'):
@@ -167,9 +170,10 @@ def delete_draft(draft_id):
 
 # ── Player props ─────────────────────────────────────────────────────────────
 
-def save_props(props_by_player: dict):
+def save_props(props_by_player: dict, book: str = 'DraftKings'):
     """
     Upsert props from {player_name: {prop_type: {line, over_odds, under_odds}}}.
+    book: 'DraftKings' or 'Underdog'
     """
     with get_db() as conn:
         count = 0
@@ -178,32 +182,34 @@ def save_props(props_by_player: dict):
                 if not isinstance(data, dict):
                     continue
                 conn.execute("""
-                    INSERT INTO player_props (player_name, prop_type, line, over_odds, under_odds, updated_at)
-                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    INSERT INTO player_props (player_name, prop_type, line, over_odds, under_odds, book, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     ON CONFLICT(player_name, prop_type, book) DO UPDATE SET
                         line       = excluded.line,
                         over_odds  = excluded.over_odds,
                         under_odds = excluded.under_odds,
                         updated_at = CURRENT_TIMESTAMP
                 """, (player_name, prop_type, data.get('line'),
-                      str(data.get('over_odds') or ''), str(data.get('under_odds') or '')))
+                      str(data.get('over_odds') or ''), str(data.get('under_odds') or ''), book))
                 count += 1
     return count
 
 
 def get_all_props():
-    """Return all props as {player_name: {prop_type: {line, over_odds, under_odds, updated_at}}}."""
+    """
+    Return all props keyed by book then player:
+    {book: {player_name: {prop_type: {line, over_odds, under_odds, updated_at}}}}
+    """
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT player_name, prop_type, line, over_odds, under_odds, updated_at "
-            "FROM player_props ORDER BY player_name, prop_type"
+            "SELECT book, player_name, prop_type, line, over_odds, under_odds, updated_at "
+            "FROM player_props ORDER BY book, player_name, prop_type"
         ).fetchall()
     result = {}
     for r in rows:
-        pn = r['player_name']
-        if pn not in result:
-            result[pn] = {}
-        result[pn][r['prop_type']] = {
+        book = r['book'] or 'DraftKings'
+        pn   = r['player_name']
+        result.setdefault(book, {}).setdefault(pn, {})[r['prop_type']] = {
             'line':       r['line'],
             'over_odds':  r['over_odds'],
             'under_odds': r['under_odds'],

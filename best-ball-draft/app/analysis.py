@@ -188,42 +188,66 @@ def get_analysis_data(force_refresh: bool = False):
             p['market_delta'] = None
 
     # ── Betting prop lines (from DB, scraped separately) ─────────────────────
-    all_props = get_all_props()   # {player_name: {prop_type: {line, ...}}}
+    all_props_by_book = get_all_props()   # {book: {player_name: {prop_type: {...}}}}
+    dk_props  = all_props_by_book.get('DraftKings', {})
+    ud_props  = all_props_by_book.get('Underdog', {})
 
-    # Build a normalized-name → raw-name lookup for fuzzy matching
-    props_norm = {_normalize(k): k for k in all_props}
+    # Build normalized-name → raw-name lookups for fuzzy matching
+    dk_norm = {_normalize(k): k for k in dk_props}
+    ud_norm = {_normalize(k): k for k in ud_props}
+
+    prop_keys = ('rush_yd', 'rec_yd', 'rec', 'rush_td', 'rec_td', 'pass_yd', 'pass_td', 'pass_int')
 
     for p in players:
         key = _normalize(p['name'])
-        raw_key = props_norm.get(key)
-        pdata = all_props.get(raw_key, {}) if raw_key else {}
 
-        # Flatten lines into player dict
-        prop_keys = ('rush_yd', 'rec_yd', 'rec', 'rush_td', 'rec_td', 'pass_yd', 'pass_td', 'pass_int')
+        # DraftKings props
+        dk_raw  = dk_norm.get(key)
+        dk_data = dk_props.get(dk_raw, {}) if dk_raw else {}
         for pk in prop_keys:
-            entry = pdata.get(pk, {})
-            p[f'prop_{pk}'] = entry.get('line') if isinstance(entry, dict) else None
-        p['prop_over_odds']  = None  # reserved for future display
-        p['prop_updated_at'] = (pdata.get(list(pdata.keys())[0], {}) or {}).get('updated_at') if pdata else None
+            entry = dk_data.get(pk, {})
+            p[f'dk_{pk}'] = entry.get('line') if isinstance(entry, dict) else None
+        p['dk_prop_ppr']     = props_to_fantasy_pts(dk_data) if dk_data else None
+        p['dk_updated_at']   = (dk_data.get(next(iter(dk_data), None), {}) or {}).get('updated_at') if dk_data else None
 
-        # Implied full-PPR points from the prop lines
-        p['prop_implied_ppr'] = props_to_fantasy_pts(pdata) if pdata else None
+        # Underdog props
+        ud_raw  = ud_norm.get(key)
+        ud_data = ud_props.get(ud_raw, {}) if ud_raw else {}
+        for pk in prop_keys:
+            entry = ud_data.get(pk, {})
+            p[f'ud_{pk}'] = entry.get('line') if isinstance(entry, dict) else None
+        p['ud_prop_ppr']     = props_to_fantasy_pts(ud_data) if ud_data else None
+        p['ud_updated_at']   = (ud_data.get(next(iter(ud_data), None), {}) or {}).get('updated_at') if ud_data else None
 
-    # Rank players by prop-implied PPR (where available) for market delta
-    prop_ranked = sorted(
-        [p for p in players if p.get('prop_implied_ppr')],
-        key=lambda x: -x['prop_implied_ppr']
-    )
-    for rank, p in enumerate(prop_ranked, 1):
-        p['prop_rank'] = rank
+        # Keep a combined prop_implied_ppr (prefer DK, fall back to UD) for scoring/ranking
+        p['prop_implied_ppr'] = p['dk_prop_ppr'] or p['ud_prop_ppr']
 
+        # Legacy aliases so existing template code still works
+        for pk in prop_keys:
+            p[f'prop_{pk}'] = p[f'dk_{pk}'] or p[f'ud_{pk}']
+
+    # Rank players by DK prop-implied PPR for market delta
+    for book_key, ppr_key, rank_key, delta_key in [
+        ('dk_prop_ppr', 'dk_prop_ppr', 'dk_prop_rank', 'dk_prop_adp_delta'),
+        ('ud_prop_ppr', 'ud_prop_ppr', 'ud_prop_rank', 'ud_prop_adp_delta'),
+    ]:
+        ranked = sorted(
+            [p for p in players if p.get(ppr_key)],
+            key=lambda x: -x[ppr_key]
+        )
+        for rank, p in enumerate(ranked, 1):
+            p[rank_key] = rank
+        for p in players:
+            if rank_key not in p:
+                p[rank_key] = None
+            adp = p.get('adp')
+            rk  = p.get(rank_key)
+            p[delta_key] = round(adp - rk) if adp and rk else None
+
+    # Legacy prop_rank / prop_adp_delta (DK preferred)
     for p in players:
-        if 'prop_rank' not in p:
-            p['prop_rank'] = None
-        if p.get('prop_rank') and p.get('adp'):
-            p['prop_adp_delta'] = round(p['adp'] - p['prop_rank'])  # + = market too low
-        else:
-            p['prop_adp_delta'] = None
+        p['prop_rank']      = p.get('dk_prop_rank') or p.get('ud_prop_rank')
+        p['prop_adp_delta'] = p.get('dk_prop_adp_delta') or p.get('ud_prop_adp_delta')
 
     # ── Composite scoring ─────────────────────────────────────────────────────
     # Normalise 2025 pts_ppr per position so QB vs RB vs WR are comparable

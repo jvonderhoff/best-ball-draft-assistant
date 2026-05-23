@@ -43,7 +43,8 @@ def ensure_schema(conn):
             num_teams   INTEGER,
             my_position INTEGER,
             contest     TEXT,
-            dk_draft_id TEXT
+            dk_draft_id TEXT,
+            entry_fee   REAL
         );
         CREATE TABLE IF NOT EXISTS draft_picks (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,6 +75,8 @@ def ensure_schema(conn):
     cols = [r[1] for r in conn.execute("PRAGMA table_info(drafts)").fetchall()]
     if 'dk_draft_id' not in cols:
         conn.execute("ALTER TABLE drafts ADD COLUMN dk_draft_id TEXT")
+    if 'entry_fee' not in cols:
+        conn.execute("ALTER TABLE drafts ADD COLUMN entry_fee REAL")
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_dk_draft_id "
         "ON drafts(dk_draft_id) WHERE dk_draft_id IS NOT NULL"
@@ -92,9 +95,9 @@ def handle_save_draft(msg):
         ensure_schema(conn)
         try:
             cur = conn.execute(
-                "INSERT INTO drafts (num_teams, my_position, contest, dk_draft_id) VALUES (?,?,?,?)",
+                "INSERT INTO drafts (num_teams, my_position, contest, dk_draft_id, entry_fee) VALUES (?,?,?,?,?)",
                 (msg.get('num_teams', 12), msg.get('my_position', 0),
-                 msg.get('contest', ''), msg.get('dk_draft_id'))
+                 msg.get('contest', ''), msg.get('dk_draft_id'), msg.get('entry_fee'))
             )
         except sqlite3.IntegrityError:
             # Draft already exists — backfill any NULL pick_number values
