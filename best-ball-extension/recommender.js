@@ -256,7 +256,7 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   //   R4 pick 45, ADP 55 → gap=10, round=4 → ×0.63 (≈ cap)
   //   R8 pick 90, ADP 97 → gap=7,  round=8 → ×0.87
   const valueGap  = myPickNumber - (player.adp || myPickNumber);
-  const userRound = myTeam.length + 1;   // user's picks made + 1 = current round
+  // userRound already defined above
   if (valueGap > 0) {
     // Value steal — player fell past their ADP
     const normalizedValue = valueGap / userRound;
