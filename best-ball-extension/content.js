@@ -1345,7 +1345,7 @@ function onLocationChange() {
   if (href === _lastHref) return;
   _lastHref = href;
 
-  if (/draftkings\.com\/(draft|lineup)/.test(href)) {
+  if (/draftkings\.com\/(draft|lineups?|contest\/draftboard)/.test(href)) {
     if (!document.getElementById('bba-root')) init();
   } else if (/draftkings\.com\/mycontests/.test(href)) {
     console.log('[BBA] mycontests page detected');
