@@ -135,13 +135,14 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
 
   // ADP is the primary signal. RB and WR compete on pure ADP.
   // QB and TE get urgency-based adjustments since they fill capped slots.
-  const QB_TARGET = 2;
   const totalDrafted = myTeam.length;
-  const myTEs = myTeam.filter(p => p.pos === 'TE').length;
+  const myTEs  = myTeam.filter(p => p.pos === 'TE').length;
+  const myQBs  = myTeam.filter(p => p.pos === 'QB').length;
   const userRound = totalDrafted + 1;
-  // If you reach round 13+ with no TEs you'll need 3 to get adequate quality;
-  // otherwise the normal 2-TE target applies.
+  // Late-round zero: if you hit round 13+ with none drafted you'll need 3
+  // to maintain adequate position quality across the remaining picks.
   const TE_TARGET = (userRound >= 13 && myTEs === 0) ? 3 : 2;
+  const QB_TARGET = (userRound >= 13 && myQBs === 0) ? 3 : 2;
   let mult = 1.0;
 
   // TE urgency — scales sharply with how many TEs still needed vs picks remaining.
@@ -149,23 +150,34 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   // TE_TARGET=3: Round 13, 0 TEs → need 3 in 8 picks → urgency 0.375 → ×2.13
   // TE_TARGET=3: Round 15, 0 TEs → need 3 in 6 picks → urgency 0.50 → ×2.50
   // TE_TARGET=2: Round 13, 1 TE  → need 1 in 8 picks → urgency 0.125 → ×1.38
-  // Already at target → no urgency bonus
   if (pos === 'TE') {
     const teNeeded  = Math.max(0, TE_TARGET - myTEs);
     const picksLeft = Math.max(1, 20 - totalDrafted);
     if (teNeeded > 0) {
-      const urgency = teNeeded / picksLeft;   // 0→1; higher = more desperate
+      const urgency = teNeeded / picksLeft;
       mult *= (1 + Math.min(urgency * 3.0, 2.0));  // up to ×3.0 at max urgency
     }
   }
 
-  // QB pace adjustment — mild ±15% based on whether you're ahead/behind target pace.
-  if (pos === 'QB' && totalDrafted > 0) {
-    const pace    = totalDrafted / 20;
-    const ideal   = QB_TARGET * pace;
-    const actual  = myTeam.filter(p => p.pos === 'QB').length;
-    const deficit = ideal - actual;
-    mult += Math.max(-0.15, Math.min(0.15, deficit * 0.07));
+  // QB urgency — same urgency formula as TE.
+  // QB_TARGET=2: Round 13, 0 QBs → need 2 in 8 picks → urgency 0.25 → ×1.75
+  // QB_TARGET=3: Round 13, 0 QBs → need 3 in 8 picks → urgency 0.375 → ×2.13
+  // QB_TARGET=2: Round 13, 1 QB  → need 1 in 8 picks → urgency 0.125 → ×1.38
+  // Plus a mild pace adjustment (±15%) for staying on target in earlier rounds.
+  if (pos === 'QB') {
+    const qbNeeded  = Math.max(0, QB_TARGET - myQBs);
+    const picksLeft = Math.max(1, 20 - totalDrafted);
+    if (qbNeeded > 0) {
+      const urgency = qbNeeded / picksLeft;
+      mult *= (1 + Math.min(urgency * 3.0, 2.0));
+    }
+    // Mild pace nudge in earlier rounds (±15%)
+    if (totalDrafted > 0) {
+      const pace    = totalDrafted / 20;
+      const ideal   = QB_TARGET * pace;
+      const deficit = ideal - myQBs;
+      mult += Math.max(-0.15, Math.min(0.15, deficit * 0.07));
+    }
   }
 
   // Hard discount when a position slot is fully filled
@@ -178,8 +190,7 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   //   2 QBs in rounds 7-12: ×0.45 (still significant)
   //   2 QBs in rounds 13+:  no extra penalty (cheap dart throw)
   if (pos === 'QB') {
-    const myQBs = myTeam.filter(p => p.pos === 'QB').length;
-    if (myQBs >= 2) {
+    if (myQBs >= QB_TARGET) {
       if (userRound <= 6)       mult *= 0.25;
       else if (userRound <= 12) mult *= 0.45;
       // rounds 13+ — let normal needs/ADP logic decide
