@@ -649,16 +649,16 @@ async function fetchAndSyncMyContests() {
 
 // Try to extract the entry fee from a DK API response.
 function _extractEntryFee(data) {
-  const fields = [
-    'entryFee', 'entry_fee', 'buyIn', 'buy_in', 'fee', 'entryAmount',
-    'contestFee', 'contest_fee', 'entryPrice', 'entry_price',
-  ];
+  const keywords = ['entryfee', 'entry_fee', 'buyin', 'buy_in', 'fee',
+                    'entryamount', 'contestfee', 'entryprice'];
   const roots = [data, data.draft, data.draftGroup, data.contest,
                  data.data, data.payload, data.result, data.metadata];
   for (const root of roots) {
     if (!root || typeof root !== 'object') continue;
-    for (const f of fields) {
-      const val = root[f];
+    // Case-insensitive match against all own keys
+    for (const key of Object.keys(root)) {
+      if (!keywords.includes(key.toLowerCase())) continue;
+      const val = root[key];
       if (val == null) continue;
       const n = parseFloat(val);
       if (!isNaN(n) && n >= 0) return n;
@@ -670,24 +670,19 @@ function _extractEntryFee(data) {
 // Try to extract the actual draft start/creation time from a DK API response.
 // DK uses various field names across different endpoints — check them all.
 function _extractDraftTime(data) {
-  // Common field names DK uses for draft timestamps
-  const fields = [
-    'startTime', 'start_time', 'startDate', 'start_date',
-    'draftStartTime', 'draft_start_time', 'createdAt', 'created_at',
-    'scheduledStartTime', 'contestStartTime', 'eventStartTime',
-  ];
-  // Walk one level deep into wrapper objects (data.draft, data.draftGroup, etc.)
+  const keywords = ['starttime', 'start_time', 'startdate', 'start_date',
+                    'draftstarttime', 'draft_start_time', 'createdat', 'created_at',
+                    'scheduledstarttime', 'conteststarttime', 'eventstarttime'];
   const roots = [data, data.draft, data.draftGroup, data.contest,
                  data.data, data.payload, data.result, data.metadata];
   for (const root of roots) {
     if (!root || typeof root !== 'object') continue;
-    for (const f of fields) {
-      const val = root[f];
+    for (const key of Object.keys(root)) {
+      if (!keywords.includes(key.toLowerCase())) continue;
+      const val = root[key];
       if (!val) continue;
       const d = new Date(val);
-      if (!isNaN(d.getTime()) && d.getFullYear() >= 2024) {
-        return d.toISOString();
-      }
+      if (!isNaN(d.getTime()) && d.getFullYear() >= 2024) return d.toISOString();
     }
   }
   return null;
