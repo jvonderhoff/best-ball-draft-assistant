@@ -123,6 +123,7 @@ async function saveDraftToFlask({ contest = '', silent = false } = {}) {
   }
   const draftId = getDKDraftId();
   // Prefer cache from mycontests page, then API extraction, then DOM scrape
+  console.log('[BBA] draftMetaCache keys:', Object.keys(draftMetaCache), '— looking up:', draftId);
   const cached = draftMetaCache[String(draftId)] || {};
   if (cached.draftedAt && !state.draftedAt) state.draftedAt = cached.draftedAt;
   if (cached.entryFee != null && state.entryFee == null) state.entryFee = cached.entryFee;
@@ -722,7 +723,10 @@ function processDKResponse(url, data) {
   // ── mycontests metadata cache ────────────────────────────────────────────
   // When DK loads the mycontests page it fires an API with one entry per draft.
   // Cache fee + drafted_at per draft ID so they're available on the draft page.
-  if (/mycontest|entries|userlineup/i.test(url)) {
+  if (/draftkings\.com\/mycontests/i.test(location.href)) {
+    console.log('[BBA] mycontests page — intercepted:', url, Object.keys(data));
+  }
+  if (/mycontest|entries|userlineup|lineup|gametypes/i.test(url)) {
     const lists = [data.entries, data.contests, data.lineups,
                    data.data?.entries, data.payload?.entries,
                    data.userContests, data.upcomingContests];
