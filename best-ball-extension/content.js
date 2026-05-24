@@ -1546,9 +1546,12 @@ function scrapeMyContestsFees() {
   console.log('[BBA] scrapeMyContestsFees: found draft IDs in page HTML:', draftIds);
 
   if (!draftIds.length) {
-    // Log a sample of anchor tags to understand the DOM
-    const anchors = [...document.querySelectorAll('a')].slice(0, 10).map(a => a.href || a.getAttribute('href'));
-    console.log('[BBA] scrapeMyContestsFees: sample hrefs:', anchors);
+    // Log all unique URL-like patterns in the page to find DK's link format
+    const urlPatterns = [...new Set([...html.matchAll(/(?:href|data-[a-z]+)="([^"]{5,80})"/g)].map(m => m[1]))].slice(0, 20);
+    console.log('[BBA] scrapeMyContestsFees: URL patterns in page HTML:', urlPatterns);
+    // Also log any element whose text is "EDIT" to find the draft link structure
+    const editBtns = [...document.querySelectorAll('*')].filter(e => e.children.length === 0 && e.textContent.trim() === 'EDIT');
+    editBtns.slice(0, 3).forEach(e => console.log('[BBA] EDIT element:', e.tagName, e.className, e.closest('a,button')?.href || e.closest('[data-id],[data-draftid]')?.dataset));
     return;
   }
 
