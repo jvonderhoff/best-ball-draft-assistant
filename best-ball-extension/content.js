@@ -987,9 +987,17 @@ function createOverlay() {
       return;
     }
     btn.style.opacity = '0.5';
-    // Always fetch fresh metadata right before saving so drafted_at and
-    // entry_fee are populated even if init() fired before console was open.
     await fetchDraftMeta();
+
+    // If entry fee still unknown, ask the user
+    if (state.entryFee == null) {
+      const input = prompt('Entry fee for this draft? (e.g. 3)', '');
+      if (input !== null && input.trim() !== '') {
+        const parsed = parseFloat(input.trim().replace('$', ''));
+        if (!isNaN(parsed)) state.entryFee = parsed;
+      }
+    }
+
     const ok = await saveDraftToFlask({ contest: getDKContestName(), silent: false });
     btn.style.opacity = '';
     btn.title = ok ? '✓ Saved!' : 'Save failed — check console';
