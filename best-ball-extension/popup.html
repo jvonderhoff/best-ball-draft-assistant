@@ -35,6 +35,16 @@
     </div>
 
     <div class="form-group">
+      <label>RB Priority (early rounds)</label>
+      <select id="rbPriority">
+        <option value="off">Off — RBs compete on ADP only</option>
+        <option value="mild">Mild — slight early-round RB boost (×1.10)</option>
+        <option value="strong" selected>Strong — target 2 RBs in rounds 1-3 (×1.20)</option>
+        <option value="extreme">Extreme — RB heavy, 3 in rounds 1-5 (×1.35)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
       <label>Diversification (across drafts)</label>
       <select id="diversifyStrength">
         <option value="0">Off — ignore past exposure</option>

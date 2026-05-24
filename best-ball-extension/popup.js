@@ -4,15 +4,17 @@ const NUM_TEAMS = 12; // DraftKings best ball is always 12 teams
 
 const dkUsernameEl        = document.getElementById('dkUsername');
 const stackIntensityEl    = document.getElementById('stackIntensity');
+const rbPriorityEl        = document.getElementById('rbPriority');
 const diversifyStrengthEl = document.getElementById('diversifyStrength');
 const saveBtn             = document.getElementById('saveBtn');
 const savedMsg            = document.getElementById('savedMsg');
 const playerInfo          = document.getElementById('playerInfo');
 
 function loadSaved() {
-  bAPI.storage.local.get(['dkUsername', 'stackIntensity', 'diversifyStrength'], result => {
+  bAPI.storage.local.get(['dkUsername', 'stackIntensity', 'rbPriority', 'diversifyStrength'], result => {
     dkUsernameEl.value = result.dkUsername || 'jvonderhoff';
-    if (result.stackIntensity)    stackIntensityEl.value    = result.stackIntensity;
+    if (result.stackIntensity)            stackIntensityEl.value    = result.stackIntensity;
+    if (result.rbPriority)                rbPriorityEl.value        = result.rbPriority;
     if (result.diversifyStrength != null) diversifyStrengthEl.value = result.diversifyStrength;
   });
 }
@@ -20,9 +22,10 @@ function loadSaved() {
 function save() {
   const dkUsername        = dkUsernameEl.value.trim();
   const stackIntensity    = stackIntensityEl.value;
+  const rbPriority        = rbPriorityEl.value;
   const diversifyStrength = parseFloat(diversifyStrengthEl.value);
 
-  bAPI.storage.local.set({ dkUsername, stackIntensity, diversifyStrength }, () => {
+  bAPI.storage.local.set({ dkUsername, stackIntensity, rbPriority, diversifyStrength }, () => {
     bAPI.tabs.query({ url: '*://*.draftkings.com/*' }, tabs => {
       tabs.forEach(tab => {
         bAPI.tabs.sendMessage(tab.id, {
@@ -31,6 +34,7 @@ function save() {
           myPosition: null, // auto-detected in content.js
           dkUsername,
           stackIntensity,
+          rbPriority,
           diversifyStrength,
         }).catch(() => {});
       });

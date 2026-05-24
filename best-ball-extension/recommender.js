@@ -129,7 +129,7 @@ function byeWeekWarning(player, myTeam) {
 
 // ── Core value calculation ────────────────────────────────────────────────────
 
-function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium') {
+function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', rbPriority = 'strong') {
   const adpValue = Math.max(0, 100 - player.adp);
   const pos = player.pos;
 
@@ -199,6 +199,22 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
 
   // Early-round boost (position-agnostic — amplifies stacking/playoff bonuses)
   if (userRound <= 3) mult *= 1.1;
+
+  // RB priority — boost RBs in early rounds to encourage drafting them before WRs.
+  // Tapers off after round 5 since late RBs carry more risk than late WRs.
+  //   mild:    rounds 1-3 ×1.10, rounds 4-5 ×1.05
+  //   strong:  rounds 1-3 ×1.20, rounds 4-5 ×1.10
+  //   extreme: rounds 1-3 ×1.35, rounds 4-5 ×1.18, rounds 6-7 ×1.08
+  if (pos === 'RB' && rbPriority !== 'off') {
+    const boosts = {
+      mild:    [0, 1.10, 1.10, 1.10, 1.05, 1.05, 1.0],
+      strong:  [0, 1.20, 1.20, 1.20, 1.10, 1.10, 1.0],
+      extreme: [0, 1.35, 1.35, 1.35, 1.18, 1.18, 1.08, 1.08],
+    };
+    const table = boosts[rbPriority] || boosts.strong;
+    const boost = table[Math.min(userRound, table.length - 1)] || 1.0;
+    mult *= boost;
+  }
 
   // Same-team stacking bonuses
   const s = STACK_SETTINGS[stackIntensity] || STACK_SETTINGS.medium;
@@ -292,7 +308,7 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
 
 // ── Recommendation ────────────────────────────────────────────────────────────
 
-function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5) {
+function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, rbPriority = 'strong') {
   if (!available.length) return null;
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
@@ -302,7 +318,7 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
 
   let best = null, bestVal = -1;
   for (const p of pool) {
-    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity);
+    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, rbPriority);
     // Diversification penalty
     if (diversifyStrength > 0 && exposure[p.id]) {
       val *= (1 - exposure[p.id].exposure_rate * diversifyStrength);
@@ -334,7 +350,7 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
 }
 
 // Returns the top N recommendations sorted by value score.
-function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, n = 5) {
+function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, n = 5, rbPriority = 'strong') {
   if (!available.length) return [];
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
@@ -343,7 +359,7 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
   if (!pool.length) return [];
 
   const scored = pool.map(p => {
-    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity);
+    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, rbPriority);
     if (diversifyStrength > 0 && exposure[p.id]) {
       val *= (1 - exposure[p.id].exposure_rate * diversifyStrength);
     }

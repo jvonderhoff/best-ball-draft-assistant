@@ -14,6 +14,7 @@ let state = {
   myPosition: null,
   dkUsername: '',
   stackIntensity: 'medium',
+  rbPriority: 'strong',
   diversifyStrength: 0.5,
   isSetup: false,
   isComplete: false,
@@ -173,10 +174,11 @@ function initPlayers() {
 const NUM_TEAMS = 12; // DraftKings best ball is always 12 teams
 
 function loadSettings(cb) {
-  bAPI.storage.local.get(['dkUsername', 'stackIntensity', 'diversifyStrength'], result => {
+  bAPI.storage.local.get(['dkUsername', 'stackIntensity', 'rbPriority', 'diversifyStrength'], result => {
     state.numTeams          = NUM_TEAMS;
     state.dkUsername        = result.dkUsername        || 'jvonderhoff';
     state.stackIntensity    = result.stackIntensity    || 'medium';
+    state.rbPriority        = result.rbPriority        || 'strong';
     state.diversifyStrength = result.diversifyStrength != null ? result.diversifyStrength : 0.5;
     // Username alone is enough to activate the board; position is auto-detected
     state.isSetup = !!state.dkUsername;
@@ -1197,7 +1199,7 @@ function renderSuggestion() {
   const box = document.getElementById('bba-suggestion');
   if (!state.isSetup || !state.available.length) { box.style.display = 'none'; return; }
 
-  const recs = getTopRecommendations(state.available, state.myTeam, state.overallPick, state.stackIntensity, exposure, state.diversifyStrength, 5);
+  const recs = getTopRecommendations(state.available, state.myTeam, state.overallPick, state.stackIntensity, exposure, state.diversifyStrength, 5, state.rbPriority);
   if (!recs.length) { box.style.display = 'none'; return; }
 
   const myTurn = isMyTurn(state.overallPick, state.numTeams, state.myPosition);
@@ -1235,6 +1237,7 @@ bAPI.runtime.onMessage.addListener(msg => {
     state.numTeams          = NUM_TEAMS;
     state.dkUsername        = msg.dkUsername        || '';
     state.stackIntensity    = msg.stackIntensity    || 'medium';
+    state.rbPriority        = msg.rbPriority        || 'strong';
     state.diversifyStrength = msg.diversifyStrength != null ? msg.diversifyStrength : 0.5;
     state.isSetup           = !!state.dkUsername;
     state.myPosition        = null; // will be re-detected
