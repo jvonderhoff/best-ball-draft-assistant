@@ -1536,30 +1536,43 @@ window.addEventListener('__bba_api', e => processDKResponse(e.detail.url, e.deta
 let _lastHref = '';
 
 function scrapeMyContestsFees() {
-  // Each contest row has a link to /draft/snake/{id} and shows the entry fee.
-  // Walk every link, find draft snake links, then scan the row for a $N amount.
-  const links = document.querySelectorAll('a[href*="/draft/snake/"]');
-  let found = 0;
-  links.forEach(a => {
-    const m = a.href.match(/\/draft\/snake\/(\d+)/);
-    if (!m) return;
-    const draftId = m[1];
-    // Walk up to the row element and scan its text for a dollar amount
-    const row = a.closest('tr, [class*="row"], [class*="Row"], [class*="entry"], [class*="Entry"]');
-    if (!row) return;
-    const text = row.textContent;
-    // Match standalone dollar amounts like $3 or $25 (not $30.32 prize amounts — those have decimals)
-    const feeMatch = text.match(/\$(\d+)(?!\.\d{2})/);
-    if (!feeMatch) return;
-    const fee = parseFloat(feeMatch[1]);
-    const existing = draftMetaCache[draftId] || {};
-    draftMetaCache[draftId] = { ...existing, entryFee: fee };
-    _saveMetaCache(draftMetaCache);
-    found++;
-    console.log('[BBA] Scraped fee for draft', draftId, '→ $' + fee);
-  });
-  if (found) console.log('[BBA] scrapeMyContestsFees: cached fees for', found, 'drafts');
-  else console.log('[BBA] scrapeMyContestsFees: no draft links found — check DOM timing');
+  // DK uses React routing — real hrefs may not exist. Instead scan the full
+  // page HTML for draft IDs and extract the entry fee from the same row/block.
+  const html = document.body.innerHTML;
+
+  // Find all draft snake IDs embedded anywhere in the page
+  const idMatches = [...html.matchAll(/\/draft\/snake\/(\d+)/g)];
+  const draftIds = [...new Set(idMatches.map(m => m[1]))];
+  console.log('[BBA] scrapeMyContestsFees: found draft IDs in page HTML:', draftIds);
+
+  if (!draftIds.length) {
+    // Log a sample of anchor tags to understand the DOM
+    const anchors = [...document.querySelectorAll('a')].slice(0, 10).map(a => a.href || a.getAttribute('href'));
+    console.log('[BBA] scrapeMyContestsFees: sample hrefs:', anchors);
+    return;
+  }
+
+  // For each draft ID, find the element containing that ID and scan nearby text for a fee
+  for (const draftId of draftIds) {
+    // Find any element whose text/href contains the draft ID
+    const el = [...document.querySelectorAll('a, button, [data-draft-id], [data-id]')]
+      .find(e => (e.href || e.getAttribute('href') || e.dataset.draftId || e.dataset.id || '').includes(draftId));
+    const row = el?.closest('tr, [class*="row"], [class*="Row"], [class*="item"], [class*="entry"], [class*="contest"]');
+    const text = (row || document.body).textContent;
+
+    // Scan for a standalone $N (whole dollar, no decimals)
+    const fees = [...text.matchAll(/\$(\d+)(?!\d*\.)/g)].map(m => parseFloat(m[1]));
+    // Pick the smallest non-zero dollar amount — that's most likely the entry fee
+    const fee = fees.filter(f => f > 0).sort((a, b) => a - b)[0];
+    if (fee != null) {
+      const existing = draftMetaCache[draftId] || {};
+      draftMetaCache[draftId] = { ...existing, entryFee: fee };
+      _saveMetaCache(draftMetaCache);
+      console.log('[BBA] Scraped fee for draft', draftId, '→ $' + fee);
+    } else {
+      console.log('[BBA] scrapeMyContestsFees: no fee found for draft', draftId, '— row text:', (row?.textContent || '').slice(0, 200));
+    }
+  }
 }
 
 function onLocationChange() {
