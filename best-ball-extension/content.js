@@ -25,6 +25,8 @@ let state = {
 let exposure = {};
 // Map of player_id → custom_rank (populated when custom rankings are loaded)
 let customRankMap = {};
+// Cache of draftId → { entryFee, draftedAt } populated from mycontests API responses
+const draftMetaCache = {};
 
 // Send a message to background.js which relays it to the native db_writer.py.
 // No HTTP server needed — Firefox launches db_writer.py on demand.
@@ -112,10 +114,13 @@ async function saveDraftToFlask({ contest = '', silent = false } = {}) {
     return false;
   }
   const draftId = getDKDraftId();
-  // Prefer API-sourced fee; fall back to DOM scrape as last resort
+  // Prefer cache from mycontests page, then API extraction, then DOM scrape
+  const cached = draftMetaCache[String(draftId)] || {};
+  if (cached.draftedAt && !state.draftedAt) state.draftedAt = cached.draftedAt;
+  if (cached.entryFee != null && state.entryFee == null) state.entryFee = cached.entryFee;
   const domFee = getDKEntryFee();
   const entryFee = state.entryFee ?? domFee;
-  console.log('[BBA] saveDraftToFlask: entry fee —', `state.entryFee=${state.entryFee}`, `domFee=${domFee}`, `→ using ${entryFee}`);
+  console.log('[BBA] saveDraftToFlask: entry fee —', `cached=${cached.entryFee}`, `state=${state.entryFee}`, `dom=${domFee}`, `→ using ${entryFee}`);
   console.log('[BBA] saveDraftToFlask: posting', state.myTeam.length, 'picks for draft', draftId, 'drafted_at:', state.draftedAt || '(using now)');
   try {
     const result = await nativeCall({
@@ -709,6 +714,33 @@ function processDKResponse(url, data) {
   if (fee != null && fee > (state.entryFee ?? 0)) {
     state.entryFee = fee;
     console.log('[BBA] Entry fee from API:', fee);
+  }
+
+  // ── mycontests metadata cache ────────────────────────────────────────────
+  // When DK loads the mycontests page it fires an API with one entry per draft.
+  // Cache fee + drafted_at per draft ID so they're available on the draft page.
+  if (/mycontest|entries|userlineup/i.test(url)) {
+    const lists = [data.entries, data.contests, data.lineups,
+                   data.data?.entries, data.payload?.entries,
+                   data.userContests, data.upcomingContests];
+    for (const list of lists) {
+      if (!Array.isArray(list)) continue;
+      for (const entry of list) {
+        // Try every plausible ID field
+        const id = entry.draftGroupId || entry.DraftGroupId || entry.gameSetId ||
+                   entry.entryId || entry.EntryId || entry.lineupId;
+        if (!id) continue;
+        const fee = _extractEntryFee(entry);
+        const ts  = _extractDraftTime(entry);
+        if (fee != null || ts) {
+          draftMetaCache[String(id)] = { entryFee: fee, draftedAt: ts };
+          console.log('[BBA] Cached meta for draft', id, '— fee:', fee, 'draftedAt:', ts);
+        }
+      }
+      // Log first entry raw so we can see actual field names
+      if (list.length) console.log('[BBA] mycontests first entry keys:', Object.keys(list[0]), JSON.stringify(list[0]).slice(0, 500));
+      break;
+    }
   }
 
   // ── Contest-list detection ───────────────────────────────────────────────
