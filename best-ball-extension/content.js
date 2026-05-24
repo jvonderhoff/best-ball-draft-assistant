@@ -18,6 +18,7 @@ let state = {
   isSetup: false,
   isComplete: false,
   draftedAt: null,    // ISO timestamp of when pick 20 was detected
+  entryFee: null,     // entry fee pulled from DK API
   useCustomRankings: false,  // toggle: custom rankings vs DK ADP
 };
 
@@ -111,7 +112,8 @@ async function saveDraftToFlask({ contest = '', silent = false } = {}) {
     return false;
   }
   const draftId = getDKDraftId();
-  const entryFee = getDKEntryFee();
+  // Prefer API-sourced fee; fall back to DOM scrape as last resort
+  const entryFee = state.entryFee ?? getDKEntryFee();
   console.log('[BBA] saveDraftToFlask: posting', state.myTeam.length, 'picks for draft', draftId, 'entry fee:', entryFee, 'drafted_at:', state.draftedAt || '(using now)');
   try {
     const result = await nativeCall({
@@ -637,6 +639,26 @@ async function fetchAndSyncMyContests() {
   return imported;
 }
 
+// Try to extract the entry fee from a DK API response.
+function _extractEntryFee(data) {
+  const fields = [
+    'entryFee', 'entry_fee', 'buyIn', 'buy_in', 'fee', 'entryAmount',
+    'contestFee', 'contest_fee', 'entryPrice', 'entry_price',
+  ];
+  const roots = [data, data.draft, data.draftGroup, data.contest,
+                 data.data, data.payload, data.result, data.metadata];
+  for (const root of roots) {
+    if (!root || typeof root !== 'object') continue;
+    for (const f of fields) {
+      const val = root[f];
+      if (val == null) continue;
+      const n = parseFloat(val);
+      if (!isNaN(n) && n >= 0) return n;
+    }
+  }
+  return null;
+}
+
 // Try to extract the actual draft start/creation time from a DK API response.
 // DK uses various field names across different endpoints — check them all.
 function _extractDraftTime(data) {
@@ -669,13 +691,20 @@ function processDKResponse(url, data) {
   // Log every intercepted API call so we can see what data DK sends on a completed draft page
   console.log('[BBA] API intercepted:', url, Object.keys(data));
 
-  // ── Draft timestamp extraction ───────────────────────────────────────────
-  // Only set once — first valid timestamp from any DK API response wins.
+  // ── Draft metadata extraction ────────────────────────────────────────────
+  // Only set once — first valid value from any DK API response wins.
   if (!state.draftedAt) {
     const ts = _extractDraftTime(data);
     if (ts) {
       state.draftedAt = ts;
       console.log('[BBA] Draft timestamp from API:', ts);
+    }
+  }
+  if (state.entryFee == null) {
+    const fee = _extractEntryFee(data);
+    if (fee != null) {
+      state.entryFee = fee;
+      console.log('[BBA] Entry fee from API:', fee);
     }
   }
 
