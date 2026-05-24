@@ -25,8 +25,16 @@ let state = {
 let exposure = {};
 // Map of player_id → custom_rank (populated when custom rankings are loaded)
 let customRankMap = {};
-// Cache of draftId → { entryFee, draftedAt } populated from mycontests API responses
-const draftMetaCache = {};
+// Cache of draftId → { entryFee, draftedAt } — persisted in sessionStorage so it
+// survives navigation from mycontests → draft page within the same browser session.
+const _CACHE_KEY = 'bba_draft_meta';
+function _loadMetaCache() {
+  try { return JSON.parse(sessionStorage.getItem(_CACHE_KEY) || '{}'); } catch { return {}; }
+}
+function _saveMetaCache(cache) {
+  try { sessionStorage.setItem(_CACHE_KEY, JSON.stringify(cache)); } catch {}
+}
+const draftMetaCache = _loadMetaCache();
 
 // Send a message to background.js which relays it to the native db_writer.py.
 // No HTTP server needed — Firefox launches db_writer.py on demand.
@@ -729,6 +737,7 @@ function processDKResponse(url, data) {
         const ts  = _extractDraftTime(entry);
         if (fee != null || ts) {
           draftMetaCache[String(id)] = { entryFee: fee, draftedAt: ts };
+          _saveMetaCache(draftMetaCache);
           console.log('[BBA] Cached meta for draft', id, '— fee:', fee, 'draftedAt:', ts);
         }
       }
