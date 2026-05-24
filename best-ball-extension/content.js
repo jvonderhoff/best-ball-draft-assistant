@@ -112,7 +112,7 @@ async function saveDraftToFlask({ contest = '', silent = false } = {}) {
   }
   const draftId = getDKDraftId();
   const entryFee = getDKEntryFee();
-  console.log('[BBA] saveDraftToFlask: posting', state.myTeam.length, 'picks for draft', draftId, 'entry fee:', entryFee);
+  console.log('[BBA] saveDraftToFlask: posting', state.myTeam.length, 'picks for draft', draftId, 'entry fee:', entryFee, 'drafted_at:', state.draftedAt || '(using now)');
   try {
     const result = await nativeCall({
       action: 'saveDraft',
@@ -124,7 +124,7 @@ async function saveDraftToFlask({ contest = '', silent = false } = {}) {
       entry_fee: entryFee,
     });
     if (result.duplicate) {
-      console.log('[BBA] Draft already in DB, skipping.');
+      console.log('[BBA] Draft already in DB — updated drafted_at/entry_fee for id', result.draft_id);
     } else if (result.ok) {
       console.log('[BBA] Draft saved — id', result.draft_id);
     } else {

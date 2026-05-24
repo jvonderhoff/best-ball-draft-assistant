@@ -124,7 +124,7 @@ def handle_save_draft(msg):
                             "UPDATE draft_picks SET pick_number=? WHERE draft_id=? AND player_id=?",
                             (p['pick_number'], draft_id, p.get('id'))
                         )
-            return {'ok': True, 'duplicate': True}
+            return {'ok': True, 'duplicate': True, 'draft_id': draft_id if row else None}
         draft_id = cur.lastrowid
         conn.executemany(
             "INSERT INTO draft_picks "
