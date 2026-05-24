@@ -160,7 +160,7 @@
             list.innerHTML = drafts.map(d => {
                 const rawDate = d.drafted_at || d.created_at;
                 const date = rawDate ? new Date(rawDate).toLocaleDateString('en-US', {
-                    month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                    month: 'short', day: 'numeric', year: 'numeric'
                 }) : '—';
                 const picks = d.picks.map(p => `
                     <div class="pick-chip pos-${p.pos}">

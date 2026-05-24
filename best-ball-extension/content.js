@@ -126,7 +126,7 @@ async function saveDraftToFlask({ contest = '', silent = false } = {}) {
     const result = await nativeCall({
       action: 'saveDraft',
       dk_draft_id: draftId,
-      drafted_at: state.draftedAt || new Date().toISOString(),
+      drafted_at: (state.draftedAt || new Date().toISOString()).slice(0, 10),
       my_position: state.myPosition || 0,
       picks: state.myTeam,
       contest,
