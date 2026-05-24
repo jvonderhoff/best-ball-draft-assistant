@@ -104,12 +104,20 @@ def handle_save_draft(msg):
                  msg.get('drafted_at'))
             )
         except sqlite3.IntegrityError:
-            # Draft already exists — backfill any NULL pick_number values
+            # Draft already exists — update metadata and backfill any missing values
             row = conn.execute(
                 "SELECT id FROM drafts WHERE dk_draft_id=?", (msg.get('dk_draft_id'),)
             ).fetchone()
             if row:
                 draft_id = row['id']
+                # Update drafted_at and entry_fee if we now have better values
+                conn.execute("""
+                    UPDATE drafts
+                    SET drafted_at = COALESCE(?, drafted_at),
+                        entry_fee  = COALESCE(?, entry_fee)
+                    WHERE id = ?
+                """, (msg.get('drafted_at'), msg.get('entry_fee'), draft_id))
+                # Backfill any NULL pick_number values
                 for p in picks:
                     if p.get('pick_number') is not None:
                         conn.execute(
