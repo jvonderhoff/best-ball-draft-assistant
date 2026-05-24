@@ -1394,9 +1394,8 @@ function scheduleAutoDetectRetry(delay = 3000) {
 }
 
 async function fetchDraftMeta() {
-  // Try to pull draft creation time + entry fee directly from DK's API.
-  // The draft/snake/{id} page uses a draftGroup endpoint we can fetch ourselves.
   const draftId = getDKDraftId();
+  console.log('[BBA] fetchDraftMeta: draftId =', draftId);
   if (!draftId) return;
   try {
     const urls = [
@@ -1405,14 +1404,19 @@ async function fetchDraftMeta() {
       `https://api.draftkings.com/lineups/v1/draftgroups/${draftId}`,
     ];
     for (const url of urls) {
-      const r = await fetch(url, { credentials: 'include' });
-      if (!r.ok) continue;
-      const data = await r.json();
-      console.log('[BBA] fetchDraftMeta:', url, Object.keys(data));
-      const ts = _extractDraftTime(data);
-      if (ts) { state.draftedAt = ts; console.log('[BBA] Draft timestamp from meta fetch:', ts); }
-      const fee = _extractEntryFee(data);
-      if (fee != null && fee > (state.entryFee ?? 0)) { state.entryFee = fee; console.log('[BBA] Entry fee from meta fetch:', fee); }
+      try {
+        const r = await fetch(url, { credentials: 'include' });
+        console.log('[BBA] fetchDraftMeta:', url, '→', r.status);
+        if (!r.ok) continue;
+        const data = await r.json();
+        console.log('[BBA] fetchDraftMeta data keys:', Object.keys(data), JSON.stringify(data).slice(0, 400));
+        const ts = _extractDraftTime(data);
+        if (ts) { state.draftedAt = ts; console.log('[BBA] Draft timestamp from meta fetch:', ts); }
+        const fee = _extractEntryFee(data);
+        if (fee != null && fee > (state.entryFee ?? 0)) { state.entryFee = fee; console.log('[BBA] Entry fee from meta fetch:', fee); }
+      } catch (e) {
+        console.log('[BBA] fetchDraftMeta fetch error for', url, e.message);
+      }
     }
   } catch (e) {
     console.log('[BBA] fetchDraftMeta error:', e);
