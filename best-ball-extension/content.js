@@ -925,6 +925,9 @@ function createOverlay() {
       return;
     }
     btn.style.opacity = '0.5';
+    // Always fetch fresh metadata right before saving so drafted_at and
+    // entry_fee are populated even if init() fired before console was open.
+    await fetchDraftMeta();
     const ok = await saveDraftToFlask({ contest: getDKContestName(), silent: false });
     btn.style.opacity = '';
     btn.title = ok ? '✓ Saved!' : 'Save failed — check console';
