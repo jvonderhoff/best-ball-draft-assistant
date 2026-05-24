@@ -637,11 +637,47 @@ async function fetchAndSyncMyContests() {
   return imported;
 }
 
+// Try to extract the actual draft start/creation time from a DK API response.
+// DK uses various field names across different endpoints — check them all.
+function _extractDraftTime(data) {
+  // Common field names DK uses for draft timestamps
+  const fields = [
+    'startTime', 'start_time', 'startDate', 'start_date',
+    'draftStartTime', 'draft_start_time', 'createdAt', 'created_at',
+    'scheduledStartTime', 'contestStartTime', 'eventStartTime',
+  ];
+  // Walk one level deep into wrapper objects (data.draft, data.draftGroup, etc.)
+  const roots = [data, data.draft, data.draftGroup, data.contest,
+                 data.data, data.payload, data.result, data.metadata];
+  for (const root of roots) {
+    if (!root || typeof root !== 'object') continue;
+    for (const f of fields) {
+      const val = root[f];
+      if (!val) continue;
+      const d = new Date(val);
+      if (!isNaN(d.getTime()) && d.getFullYear() >= 2024) {
+        return d.toISOString();
+      }
+    }
+  }
+  return null;
+}
+
 function processDKResponse(url, data) {
   if (!data || typeof data !== 'object') return;
 
   // Log every intercepted API call so we can see what data DK sends on a completed draft page
   console.log('[BBA] API intercepted:', url, Object.keys(data));
+
+  // ── Draft timestamp extraction ───────────────────────────────────────────
+  // Only set once — first valid timestamp from any DK API response wins.
+  if (!state.draftedAt) {
+    const ts = _extractDraftTime(data);
+    if (ts) {
+      state.draftedAt = ts;
+      console.log('[BBA] Draft timestamp from API:', ts);
+    }
+  }
 
   // ── Contest-list detection ───────────────────────────────────────────────
   if (/contest|entries|lineup|mycontest/i.test(url)) {
