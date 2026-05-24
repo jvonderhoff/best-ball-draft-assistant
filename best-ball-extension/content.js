@@ -174,7 +174,8 @@ function loadSettings(cb) {
 function setComplete() {
   if (!state.isComplete && state.myTeam.length >= 20) {
     state.isComplete = true;
-    if (!state.draftedAt) state.draftedAt = new Date().toISOString();
+    // Don't set draftedAt here — API responses set it if available.
+    // saveDraftToFlask falls back to new Date() only if still null at save time.
   }
 }
 
@@ -695,12 +696,10 @@ function processDKResponse(url, data) {
 
   // ── Draft metadata extraction ────────────────────────────────────────────
   // Only set once — first valid value from any DK API response wins.
-  if (!state.draftedAt) {
-    const ts = _extractDraftTime(data);
-    if (ts) {
-      state.draftedAt = ts;
-      console.log('[BBA] Draft timestamp from API:', ts);
-    }
+  const ts = _extractDraftTime(data);
+  if (ts) {
+    state.draftedAt = ts;
+    console.log('[BBA] Draft timestamp from API:', ts);
   }
   const fee = _extractEntryFee(data);
   if (fee != null && fee > (state.entryFee ?? 0)) {
@@ -1394,6 +1393,32 @@ function scheduleAutoDetectRetry(delay = 3000) {
   }, delay);
 }
 
+async function fetchDraftMeta() {
+  // Try to pull draft creation time + entry fee directly from DK's API.
+  // The draft/snake/{id} page uses a draftGroup endpoint we can fetch ourselves.
+  const draftId = getDKDraftId();
+  if (!draftId) return;
+  try {
+    const urls = [
+      `https://api.draftkings.com/lineups/v1/gametypes/${draftId}/draftables`,
+      `https://api.draftkings.com/draft/v1/draftgroups/${draftId}`,
+      `https://api.draftkings.com/lineups/v1/draftgroups/${draftId}`,
+    ];
+    for (const url of urls) {
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) continue;
+      const data = await r.json();
+      console.log('[BBA] fetchDraftMeta:', url, Object.keys(data));
+      const ts = _extractDraftTime(data);
+      if (ts) { state.draftedAt = ts; console.log('[BBA] Draft timestamp from meta fetch:', ts); }
+      const fee = _extractEntryFee(data);
+      if (fee != null && fee > (state.entryFee ?? 0)) { state.entryFee = fee; console.log('[BBA] Entry fee from meta fetch:', fee); }
+    }
+  } catch (e) {
+    console.log('[BBA] fetchDraftMeta error:', e);
+  }
+}
+
 function init() {
   initPlayers();
 
@@ -1401,6 +1426,7 @@ function init() {
     // loadExposure is needed for the overlay (exposure rates); refreshPlayersInDB is
     // a background sync and must not block the overlay from appearing.
     refreshPlayersInDB();  // fire-and-forget
+    fetchDraftMeta();      // fire-and-forget — populates draftedAt + entryFee
     loadExposure().then(() => {
       createOverlay();
       render();
