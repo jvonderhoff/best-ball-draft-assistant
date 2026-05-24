@@ -113,8 +113,10 @@ async function saveDraftToFlask({ contest = '', silent = false } = {}) {
   }
   const draftId = getDKDraftId();
   // Prefer API-sourced fee; fall back to DOM scrape as last resort
-  const entryFee = state.entryFee ?? getDKEntryFee();
-  console.log('[BBA] saveDraftToFlask: posting', state.myTeam.length, 'picks for draft', draftId, 'entry fee:', entryFee, 'drafted_at:', state.draftedAt || '(using now)');
+  const domFee = getDKEntryFee();
+  const entryFee = state.entryFee ?? domFee;
+  console.log('[BBA] saveDraftToFlask: entry fee —', `state.entryFee=${state.entryFee}`, `domFee=${domFee}`, `→ using ${entryFee}`);
+  console.log('[BBA] saveDraftToFlask: posting', state.myTeam.length, 'picks for draft', draftId, 'drafted_at:', state.draftedAt || '(using now)');
   try {
     const result = await nativeCall({
       action: 'saveDraft',
@@ -700,12 +702,10 @@ function processDKResponse(url, data) {
       console.log('[BBA] Draft timestamp from API:', ts);
     }
   }
-  if (state.entryFee == null) {
-    const fee = _extractEntryFee(data);
-    if (fee != null) {
-      state.entryFee = fee;
-      console.log('[BBA] Entry fee from API:', fee);
-    }
+  const fee = _extractEntryFee(data);
+  if (fee != null && fee > (state.entryFee ?? 0)) {
+    state.entryFee = fee;
+    console.log('[BBA] Entry fee from API:', fee);
   }
 
   // ── Contest-list detection ───────────────────────────────────────────────
