@@ -19,6 +19,7 @@ let state = {
   isComplete: false,
   draftedAt: null,    // ISO timestamp of when pick 20 was detected
   entryFee: null,     // entry fee pulled from DK API
+  draftGroupId: null, // DK internal group ID extracted from draftables API URL
   useCustomRankings: false,  // toggle: custom rankings vs DK ADP
 };
 
@@ -706,6 +707,13 @@ function processDKResponse(url, data) {
   const raw = JSON.stringify(data);
   const dateMatch = raw.match(/"([^"]*(?:start|draft|creat|time|date)[^"]*)":\s*"(20\d\d-\d\d-\d\d[^"]{0,30})"/i);
   if (dateMatch) console.log('[BBA] Date field found in', url, '→', dateMatch[1], '=', dateMatch[2]);
+
+  // Capture draftGroupId from draftables URL pattern
+  const dgMatch = url.match(/draftgroups\/v\d+\/draftgroups\/(\d+)/i);
+  if (dgMatch && !state.draftGroupId) {
+    state.draftGroupId = dgMatch[1];
+    console.log('[BBA] draftGroupId captured:', state.draftGroupId);
+  }
 
   // ── Draft metadata extraction ────────────────────────────────────────────
   // Only set once — first valid value from any DK API response wins.
@@ -1444,25 +1452,46 @@ async function fetchDraftMeta() {
   const draftId = getDKDraftId();
   if (!draftId) return;
 
-  // DK embeds draft data server-side — scan all <script> tags for JSON
-  // blobs containing a date near our draft ID.
-  const scripts = [...document.querySelectorAll('script:not([src])')];
-  for (const s of scripts) {
-    const txt = s.textContent;
-    if (!txt.includes(draftId)) continue;
-    // Find any ISO date string in this blob
-    const m = txt.match(/"(20\d\d-\d\d-\d\dT[^"]{5,30})"/);
-    if (m) {
-      const d = new Date(m[1]);
-      if (!isNaN(d.getTime())) {
-        state.draftedAt = d.toISOString();
-        console.log('[BBA] Draft timestamp from page HTML:', state.draftedAt);
-        break;
+  // 1. Scan inline <script> tags for a date near the draft ID
+  if (!state.draftedAt) {
+    const scripts = [...document.querySelectorAll('script:not([src])')];
+    for (const s of scripts) {
+      const txt = s.textContent;
+      if (!txt.includes(draftId)) continue;
+      const m = txt.match(/"(20\d\d-\d\d-\d\dT[^"]{5,30})"/);
+      if (m) {
+        const d = new Date(m[1]);
+        if (!isNaN(d.getTime())) {
+          state.draftedAt = d.toISOString().slice(0, 10);
+          console.log('[BBA] Draft date from page HTML:', state.draftedAt);
+          break;
+        }
       }
     }
   }
 
-  if (!state.draftedAt) console.log('[BBA] fetchDraftMeta: no timestamp found in page HTML for draft', draftId);
+  // 2. Use the draftGroupId captured from intercepted API calls to fetch
+  //    contest metadata — this endpoint has the entry fee.
+  const groupId = state.draftGroupId;
+  if (groupId && state.entryFee == null) {
+    const urls = [
+      `https://api.draftkings.com/draftgroups/v1/draftgroups/${groupId}`,
+      `https://api.draftkings.com/lineups/v1/gametypes/${groupId}`,
+    ];
+    for (const url of urls) {
+      try {
+        const r = await fetch(url, { credentials: 'include' });
+        console.log('[BBA] fetchDraftMeta:', url, '→', r.status);
+        if (!r.ok) continue;
+        const data = await r.json();
+        console.log('[BBA] fetchDraftMeta keys:', Object.keys(data), JSON.stringify(data).slice(0, 400));
+        const fee = _extractEntryFee(data);
+        if (fee != null) { state.entryFee = fee; console.log('[BBA] Entry fee from group meta:', fee); break; }
+      } catch (e) {
+        console.log('[BBA] fetchDraftMeta error for', url, e.message);
+      }
+    }
+  }
 }
 
 function init() {
