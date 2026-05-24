@@ -722,10 +722,20 @@ function processDKResponse(url, data) {
     state.draftedAt = ts;
     console.log('[BBA] Draft timestamp from API:', ts);
   }
-  const fee = _extractEntryFee(data);
-  if (fee != null && fee > (state.entryFee ?? 0)) {
-    state.entryFee = fee;
-    console.log('[BBA] Entry fee from API:', fee);
+  // Scan top-level and one level deep (competitions, contests, draftGroup arrays)
+  const feeRoots = [data, ...(Array.isArray(data.competitions) ? data.competitions : []),
+                    ...(Array.isArray(data.contests) ? data.contests : [])];
+  for (const root of feeRoots) {
+    const fee = _extractEntryFee(root);
+    if (fee != null && fee > (state.entryFee ?? 0)) {
+      state.entryFee = fee;
+      console.log('[BBA] Entry fee from API:', fee, '(from', url, ')');
+      break;
+    }
+  }
+  // Log competitions keys so we can see what fields are available
+  if (Array.isArray(data.competitions) && data.competitions.length && state.entryFee == null) {
+    console.log('[BBA] competitions[0] keys:', Object.keys(data.competitions[0]), JSON.stringify(data.competitions[0]).slice(0, 300));
   }
 
   // ── mycontests metadata cache ────────────────────────────────────────────
@@ -1525,6 +1535,33 @@ window.addEventListener('__bba_api', e => processDKResponse(e.detail.url, e.deta
 
 let _lastHref = '';
 
+function scrapeMyContestsFees() {
+  // Each contest row has a link to /draft/snake/{id} and shows the entry fee.
+  // Walk every link, find draft snake links, then scan the row for a $N amount.
+  const links = document.querySelectorAll('a[href*="/draft/snake/"]');
+  let found = 0;
+  links.forEach(a => {
+    const m = a.href.match(/\/draft\/snake\/(\d+)/);
+    if (!m) return;
+    const draftId = m[1];
+    // Walk up to the row element and scan its text for a dollar amount
+    const row = a.closest('tr, [class*="row"], [class*="Row"], [class*="entry"], [class*="Entry"]');
+    if (!row) return;
+    const text = row.textContent;
+    // Match standalone dollar amounts like $3 or $25 (not $30.32 prize amounts — those have decimals)
+    const feeMatch = text.match(/\$(\d+)(?!\.\d{2})/);
+    if (!feeMatch) return;
+    const fee = parseFloat(feeMatch[1]);
+    const existing = draftMetaCache[draftId] || {};
+    draftMetaCache[draftId] = { ...existing, entryFee: fee };
+    _saveMetaCache(draftMetaCache);
+    found++;
+    console.log('[BBA] Scraped fee for draft', draftId, '→ $' + fee);
+  });
+  if (found) console.log('[BBA] scrapeMyContestsFees: cached fees for', found, 'drafts');
+  else console.log('[BBA] scrapeMyContestsFees: no draft links found — check DOM timing');
+}
+
 function onLocationChange() {
   const href = location.href;
   if (href === _lastHref) return;
@@ -1535,6 +1572,8 @@ function onLocationChange() {
   } else if (/draftkings\.com\/mycontests/.test(href)) {
     console.log('[BBA] mycontests page detected');
     loadSettings(() => injectGetLineupsButton());
+    // Scrape entry fees from the mycontests table rows after the page renders
+    setTimeout(scrapeMyContestsFees, 2000);
   }
 }
 
