@@ -1402,32 +1402,27 @@ function scheduleAutoDetectRetry(delay = 3000) {
 
 async function fetchDraftMeta() {
   const draftId = getDKDraftId();
-  console.log('[BBA] fetchDraftMeta: draftId =', draftId);
   if (!draftId) return;
-  try {
-    const urls = [
-      `https://api.draftkings.com/lineups/v1/gametypes/${draftId}/draftables`,
-      `https://api.draftkings.com/draft/v1/draftgroups/${draftId}`,
-      `https://api.draftkings.com/lineups/v1/draftgroups/${draftId}`,
-    ];
-    for (const url of urls) {
-      try {
-        const r = await fetch(url, { credentials: 'include' });
-        console.log('[BBA] fetchDraftMeta:', url, '→', r.status);
-        if (!r.ok) continue;
-        const data = await r.json();
-        console.log('[BBA] fetchDraftMeta data keys:', Object.keys(data), JSON.stringify(data).slice(0, 400));
-        const ts = _extractDraftTime(data);
-        if (ts) { state.draftedAt = ts; console.log('[BBA] Draft timestamp from meta fetch:', ts); }
-        const fee = _extractEntryFee(data);
-        if (fee != null && fee > (state.entryFee ?? 0)) { state.entryFee = fee; console.log('[BBA] Entry fee from meta fetch:', fee); }
-      } catch (e) {
-        console.log('[BBA] fetchDraftMeta fetch error for', url, e.message);
+
+  // DK embeds draft data server-side — scan all <script> tags for JSON
+  // blobs containing a date near our draft ID.
+  const scripts = [...document.querySelectorAll('script:not([src])')];
+  for (const s of scripts) {
+    const txt = s.textContent;
+    if (!txt.includes(draftId)) continue;
+    // Find any ISO date string in this blob
+    const m = txt.match(/"(20\d\d-\d\d-\d\dT[^"]{5,30})"/);
+    if (m) {
+      const d = new Date(m[1]);
+      if (!isNaN(d.getTime())) {
+        state.draftedAt = d.toISOString();
+        console.log('[BBA] Draft timestamp from page HTML:', state.draftedAt);
+        break;
       }
     }
-  } catch (e) {
-    console.log('[BBA] fetchDraftMeta error:', e);
   }
+
+  if (!state.draftedAt) console.log('[BBA] fetchDraftMeta: no timestamp found in page HTML for draft', draftId);
 }
 
 function init() {
