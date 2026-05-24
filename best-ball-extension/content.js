@@ -691,8 +691,12 @@ function _extractDraftTime(data) {
 function processDKResponse(url, data) {
   if (!data || typeof data !== 'object') return;
 
-  // Log every intercepted API call so we can see what data DK sends on a completed draft page
+  // Log every intercepted API call
   console.log('[BBA] API intercepted:', url, Object.keys(data));
+  // If the response contains any ISO date strings, log the relevant snippet
+  const raw = JSON.stringify(data);
+  const dateMatch = raw.match(/"([^"]*(?:start|draft|creat|time|date)[^"]*)":\s*"(20\d\d-\d\d-\d\d[^"]{0,30})"/i);
+  if (dateMatch) console.log('[BBA] Date field found in', url, '→', dateMatch[1], '=', dateMatch[2]);
 
   // ── Draft metadata extraction ────────────────────────────────────────────
   // Only set once — first valid value from any DK API response wins.
