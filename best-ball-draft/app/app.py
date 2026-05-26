@@ -286,6 +286,31 @@ def refresh_props_underdog():
         return jsonify({'ok': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
 
 
+# ── Mobile recommender ────────────────────────────────────────────────────────
+
+@app.route('/recommend')
+def recommend_page():
+    return render_template('recommend.html')
+
+
+@app.route('/api/players', methods=['GET'])
+def get_players():
+    """Return all players from players.js (the extension's player cache)."""
+    import re
+    players_js = os.path.join(basedir, '..', 'best-ball-extension', 'players.js')
+    players_js = os.path.normpath(players_js)
+    try:
+        with open(players_js) as f:
+            content = f.read()
+        m = re.search(r'const PLAYERS\s*=\s*(\[.*\]);', content, re.DOTALL)
+        if not m:
+            return jsonify({'error': 'Could not parse players.js'}), 500
+        players = json.loads(m.group(1))
+        return jsonify(players)
+    except FileNotFoundError:
+        return jsonify({'error': 'players.js not found — run generate_players.py'}), 404
+
+
 # ── Analysis ──────────────────────────────────────────────────────────────────
 
 @app.route('/analysis')
