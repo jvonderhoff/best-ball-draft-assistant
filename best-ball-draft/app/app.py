@@ -293,7 +293,8 @@ def refresh_props_underdog():
 # ── DK cookie store & proxy ───────────────────────────────────────────────────
 # Stores the last cookie string the user sent from their DK browser session.
 _dk_session = {
-    'cookie': None,       # raw Cookie header string
+    'cookie':    None,   # raw Cookie header string (from document.cookie)
+    'ls_tokens': {},     # JWT tokens from localStorage keyed by their key name
     'updated_at': None,
 }
 # Cache of draft_id -> { picks, overall_pick, my_username, updated_at }
@@ -312,8 +313,14 @@ def _dk_headers(extra=None):
         'Referer': 'https://www.draftkings.com/',
         'Origin': 'https://www.draftkings.com',
     }
-    if _dk_session['cookie']:
+    if _dk_session.get('cookie'):
         h['Cookie'] = _dk_session['cookie']
+    # If localStorage had a JWT, try it as Authorization Bearer
+    ls_tokens = _dk_session.get('ls_tokens') or {}
+    if ls_tokens:
+        # Use the first JWT found (common keys: 'access_token', 'id_token', etc.)
+        first_jwt = next(iter(ls_tokens.values()))
+        h['Authorization'] = f'Bearer {first_jwt}'
     if extra:
         h.update(extra)
     return h
@@ -407,16 +414,36 @@ def _fetch_dk_draft(draft_id):
 
 @app.route('/api/dk-auth', methods=['POST'])
 def dk_auth():
-    """Receive DK cookie string from the user's browser (bookmarklet/snippet)."""
+    """Receive DK cookie string + localStorage from the user's browser (bookmarklet/snippet)."""
     data = request.get_json(silent=True) or {}
     cookie = data.get('cookie', '').strip()
+    ls_raw = data.get('ls') or data.get('storage') or '{}'
+
     if not cookie:
         return jsonify({'error': 'No cookie provided'}), 400
+
+    # Parse localStorage for any JWT / auth tokens DK stores there
+    try:
+        ls = json.loads(ls_raw) if isinstance(ls_raw, str) else (ls_raw or {})
+    except Exception:
+        ls = {}
+
+    # Build an augmented cookie string: start with document.cookie, then append
+    # any JWT-like values found in localStorage as synthetic cookies so our
+    # API calls can try them as Bearer tokens or extra cookie values.
+    jwt_keys = [k for k, v in ls.items()
+                if isinstance(v, str) and v.startswith('eyJ')]
+
     _dk_session['cookie'] = cookie
+    _dk_session['ls_tokens'] = {k: ls[k] for k in jwt_keys}
     _dk_session['updated_at'] = time.time()
-    # Show which readable tokens we got
-    keys = [part.split('=')[0].strip() for part in cookie.split(';') if '=' in part]
-    return jsonify({'ok': True, 'cookie_keys': keys})
+
+    cookie_keys = [p.split('=')[0].strip() for p in cookie.split(';') if '=' in p]
+    return jsonify({
+        'ok': True,
+        'cookie_keys': cookie_keys,
+        'ls_jwt_keys': jwt_keys,
+    })
 
 
 @app.route('/api/dk-auth/status', methods=['GET'])

@@ -2,202 +2,304 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DK Auth Setup — Best Ball Assistant</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>DK Auth Setup</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background: #0b0f14; color: #e0e0e0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 15px; padding: 20px;
-      max-width: 600px; margin: 0 auto;
+      font-size: 15px; padding: 16px 16px 40px;
+      max-width: 560px; margin: 0 auto;
     }
-    h1 { color: #4fc3f7; font-size: 1.3em; margin-bottom: 6px; }
-    h2 { font-size: 1em; color: #e0e0e0; margin: 20px 0 8px; }
-    p  { color: #90a4ae; font-size: 0.9em; line-height: 1.5; margin-bottom: 10px; }
+    h1 { color: #4fc3f7; font-size: 1.2em; margin-bottom: 4px; }
+    .subtitle { color: #78909c; font-size: 0.85em; margin-bottom: 18px; }
+
+    /* Status */
+    .status-box {
+      border-radius: 8px; padding: 12px 14px;
+      border: 1px solid #2a3f5f; background: #111827;
+      margin-bottom: 20px;
+    }
+    .status-ok  { color: #81c784; font-weight: 600; }
+    .status-err { color: #ef5350; }
+
+    /* Browser picker */
+    .browser-tabs {
+      display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+    }
+    .browser-tab {
+      flex: 1; min-width: 100px;
+      padding: 10px 8px; border-radius: 8px;
+      border: 1px solid #2a3f5f; background: #111827;
+      color: #78909c; font-size: 0.88em; font-weight: 600;
+      cursor: pointer; text-align: center;
+    }
+    .browser-tab.active { background: #0d2a4d; border-color: #4fc3f7; color: #4fc3f7; }
+
+    .browser-content { display: none; }
+    .browser-content.active { display: block; }
+
+    /* Steps */
+    .steps { display: flex; flex-direction: column; gap: 14px; }
     .step {
       background: #111827; border: 1px solid #2a3f5f;
-      border-radius: 8px; padding: 14px; margin-bottom: 12px;
+      border-radius: 8px; padding: 14px;
+    }
+    .step-hdr {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 8px;
     }
     .step-num {
       background: #4fc3f7; color: #000;
       font-size: 0.72em; font-weight: 700;
-      padding: 2px 7px; border-radius: 10px; margin-right: 6px;
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
     }
     .step-title { font-weight: 600; font-size: 0.95em; }
+    p { color: #90a4ae; font-size: 0.88em; line-height: 1.55; }
+    strong { color: #e0e0e0; }
     .code-box {
-      background: #0a0e14; border: 1px solid #2a3f5f; border-radius: 6px;
+      background: #060a0f; border: 1px solid #2a3f5f; border-radius: 6px;
       padding: 12px; margin: 10px 0;
       font-family: 'SF Mono', 'Fira Code', monospace;
-      font-size: 0.78em; color: #81c784;
-      word-break: break-all; line-height: 1.5;
+      font-size: 0.76em; color: #81c784;
+      word-break: break-all; line-height: 1.6;
       cursor: pointer; position: relative;
+      -webkit-user-select: all; user-select: all;
     }
-    .copy-hint { font-size: 0.72em; color: #546e7a; margin-top: 4px; }
+    .copy-btn {
+      display: block; width: 100%;
+      padding: 9px; margin-top: 6px;
+      background: #1a2d4d; border: 1px solid #4fc3f7;
+      border-radius: 6px; color: #4fc3f7;
+      font-size: 0.85em; font-weight: 700; cursor: pointer;
+    }
+    .copy-hint { font-size: 0.75em; color: #546e7a; margin-top: 4px; }
+
+    .tip {
+      background: #1a2010; border: 1px solid #33691e;
+      border-radius: 6px; padding: 10px 12px;
+      font-size: 0.82em; color: #aed581;
+      margin-top: 10px;
+    }
+    .warn {
+      background: #1a1410; border: 1px solid #5d4037;
+      border-radius: 6px; padding: 10px 12px;
+      font-size: 0.82em; color: #ffb74d;
+      margin-top: 10px;
+    }
+    img-placeholder {
+      display: block; background: #1a2233; border-radius: 6px;
+      height: 80px; margin: 8px 0;
+      display: flex; align-items: center; justify-content: center;
+      color: #546e7a; font-size: 0.8em; font-style: italic;
+    }
+
     .btn {
-      display: inline-block; padding: 10px 18px;
+      display: inline-block; padding: 11px 20px;
       background: #4fc3f7; color: #000;
-      border: none; border-radius: 6px;
-      font-size: 0.9em; font-weight: 700; cursor: pointer;
-      text-decoration: none; margin-top: 6px;
+      border: none; border-radius: 7px;
+      font-size: 0.95em; font-weight: 700; cursor: pointer;
+      text-decoration: none;
     }
     .btn-outline {
-      background: transparent; border: 1px solid #2a3f5f; color: #90a4ae;
+      background: transparent; border: 1px solid #2a3f5f; color: #78909c;
     }
-    .status-box {
-      background: #111827; border-radius: 8px; padding: 14px;
-      margin: 16px 0; border: 1px solid #2a3f5f;
+    .bottom-nav {
+      display: flex; gap: 10px; margin-top: 24px;
+      border-top: 1px solid #2a3f5f; padding-top: 16px;
+      flex-wrap: wrap;
     }
-    .status-ok  { color: #81c784; }
-    .status-err { color: #ef5350; }
-    .hint { font-size: 0.8em; color: #546e7a; margin-top: 6px; }
-    .tab-nav {
-      display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
-    }
-    .tab-btn {
-      padding: 7px 14px; border-radius: 6px; border: 1px solid #2a3f5f;
-      background: transparent; color: #78909c; font-size: 0.82em;
-      font-weight: 600; cursor: pointer;
-    }
-    .tab-btn.active { background: #4fc3f7; color: #000; border-color: transparent; }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-    a { color: #4fc3f7; }
   </style>
 </head>
 <body>
 
-<h1>🏈 DK Auth Setup</h1>
-<p>One-time setup so Best Ball Assistant can read your live draft from DraftKings.</p>
+<h1>🔑 DK Auth Setup</h1>
+<p class="subtitle">One-time setup — lets Best Ball Assistant read your live draft from DraftKings.</p>
 
-<!-- Auth status -->
 <div class="status-box" id="statusBox">
   <div id="statusText" style="color:#78909c">Checking…</div>
 </div>
 
-<div class="tab-nav">
-  <button class="tab-btn active" data-tab="phone">📱 Phone Browser</button>
-  <button class="tab-btn" data-tab="desktop">🖥 Desktop Browser</button>
-  <button class="tab-btn" data-tab="manual">✏️ Manual Paste</button>
+<div class="browser-tabs">
+  <button class="browser-tab active" data-browser="chrome-ios">Chrome iOS</button>
+  <button class="browser-tab" data-browser="safari">Safari iOS</button>
+  <button class="browser-tab" data-browser="desktop">Desktop</button>
 </div>
 
-<!-- PHONE TAB -->
-<div class="tab-content active" id="tab-phone">
-  <p>Open DraftKings in your phone browser (Safari or Chrome), log in, then follow these steps.</p>
+<!-- ── Chrome iOS ── -->
+<div class="browser-content active" id="browser-chrome-ios">
+  <div class="steps">
 
-  <div class="step">
-    <span class="step-num">1</span><span class="step-title">Save a bookmark</span>
-    <p style="margin-top:8px">Add any page as a bookmark in your browser, then edit the URL and replace it with this JavaScript:</p>
-    <div class="code-box" id="bookmarkletCode" onclick="copyText('bookmarkletCode')">javascript:(function(){var s=document.createElement('script');s.src='http://SERVER_IP:8000/static/dk-auth.js?t='+Date.now();document.head.appendChild(s)})();</div>
-    <p class="copy-hint">Tap to copy · Replace SERVER_IP with <strong id="serverIp">your Mac's IP</strong></p>
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">1</div><div class="step-title">Copy the snippet below</div></div>
+      <div class="code-box" id="snippet-chrome" onclick="copySnippet('chrome')"></div>
+      <button class="copy-btn" onclick="copySnippet('chrome')">📋 Copy to clipboard</button>
+    </div>
+
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">2</div><div class="step-title">Save it as a bookmark</div></div>
+      <p>Bookmark <em>any</em> page in Chrome (tap the <strong>⋮ menu → Star</strong>). Then open your bookmarks, long-press the new bookmark, and tap <strong>Edit bookmark</strong>. Delete the URL field and paste the snippet you copied. Save.</p>
+      <div class="tip">💡 Name it something short like <strong>BBA Auth</strong> so it's easy to find.</div>
+    </div>
+
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">3</div><div class="step-title">Open DraftKings and run the bookmark</div></div>
+      <p>Navigate to <strong>draftkings.com</strong> in Chrome (log in if needed). Tap the address bar, type <strong>BBA</strong>, and you should see your bookmark appear. Tap it.</p>
+      <p style="margin-top:8px">A green banner should briefly appear: <em>"BBA: auth sent!"</em></p>
+    </div>
+
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">4</div><div class="step-title">Come back here and check status</div></div>
+      <p>Return to this page. The status box at the top should turn green. You're done — go to <a href="/recommend" style="color:#4fc3f7">/recommend</a> and enter your draft ID.</p>
+      <button class="copy-btn" onclick="checkStatus()" style="margin-top:10px">↻ Refresh status</button>
+    </div>
+
   </div>
+</div>
 
-  <div class="step">
-    <span class="step-num">2</span><span class="step-title">Open DraftKings and run the bookmark</span>
-    <p style="margin-top:8px">Navigate to <strong>draftkings.com</strong> (any page, while logged in), then tap the bookmark you saved. It will send your session to Best Ball Assistant automatically.</p>
+<!-- ── Safari iOS ── -->
+<div class="browser-content" id="browser-safari">
+  <div class="steps">
+
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">1</div><div class="step-title">Copy the snippet below</div></div>
+      <div class="code-box" id="snippet-safari" onclick="copySnippet('safari')"></div>
+      <button class="copy-btn" onclick="copySnippet('safari')">📋 Copy to clipboard</button>
+    </div>
+
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">2</div><div class="step-title">Save it as a bookmark</div></div>
+      <p>In Safari, tap the <strong>Share button → Add Bookmark</strong>. Name it <strong>BBA Auth</strong> and save. Then tap <strong>Bookmarks (book icon) → Edit</strong>, find BBA Auth, tap it, and replace the URL with the snippet you copied. Done.</p>
+    </div>
+
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">3</div><div class="step-title">Open DraftKings and run it</div></div>
+      <p>Go to <strong>draftkings.com</strong> in Safari (log in if needed). Tap the address bar, type <strong>BBA</strong>, tap the BBA Auth bookmark from the suggestions.</p>
+      <p style="margin-top:8px">A green banner should appear: <em>"BBA: auth sent!"</em></p>
+    </div>
+
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">4</div><div class="step-title">Check status</div></div>
+      <button class="copy-btn" onclick="checkStatus()" style="margin-top:4px">↻ Refresh status</button>
+    </div>
+
   </div>
+  <div class="warn" style="margin-top:14px">⚠ If Safari blocks the bookmark (CSP), switch to the Chrome iOS tab — Chrome is more permissive with bookmarklets.</div>
+</div>
 
-  <div class="step">
-    <span class="step-num">3</span><span class="step-title">Come back here to verify</span>
-    <p style="margin-top:8px">Return to this page — the status above should turn green. You're ready to draft.</p>
+<!-- ── Desktop ── -->
+<div class="browser-content" id="browser-desktop">
+  <div class="steps">
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">1</div><div class="step-title">Open DK in your browser and open the console</div></div>
+      <p>Go to <strong>draftkings.com</strong> (logged in), press <strong>F12</strong> (or ⌘⌥I on Mac), click the <strong>Console</strong> tab.</p>
+    </div>
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">2</div><div class="step-title">Paste and run this</div></div>
+      <div class="code-box" id="snippet-desktop" onclick="copySnippet('desktop')"></div>
+      <button class="copy-btn" onclick="copySnippet('desktop')">📋 Copy</button>
+    </div>
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">3</div><div class="step-title">Press Enter — check status</div></div>
+      <p>You should see <code style="color:#81c784">{ok: true, …}</code> in the console. Come back here and refresh status.</p>
+      <button class="copy-btn" onclick="checkStatus()" style="margin-top:10px">↻ Refresh status</button>
+    </div>
   </div>
 </div>
 
-<!-- DESKTOP TAB -->
-<div class="tab-content" id="tab-desktop">
-  <p>Open DraftKings in your desktop browser, log in, then open the developer console (F12 → Console tab) and paste:</p>
-
-  <div class="code-box" id="consoleSnippet" onclick="copyText('consoleSnippet')">fetch('http://SERVER_IP:8000/api/dk-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookie:document.cookie,storage:JSON.stringify(localStorage)})}).then(r=>r.json()).then(d=>console.log('BBA Auth:',d))</div>
-  <p class="copy-hint">Tap/click to copy · Replace SERVER_IP with your Mac's LAN IP</p>
-
-  <p style="margin-top:12px">Press Enter. You should see <code style="color:#81c784">BBA Auth: {ok: true, …}</code> in the console.</p>
-</div>
-
-<!-- MANUAL TAB -->
-<div class="tab-content" id="tab-manual">
-  <p>If the bookmarklet approach doesn't work, you can paste your DK cookie string here directly.</p>
-  <p>To get it: Open DK in a browser where you're logged in → F12 → Application → Cookies → <strong>https://www.draftkings.com</strong> → copy <em>all</em> cookie rows as a string like <code>name=value; name2=value2</code></p>
-
-  <textarea id="manualCookie" rows="4"
-    placeholder="Paste cookie string here…"
-    style="width:100%;background:#0a0e14;border:1px solid #2a3f5f;border-radius:6px;padding:10px;color:#e0e0e0;font-size:0.82em;font-family:monospace;margin:10px 0;"></textarea>
-  <button class="btn" onclick="submitManualCookie()">Submit Cookie</button>
-  <div id="manualResult" style="margin-top:8px;font-size:0.85em;color:#78909c;"></div>
-</div>
-
-<div style="margin-top:24px; border-top:1px solid #2a3f5f; padding-top:16px;">
+<div class="bottom-nav">
   <a href="/recommend" class="btn">← Back to Draft</a>
-  <a href="/recommend" class="btn btn-outline" style="margin-left:8px">Go to /recommend</a>
+  <button class="btn btn-outline" onclick="checkStatus()">↻ Check status</button>
 </div>
 
 <script>
-// Replace SERVER_IP placeholders with actual server IP
-fetch('/api/live-draft/list').then(r => r.json()).catch(() => []);
-const serverIp = location.hostname;
-document.querySelectorAll('.code-box').forEach(el => {
-  el.textContent = el.textContent.replace(/SERVER_IP/g, serverIp);
-});
-document.getElementById('serverIp').textContent = serverIp + ':8000';
+const SERVER = location.origin;  // e.g. http://192.168.1.161:8000
 
-// Tab switching
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn, .tab-content').forEach(el => el.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-  });
-});
+// The inline bookmarklet — no external script load, avoids script-src CSP
+function makeBookmarklet() {
+  const url = SERVER + '/api/dk-auth';
+  return `javascript:(function(){` +
+    `var p={cookie:document.cookie,ls:JSON.stringify(localStorage),href:location.href};` +
+    `fetch('${url}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)})` +
+    `.then(r=>r.json())` +
+    `.then(function(d){` +
+      `var t=document.createElement('div');` +
+      `t.textContent=d.ok?'✓ BBA auth sent!':'✗ BBA: '+JSON.stringify(d);` +
+      `Object.assign(t.style,{position:'fixed',top:'10px',left:'50%',transform:'translateX(-50%)',` +
+      `background:d.ok?'#1b5e20':'#b71c1c',color:'#fff',padding:'10px 18px',borderRadius:'8px',` +
+      `fontFamily:'sans-serif',fontSize:'14px',fontWeight:'700',zIndex:'2147483647',` +
+      `boxShadow:'0 2px 8px rgba(0,0,0,.5)',whiteSpace:'nowrap'});` +
+      `document.body.appendChild(t);setTimeout(function(){t.remove()},4000)})` +
+    `.catch(function(e){alert('BBA error: '+e.message)})})();`;
+}
 
-// Copy helper
-function copyText(id) {
-  const t = document.getElementById(id).textContent;
-  navigator.clipboard.writeText(t).then(() => {
-    const el = document.getElementById(id);
-    el.style.background = '#0d2a0d';
-    setTimeout(() => el.style.background = '', 600);
+function makeConsoleSnippet() {
+  const url = SERVER + '/api/dk-auth';
+  return `fetch('${url}',{method:'POST',headers:{'Content-Type':'application/json'},` +
+    `body:JSON.stringify({cookie:document.cookie,ls:JSON.stringify(localStorage),href:location.href})})` +
+    `.then(r=>r.json()).then(console.log)`;
+}
+
+// Populate code boxes
+const bm = makeBookmarklet();
+const cs = makeConsoleSnippet();
+document.getElementById('snippet-chrome').textContent  = bm;
+document.getElementById('snippet-safari').textContent  = bm;
+document.getElementById('snippet-desktop').textContent = cs;
+
+// Copy helpers
+function copySnippet(which) {
+  const id = which === 'desktop' ? 'snippet-desktop' : `snippet-${which}`;
+  const text = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector(`#browser-${which === 'desktop' ? 'desktop' : (which + '-ios') || which} .copy-btn`);
+    if (btn) { const orig = btn.textContent; btn.textContent = '✓ Copied!'; setTimeout(() => btn.textContent = orig, 2000); }
   }).catch(() => {
-    // Fallback
-    const ta = document.createElement('textarea');
-    ta.value = t; document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); document.body.removeChild(ta);
+    // iOS fallback — select the text
+    const el = document.getElementById(id);
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
   });
 }
 
-// Auth status
+// Browser tab switching
+document.querySelectorAll('.browser-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.browser-tab, .browser-content').forEach(el => el.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('browser-' + tab.dataset.browser).classList.add('active');
+  });
+});
+
+// Status check
 async function checkStatus() {
-  const box = document.getElementById('statusBox');
   const txt = document.getElementById('statusText');
+  const box = document.getElementById('statusBox');
+  txt.style.color = '#78909c';
+  txt.textContent = 'Checking…';
   try {
     const r = await fetch('/api/dk-auth/status');
     const d = await r.json();
     if (d.authenticated) {
       const min = Math.round(d.age_seconds / 60);
       txt.className = 'status-ok';
-      txt.innerHTML = `✓ Authenticated &nbsp;·&nbsp; Cookie set ${min < 1 ? 'just now' : min + 'm ago'}<br>
-        <span style="font-size:0.8em;color:#546e7a">Keys: ${d.cookie_keys.join(', ')}</span>`;
+      txt.innerHTML = `✓ Authenticated · cookie set ${min < 1 ? 'just now' : min + 'm ago'}<br>` +
+        `<span style="font-size:0.82em;color:#546e7a;font-weight:400">Keys: ${d.cookie_keys.join(', ')}</span>`;
       box.style.borderColor = '#2e7d32';
     } else {
       txt.className = 'status-err';
-      txt.innerHTML = '✗ Not authenticated — follow the steps below to connect.';
+      txt.innerHTML = '✗ Not authenticated — follow the steps below.';
       box.style.borderColor = '#c62828';
     }
   } catch {
     txt.textContent = 'Could not reach server.';
   }
-}
-
-async function submitManualCookie() {
-  const cookie = document.getElementById('manualCookie').value.trim();
-  if (!cookie) return;
-  const r = await fetch('/api/dk-auth', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({cookie})
-  });
-  const d = await r.json();
-  document.getElementById('manualResult').textContent =
-    d.ok ? `✓ Stored (keys: ${d.cookie_keys.join(', ')})` : 'Error: ' + JSON.stringify(d);
-  if (d.ok) checkStatus();
 }
 
 checkStatus();
