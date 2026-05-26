@@ -145,30 +145,36 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const QB_TARGET = (userRound >= 13 && myQBs === 0) ? 3 : 2;
   let mult = 1.0;
 
-  // TE urgency — scales sharply with how many TEs still needed vs picks remaining.
-  // TE_TARGET=2: Round 13, 0 TEs → need 2 in 8 picks → urgency 0.25 → ×1.75
-  // TE_TARGET=3: Round 13, 0 TEs → need 3 in 8 picks → urgency 0.375 → ×2.13
-  // TE_TARGET=3: Round 15, 0 TEs → need 3 in 6 picks → urgency 0.50 → ×2.50
-  // TE_TARGET=2: Round 13, 1 TE  → need 1 in 8 picks → urgency 0.125 → ×1.38
+  // TE/QB urgency — ramps up gradually so early rounds aren't hijacked.
+  // urgencyWeight = 0 before round 6, ramps to 1.0 at round 14.
+  // This means rounds 1-5 get no urgency push; rounds 9-10 get ~50%;
+  // rounds 13+ get full urgency (the truly critical window).
+  //
+  // TE examples with ramp:
+  //   Rd 5,  0 TEs → weight 0.0  → no boost (WRs with better ADP still win)
+  //   Rd 9,  0 TEs → weight 0.38 → urgency 0.133 × 0.38 × 3 → ×1.15
+  //   Rd 13, 0 TEs → weight 0.88 → urgency 0.375 × 0.88 × 3 → ×1.99
+  //   Rd 15, 0 TEs → weight 1.0  → urgency 0.50  × 1.0  × 3 → ×2.50
+  const URGENCY_RAMP_START = 6;   // no urgency before this round
+  const URGENCY_RAMP_FULL  = 14;  // full urgency from this round onward
+  const urgencyWeight = Math.max(0, Math.min(1,
+    (userRound - URGENCY_RAMP_START) / (URGENCY_RAMP_FULL - URGENCY_RAMP_START)
+  ));
+
   if (pos === 'TE') {
     const teNeeded  = Math.max(0, TE_TARGET - myTEs);
     const picksLeft = Math.max(1, 20 - totalDrafted);
     if (teNeeded > 0) {
-      const urgency = teNeeded / picksLeft;
-      mult *= (1 + Math.min(urgency * 3.0, 2.0));  // up to ×3.0 at max urgency
+      const urgency = (teNeeded / picksLeft) * urgencyWeight;
+      mult *= (1 + Math.min(urgency * 3.0, 2.0));
     }
   }
 
-  // QB urgency — same urgency formula as TE.
-  // QB_TARGET=2: Round 13, 0 QBs → need 2 in 8 picks → urgency 0.25 → ×1.75
-  // QB_TARGET=3: Round 13, 0 QBs → need 3 in 8 picks → urgency 0.375 → ×2.13
-  // QB_TARGET=2: Round 13, 1 QB  → need 1 in 8 picks → urgency 0.125 → ×1.38
-  // Plus a mild pace adjustment (±15%) for staying on target in earlier rounds.
   if (pos === 'QB') {
     const qbNeeded  = Math.max(0, QB_TARGET - myQBs);
     const picksLeft = Math.max(1, 20 - totalDrafted);
     if (qbNeeded > 0) {
-      const urgency = qbNeeded / picksLeft;
+      const urgency = (qbNeeded / picksLeft) * urgencyWeight;
       mult *= (1 + Math.min(urgency * 3.0, 2.0));
     }
     // Mild pace nudge in earlier rounds (±15%)
