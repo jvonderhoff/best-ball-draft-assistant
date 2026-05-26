@@ -249,7 +249,8 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   }
 
   // Playoff game stack bonus — week 17 weighted most heavily
-  mult *= getPlayoffBonus(player, myTeam);
+  // Skipped when stack intensity is off so pure ADP/value mode is truly stack-free.
+  if (stackIntensity !== 'off') mult *= getPlayoffBonus(player, myTeam);
 
   // Bye week penalty — discourage stacking too many players on the same bye
   mult *= getByeWeekPenalty(player, myTeam);
