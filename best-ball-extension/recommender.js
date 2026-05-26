@@ -145,36 +145,34 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const QB_TARGET = (userRound >= 13 && myQBs === 0) ? 3 : 2;
   let mult = 1.0;
 
-  // TE/QB urgency — ramps up gradually so early rounds aren't hijacked.
-  // urgencyWeight = 0 before round 6, ramps to 1.0 at round 14.
-  // This means rounds 1-5 get no urgency push; rounds 9-10 get ~50%;
-  // rounds 13+ get full urgency (the truly critical window).
-  //
-  // TE examples with ramp:
-  //   Rd 5,  0 TEs → weight 0.0  → no boost (WRs with better ADP still win)
-  //   Rd 9,  0 TEs → weight 0.38 → urgency 0.133 × 0.38 × 3 → ×1.15
-  //   Rd 13, 0 TEs → weight 0.88 → urgency 0.375 × 0.88 × 3 → ×1.99
-  //   Rd 15, 0 TEs → weight 1.0  → urgency 0.50  × 1.0  × 3 → ×2.50
-  const URGENCY_RAMP_START = 6;   // no urgency before this round
-  const URGENCY_RAMP_FULL  = 14;  // full urgency from this round onward
-  const urgencyWeight = Math.max(0, Math.min(1,
-    (userRound - URGENCY_RAMP_START) / (URGENCY_RAMP_FULL - URGENCY_RAMP_START)
-  ));
+  // TE urgency — starts late; you can comfortably grab TE in rounds 10-14.
+  //   Rd 5-9:  no boost — WRs/RBs compete freely
+  //   Rd 11:   weight 0.25 → mild nudge
+  //   Rd 13:   weight 0.75 → meaningful push
+  //   Rd 15+:  weight 1.0  → full urgency
+  const teUrgencyWeight = Math.max(0, Math.min(1, (userRound - 9) / 7));
 
   if (pos === 'TE') {
     const teNeeded  = Math.max(0, TE_TARGET - myTEs);
     const picksLeft = Math.max(1, 20 - totalDrafted);
     if (teNeeded > 0) {
-      const urgency = (teNeeded / picksLeft) * urgencyWeight;
+      const urgency = (teNeeded / picksLeft) * teUrgencyWeight;
       mult *= (1 + Math.min(urgency * 3.0, 2.0));
     }
   }
+
+  // QB urgency — starts early; good QBs dry up fast and you can't pivot late.
+  //   Rd 1-3:  no boost
+  //   Rd 5:    weight 0.20 → gentle push
+  //   Rd 7:    weight 0.60 → solid push
+  //   Rd 9+:   weight 1.0  → full urgency
+  const qbUrgencyWeight = Math.max(0, Math.min(1, (userRound - 3) / 6));
 
   if (pos === 'QB') {
     const qbNeeded  = Math.max(0, QB_TARGET - myQBs);
     const picksLeft = Math.max(1, 20 - totalDrafted);
     if (qbNeeded > 0) {
-      const urgency = (qbNeeded / picksLeft) * urgencyWeight;
+      const urgency = (qbNeeded / picksLeft) * qbUrgencyWeight;
       mult *= (1 + Math.min(urgency * 3.0, 2.0));
     }
     // Mild pace nudge in earlier rounds (±15%)
