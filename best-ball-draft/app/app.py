@@ -286,6 +286,67 @@ def refresh_props_underdog():
         return jsonify({'ok': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
 
 
+# ── Live draft state (pushed from desktop extension) ─────────────────────────
+# Holds the latest push per draft_id.  Keyed by dk draft ID string.
+_live_drafts = {}  # { draft_id: { overall_pick, my_position, num_teams, my_team, taken_ids, updated_at } }
+
+
+@app.route('/api/live-draft/push', methods=['POST'])
+def live_draft_push():
+    """Receive a state snapshot from the desktop extension content script."""
+    data = request.get_json(silent=True) or {}
+    draft_id = str(data.get('draft_id', '')).strip()
+    if not draft_id:
+        return jsonify({'error': 'draft_id required'}), 400
+    import time
+    _live_drafts[draft_id] = {
+        'draft_id':    draft_id,
+        'overall_pick': int(data.get('overall_pick', 1)),
+        'my_position':  data.get('my_position'),
+        'num_teams':    int(data.get('num_teams', 12)),
+        'my_team':      data.get('my_team', []),
+        'taken_ids':    data.get('taken_ids', []),
+        'updated_at':   time.time(),
+    }
+    return jsonify({'ok': True})
+
+
+@app.route('/api/live-draft/state', methods=['GET'])
+def live_draft_state():
+    """Return latest state for a given draft_id (polled by mobile /recommend page)."""
+    import time
+    draft_id = request.args.get('draft_id', '').strip()
+    if draft_id:
+        entry = _live_drafts.get(draft_id)
+    else:
+        # No specific ID requested — return the most recently updated draft
+        entry = max(_live_drafts.values(), key=lambda x: x['updated_at'], default=None)
+
+    if not entry:
+        return jsonify({'connected': False})
+
+    age = time.time() - entry['updated_at']
+    return jsonify({
+        'connected':    age < 60,   # stale after 60 s of no pushes
+        'age_seconds':  round(age),
+        **entry,
+    })
+
+
+@app.route('/api/live-draft/list', methods=['GET'])
+def live_draft_list():
+    """List all active (recently updated) draft IDs."""
+    import time
+    now = time.time()
+    active = [
+        {'draft_id': v['draft_id'], 'age_seconds': round(now - v['updated_at'])}
+        for v in _live_drafts.values()
+        if now - v['updated_at'] < 300
+    ]
+    active.sort(key=lambda x: x['age_seconds'])
+    return jsonify(active)
+
+
 # ── Mobile recommender ────────────────────────────────────────────────────────
 
 @app.route('/recommend')

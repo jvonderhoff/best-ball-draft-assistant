@@ -8,20 +8,20 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #0b0f14;
-      --panel:    #111827;
-      --card:     #1a2233;
-      --border:   #2a3f5f;
-      --accent:   #4fc3f7;
-      --green:    #81c784;
-      --red:      #ef5350;
-      --orange:   #ff9800;
-      --text:     #e0e0e0;
-      --muted:    #78909c;
-      --QB:       #e91e63;
-      --RB:       #2196f3;
-      --WR:       #4caf50;
-      --TE:       #ff9800;
+      --bg:     #0b0f14;
+      --panel:  #111827;
+      --card:   #1a2233;
+      --border: #2a3f5f;
+      --accent: #4fc3f7;
+      --green:  #81c784;
+      --red:    #ef5350;
+      --orange: #ff9800;
+      --text:   #e0e0e0;
+      --muted:  #78909c;
+      --QB:     #e91e63;
+      --RB:     #2196f3;
+      --WR:     #4caf50;
+      --TE:     #ff9800;
     }
 
     body {
@@ -49,13 +49,64 @@
     .hdr-meta  { font-size: 0.78em; color: var(--muted); text-align: right; }
     .hdr-meta span { color: var(--text); font-weight: 600; }
 
+    /* ── Sync bar ── */
+    .sync-bar {
+      padding: 7px 14px;
+      font-size: 0.78em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      background: #0d1520;
+    }
+    .sync-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .sync-dot.live   { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .sync-dot.manual { background: var(--orange); }
+    .sync-label { color: var(--muted); flex: 1; }
+    .sync-label b { color: var(--text); }
+    .sync-input-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .sync-input-row input {
+      width: 130px;
+      padding: 4px 8px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 0.85em;
+    }
+    .sync-btn {
+      padding: 4px 10px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.82em;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .sync-btn.disconnect {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
     /* ── Tabs ── */
     .tabs {
       display: flex;
       border-bottom: 1px solid var(--border);
       background: #0d1520;
       position: sticky;
-      top: 45px;
+      top: 82px;
       z-index: 99;
     }
     .tab {
@@ -69,186 +120,13 @@
       border-bottom: 2px solid transparent;
       letter-spacing: 0.03em;
       text-transform: uppercase;
-      transition: color 0.15s;
     }
-    .tab.active {
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
     .tab-panel { display: none; padding: 12px; }
     .tab-panel.active { display: block; }
 
-    /* ── Picks tab ── */
-    .pick-controls {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-    .pick-controls button {
-      flex: 1;
-      padding: 10px 8px;
-      border-radius: 6px;
-      border: none;
-      font-size: 0.85em;
-      font-weight: 700;
-      cursor: pointer;
-      transition: opacity 0.15s;
-    }
-    .btn-mine     { background: var(--accent); color: #000; }
-    .btn-opp      { background: var(--border); color: var(--text); }
-    .btn-undo     { background: transparent; border: 1px solid var(--border) !important; color: var(--muted); flex: 0 0 44px; font-size: 1em; }
-    button:active { opacity: 0.7; }
-
-    /* Search */
-    .search-wrap {
-      position: relative;
-      margin-bottom: 10px;
-    }
-    .search-wrap input {
-      width: 100%;
-      padding: 10px 12px 10px 36px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      font-size: 0.95em;
-    }
-    .search-wrap input::placeholder { color: var(--muted); }
-    .search-icon {
-      position: absolute;
-      left: 11px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--muted);
-      font-size: 1em;
-      pointer-events: none;
-    }
-    .pos-filters {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 10px;
-    }
-    .pos-btn {
-      padding: 5px 10px;
-      border-radius: 20px;
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--muted);
-      font-size: 0.78em;
-      font-weight: 700;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .pos-btn.active { color: #fff; border-color: transparent; }
-    .pos-btn[data-pos="ALL"].active { background: var(--accent); color: #000; }
-    .pos-btn[data-pos="QB"].active  { background: var(--QB); }
-    .pos-btn[data-pos="RB"].active  { background: var(--RB); }
-    .pos-btn[data-pos="WR"].active  { background: var(--WR); }
-    .pos-btn[data-pos="TE"].active  { background: var(--TE); }
-
-    /* Player list */
-    .player-list { display: flex; flex-direction: column; gap: 4px; max-height: 45vh; overflow-y: auto; }
-    .player-row {
-      display: flex;
-      align-items: center;
-      background: var(--card);
-      border-radius: 6px;
-      padding: 8px 10px;
-      gap: 10px;
-      border-left: 3px solid transparent;
-      cursor: pointer;
-      transition: background 0.1s;
-      user-select: none;
-    }
-    .player-row:active { background: #1e2d44; }
-    .player-row.taken  { opacity: 0.32; }
-    .player-row.selected { background: #1a2d4d; border-left-color: var(--accent); }
-    .player-row[data-pos="QB"] { border-left-color: var(--QB); }
-    .player-row[data-pos="RB"] { border-left-color: var(--RB); }
-    .player-row[data-pos="WR"] { border-left-color: var(--WR); }
-    .player-row[data-pos="TE"] { border-left-color: var(--TE); }
-    .player-row.taken[data-pos] { border-left-color: transparent; }
-    .adp-badge {
-      min-width: 32px;
-      text-align: center;
-      font-size: 0.72em;
-      color: var(--muted);
-      font-weight: 700;
-    }
-    .p-name { flex: 1; font-weight: 600; font-size: 0.88em; }
-    .p-meta { font-size: 0.75em; color: var(--muted); }
-    .taken-by {
-      font-size: 0.7em;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 10px;
-    }
-    .taken-by.mine { background: #1a3a4d; color: var(--accent); }
-    .taken-by.opp  { background: #2d1a1a; color: var(--muted); }
-
-    /* Action bar (appears on row selection) */
-    .action-bar {
-      display: none;
-      gap: 8px;
-      margin-bottom: 10px;
-      animation: slideDown 0.15s ease;
-    }
-    .action-bar.visible { display: flex; }
-    @keyframes slideDown {
-      from { opacity: 0; transform: translateY(-6px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    .action-bar button {
-      flex: 1;
-      padding: 11px;
-      border-radius: 8px;
-      border: none;
-      font-size: 0.9em;
-      font-weight: 700;
-      cursor: pointer;
-    }
-
-    /* ── Recs tab ── */
-    .rec-card {
-      background: var(--card);
-      border-radius: 8px;
-      padding: 12px 14px;
-      margin-bottom: 8px;
-      border-left: 4px solid var(--accent);
-      position: relative;
-    }
-    .rec-card:first-child { border-left-color: var(--green); }
-    .rec-rank {
-      position: absolute;
-      top: 8px;
-      right: 10px;
-      font-size: 0.72em;
-      color: var(--muted);
-      font-weight: 700;
-    }
-    .rec-name { font-weight: 700; font-size: 1em; margin-bottom: 3px; }
-    .rec-pos  { display: inline-block; font-size: 0.72em; font-weight: 700; padding: 1px 6px; border-radius: 3px; color: #fff; margin-right: 4px; }
-    .rec-pos.QB { background: var(--QB); }
-    .rec-pos.RB { background: var(--RB); }
-    .rec-pos.WR { background: var(--WR); }
-    .rec-pos.TE { background: var(--TE); }
-    .rec-adp  { font-size: 0.78em; color: var(--muted); }
-    .rec-reason { font-size: 0.78em; color: #90a4ae; margin-top: 5px; }
-    .rec-pick-btn {
-      margin-top: 8px;
-      padding: 6px 12px;
-      background: var(--accent);
-      color: #000;
-      border: none;
-      border-radius: 5px;
-      font-size: 0.82em;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .no-recs { text-align: center; color: var(--muted); padding: 40px 0; font-style: italic; }
-
-    /* Pick counter banner */
+    /* ── Pick banner ── */
     .pick-banner {
       background: var(--card);
       border: 1px solid var(--border);
@@ -261,118 +139,117 @@
     }
     .pick-banner .big { font-size: 1.2em; font-weight: 700; color: var(--accent); }
     .pick-banner .lbl { font-size: 0.72em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-    .my-turn-badge {
-      background: var(--green);
-      color: #000;
-      font-size: 0.75em;
-      font-weight: 700;
-      padding: 3px 10px;
-      border-radius: 12px;
-    }
-    .not-turn-badge {
-      background: #1a2233;
-      color: var(--muted);
-      font-size: 0.75em;
-      padding: 3px 10px;
-      border-radius: 12px;
-    }
+    .my-turn-badge  { background: var(--green); color: #000; font-size: 0.75em; font-weight: 700; padding: 3px 10px; border-radius: 12px; }
+    .not-turn-badge { background: #1a2233; color: var(--muted); font-size: 0.75em; padding: 3px 10px; border-radius: 12px; }
 
-    /* ── Roster tab ── */
-    .roster-pos-section { margin-bottom: 14px; }
-    .pos-header {
-      font-size: 0.7em;
-      font-weight: 700;
-      letter-spacing: 0.07em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-    .roster-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
+    /* ── Rec cards ── */
+    .rec-card {
       background: var(--card);
-      border-radius: 6px;
-      padding: 6px 10px;
-      margin: 3px 3px 3px 0;
-      font-size: 0.82em;
-      border-left: 3px solid transparent;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      border-left: 4px solid var(--accent);
+      position: relative;
     }
-    .roster-chip.QB { border-left-color: var(--QB); }
-    .roster-chip.RB { border-left-color: var(--RB); }
-    .roster-chip.WR { border-left-color: var(--WR); }
-    .roster-chip.TE { border-left-color: var(--TE); }
-    .roster-chip .rnd { font-size: 0.75em; color: var(--muted); }
-    .needs-row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 12px;
+    .rec-card:first-child { border-left-color: var(--green); }
+    .rec-rank { position: absolute; top: 8px; right: 10px; font-size: 0.72em; color: var(--muted); font-weight: 700; }
+    .rec-name { font-weight: 700; font-size: 1em; margin-bottom: 3px; }
+    .rec-pos  { display: inline-block; font-size: 0.72em; font-weight: 700; padding: 1px 6px; border-radius: 3px; color: #fff; margin-right: 4px; }
+    .rec-pos.QB { background: var(--QB); } .rec-pos.RB { background: var(--RB); }
+    .rec-pos.WR { background: var(--WR); } .rec-pos.TE { background: var(--TE); }
+    .rec-adp  { font-size: 0.78em; color: var(--muted); }
+    .rec-reason { font-size: 0.78em; color: #90a4ae; margin-top: 5px; }
+    .rec-pick-btn {
+      margin-top: 8px; padding: 6px 12px;
+      background: var(--accent); color: #000;
+      border: none; border-radius: 5px;
+      font-size: 0.82em; font-weight: 700; cursor: pointer;
     }
-    .need-box {
-      flex: 1;
-      background: var(--card);
-      border-radius: 6px;
-      padding: 8px;
-      text-align: center;
+    .no-recs { text-align: center; color: var(--muted); padding: 40px 0; font-style: italic; }
+
+    /* ── Picks tab ── */
+    .search-wrap { position: relative; margin-bottom: 10px; }
+    .search-wrap input {
+      width: 100%; padding: 10px 12px 10px 36px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 0.95em;
     }
+    .search-wrap input::placeholder { color: var(--muted); }
+    .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+    .pos-filters { display: flex; gap: 6px; margin-bottom: 10px; }
+    .pos-btn {
+      padding: 5px 10px; border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); font-size: 0.78em; font-weight: 700; cursor: pointer;
+    }
+    .pos-btn.active { color: #fff; border-color: transparent; }
+    .pos-btn[data-pos="ALL"].active { background: var(--accent); color: #000; }
+    .pos-btn[data-pos="QB"].active  { background: var(--QB); }
+    .pos-btn[data-pos="RB"].active  { background: var(--RB); }
+    .pos-btn[data-pos="WR"].active  { background: var(--WR); }
+    .pos-btn[data-pos="TE"].active  { background: var(--TE); }
+
+    .action-bar { display: none; gap: 8px; margin-bottom: 10px; }
+    .action-bar.visible { display: flex; }
+    .action-bar button { flex: 1; padding: 11px; border-radius: 8px; border: none; font-size: 0.9em; font-weight: 700; cursor: pointer; }
+    .btn-mine { background: var(--accent); color: #000; }
+    .btn-opp  { background: var(--border); color: var(--text); }
+    .btn-undo { background: transparent; border: 1px solid var(--border) !important; color: var(--muted); flex: 0 0 44px; }
+    button:active { opacity: 0.7; }
+
+    .player-list { display: flex; flex-direction: column; gap: 4px; max-height: 45vh; overflow-y: auto; }
+    .player-row {
+      display: flex; align-items: center; background: var(--card);
+      border-radius: 6px; padding: 8px 10px; gap: 10px;
+      border-left: 3px solid transparent; cursor: pointer; user-select: none;
+    }
+    .player-row:active { background: #1e2d44; }
+    .player-row.taken    { opacity: 0.32; }
+    .player-row.selected { background: #1a2d4d; border-left-color: var(--accent); }
+    .player-row[data-pos="QB"] { border-left-color: var(--QB); }
+    .player-row[data-pos="RB"] { border-left-color: var(--RB); }
+    .player-row[data-pos="WR"] { border-left-color: var(--WR); }
+    .player-row[data-pos="TE"] { border-left-color: var(--TE); }
+    .player-row.taken[data-pos] { border-left-color: transparent; }
+    .adp-badge { min-width: 32px; text-align: center; font-size: 0.72em; color: var(--muted); font-weight: 700; }
+    .p-name { flex: 1; font-weight: 600; font-size: 0.88em; }
+    .p-meta { font-size: 0.75em; color: var(--muted); }
+    .taken-by { font-size: 0.7em; font-weight: 700; padding: 2px 6px; border-radius: 10px; }
+    .taken-by.mine { background: #1a3a4d; color: var(--accent); }
+    .taken-by.opp  { background: #2d1a1a; color: var(--muted); }
+
+    /* ── Roster ── */
+    .needs-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .need-box { flex: 1; background: var(--card); border-radius: 6px; padding: 8px; text-align: center; }
     .need-box .need-pos { font-size: 0.65em; font-weight: 700; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; }
     .need-box .need-val { font-size: 1.1em; font-weight: 700; margin-top: 2px; }
-    .stack-summary { margin-top: 4px; }
-    .stack-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: #1a2d4d;
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 4px 10px;
-      margin: 3px 3px 0 0;
-      font-size: 0.78em;
+    .roster-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--card); border-radius: 6px; padding: 6px 10px;
+      margin: 3px 3px 3px 0; font-size: 0.82em; border-left: 3px solid transparent;
     }
+    .roster-chip.QB { border-left-color: var(--QB); } .roster-chip.RB { border-left-color: var(--RB); }
+    .roster-chip.WR { border-left-color: var(--WR); } .roster-chip.TE { border-left-color: var(--TE); }
+    .roster-chip .rnd { font-size: 0.75em; color: var(--muted); }
+    .pos-header { font-size: 0.7em; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    .stack-chip { display: inline-flex; align-items: center; gap: 6px; background: #1a2d4d; border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; margin: 3px 3px 0 0; font-size: 0.78em; }
 
-    /* ── Settings tab ── */
+    /* ── Settings ── */
     .settings-grid { display: flex; flex-direction: column; gap: 14px; }
-    .setting-group label {
-      display: block;
-      font-size: 0.75em;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 5px;
-    }
-    .setting-group select,
-    .setting-group input[type=number] {
-      width: 100%;
-      padding: 9px 10px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-size: 0.95em;
+    .setting-group label { display: block; font-size: 0.75em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
+    .setting-group select, .setting-group input[type=number] {
+      width: 100%; padding: 9px 10px; background: var(--card);
+      border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.95em;
     }
     .settings-hint { font-size: 0.78em; color: var(--muted); margin-top: 4px; }
-    .btn-full {
-      display: block;
-      width: 100%;
-      padding: 12px;
-      border-radius: 8px;
-      border: none;
-      font-size: 0.95em;
-      font-weight: 700;
-      cursor: pointer;
-      text-align: center;
-      margin-top: 8px;
-    }
+    .btn-full { display: block; width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 0.95em; font-weight: 700; cursor: pointer; margin-top: 8px; }
     .btn-primary { background: var(--accent); color: #000; }
     .btn-danger  { background: transparent; border: 1px solid var(--red) !important; color: var(--red); }
 
-    /* Loading spinner */
-    .spinner {
-      text-align: center;
-      padding: 40px;
-      color: var(--muted);
-      font-size: 0.9em;
-    }
+    .spinner { text-align: center; padding: 40px; color: var(--muted); font-size: 0.9em; }
+
+    /* Live-update flash */
+    @keyframes flash { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+    .live-flash { animation: flash 0.4s ease; }
   </style>
 </head>
 <body>
@@ -382,6 +259,17 @@
   <div class="hdr-meta">
     Pick <span id="hdrPick">—</span> &nbsp;·&nbsp; Rd <span id="hdrRound">—</span>
   </div>
+</div>
+
+<!-- ── Sync bar ── -->
+<div class="sync-bar">
+  <div class="sync-dot" id="syncDot"></div>
+  <div class="sync-label" id="syncLabel">Not connected</div>
+  <div class="sync-input-row" id="syncInputRow">
+    <input type="text" id="draftIdInput" placeholder="DK draft ID" inputmode="numeric">
+    <button class="sync-btn" id="connectBtn">Connect</button>
+  </div>
+  <button class="sync-btn disconnect" id="disconnectBtn" style="display:none">Disconnect</button>
 </div>
 
 <div class="tabs">
@@ -394,20 +282,11 @@
 <!-- ── Recs Tab ── -->
 <div id="tab-recs" class="tab-panel active">
   <div class="pick-banner">
-    <div>
-      <div class="lbl">Overall Pick</div>
-      <div class="big" id="pickNum">—</div>
-    </div>
-    <div>
-      <div class="lbl">Round</div>
-      <div class="big" id="roundNum">—</div>
-    </div>
+    <div><div class="lbl">Overall Pick</div><div class="big" id="pickNum">—</div></div>
+    <div><div class="lbl">Round</div><div class="big" id="roundNum">—</div></div>
     <div id="turnBadge" class="not-turn-badge">—</div>
   </div>
-
-  <div id="recsList">
-    <div class="no-recs">Configure settings, then start adding picks.</div>
-  </div>
+  <div id="recsList"><div class="no-recs">Connect to your draft or add picks manually below.</div></div>
 </div>
 
 <!-- ── Picks Tab ── -->
@@ -416,7 +295,6 @@
     <span class="search-icon">🔍</span>
     <input type="text" id="searchInput" placeholder="Search player name or team…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
   </div>
-
   <div class="pos-filters">
     <button class="pos-btn active" data-pos="ALL">ALL</button>
     <button class="pos-btn" data-pos="QB">QB</button>
@@ -424,23 +302,18 @@
     <button class="pos-btn" data-pos="WR">WR</button>
     <button class="pos-btn" data-pos="TE">TE</button>
   </div>
-
-  <!-- Action bar (shown when player selected) -->
   <div class="action-bar" id="actionBar">
     <button class="btn-mine" id="btnMyPick">✓ My Pick</button>
     <button class="btn-opp"  id="btnOppPick">→ Opponent</button>
     <button class="btn-undo" id="btnCancel" title="Cancel">✕</button>
   </div>
-
-  <div class="player-list" id="playerList">
-    <div class="spinner">Loading players…</div>
-  </div>
+  <div class="player-list" id="playerList"><div class="spinner">Loading players…</div></div>
 </div>
 
 <!-- ── Roster Tab ── -->
 <div id="tab-roster" class="tab-panel">
   <div class="needs-row" id="needsRow"></div>
-  <div class="stack-summary" id="stackSummary"></div>
+  <div id="stackSummary"></div>
   <div id="rosterDisplay" style="margin-top:12px;"></div>
 </div>
 
@@ -450,7 +323,7 @@
     <div class="setting-group">
       <label>My Draft Position (1–12)</label>
       <input type="number" id="myPosition" min="1" max="12" value="1">
-      <div class="settings-hint">Which pick slot are you? (1 = first overall)</div>
+      <div class="settings-hint">Auto-detected from the extension when connected.</div>
     </div>
     <div class="setting-group">
       <label>Number of Teams</label>
@@ -483,28 +356,26 @@
         <option value="0.8">Heavy — avoid repeat picks</option>
       </select>
     </div>
-
     <button class="btn-full btn-primary" id="saveSettings">Save Settings</button>
-    <button class="btn-full btn-danger" id="resetDraft">Reset Draft (clear all picks)</button>
+    <button class="btn-full btn-danger"  id="resetDraft">Reset Draft (clear all picks)</button>
   </div>
 </div>
 
 <script src="/static/recommender.js"></script>
 <script>
-// ── State ──────────────────────────────────────────────────────────────────────
+// ── Draft state ────────────────────────────────────────────────────────────────
 let PLAYERS = [];
 let exposure = {};
 
-// Draft state — stored in sessionStorage so it survives tab switches
 const STATE_KEY = 'bba_live_draft';
 let state = loadState();
 
 function defaultState() {
   return {
-    overallPick: 1,        // current overall pick number in the draft
-    myTeam: [],            // players I drafted: [{id, name, pos, team, adp, pick, round, ...}]
-    takenIds: new Set(),   // all drafted player ids (me + opponents)
-    takenList: [],         // [{id, mine: bool, pick}] for undo
+    overallPick: 1,
+    myTeam:   [],           // [{id,name,pos,team,adp,pick,round}]
+    takenIds: new Set(),    // all taken (me + opp)
+    takenList: [],          // [{id, mine, pick}] — for manual undo
   };
 }
 
@@ -519,11 +390,10 @@ function loadState() {
 }
 
 function saveState() {
-  const s = { ...state, takenIds: [...state.takenIds] };
-  sessionStorage.setItem(STATE_KEY, JSON.stringify(s));
+  sessionStorage.setItem(STATE_KEY, JSON.stringify({ ...state, takenIds: [...state.takenIds] }));
 }
 
-// Settings (persistent across sessions)
+// ── Settings ───────────────────────────────────────────────────────────────────
 const SETTINGS_KEY = 'bba_settings';
 let settings = loadSettings();
 
@@ -531,47 +401,174 @@ function defaultSettings() {
   return { myPosition: 1, numTeams: 12, stackIntensity: 'medium', rbPriority: 'strong', diversifyStrength: 0.5 };
 }
 function loadSettings() {
-  try { return { ...defaultSettings(), ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; } catch { return defaultSettings(); }
+  try { return { ...defaultSettings(), ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
+  catch { return defaultSettings(); }
 }
-function saveSettings() {
-  settings.myPosition       = parseInt(document.getElementById('myPosition').value) || 1;
-  settings.numTeams         = parseInt(document.getElementById('numTeams').value) || 12;
-  settings.stackIntensity   = document.getElementById('stackIntensity').value;
-  settings.rbPriority       = document.getElementById('rbPriority').value;
+function persistSettings() {
+  settings.myPosition        = parseInt(document.getElementById('myPosition').value) || 1;
+  settings.numTeams          = parseInt(document.getElementById('numTeams').value) || 12;
+  settings.stackIntensity    = document.getElementById('stackIntensity').value;
+  settings.rbPriority        = document.getElementById('rbPriority').value;
   settings.diversifyStrength = parseFloat(document.getElementById('diversifyStrength').value);
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
+function populateSettings() {
+  document.getElementById('myPosition').value        = settings.myPosition;
+  document.getElementById('numTeams').value          = settings.numTeams;
+  document.getElementById('stackIntensity').value    = settings.stackIntensity;
+  document.getElementById('rbPriority').value        = settings.rbPriority;
+  document.getElementById('diversifyStrength').value = settings.diversifyStrength;
+}
 
-// ── UI: Tab switching ──────────────────────────────────────────────────────────
+// ── Live sync ──────────────────────────────────────────────────────────────────
+let syncDraftId   = localStorage.getItem('bba_sync_draft_id') || '';
+let syncInterval  = null;
+let lastSyncAge   = null;
+let syncConnected = false;
+
+// Restore connection on page load if we had one
+if (syncDraftId) {
+  document.getElementById('draftIdInput').value = syncDraftId;
+  startSync(syncDraftId);
+}
+
+function startSync(draftId) {
+  syncDraftId = draftId.trim();
+  if (!syncDraftId) return;
+  localStorage.setItem('bba_sync_draft_id', syncDraftId);
+  if (syncInterval) clearInterval(syncInterval);
+  pollSync();                                // immediate first poll
+  syncInterval = setInterval(pollSync, 3000); // then every 3 s
+  document.getElementById('syncInputRow').style.display  = 'none';
+  document.getElementById('disconnectBtn').style.display = '';
+}
+
+function stopSync() {
+  if (syncInterval) { clearInterval(syncInterval); syncInterval = null; }
+  syncDraftId = '';
+  localStorage.removeItem('bba_sync_draft_id');
+  syncConnected = false;
+  document.getElementById('syncInputRow').style.display  = '';
+  document.getElementById('disconnectBtn').style.display = 'none';
+  document.getElementById('draftIdInput').value = '';
+  updateSyncUI(false, 'Not connected');
+}
+
+async function pollSync() {
+  if (!syncDraftId) return;
+  try {
+    const r = await fetch(`/api/live-draft/state?draft_id=${encodeURIComponent(syncDraftId)}`);
+    const data = await r.json();
+    applyLiveState(data);
+  } catch {
+    updateSyncUI(false, 'Server unreachable');
+  }
+}
+
+function applyLiveState(data) {
+  if (!data.connected) {
+    updateSyncUI(false, data.age_seconds != null
+      ? `Last seen ${data.age_seconds}s ago — open DK on desktop`
+      : 'Waiting for desktop extension…');
+    return;
+  }
+
+  const age = data.age_seconds || 0;
+  updateSyncUI(true, `Live · pick ${data.overall_pick} · ${age}s ago`);
+
+  // Auto-update pick number
+  if (data.overall_pick && data.overall_pick !== state.overallPick) {
+    state.overallPick = data.overall_pick;
+  }
+
+  // Auto-update draft position if extension detected it
+  if (data.my_position && data.my_position !== settings.myPosition) {
+    settings.myPosition = data.my_position;
+    document.getElementById('myPosition').value = data.my_position;
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  }
+
+  // Sync taken players
+  let changed = false;
+  const remoteTakenSet = new Set(data.taken_ids || []);
+
+  // Add newly taken players
+  for (const id of remoteTakenSet) {
+    if (!state.takenIds.has(id)) {
+      state.takenIds.add(id);
+      changed = true;
+    }
+  }
+
+  // Sync my team from extension (authoritative)
+  const remoteMyTeam = data.my_team || [];
+  const remoteMyIds  = new Set(remoteMyTeam.map(p => p.id));
+  const localMyIds   = new Set(state.myTeam.map(p => p.id));
+
+  for (const p of remoteMyTeam) {
+    if (!localMyIds.has(p.id)) {
+      state.myTeam.push(p);
+      state.takenIds.add(p.id);
+      changed = true;
+    }
+  }
+  // Remove picks that were undone on desktop
+  if (state.myTeam.length !== remoteMyTeam.length) {
+    state.myTeam = state.myTeam.filter(p => remoteMyIds.has(p.id));
+    changed = true;
+  }
+
+  if (changed) {
+    saveState();
+    renderAll();
+    // Flash the recs panel to signal an update
+    document.getElementById('recsList').classList.add('live-flash');
+    setTimeout(() => document.getElementById('recsList').classList.remove('live-flash'), 400);
+  } else {
+    // Still re-render header even if picks unchanged (pick counter updated)
+    renderHeader();
+  }
+}
+
+function updateSyncUI(connected, labelText) {
+  syncConnected = connected;
+  const dot = document.getElementById('syncDot');
+  const lbl = document.getElementById('syncLabel');
+  dot.className = 'sync-dot ' + (connected ? 'live' : syncDraftId ? 'manual' : '');
+  lbl.innerHTML = labelText;
+}
+
+document.getElementById('connectBtn').addEventListener('click', () => {
+  const val = document.getElementById('draftIdInput').value.trim();
+  if (!val) return;
+  startSync(val);
+});
+document.getElementById('draftIdInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('connectBtn').click();
+});
+document.getElementById('disconnectBtn').addEventListener('click', stopSync);
+
+// ── Tab switching ──────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab, .tab-panel').forEach(el => el.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-    if (tab.dataset.tab === 'recs')    renderRecs();
-    if (tab.dataset.tab === 'roster')  renderRoster();
-    if (tab.dataset.tab === 'picks')   renderPlayerList();
-    if (tab.dataset.tab === 'settings') populateSettings();
+    const t = tab.dataset.tab;
+    if (t === 'recs')     renderRecs();
+    if (t === 'roster')   renderRoster();
+    if (t === 'picks')    renderPlayerList();
+    if (t === 'settings') populateSettings();
   });
 });
 
-// ── Settings UI ───────────────────────────────────────────────────────────────
-function populateSettings() {
-  document.getElementById('myPosition').value       = settings.myPosition;
-  document.getElementById('numTeams').value         = settings.numTeams;
-  document.getElementById('stackIntensity').value   = settings.stackIntensity;
-  document.getElementById('rbPriority').value       = settings.rbPriority;
-  document.getElementById('diversifyStrength').value = settings.diversifyStrength;
-}
-
+// ── Settings events ────────────────────────────────────────────────────────────
 document.getElementById('saveSettings').addEventListener('click', () => {
-  saveSettings();
+  persistSettings();
   document.getElementById('saveSettings').textContent = '✓ Saved';
   setTimeout(() => document.getElementById('saveSettings').textContent = 'Save Settings', 1500);
-  renderHeader();
-  renderRecs();
+  renderAll();
 });
-
 document.getElementById('resetDraft').addEventListener('click', () => {
   if (!confirm('Reset all draft picks?')) return;
   state = defaultState();
@@ -584,25 +581,19 @@ document.getElementById('resetDraft').addEventListener('click', () => {
 // ── Player loading ─────────────────────────────────────────────────────────────
 async function loadPlayers() {
   try {
-    const [playersResp, expResp] = await Promise.all([
-      fetch('/api/players'),
-      fetch('/api/drafts/exposure'),
-    ]);
-    PLAYERS = await playersResp.json();
-    const expData = await expResp.json();
-    exposure = expData.players || {};
+    const [pr, er] = await Promise.all([fetch('/api/players'), fetch('/api/drafts/exposure')]);
+    PLAYERS  = await pr.json();
+    exposure = (await er.json()).players || {};
     renderPlayerList();
     renderRecs();
-  } catch (e) {
+  } catch {
     document.getElementById('playerList').innerHTML =
-      '<div class="spinner" style="color:#ef5350">Failed to load players. Is the server running?</div>';
+      '<div class="spinner" style="color:#ef5350">Failed to load players.</div>';
   }
 }
 
-// ── Player list rendering ──────────────────────────────────────────────────────
-let searchQuery = '';
-let posFilter = 'ALL';
-let selectedPlayer = null;
+// ── Player list ────────────────────────────────────────────────────────────────
+let searchQuery = '', posFilter = 'ALL', selectedPlayer = null;
 
 function getVisiblePlayers() {
   let list = PLAYERS;
@@ -611,109 +602,67 @@ function getVisiblePlayers() {
     const q = searchQuery.toLowerCase();
     list = list.filter(p => p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q));
   }
-  // Sort: available first by ADP, then taken (greyed out)
   const avail = list.filter(p => !state.takenIds.has(p.id));
-  const taken = list.filter(p => state.takenIds.has(p.id));
+  const taken = list.filter(p =>  state.takenIds.has(p.id));
   return [...avail, ...taken].slice(0, 80);
 }
 
 function renderPlayerList() {
   const players = getVisiblePlayers();
   const ul = document.getElementById('playerList');
-  if (!players.length) {
-    ul.innerHTML = '<div class="spinner">No players found</div>';
-    return;
-  }
+  if (!players.length) { ul.innerHTML = '<div class="spinner">No players found</div>'; return; }
   ul.innerHTML = players.map(p => {
-    const isTaken = state.takenIds.has(p.id);
-    const isMine = state.myTeam.some(t => t.id === p.id);
+    const isTaken   = state.takenIds.has(p.id);
+    const isMine    = state.myTeam.some(t => t.id === p.id);
     const isSelected = selectedPlayer?.id === p.id;
-    const takenHtml = isTaken
-      ? `<span class="taken-by ${isMine ? 'mine' : 'opp'}">${isMine ? 'Mine' : 'Taken'}</span>`
-      : '';
-    return `
-      <div class="player-row ${isTaken ? 'taken' : ''} ${isSelected ? 'selected' : ''}"
-           data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
-        <div class="adp-badge">${p.adp}</div>
-        <div style="flex:1">
-          <div class="p-name">${p.name}</div>
-          <div class="p-meta">${p.pos} · ${p.team}${p.bye ? ' · bye ' + p.bye : ''}</div>
-        </div>
-        ${takenHtml}
-      </div>`;
+    const badge = isTaken
+      ? `<span class="taken-by ${isMine ? 'mine' : 'opp'}">${isMine ? 'Mine' : 'Taken'}</span>` : '';
+    return `<div class="player-row ${isTaken?'taken':''} ${isSelected?'selected':''}"
+         data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
+      <div class="adp-badge">${p.adp}</div>
+      <div style="flex:1">
+        <div class="p-name">${p.name}</div>
+        <div class="p-meta">${p.pos} · ${p.team}${p.bye ? ' · bye '+p.bye : ''}</div>
+      </div>
+      ${badge}
+    </div>`;
   }).join('');
 }
 
-// ── Player selection & actions ────────────────────────────────────────────────
 function selectPlayer(id) {
-  const player = PLAYERS.find(p => p.id === id);
-  if (!player) return;
-  if (state.takenIds.has(id)) return; // already drafted, ignore tap
-
-  if (selectedPlayer?.id === id) {
-    // Deselect
-    selectedPlayer = null;
-    hideActionBar();
-  } else {
-    selectedPlayer = player;
-    showActionBar(player);
-  }
+  const p = PLAYERS.find(p => p.id === id);
+  if (!p || state.takenIds.has(id)) return;
+  selectedPlayer = selectedPlayer?.id === id ? null : p;
+  if (selectedPlayer) showActionBar(selectedPlayer); else hideActionBar();
   renderPlayerList();
 }
-
-function showActionBar(player) {
+function showActionBar(p) {
   document.getElementById('actionBar').classList.add('visible');
-  document.getElementById('btnMyPick').textContent = `✓ My Pick: ${player.name.split(' ').pop()}`;
+  document.getElementById('btnMyPick').textContent = `✓ My Pick: ${p.name.split(' ').pop()}`;
 }
 function hideActionBar() {
   document.getElementById('actionBar').classList.remove('visible');
   selectedPlayer = null;
 }
 
-document.getElementById('btnMyPick').addEventListener('click', () => {
-  if (!selectedPlayer) return;
-  addPick(selectedPlayer, true);
-});
-document.getElementById('btnOppPick').addEventListener('click', () => {
-  if (!selectedPlayer) return;
-  addPick(selectedPlayer, false);
-});
+document.getElementById('btnMyPick').addEventListener('click',  () => { if (selectedPlayer) addPick(selectedPlayer, true); });
+document.getElementById('btnOppPick').addEventListener('click', () => { if (selectedPlayer) addPick(selectedPlayer, false); });
 document.getElementById('btnCancel').addEventListener('click', hideActionBar);
 
 function addPick(player, isMine) {
   const pickNum = state.overallPick;
   const round   = Math.floor((pickNum - 1) / settings.numTeams) + 1;
-
   state.takenIds.add(player.id);
   state.takenList.push({ id: player.id, mine: isMine, pick: pickNum });
-
-  if (isMine) {
-    state.myTeam.push({ ...player, pick: pickNum, round });
-  }
-
+  if (isMine) state.myTeam.push({ ...player, pick: pickNum, round });
   state.overallPick++;
   saveState();
-
   selectedPlayer = null;
   hideActionBar();
   searchQuery = '';
   document.getElementById('searchInput').value = '';
   renderAll();
-
-  // Auto-switch to Recs tab after my pick
   if (isMine) switchTab('recs');
-}
-
-function undoLastPick() {
-  if (!state.takenList.length) return;
-  const last = state.takenList.pop();
-  state.takenIds.delete(last.id);
-  if (last.mine) {
-    state.myTeam = state.myTeam.filter(p => p.pick !== last.pick);
-  }
-  state.overallPick = Math.max(1, state.overallPick - 1);
-  saveState();
-  renderAll();
 }
 
 function switchTab(name) {
@@ -722,12 +671,9 @@ function switchTab(name) {
   document.getElementById(`tab-${name}`).classList.add('active');
 }
 
-// ── Search & filter ───────────────────────────────────────────────────────────
 document.getElementById('searchInput').addEventListener('input', e => {
-  searchQuery = e.target.value.trim();
-  renderPlayerList();
+  searchQuery = e.target.value.trim(); renderPlayerList();
 });
-
 document.querySelectorAll('.pos-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.pos-btn').forEach(b => b.classList.remove('active'));
@@ -737,7 +683,7 @@ document.querySelectorAll('.pos-btn').forEach(btn => {
   });
 });
 
-// ── Header ────────────────────────────────────────────────────────────────────
+// ── Header ─────────────────────────────────────────────────────────────────────
 function renderHeader() {
   const pick  = state.overallPick;
   const round = Math.floor((pick - 1) / settings.numTeams) + 1;
@@ -749,127 +695,90 @@ function renderHeader() {
   const myTurn = isMyTurn(pick, settings.numTeams, settings.myPosition);
   const badge  = document.getElementById('turnBadge');
   if (myTurn) {
-    badge.className = 'my-turn-badge';
+    badge.className   = 'my-turn-badge';
     badge.textContent = 'YOUR PICK';
   } else {
     const wait = picksUntilMyTurn(pick, settings.numTeams, settings.myPosition);
-    badge.className = 'not-turn-badge';
-    badge.textContent = wait === 0 ? '—' : `${wait} picks away`;
+    badge.className   = 'not-turn-badge';
+    badge.textContent = wait > 0 ? `${wait} picks away` : '—';
   }
 }
 
-// ── Recommendations ───────────────────────────────────────────────────────────
+// ── Recommendations ────────────────────────────────────────────────────────────
 function renderRecs() {
   if (!PLAYERS.length) return;
-
   renderHeader();
 
   const available = PLAYERS.filter(p => !state.takenIds.has(p.id));
   const myTurn    = isMyTurn(state.overallPick, settings.numTeams, settings.myPosition);
-
-  // Compute what overall pick number to use for recommendations.
-  // If it's my turn, use current pick. Otherwise, look ahead to my next pick.
-  let pickForRec = state.overallPick;
-  if (!myTurn) {
-    pickForRec = nextMyOverallPick(state.overallPick, settings.numTeams, settings.myPosition) || state.overallPick;
-  }
+  const pickForRec = myTurn
+    ? state.overallPick
+    : (nextMyOverallPick(state.overallPick, settings.numTeams, settings.myPosition) || state.overallPick);
 
   const recs = getTopRecommendations(
-    available,
-    state.myTeam,
-    pickForRec,
-    settings.stackIntensity,
-    exposure,
-    settings.diversifyStrength,
-    5,
-    settings.rbPriority
+    available, state.myTeam, pickForRec,
+    settings.stackIntensity, exposure, settings.diversifyStrength,
+    5, settings.rbPriority
   );
 
   const el = document.getElementById('recsList');
-  if (!recs.length) {
-    el.innerHTML = '<div class="no-recs">Draft complete or no players available.</div>';
-    return;
-  }
+  if (!recs.length) { el.innerHTML = '<div class="no-recs">No players available.</div>'; return; }
 
   el.innerHTML = recs.map((r, i) => {
     const p = r.player;
-    return `
-      <div class="rec-card">
-        <div class="rec-rank">#${i + 1}</div>
-        <div>
-          <span class="rec-pos ${p.pos}">${p.pos}</span>
-          <span class="rec-name" style="display:inline">${p.name}</span>
-        </div>
-        <div class="rec-adp">${p.team}${p.bye ? ' · bye ' + p.bye : ''} · ADP ${p.adp}</div>
-        ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
-        <button class="rec-pick-btn" onclick="quickPick('${p.id}')">Draft (My Pick)</button>
-      </div>`;
+    return `<div class="rec-card">
+      <div class="rec-rank">#${i+1}</div>
+      <div><span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span></div>
+      <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ADP ${p.adp}</div>
+      ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
+      <button class="rec-pick-btn" onclick="quickPick('${p.id}')">Draft (My Pick)</button>
+    </div>`;
   }).join('');
 }
 
 function quickPick(id) {
-  const player = PLAYERS.find(p => p.id === id);
-  if (!player) return;
-  addPick(player, true);
+  const p = PLAYERS.find(p => p.id === id);
+  if (p) addPick(p, true);
 }
 
 // ── Roster ─────────────────────────────────────────────────────────────────────
 function renderRoster() {
-  const needs = getTeamNeeds(state.myTeam);
-  const el = document.getElementById('needsRow');
-  el.innerHTML = ['QB', 'RB', 'WR', 'TE'].map(pos => {
-    const have = state.myTeam.filter(p => p.pos === pos).length;
-    const targets = { QB: 2, RB: 6, WR: 8, TE: 2 };
-    const target  = targets[pos];
-    const color   = have >= target ? 'var(--green)' : have > 0 ? 'var(--accent)' : 'var(--muted)';
-    return `
-      <div class="need-box">
-        <div class="need-pos">${pos}</div>
-        <div class="need-val" style="color:${color}">${have}<span style="color:var(--muted);font-size:0.7em">/${target}</span></div>
-      </div>`;
-  }).join('');
-
-  // Stacks summary
-  const stacks = getStackSummary(state.myTeam);
-  const stackEl = document.getElementById('stackSummary');
-  if (stacks.length) {
-    stackEl.innerHTML = '<div class="pos-header" style="margin-bottom:6px">Stacks</div>' +
-      stacks.map(s => `<div class="stack-chip">🔗 ${s.team} · ${s.positions} (${s.count})</div>`).join('');
-  } else {
-    stackEl.innerHTML = '';
-  }
-
-  // Roster by position
-  const rosterEl = document.getElementById('rosterDisplay');
   const byPos = { QB: [], RB: [], WR: [], TE: [] };
   state.myTeam.forEach(p => { if (byPos[p.pos]) byPos[p.pos].push(p); });
 
-  rosterEl.innerHTML = Object.entries(byPos).map(([pos, players]) => {
-    if (!players.length) return '';
-    const chips = players.map(p =>
-      `<div class="roster-chip ${pos}">
-        <span>${p.name}</span>
-        <span class="rnd">Rd${p.round}</span>
-      </div>`
-    ).join('');
-    return `<div class="roster-pos-section">
-      <div class="pos-header">${pos} (${players.length})</div>
-      ${chips}
+  const targets = { QB: 2, RB: 6, WR: 8, TE: 2 };
+  document.getElementById('needsRow').innerHTML = ['QB','RB','WR','TE'].map(pos => {
+    const have = byPos[pos].length;
+    const color = have >= targets[pos] ? 'var(--green)' : have > 0 ? 'var(--accent)' : 'var(--muted)';
+    return `<div class="need-box">
+      <div class="need-pos">${pos}</div>
+      <div class="need-val" style="color:${color}">${have}<span style="color:var(--muted);font-size:0.7em">/${targets[pos]}</span></div>
     </div>`;
   }).join('');
 
-  if (!state.myTeam.length) {
-    rosterEl.innerHTML = '<div class="no-recs">No picks yet</div>';
-  }
+  const stacks = getStackSummary(state.myTeam);
+  document.getElementById('stackSummary').innerHTML = stacks.length
+    ? '<div class="pos-header" style="margin-bottom:6px">Stacks</div>' +
+      stacks.map(s => `<div class="stack-chip">🔗 ${s.team} · ${s.positions} (${s.count})</div>`).join('')
+    : '';
+
+  const rosterEl = document.getElementById('rosterDisplay');
+  rosterEl.innerHTML = !state.myTeam.length ? '<div class="no-recs">No picks yet</div>'
+    : Object.entries(byPos).map(([pos, players]) => players.length === 0 ? '' :
+        `<div style="margin-bottom:14px">
+          <div class="pos-header">${pos} (${players.length})</div>
+          ${players.map(p => `<div class="roster-chip ${pos}"><span>${p.name}</span><span class="rnd">Rd${p.round||'?'}</span></div>`).join('')}
+        </div>`
+      ).join('');
 }
 
 // ── Render all ─────────────────────────────────────────────────────────────────
 function renderAll() {
   renderHeader();
-  const activeTab = document.querySelector('.tab.active')?.dataset.tab;
-  if (activeTab === 'picks')   renderPlayerList();
-  if (activeTab === 'recs')    renderRecs();
-  if (activeTab === 'roster')  renderRoster();
+  const active = document.querySelector('.tab.active')?.dataset.tab;
+  if (active === 'picks')  renderPlayerList();
+  if (active === 'recs')   renderRecs();
+  if (active === 'roster') renderRoster();
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────────
@@ -877,6 +786,5 @@ populateSettings();
 renderHeader();
 loadPlayers();
 </script>
-
 </body>
 </html>
