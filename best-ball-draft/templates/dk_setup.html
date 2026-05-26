@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DK Auth Setup — Best Ball Assistant</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0b0f14; color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 15px; padding: 20px;
+      max-width: 600px; margin: 0 auto;
+    }
+    h1 { color: #4fc3f7; font-size: 1.3em; margin-bottom: 6px; }
+    h2 { font-size: 1em; color: #e0e0e0; margin: 20px 0 8px; }
+    p  { color: #90a4ae; font-size: 0.9em; line-height: 1.5; margin-bottom: 10px; }
+    .step {
+      background: #111827; border: 1px solid #2a3f5f;
+      border-radius: 8px; padding: 14px; margin-bottom: 12px;
+    }
+    .step-num {
+      background: #4fc3f7; color: #000;
+      font-size: 0.72em; font-weight: 700;
+      padding: 2px 7px; border-radius: 10px; margin-right: 6px;
+    }
+    .step-title { font-weight: 600; font-size: 0.95em; }
+    .code-box {
+      background: #0a0e14; border: 1px solid #2a3f5f; border-radius: 6px;
+      padding: 12px; margin: 10px 0;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.78em; color: #81c784;
+      word-break: break-all; line-height: 1.5;
+      cursor: pointer; position: relative;
+    }
+    .copy-hint { font-size: 0.72em; color: #546e7a; margin-top: 4px; }
+    .btn {
+      display: inline-block; padding: 10px 18px;
+      background: #4fc3f7; color: #000;
+      border: none; border-radius: 6px;
+      font-size: 0.9em; font-weight: 700; cursor: pointer;
+      text-decoration: none; margin-top: 6px;
+    }
+    .btn-outline {
+      background: transparent; border: 1px solid #2a3f5f; color: #90a4ae;
+    }
+    .status-box {
+      background: #111827; border-radius: 8px; padding: 14px;
+      margin: 16px 0; border: 1px solid #2a3f5f;
+    }
+    .status-ok  { color: #81c784; }
+    .status-err { color: #ef5350; }
+    .hint { font-size: 0.8em; color: #546e7a; margin-top: 6px; }
+    .tab-nav {
+      display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+    }
+    .tab-btn {
+      padding: 7px 14px; border-radius: 6px; border: 1px solid #2a3f5f;
+      background: transparent; color: #78909c; font-size: 0.82em;
+      font-weight: 600; cursor: pointer;
+    }
+    .tab-btn.active { background: #4fc3f7; color: #000; border-color: transparent; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    a { color: #4fc3f7; }
+  </style>
+</head>
+<body>
+
+<h1>🏈 DK Auth Setup</h1>
+<p>One-time setup so Best Ball Assistant can read your live draft from DraftKings.</p>
+
+<!-- Auth status -->
+<div class="status-box" id="statusBox">
+  <div id="statusText" style="color:#78909c">Checking…</div>
+</div>
+
+<div class="tab-nav">
+  <button class="tab-btn active" data-tab="phone">📱 Phone Browser</button>
+  <button class="tab-btn" data-tab="desktop">🖥 Desktop Browser</button>
+  <button class="tab-btn" data-tab="manual">✏️ Manual Paste</button>
+</div>
+
+<!-- PHONE TAB -->
+<div class="tab-content active" id="tab-phone">
+  <p>Open DraftKings in your phone browser (Safari or Chrome), log in, then follow these steps.</p>
+
+  <div class="step">
+    <span class="step-num">1</span><span class="step-title">Save a bookmark</span>
+    <p style="margin-top:8px">Add any page as a bookmark in your browser, then edit the URL and replace it with this JavaScript:</p>
+    <div class="code-box" id="bookmarkletCode" onclick="copyText('bookmarkletCode')">javascript:(function(){var s=document.createElement('script');s.src='http://SERVER_IP:8000/static/dk-auth.js?t='+Date.now();document.head.appendChild(s)})();</div>
+    <p class="copy-hint">Tap to copy · Replace SERVER_IP with <strong id="serverIp">your Mac's IP</strong></p>
+  </div>
+
+  <div class="step">
+    <span class="step-num">2</span><span class="step-title">Open DraftKings and run the bookmark</span>
+    <p style="margin-top:8px">Navigate to <strong>draftkings.com</strong> (any page, while logged in), then tap the bookmark you saved. It will send your session to Best Ball Assistant automatically.</p>
+  </div>
+
+  <div class="step">
+    <span class="step-num">3</span><span class="step-title">Come back here to verify</span>
+    <p style="margin-top:8px">Return to this page — the status above should turn green. You're ready to draft.</p>
+  </div>
+</div>
+
+<!-- DESKTOP TAB -->
+<div class="tab-content" id="tab-desktop">
+  <p>Open DraftKings in your desktop browser, log in, then open the developer console (F12 → Console tab) and paste:</p>
+
+  <div class="code-box" id="consoleSnippet" onclick="copyText('consoleSnippet')">fetch('http://SERVER_IP:8000/api/dk-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookie:document.cookie,storage:JSON.stringify(localStorage)})}).then(r=>r.json()).then(d=>console.log('BBA Auth:',d))</div>
+  <p class="copy-hint">Tap/click to copy · Replace SERVER_IP with your Mac's LAN IP</p>
+
+  <p style="margin-top:12px">Press Enter. You should see <code style="color:#81c784">BBA Auth: {ok: true, …}</code> in the console.</p>
+</div>
+
+<!-- MANUAL TAB -->
+<div class="tab-content" id="tab-manual">
+  <p>If the bookmarklet approach doesn't work, you can paste your DK cookie string here directly.</p>
+  <p>To get it: Open DK in a browser where you're logged in → F12 → Application → Cookies → <strong>https://www.draftkings.com</strong> → copy <em>all</em> cookie rows as a string like <code>name=value; name2=value2</code></p>
+
+  <textarea id="manualCookie" rows="4"
+    placeholder="Paste cookie string here…"
+    style="width:100%;background:#0a0e14;border:1px solid #2a3f5f;border-radius:6px;padding:10px;color:#e0e0e0;font-size:0.82em;font-family:monospace;margin:10px 0;"></textarea>
+  <button class="btn" onclick="submitManualCookie()">Submit Cookie</button>
+  <div id="manualResult" style="margin-top:8px;font-size:0.85em;color:#78909c;"></div>
+</div>
+
+<div style="margin-top:24px; border-top:1px solid #2a3f5f; padding-top:16px;">
+  <a href="/recommend" class="btn">← Back to Draft</a>
+  <a href="/recommend" class="btn btn-outline" style="margin-left:8px">Go to /recommend</a>
+</div>
+
+<script>
+// Replace SERVER_IP placeholders with actual server IP
+fetch('/api/live-draft/list').then(r => r.json()).catch(() => []);
+const serverIp = location.hostname;
+document.querySelectorAll('.code-box').forEach(el => {
+  el.textContent = el.textContent.replace(/SERVER_IP/g, serverIp);
+});
+document.getElementById('serverIp').textContent = serverIp + ':8000';
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn, .tab-content').forEach(el => el.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// Copy helper
+function copyText(id) {
+  const t = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(t).then(() => {
+    const el = document.getElementById(id);
+    el.style.background = '#0d2a0d';
+    setTimeout(() => el.style.background = '', 600);
+  }).catch(() => {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = t; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  });
+}
+
+// Auth status
+async function checkStatus() {
+  const box = document.getElementById('statusBox');
+  const txt = document.getElementById('statusText');
+  try {
+    const r = await fetch('/api/dk-auth/status');
+    const d = await r.json();
+    if (d.authenticated) {
+      const min = Math.round(d.age_seconds / 60);
+      txt.className = 'status-ok';
+      txt.innerHTML = `✓ Authenticated &nbsp;·&nbsp; Cookie set ${min < 1 ? 'just now' : min + 'm ago'}<br>
+        <span style="font-size:0.8em;color:#546e7a">Keys: ${d.cookie_keys.join(', ')}</span>`;
+      box.style.borderColor = '#2e7d32';
+    } else {
+      txt.className = 'status-err';
+      txt.innerHTML = '✗ Not authenticated — follow the steps below to connect.';
+      box.style.borderColor = '#c62828';
+    }
+  } catch {
+    txt.textContent = 'Could not reach server.';
+  }
+}
+
+async function submitManualCookie() {
+  const cookie = document.getElementById('manualCookie').value.trim();
+  if (!cookie) return;
+  const r = await fetch('/api/dk-auth', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({cookie})
+  });
+  const d = await r.json();
+  document.getElementById('manualResult').textContent =
+    d.ok ? `✓ Stored (keys: ${d.cookie_keys.join(', ')})` : 'Error: ' + JSON.stringify(d);
+  if (d.ok) checkStatus();
+}
+
+checkStatus();
+</script>
+</body>
+</html>

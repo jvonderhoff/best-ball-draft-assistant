@@ -271,6 +271,9 @@
   </div>
   <button class="sync-btn disconnect" id="disconnectBtn" style="display:none">Disconnect</button>
 </div>
+<div id="authWarning" style="display:none;background:#1a1206;border-bottom:1px solid #5d4037;padding:6px 14px;font-size:0.78em;color:#ff9800;">
+  ⚠ No DK session — <a href="/dk-setup" style="color:#ffb74d">set up auth first</a> to enable auto-sync.
+</div>
 
 <div class="tabs">
   <div class="tab active" data-tab="recs">Recs</div>
@@ -356,8 +359,17 @@
         <option value="0.8">Heavy — avoid repeat picks</option>
       </select>
     </div>
+    <div class="setting-group">
+      <label>DraftKings Username</label>
+      <input type="text" id="dkUsername" placeholder="e.g. jvonderhoff" style="width:100%;padding:9px 10px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.95em;">
+      <div class="settings-hint">Used to identify your picks in the live draft. Must match exactly.</div>
+    </div>
+
     <button class="btn-full btn-primary" id="saveSettings">Save Settings</button>
     <button class="btn-full btn-danger"  id="resetDraft">Reset Draft (clear all picks)</button>
+    <a href="/dk-setup" class="btn-full" style="display:block;padding:12px;border-radius:8px;border:1px solid #2a3f5f;color:#78909c;text-align:center;text-decoration:none;margin-top:8px;font-size:0.95em;">
+      🔑 DK Auth Setup
+    </a>
   </div>
 </div>
 
@@ -398,7 +410,7 @@ const SETTINGS_KEY = 'bba_settings';
 let settings = loadSettings();
 
 function defaultSettings() {
-  return { myPosition: 1, numTeams: 12, stackIntensity: 'medium', rbPriority: 'strong', diversifyStrength: 0.5 };
+  return { myPosition: 1, numTeams: 12, stackIntensity: 'medium', rbPriority: 'strong', diversifyStrength: 0.5, dkUsername: '' };
 }
 function loadSettings() {
   try { return { ...defaultSettings(), ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
@@ -410,6 +422,7 @@ function persistSettings() {
   settings.stackIntensity    = document.getElementById('stackIntensity').value;
   settings.rbPriority        = document.getElementById('rbPriority').value;
   settings.diversifyStrength = parseFloat(document.getElementById('diversifyStrength').value);
+  settings.dkUsername        = document.getElementById('dkUsername').value.trim().toLowerCase();
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 function populateSettings() {
@@ -418,18 +431,59 @@ function populateSettings() {
   document.getElementById('stackIntensity').value    = settings.stackIntensity;
   document.getElementById('rbPriority').value        = settings.rbPriority;
   document.getElementById('diversifyStrength').value = settings.diversifyStrength;
+  document.getElementById('dkUsername').value        = settings.dkUsername || '';
 }
 
 // ── Live sync ──────────────────────────────────────────────────────────────────
-let syncDraftId   = localStorage.getItem('bba_sync_draft_id') || '';
-let syncInterval  = null;
-let lastSyncAge   = null;
+let syncDraftId  = localStorage.getItem('bba_sync_draft_id') || '';
+let syncInterval = null;
 let syncConnected = false;
+
+// Name lookup: "bijan robinson" → player object
+let playerNameLookup = {};
+function buildNameLookup() {
+  playerNameLookup = {};
+  for (const p of PLAYERS) {
+    playerNameLookup[p.name.toLowerCase()] = p;
+    // Also index last name + pos for fallback: "robinson_RB"
+    const parts = p.name.split(' ');
+    const last = parts[parts.length - 1].toLowerCase();
+    const lk = `${last}_${p.pos}`;
+    if (!playerNameLookup[lk]) playerNameLookup[lk] = p;
+  }
+}
+
+function findPlayerByName(name, pos, team) {
+  if (!name) return null;
+  const lower = name.toLowerCase().trim();
+  // Exact match first
+  if (playerNameLookup[lower]) return playerNameLookup[lower];
+  // Last name + pos fallback
+  const parts = lower.split(' ');
+  const last = parts[parts.length - 1];
+  const byLast = playerNameLookup[`${last}_${pos}`];
+  if (byLast) return byLast;
+  // Partial: any player whose name starts with the given string
+  for (const [k, p] of Object.entries(playerNameLookup)) {
+    if (k.startsWith(lower) || lower.startsWith(k)) return p;
+  }
+  return null;
+}
+
+// Check auth status on load
+async function checkDKAuth() {
+  try {
+    const r = await fetch('/api/dk-auth/status');
+    const d = await r.json();
+    document.getElementById('authWarning').style.display = d.authenticated ? 'none' : '';
+    return d.authenticated;
+  } catch { return false; }
+}
 
 // Restore connection on page load if we had one
 if (syncDraftId) {
   document.getElementById('draftIdInput').value = syncDraftId;
-  startSync(syncDraftId);
+  // startSync called after PLAYERS loaded
 }
 
 function startSync(draftId) {
@@ -437,8 +491,8 @@ function startSync(draftId) {
   if (!syncDraftId) return;
   localStorage.setItem('bba_sync_draft_id', syncDraftId);
   if (syncInterval) clearInterval(syncInterval);
-  pollSync();                                // immediate first poll
-  syncInterval = setInterval(pollSync, 3000); // then every 3 s
+  pollSync();
+  syncInterval = setInterval(pollSync, 5000);
   document.getElementById('syncInputRow').style.display  = 'none';
   document.getElementById('disconnectBtn').style.display = '';
 }
@@ -456,76 +510,121 @@ function stopSync() {
 
 async function pollSync() {
   if (!syncDraftId) return;
+
+  // ── Primary: DK API proxy ────────────────────────────────────────
+  try {
+    const r = await fetch(`/api/dk-draft-state/${encodeURIComponent(syncDraftId)}`);
+    if (r.status === 401) {
+      updateSyncUI(false, '🔑 Need DK auth — <a href="/dk-setup" style="color:#ffb74d">set up here</a>');
+      document.getElementById('authWarning').style.display = '';
+      return;
+    }
+    const data = await r.json();
+    if (data.error && !data.picks?.length) {
+      // DK API failed — fall back to extension push
+      await pollExtensionState();
+      return;
+    }
+    applyDKPickState(data);
+    return;
+  } catch { /* fall through */ }
+
+  // ── Fallback: extension push state ───────────────────────────────
+  await pollExtensionState();
+}
+
+async function pollExtensionState() {
   try {
     const r = await fetch(`/api/live-draft/state?draft_id=${encodeURIComponent(syncDraftId)}`);
     const data = await r.json();
-    applyLiveState(data);
+    applyExtensionState(data);
   } catch {
     updateSyncUI(false, 'Server unreachable');
   }
 }
 
-function applyLiveState(data) {
+// Apply picks from DK API response ({picks: [{player_name, pos, team, pick_number, username}], …})
+function applyDKPickState(data) {
+  const picks = data.picks || [];
+  const me = (settings.dkUsername || '').toLowerCase();
+  let changed = false;
+
+  for (const pk of picks) {
+    const player = findPlayerByName(pk.player_name, pk.pos, pk.team);
+    if (!player) continue;
+    if (state.takenIds.has(player.id)) continue;
+
+    const isMine = me && (pk.username || '').toLowerCase().includes(me);
+    const pickNum = pk.pick_number || state.overallPick;
+    const round   = Math.floor((pickNum - 1) / settings.numTeams) + 1;
+
+    state.takenIds.add(player.id);
+    if (isMine && !state.myTeam.some(p => p.id === player.id)) {
+      state.myTeam.push({ ...player, pick: pickNum, round });
+    }
+    changed = true;
+  }
+
+  if (picks.length > 0) {
+    const maxPick = Math.max(...picks.map(p => p.pick_number || 0).filter(Boolean), state.overallPick - 1);
+    if (maxPick + 1 > state.overallPick) {
+      state.overallPick = maxPick + 1;
+      changed = true;
+    }
+  }
+
+  const src = data.source ? data.source.split('draftkings.com')[1] : 'DK API';
+  updateSyncUI(true, `Live · ${picks.length} picks · <span style="color:#546e7a;font-size:0.9em">${src}</span>`);
+
+  if (changed) {
+    saveState();
+    renderAll();
+    document.getElementById('recsList').classList.add('live-flash');
+    setTimeout(() => document.getElementById('recsList').classList.remove('live-flash'), 400);
+  } else {
+    renderHeader();
+  }
+}
+
+// Apply state pushed by the desktop extension
+function applyExtensionState(data) {
   if (!data.connected) {
     updateSyncUI(false, data.age_seconds != null
-      ? `Last seen ${data.age_seconds}s ago — open DK on desktop`
-      : 'Waiting for desktop extension…');
+      ? `Last ext update ${data.age_seconds}s ago`
+      : 'Waiting…');
     return;
   }
 
   const age = data.age_seconds || 0;
-  updateSyncUI(true, `Live · pick ${data.overall_pick} · ${age}s ago`);
+  updateSyncUI(true, `Extension · pick ${data.overall_pick} · ${age}s ago`);
 
-  // Auto-update pick number
-  if (data.overall_pick && data.overall_pick !== state.overallPick) {
-    state.overallPick = data.overall_pick;
-  }
-
-  // Auto-update draft position if extension detected it
   if (data.my_position && data.my_position !== settings.myPosition) {
     settings.myPosition = data.my_position;
     document.getElementById('myPosition').value = data.my_position;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   }
 
-  // Sync taken players
   let changed = false;
-  const remoteTakenSet = new Set(data.taken_ids || []);
-
-  // Add newly taken players
-  for (const id of remoteTakenSet) {
-    if (!state.takenIds.has(id)) {
-      state.takenIds.add(id);
-      changed = true;
-    }
+  for (const id of (data.taken_ids || [])) {
+    if (!state.takenIds.has(id)) { state.takenIds.add(id); changed = true; }
   }
-
-  // Sync my team from extension (authoritative)
+  if (data.overall_pick && data.overall_pick !== state.overallPick) {
+    state.overallPick = data.overall_pick; changed = true;
+  }
   const remoteMyTeam = data.my_team || [];
   const remoteMyIds  = new Set(remoteMyTeam.map(p => p.id));
-  const localMyIds   = new Set(state.myTeam.map(p => p.id));
-
   for (const p of remoteMyTeam) {
-    if (!localMyIds.has(p.id)) {
-      state.myTeam.push(p);
-      state.takenIds.add(p.id);
-      changed = true;
-    }
+    if (!state.myTeam.some(t => t.id === p.id)) { state.myTeam.push(p); changed = true; }
   }
-  // Remove picks that were undone on desktop
   if (state.myTeam.length !== remoteMyTeam.length) {
-    state.myTeam = state.myTeam.filter(p => remoteMyIds.has(p.id));
-    changed = true;
+    state.myTeam = state.myTeam.filter(p => remoteMyIds.has(p.id)); changed = true;
   }
 
   if (changed) {
-    saveState();
-    renderAll();
-    // Flash the recs panel to signal an update
+    saveState(); renderAll();
     document.getElementById('recsList').classList.add('live-flash');
     setTimeout(() => document.getElementById('recsList').classList.remove('live-flash'), 400);
   } else {
-    // Still re-render header even if picks unchanged (pick counter updated)
     renderHeader();
   }
 }
@@ -584,8 +683,11 @@ async function loadPlayers() {
     const [pr, er] = await Promise.all([fetch('/api/players'), fetch('/api/drafts/exposure')]);
     PLAYERS  = await pr.json();
     exposure = (await er.json()).players || {};
+    buildNameLookup();
     renderPlayerList();
     renderRecs();
+    // Restore live sync after players are ready
+    if (syncDraftId) startSync(syncDraftId);
   } catch {
     document.getElementById('playerList').innerHTML =
       '<div class="spinner" style="color:#ef5350">Failed to load players.</div>';
@@ -784,6 +886,7 @@ function renderAll() {
 // ── Init ───────────────────────────────────────────────────────────────────────
 populateSettings();
 renderHeader();
+checkDKAuth();
 loadPlayers();
 </script>
 </body>
