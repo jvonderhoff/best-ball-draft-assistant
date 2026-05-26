@@ -8,7 +8,8 @@
     "activeTab",
     "tabs",
     "nativeMessaging",
-    "*://api.draftkings.com/*"
+    "*://api.draftkings.com/*",
+    "http://localhost:8000/*"
   ],
   "content_scripts": [
     {

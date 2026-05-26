@@ -115,6 +115,30 @@ function getDKDraftId() {
   return m ? m[1] : null;
 }
 
+// ── Live-draft push to Flask ──────────────────────────────────────────────────
+// Pushes the current draft state to the local Flask server so the /recommend
+// mobile page can poll it.  Fire-and-forget — never blocks the overlay.
+
+const FLASK_BASE = 'http://localhost:8000';
+
+function pushLiveState() {
+  const draftId = getDKDraftId();
+  if (!draftId) return;
+  const payload = {
+    draft_id:    draftId,
+    overall_pick: state.overallPick,
+    my_position: state.myPosition,
+    num_teams:   state.numTeams || 12,
+    my_team:     state.myTeam,
+    taken_ids:   [...state.drafted],
+  };
+  fetch(`${FLASK_BASE}/api/live-draft/push`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(payload),
+  }).catch(() => {}); // ignore network errors silently
+}
+
 // True when this tab was opened by the extension's "Get lineups" flow.
 const IS_AUTO_TAB = new URLSearchParams(location.search).get('bba_auto') === '1';
 
@@ -203,6 +227,7 @@ function markTaken(playerId, silent = false) {
   state.overallPick++;
   setComplete();
   if (!silent) render();
+  pushLiveState();
 }
 
 function myPick(playerId) {
@@ -214,6 +239,7 @@ function myPick(playerId) {
   state.overallPick++;
   setComplete();
   render();
+  pushLiveState();
   if (state.isComplete) saveDraftToFlask({ silent: true });
 }
 
@@ -229,6 +255,7 @@ function undoLast() {
   state.overallPick = Math.max(1, state.overallPick - 1);
   state.isComplete = false;
   render();
+  pushLiveState();
 }
 
 // ── Queue management ──────────────────────────────────────────────────────────
@@ -456,6 +483,7 @@ function readDraftBoard() {
     state.overallPick = Math.max(state.overallPick, state.drafted.size + 1);
     setComplete();
     render();
+    pushLiveState();
     if (state.isComplete) saveDraftToFlask({ silent: true, contest: getDKContestName() }).then(ok => { if (ok) loadExposure(); });
   }
   return { myPicks, takenPicks };
