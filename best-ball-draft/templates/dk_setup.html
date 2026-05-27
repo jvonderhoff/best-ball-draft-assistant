@@ -134,6 +134,12 @@
   <div class="steps">
 
     <div class="step">
+      <div class="step-hdr"><div class="step-num">0</div><div class="step-title">Trust the certificate (one time)</div></div>
+      <p>Because this server uses a self-signed HTTPS cert, your browser needs to trust it once before the bookmarklet can reach it.</p>
+      <p style="margin-top:8px">Open <strong id="certLinkChrome"></strong> in Chrome on your phone. Tap <strong>Advanced → Proceed</strong> (or "Visit this website"). You'll see the normal app — that's it, done once ever.</p>
+    </div>
+
+    <div class="step">
       <div class="step-hdr"><div class="step-num">1</div><div class="step-title">Copy the snippet below</div></div>
       <div class="code-box" id="snippet-chrome" onclick="copySnippet('chrome')"></div>
       <button class="copy-btn" onclick="copySnippet('chrome')">📋 Copy to clipboard</button>
@@ -163,6 +169,11 @@
 <!-- ── Safari iOS ── -->
 <div class="browser-content" id="browser-safari">
   <div class="steps">
+
+    <div class="step">
+      <div class="step-hdr"><div class="step-num">0</div><div class="step-title">Trust the certificate (one time)</div></div>
+      <p>Open <strong id="certLinkSafari"></strong> in Safari. Tap <strong>Show Details → visit this website → Visit Website</strong>. Enter your passcode if asked. Done once.</p>
+    </div>
 
     <div class="step">
       <div class="step-hdr"><div class="step-num">1</div><div class="step-title">Copy the snippet below</div></div>
@@ -216,7 +227,8 @@
 </div>
 
 <script>
-const SERVER = location.origin;  // e.g. http://192.168.1.161:8000
+// Always use https so fetches from DK (which is https) aren't blocked as mixed content
+const SERVER = location.origin.replace(/^http:/, 'https:');
 
 // The inline bookmarklet — no external script load, avoids script-src CSP
 function makeBookmarklet() {
@@ -301,6 +313,18 @@ async function checkStatus() {
     txt.textContent = 'Could not reach server.';
   }
 }
+
+// Fill cert trust links
+['certLinkChrome', 'certLinkSafari'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) {
+    const a = document.createElement('a');
+    a.href = SERVER;
+    a.textContent = SERVER;
+    a.style.color = '#4fc3f7';
+    el.replaceWith(a);
+  }
+});
 
 checkStatus();
 </script>
