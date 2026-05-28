@@ -907,22 +907,60 @@ async function checkStatus() {
 checkStatus();
 
 // ── Find My Drafts snippet ────────────────────────────────────────────────────
+// Runs on draftkings.com/mycontests — finds all snake draft IDs on the page,
+// then fetches pick data for each directly from DK's same-origin API
+// (no need to open each draft room individually).
 const FIND_DRAFTS_SNIPPET = `(function(){
   var S = '${location.origin.replace(/^http:/, 'https:')}';
-  var links = Array.from(document.querySelectorAll('a[href*="/draft/snake/"]'));
+
+  function post(ep, data) {
+    return fetch(S + ep, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }).catch(function(){});
+  }
+
+  // Collect all snake draft IDs from links on the page
   var seen = new Set();
   var ids = [];
-  links.forEach(function(a) {
+  Array.from(document.querySelectorAll('a[href*="/draft/snake/"]')).forEach(function(a) {
     var m = a.href.match(/\\/draft\\/snake\\/(\\d+)/);
     if (m && !seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
   });
-  if (!ids.length) { console.warn('BBA: no snake draft links found on this page'); return; }
-  console.log('BBA: found ' + ids.length + ' drafts:', ids);
-  fetch(S + '/api/dk-known-drafts', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ draft_ids: ids })
-  }).then(r => r.json()).then(d => console.log('BBA: registered', d.added.length, 'new drafts')).catch(() => {});
+  if (!ids.length) { console.warn('BBA: no snake draft links found — try scrolling down to load more'); return; }
+  console.log('BBA: found ' + ids.length + ' draft(s):', ids);
+
+  // Register all IDs with Flask
+  post('/api/dk-known-drafts', { draft_ids: ids })
+    .then(function(r) { return r && r.json(); })
+    .then(function(d) { if (d) console.log('BBA: registered', d.added.length, 'new draft IDs'); })
+    .catch(function(){});
+
+  // Fetch pick data for each draft from DK's same-origin API (no CORS since we're on draftkings.com)
+  var endpoints = [
+    '/draft/snake/{id}/picks',
+    '/draft/snake/{id}/state',
+    '/api/draft/snake/{id}',
+    '/api/snake/draft/{id}/board',
+    '/api/snake/{id}/picks',
+  ];
+
+  ids.forEach(function(did, i) {
+    // Stagger requests slightly to avoid hammering DK
+    setTimeout(function() {
+      endpoints.forEach(function(tpl) {
+        var ep = tpl.replace('{id}', did);
+        fetch(ep, { credentials: 'include' })
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(d) {
+            if (!d) return;
+            post('/api/dk-intercept', { url: ep, draft_id: did, data: d, direct: true })
+              .then(function(r) { return r && r.json(); })
+              .then(function(res) { if (res && res.picks_found) console.log('BBA #' + did + ' [' + ep + ']:', res.picks_found, 'picks'); })
+              .catch(function(){});
+          }).catch(function(){});
+      });
+    }, i * 300);
+  });
+
+  console.log('BBA: fetching picks for all ' + ids.length + ' drafts — check console for results in ~5s');
 })();`;
 
 const findEl = document.getElementById('find-drafts-snippet');
@@ -947,7 +985,7 @@ async function refreshFoundDrafts() {
     el.innerHTML = d.drafts.map(dr => {
       const status = dr.scanned
         ? `<span style="color:#81c784">✓ scanning · ${dr.pick_count} picks</span>`
-        : `<span style="color:#ff9800">⏳ not yet scanned — open draft room and paste BBA Live</span>`;
+        : `<span style="color:#ff9800">⏳ registered — re-run snippet or open draft room to scan picks</span>`;
       return `<div style="padding:6px 0;border-bottom:1px solid #1a2233;">
         <a href="https://www.draftkings.com/draft/snake/${dr.draft_id}" target="_blank"
            style="color:#4fc3f7;font-weight:700;">#${dr.draft_id}</a>

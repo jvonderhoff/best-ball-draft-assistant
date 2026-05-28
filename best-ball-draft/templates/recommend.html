@@ -615,7 +615,7 @@ async function loadDraftList() {
       let borderColor = '#2a3f5f';
       let bgColor = '#1a2233';
       if (!d.scanned) {
-        urgencyHtml = `<span style="color:#546e7a;font-size:0.75em;">⏳ Open draft room &amp; paste BBA Live</span>`;
+        urgencyHtml = `<span style="color:#546e7a;font-size:0.75em;">⏳ Re-run Find Drafts snippet to fetch picks</span>`;
       } else if (d.my_position) {
         const wait = picksUntilMyTurn(d.overall_pick, d.num_teams || 12, d.my_position);
         if (wait === 0) {
