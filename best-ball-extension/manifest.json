@@ -9,7 +9,9 @@
     "tabs",
     "nativeMessaging",
     "*://api.draftkings.com/*",
-    "http://localhost:8000/*"
+    "http://localhost:8000/*",
+    "https://localhost:8000/*",
+    "https://192.168.1.161:8000/*"
   ],
   "content_scripts": [
     {

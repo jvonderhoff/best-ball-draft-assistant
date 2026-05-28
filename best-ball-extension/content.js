@@ -1260,7 +1260,53 @@ function renderSuggestion() {
 
 // ── Listen for settings changes from popup ────────────────────────────────────
 
-bAPI.runtime.onMessage.addListener(msg => {
+bAPI.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.action === 'findDrafts') {
+    // Find all snake draft links on the current page
+    const seen = new Set();
+    const ids = [];
+    document.querySelectorAll('a[href*="/draft/snake/"]').forEach(a => {
+      const m = a.href.match(/\/draft\/snake\/(\d+)/);
+      if (m && !seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
+    });
+    sendResponse({ found: ids.length });
+    if (!ids.length) return true;
+
+    // Register with Flask
+    fetch(FLASK_BASE + '/api/dk-known-drafts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ draft_ids: ids }),
+    }).catch(() => {});
+
+    // Fetch pick data for each draft from DK's same-origin API
+    const endpoints = [
+      '/draft/snake/{id}/picks',
+      '/draft/snake/{id}/state',
+      '/api/draft/snake/{id}',
+      '/api/snake/draft/{id}/board',
+      '/api/snake/{id}/picks',
+    ];
+    ids.forEach((did, i) => {
+      setTimeout(() => {
+        endpoints.forEach(tpl => {
+          const ep = tpl.replace('{id}', did);
+          fetch(ep, { credentials: 'include' })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+              if (!data) return;
+              fetch(FLASK_BASE + '/api/dk-intercept', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: ep, draft_id: did, data, direct: true }),
+              }).catch(() => {});
+            }).catch(() => {});
+        });
+      }, i * 300);
+    });
+    return true;
+  }
+
   if (msg.action === 'settingsUpdated') {
     state.numTeams          = NUM_TEAMS;
     state.dkUsername        = msg.dkUsername        || '';

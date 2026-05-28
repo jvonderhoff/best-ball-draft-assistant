@@ -59,11 +59,21 @@
   </div>
 
   <div class="section">
+    <h3>My Drafts</h3>
+    <p class="hint">Finds all your active snake drafts and fetches their pick data — no need to open each room.</p>
+    <button id="findDraftsBtn" class="btn-primary" style="background:#1a3a4d;border:1px solid #2a5f7f;">🔍 Find My Drafts</button>
+    <div id="findDraftsStatus" style="margin-top:8px;font-size:0.78em;color:#546e7a;display:none;"></div>
+    <div id="draftsList" style="margin-top:8px;"></div>
+  </div>
+
+  <div class="section">
     <h3>Player Data</h3>
     <p class="hint">Players are bundled from the local cache. Re-run <code>generate_players.py</code> to refresh.</p>
     <div id="playerInfo" class="player-info"></div>
   </div>
 
+  <script src="players.js"></script>
+  <script src="recommender.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
