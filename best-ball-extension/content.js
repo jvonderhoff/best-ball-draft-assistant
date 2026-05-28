@@ -618,6 +618,78 @@ async function syncDraftGroup(draftGroupId) {
   return true;
 }
 
+// ── "Find My Drafts" button injected on mycontests page ──────────────────────
+
+function injectFindDraftsButton() {
+  if (document.getElementById('bba-find-drafts')) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'bba-find-drafts';
+  btn.textContent = '🔍 Find My Drafts';
+  Object.assign(btn.style, {
+    position: 'fixed', bottom: '20px', right: '20px', zIndex: '999999',
+    padding: '10px 18px', background: '#4fc3f7', color: '#0a0e1a',
+    border: 'none', borderRadius: '6px', fontWeight: '700',
+    fontSize: '14px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+  });
+
+  btn.addEventListener('click', async () => {
+    btn.textContent = '⏳ Scanning…';
+    btn.disabled = true;
+
+    const seen = new Set();
+    const ids = [];
+    document.querySelectorAll('a[href*="/draft/snake/"]').forEach(a => {
+      const m = a.href.match(/\/draft\/snake\/(\d+)/);
+      if (m && !seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
+    });
+
+    if (!ids.length) {
+      btn.textContent = '⚠ No drafts found — scroll down?';
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = '🔍 Find My Drafts'; }, 3000);
+      return;
+    }
+
+    // Register draft IDs with Flask
+    fetch(FLASK_BASE + '/api/dk-known-drafts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ draft_ids: ids }),
+    }).catch(() => {});
+
+    // Fetch picks for each draft from DK's same-origin API
+    const endpoints = [
+      'https://api.draftkings.com/lineups/v1/draftselections?draftGroupId={id}',
+      'https://api.draftkings.com/lineups/v1/lineups?draftGroupId={id}',
+      'https://www.draftkings.com/draft/snake/{id}/picks',
+    ];
+    ids.forEach((did, i) => {
+      setTimeout(() => {
+        endpoints.forEach(tpl => {
+          const ep = tpl.replace('{id}', did);
+          fetch(ep, { credentials: 'include' })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+              if (!data) return;
+              fetch(FLASK_BASE + '/api/dk-intercept', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: ep, draft_id: did, data, direct: true }),
+              }).catch(() => {});
+            }).catch(() => {});
+        });
+      }, i * 300);
+    });
+
+    btn.textContent = `✓ Found ${ids.length} draft(s) — syncing…`;
+    btn.disabled = false;
+    setTimeout(() => { btn.textContent = '🔍 Find My Drafts'; }, 4000);
+  });
+
+  document.body.appendChild(btn);
+}
+
 // Called by processDKResponse when it detects picks from an API response (live draft path).
 async function importPicksFromAPIResponse(draftGroupId, myPicks) {
   if (!myPicks.length) return false;
@@ -1619,6 +1691,7 @@ function onLocationChange() {
     if (!document.getElementById('bba-root')) init();
   } else if (/draftkings\.com\/mycontests/.test(href)) {
     console.log('[BBA] mycontests page detected');
+    setTimeout(injectFindDraftsButton, 1500);
     // Scrape entry fees from the mycontests table rows after the page renders
     setTimeout(scrapeMyContestsFees, 2000);
   }
