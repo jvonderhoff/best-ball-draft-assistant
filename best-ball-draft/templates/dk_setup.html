@@ -232,6 +232,35 @@
 </div>
 
 
+<div style="margin-top:24px;">
+  <h2 style="color:#4fc3f7;font-size:1em;margin-bottom:4px;">Find My Drafts</h2>
+  <p style="color:#78909c;font-size:0.82em;margin-bottom:12px;">
+    Run this snippet on your DK <strong>My Contests</strong> page to discover all your active snake drafts.
+    They'll appear in the Draft tab on <a href="/recommend" style="color:#4fc3f7">/recommend</a>.
+  </p>
+  <div class="step">
+    <div class="step-hdr">
+      <div class="step-num">1</div>
+      <div class="step-title">Go to draftkings.com/mycontests</div>
+    </div>
+  </div>
+  <div class="step" style="margin-top:10px;">
+    <div class="step-hdr">
+      <div class="step-num">2</div>
+      <div class="step-title">Open the browser console and paste this</div>
+    </div>
+    <div class="code-box" id="find-drafts-snippet" onclick="copyFindDraftsSnippet()" style="margin-top:8px;"></div>
+    <div class="tip" style="margin-top:6px;">💡 Click the box to copy.</div>
+  </div>
+  <div class="step" style="margin-top:10px;">
+    <div class="step-hdr">
+      <div class="step-num">3</div>
+      <div class="step-title">Your drafts will appear below and in <a href="/recommend" style="color:#4fc3f7">/recommend</a></div>
+    </div>
+    <div id="found-drafts-list" style="margin-top:8px;font-size:0.82em;color:#78909c;">No drafts found yet.</div>
+  </div>
+</div>
+
 <div class="bottom-nav">
   <a href="/recommend" class="btn">← Back to Draft</a>
   <button class="btn btn-outline" onclick="checkStatus()">↻ Check status</button>
@@ -876,6 +905,59 @@ async function checkStatus() {
 });
 
 checkStatus();
+
+// ── Find My Drafts snippet ────────────────────────────────────────────────────
+const FIND_DRAFTS_SNIPPET = `(function(){
+  var S = '${location.origin.replace(/^http:/, 'https:')}';
+  var links = Array.from(document.querySelectorAll('a[href*="/draft/snake/"]'));
+  var seen = new Set();
+  var ids = [];
+  links.forEach(function(a) {
+    var m = a.href.match(/\\/draft\\/snake\\/(\\d+)/);
+    if (m && !seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
+  });
+  if (!ids.length) { console.warn('BBA: no snake draft links found on this page'); return; }
+  console.log('BBA: found ' + ids.length + ' drafts:', ids);
+  fetch(S + '/api/dk-known-drafts', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ draft_ids: ids })
+  }).then(r => r.json()).then(d => console.log('BBA: registered', d.added.length, 'new drafts')).catch(() => {});
+})();`;
+
+const findEl = document.getElementById('find-drafts-snippet');
+if (findEl) findEl.textContent = FIND_DRAFTS_SNIPPET;
+
+function copyFindDraftsSnippet() {
+  navigator.clipboard.writeText(FIND_DRAFTS_SNIPPET).then(() => {
+    const el = document.getElementById('find-drafts-snippet');
+    el.style.background = '#0d2318';
+    setTimeout(() => el.style.background = '', 600);
+  });
+}
+
+// Poll found-drafts-list
+async function refreshFoundDrafts() {
+  try {
+    const r = await fetch('/api/drafts/list');
+    const d = await r.json();
+    const el = document.getElementById('found-drafts-list');
+    if (!el) return;
+    if (!d.drafts || !d.drafts.length) { el.textContent = 'No drafts found yet.'; return; }
+    el.innerHTML = d.drafts.map(dr => {
+      const status = dr.scanned
+        ? `<span style="color:#81c784">✓ scanning · ${dr.pick_count} picks</span>`
+        : `<span style="color:#ff9800">⏳ not yet scanned — open draft room and paste BBA Live</span>`;
+      return `<div style="padding:6px 0;border-bottom:1px solid #1a2233;">
+        <a href="https://www.draftkings.com/draft/snake/${dr.draft_id}" target="_blank"
+           style="color:#4fc3f7;font-weight:700;">#${dr.draft_id}</a>
+        ${dr.label ? `<span style="color:#546e7a"> · ${dr.label}</span>` : ''}
+        <br>${status}</div>`;
+    }).join('');
+  } catch {}
+}
+refreshFoundDrafts();
+setInterval(refreshFoundDrafts, 5000);
 </script>
 </body>
 </html>

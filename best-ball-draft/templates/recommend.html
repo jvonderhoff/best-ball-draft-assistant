@@ -251,6 +251,7 @@
 
     /* Live-update flash */
     @keyframes flash { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
     .live-flash { animation: flash 0.4s ease; }
   </style>
 </head>
@@ -571,16 +572,19 @@ function showDraftList() {
   document.querySelector('.tabs').style.display = 'none';
   document.querySelectorAll('.tab-panel').forEach(el => el.style.display = 'none');
   updateSyncUI(false, 'Select a draft');
-  loadDraftList();
+  startDraftListPolling();
 }
 
 function hideDraftList() {
+  stopDraftListPolling();
   document.getElementById('draftListView').style.display = 'none';
   document.getElementById('debugBar').style.display = '';
   document.querySelector('.tabs').style.display = '';
   // Clear ALL inline display overrides so CSS .tab-panel / .tab-panel.active takes over
   document.querySelectorAll('.tab-panel').forEach(el => el.style.display = '');
 }
+
+let _draftListTimer = null;
 
 async function loadDraftList() {
   const el = document.getElementById('draftListCards');
@@ -590,27 +594,56 @@ async function loadDraftList() {
     const drafts = data.drafts || [];
     if (!drafts.length) {
       el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:24px 10px;">
-        No drafts found on this server yet.<br>
-        <span style="color:#ff9800;font-size:0.9em;">Run the DK console snippet on your draft page first.</span>
+        No drafts found yet.<br>
+        <span style="color:#ff9800;font-size:0.9em;">Go to draftkings.com/mycontests and run the Find Drafts snippet from <a href="/dk-setup" style="color:#4fc3f7">/dk-setup</a>.</span>
       </div>`;
       return;
     }
+
     el.innerHTML = drafts.map(d => {
       const age = d.age_seconds != null
         ? (d.age_seconds < 60 ? `${d.age_seconds}s ago` : `${Math.round(d.age_seconds/60)}m ago`)
-        : 'unknown';
+        : null;
       const pos = d.pos_counts || {};
       const posBadges = ['QB','RB','WR','TE'].map(p => pos[p]
         ? `<span style="background:var(--${p});color:#fff;padding:1px 5px;border-radius:3px;font-size:0.7em;font-weight:700">${pos[p]}${p}</span>`
         : '').join('');
-      const round = Math.ceil((d.overall_pick || 1) / 12);
-      return `<div onclick="startSync('${d.draft_id}')" style="background:#1a2233;border:1px solid #2a3f5f;border-radius:8px;padding:12px 14px;cursor:pointer;border-left:4px solid #4fc3f7;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-weight:700;color:#4fc3f7;font-size:0.95em;">Draft #${d.draft_id}</span>
-          <span style="font-size:0.72em;color:#546e7a;">${age}</span>
+      const round = Math.ceil((d.overall_pick || 1) / (d.num_teams || 12));
+
+      // Pick urgency
+      let urgencyHtml = '';
+      let borderColor = '#2a3f5f';
+      let bgColor = '#1a2233';
+      if (!d.scanned) {
+        urgencyHtml = `<span style="color:#546e7a;font-size:0.75em;">⏳ Open draft room &amp; paste BBA Live</span>`;
+      } else if (d.my_position) {
+        const wait = picksUntilMyTurn(d.overall_pick, d.num_teams || 12, d.my_position);
+        if (wait === 0) {
+          urgencyHtml = `<span style="color:#ef5350;font-weight:700;font-size:0.88em;animation:pulse 1s infinite;">🔴 YOUR TURN</span>`;
+          borderColor = '#ef5350'; bgColor = '#2d1a1a';
+        } else if (wait <= 3) {
+          urgencyHtml = `<span style="color:#ff9800;font-weight:700;font-size:0.85em;">⚡ ${wait} pick${wait===1?'':'s'} away</span>`;
+          borderColor = '#ff9800'; bgColor = '#1f1700';
+        } else {
+          urgencyHtml = `<span style="color:#546e7a;font-size:0.78em;">${wait} picks away · Pos ${d.my_position}</span>`;
+        }
+      } else {
+        urgencyHtml = `<span style="color:#546e7a;font-size:0.75em;">Position unknown — re-paste BBA Live</span>`;
+      }
+
+      const label = d.label ? `<span style="color:#546e7a;font-size:0.78em;"> · ${d.label}</span>` : '';
+      const staleWarn = d.age_seconds > 30 ? `<span style="color:#546e7a;font-size:0.7em;"> · stale ${age}</span>` : '';
+
+      return `<div onclick="startSync('${d.draft_id}')"
+          style="background:${bgColor};border:1px solid ${borderColor};border-radius:8px;
+                 padding:12px 14px;cursor:pointer;border-left:4px solid ${borderColor};
+                 transition:background 0.2s;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+          <span style="font-weight:700;color:#4fc3f7;font-size:0.92em;">#${d.draft_id}${label}</span>
+          <span style="font-size:0.7em;color:#546e7a;">Rd ${round} · ${d.pick_count} picks${staleWarn}</span>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <span style="font-size:0.8em;color:#90a4ae;">📋 ${d.pick_count} picks · Rd ${round}</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
+          ${urgencyHtml}
           <span style="display:flex;gap:3px;">${posBadges}</span>
         </div>
       </div>`;
@@ -618,6 +651,16 @@ async function loadDraftList() {
   } catch(e) {
     el.innerHTML = `<div style="color:#ef5350;font-size:0.85em;padding:10px;">Error: ${e.message}</div>`;
   }
+}
+
+function startDraftListPolling() {
+  loadDraftList();
+  if (_draftListTimer) return;
+  _draftListTimer = setInterval(loadDraftList, 8000);
+}
+function stopDraftListPolling() {
+  clearInterval(_draftListTimer);
+  _draftListTimer = null;
 }
 
 function connectManual() {
@@ -734,7 +777,9 @@ function applyDKPickState(data) {
       ? pk.column_idx === myColIdx
       : (me && (pk.username || '').toLowerCase().includes(me));
     const pickNum = pk.pick_number || state.overallPick;
-    const round   = Math.floor((pickNum - 1) / settings.numTeams) + 1;
+    // Prefer server-parsed round (from pick cell "2.416" → round 2) over estimate
+    const round = pk.round != null ? pk.round
+                : Math.floor((pickNum - 1) / settings.numTeams) + 1;
 
     if (!state.takenIds.has(player.id)) {
       state.takenIds.add(player.id);

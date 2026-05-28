@@ -360,7 +360,8 @@ def refresh_props_underdog():
 # Receives pick data intercepted by the bookmarklet running on the DK draft page.
 # The bookmarklet patches window.fetch + WebSocket on the DK page and forwards
 # DK's own authenticated API responses here — no cookie proxy needed.
-_dk_intercept = {}   # draft_id -> { picks, raw_responses, updated_at, sources }
+_dk_intercept = {}      # draft_id -> { picks, raw_responses, updated_at, sources }
+_dk_known_drafts = {}  # draft_id -> { label, registered_at } — found on contests page but not yet scanned
 
 def _store_intercept(draft_id, url, data):
     """Parse and store pick data from an intercepted DK API call."""
@@ -754,7 +755,7 @@ def dk_dom_text():
     my_picks    = body.get('my_picks', False)     # True = text is only the user's own column
     column_idx  = body.get('column_idx')          # int or None — 0-based draft-board column index
 
-    found = {}  # player_name → player dict
+    found = {}  # player_name → {'player': player dict, 'round': int}
 
     # ── Strategy 1: Abbreviated name regex (DK board format: "J. Gibbs RB DET") ──
     # DK's draft board shows picks as: {round}.{pick_in_round}{overall?}{Name}{Pos}{Team}
@@ -814,7 +815,7 @@ def dk_dom_text():
                 player = min(candidates, key=lambda c: abs(expected_round(c) - round_num))
 
             if player and player['name'] not in found:
-                found[player['name']] = player
+                found[player['name']] = {'player': player, 'round': round_num}
 
         print(f"[DK DOM abbr] draft={draft_id} pick-anchored matched={len(found)}")
 
@@ -850,7 +851,7 @@ def dk_dom_text():
         for _, player in matches:
             name = player['name']
             if name not in found:
-                found[name] = player
+                found[name] = {'player': player, 'round': None}
             if len(found) >= max_picks:
                 break
 
@@ -860,11 +861,13 @@ def dk_dom_text():
 
     # Build normalized picks (no pick_number since DOM order isn't reliable)
     picks = []
-    for player in found.values():
+    for entry in found.values():
+        player = entry['player']
         pick = {
             'player_name': player['name'],
             'player_id':   player.get('id', ''),   # direct ID so mobile skips name lookup
             'pick_number': None,
+            'round':       entry['round'],           # parsed from pick cell (e.g. "1.99" → 1)
             'username':    'jvonderhoff' if my_picks else '',  # tag as user's pick if my_picks column
             'pos':         player.get('pos', ''),
             'team':        player.get('team', ''),
@@ -920,10 +923,30 @@ def dk_dom_text():
     return jsonify({'ok': True, 'picks_found': len(picks), 'new_picks': len(new_picks), 'total': len(entry['picks'])})
 
 
+@app.route('/api/dk-known-drafts', methods=['POST'])
+def dk_known_drafts():
+    """Register draft IDs found on the DK contests page (before the draft room is opened)."""
+    body     = request.get_json(silent=True) or {}
+    raw_ids  = body.get('draft_ids', [])
+    added = []
+    for raw_id in raw_ids:
+        did = str(raw_id).strip()
+        if not did:
+            continue
+        if did not in _dk_intercept and did not in _dk_known_drafts:
+            _dk_known_drafts[did] = {'label': body.get('label', ''), 'registered_at': time.time()}
+            added.append(did)
+        elif did in _dk_known_drafts and body.get('label'):
+            _dk_known_drafts[did]['label'] = body['label']
+    print(f"[DK KNOWN] registered {len(added)} new draft IDs: {added}")
+    return jsonify({'ok': True, 'added': added, 'total_known': len(_dk_known_drafts)})
+
+
 @app.route('/api/drafts/list', methods=['GET'])
 def drafts_list():
     """Return all draft IDs the server knows about, with their pick counts and recency."""
     drafts = []
+    # Drafts with pick data
     for draft_id, entry in _dk_intercept.items():
         picks = entry.get('picks', [])
         updated = entry.get('updated_at', 0)
@@ -932,14 +955,32 @@ def drafts_list():
         for p in picks:
             pos = p.get('pos', '?')
             pos_counts[pos] = pos_counts.get(pos, 0) + 1
+        my_col = entry.get('my_column_idx')
         drafts.append({
-            'draft_id': draft_id,
-            'pick_count': len(picks),
+            'draft_id':    draft_id,
+            'pick_count':  len(picks),
             'overall_pick': entry.get('overall_pick', len(picks) + 1),
-            'updated_at': updated,
+            'updated_at':  updated,
             'age_seconds': age,
-            'pos_counts': pos_counts,
+            'pos_counts':  pos_counts,
+            'label':       _dk_known_drafts.get(draft_id, {}).get('label', ''),
+            'scanned':     True,
+            'my_position': (my_col + 1) if my_col is not None else None,
+            'num_teams':   12,
         })
+    # Known drafts not yet scanned
+    for draft_id, info in _dk_known_drafts.items():
+        if draft_id not in _dk_intercept:
+            drafts.append({
+                'draft_id': draft_id,
+                'pick_count': 0,
+                'overall_pick': 1,
+                'updated_at': info.get('registered_at'),
+                'age_seconds': None,
+                'pos_counts': {},
+                'label': info.get('label', ''),
+                'scanned': False,
+            })
     # Sort by most recently updated
     drafts.sort(key=lambda d: d.get('updated_at') or 0, reverse=True)
     return jsonify({'drafts': drafts, 'total': len(drafts)})
