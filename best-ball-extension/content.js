@@ -139,7 +139,6 @@ function pushLiveState() {
   }).catch(() => {}); // ignore network errors silently
 }
 
-// True when this tab was opened by the extension's "Get lineups" flow.
 const IS_AUTO_TAB = new URLSearchParams(location.search).get('bba_auto') === '1';
 
 async function saveDraftToFlask({ contest = '', silent = false } = {}) {
@@ -634,58 +633,6 @@ async function importPicksFromAPIResponse(draftGroupId, myPicks) {
   } catch (_) { return false; }
 }
 
-// ── "Get lineups" button injected on mycontests page ─────────────────────────
-
-function injectGetLineupsButton() {
-  if (document.getElementById('bba-get-lineups')) return;
-
-  const btn = document.createElement('button');
-  btn.id = 'bba-get-lineups';
-  btn.textContent = '🏈 Get lineups';
-  Object.assign(btn.style, {
-    position: 'fixed', bottom: '20px', right: '20px', zIndex: '999999',
-    padding: '10px 18px', background: '#4fc3f7', color: '#0a0e1a',
-    border: 'none', borderRadius: '6px', fontWeight: '700',
-    fontSize: '14px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-  });
-
-  btn.addEventListener('click', async () => {
-    btn.textContent = '⏳ Syncing…';
-    btn.disabled = true;
-    const count = await fetchAndSyncMyContests();
-    btn.textContent = count > 0 ? `✓ Imported ${count} draft(s)` : '⚠ No drafts found — check console';
-    btn.disabled = false;
-    setTimeout(() => { btn.textContent = '🏈 Get lineups'; }, 4000);
-  });
-
-  document.body.appendChild(btn);
-}
-
-// Scan the mycontests DOM for draft IDs, then sync picks for each.
-async function fetchAndSyncMyContests() {
-  const html = document.body.innerHTML;
-
-  // Scan for any 9-digit number starting with 1 that looks like a DK draft group ID
-  const allIds = [...new Set(
-    [...html.matchAll(/\b(1\d{8})\b/g)].map(m => m[1])
-  )];
-  console.log('[BBA] candidate IDs found:', allIds);
-
-  if (!allIds.length) {
-    console.log('[BBA] No candidate IDs found in page HTML');
-    return 0;
-  }
-
-  // Clear session dedup so a manual button click always retries
-  allIds.forEach(id => _syncedDraftIds.delete(id));
-
-  let imported = 0;
-  for (const id of allIds) {
-    const ok = await syncDraftGroup(id);
-    if (ok) imported++;
-  }
-  return imported;
-}
 
 // Try to extract the entry fee from a DK API response.
 function _extractEntryFee(data) {
@@ -1672,7 +1619,6 @@ function onLocationChange() {
     if (!document.getElementById('bba-root')) init();
   } else if (/draftkings\.com\/mycontests/.test(href)) {
     console.log('[BBA] mycontests page detected');
-    loadSettings(() => injectGetLineupsButton());
     // Scrape entry fees from the mycontests table rows after the page renders
     setTimeout(scrapeMyContestsFees, 2000);
   }
