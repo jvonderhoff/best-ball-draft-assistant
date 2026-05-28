@@ -119,7 +119,7 @@ function getDKDraftId() {
 // Pushes the current draft state to the local Flask server so the /recommend
 // mobile page can poll it.  Fire-and-forget — never blocks the overlay.
 
-const FLASK_BASE = 'http://localhost:8000';
+const FLASK_BASE = 'https://192.168.1.161:8000';
 
 function pushLiveState() {
   const draftId = getDKDraftId();

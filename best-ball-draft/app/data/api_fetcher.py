@@ -37,14 +37,15 @@ SKILL_POSITIONS = {'QB', 'RB', 'WR', 'TE'}
 # ── Static 2026 schedule data ──────────────────────────────────────────────────
 
 BYE_WEEKS_2026 = {
-    'ARI': 11, 'ATL': 12, 'BAL': 14, 'BUF': 12,
-    'CAR': 11, 'CHI': 7,  'CIN': 12, 'CLE': 10,
-    'DAL': 7,  'DEN': 9,  'DET': 5,  'GB': 6,
-    'HOU': 14, 'IND': 14, 'JAX': 12, 'KC': 6,
-    'LAC': 5,  'LAR': 6,  'LV': 8,   'MIA': 6,
-    'MIN': 14, 'NE': 14,  'NO': 11,  'NYG': 11,
-    'NYJ': 12, 'PHI': 5,  'PIT': 9,  'SEA': 10,
-    'SF': 9,   'TB': 11,  'TEN': 5,  'WAS': 14,
+    # Sourced from DK draft board (BYE week shown per player pick cell), May 2026
+    'ARI': 14, 'ATL': 11, 'BAL': 13, 'BUF': 7,
+    'CAR': 5,  'CHI': 10, 'CIN': 6,  'CLE': 11,
+    'DAL': 14, 'DEN': 10, 'DET': 6,  'GB':  11,
+    'HOU': 8,  'IND': 13, 'JAX': 7,  'KC':  5,
+    'LAC': 7,  'LAR': 11, 'LV':  13, 'MIA': 6,
+    'MIN': 6,  'NE':  11, 'NO':  8,  'NYG': 8,
+    'NYJ': 13, 'PHI': 10, 'PIT': 9,  'SEA': 11,
+    'SF':  8,  'TB':  10, 'TEN': 9,  'WAS': 7,
 }
 
 # Playoff schedule weeks 15, 16, 17 — opponent abbreviation.

@@ -204,6 +204,8 @@
     }
     .player-row:active { background: #1e2d44; }
     .player-row.taken    { opacity: 0.32; }
+    .player-row.stack    { background: #0d2318; }
+    .player-row.stack .p-name { color: var(--green) !important; font-weight: 700; }
     .player-row.selected { background: #1a2d4d; border-left-color: var(--accent); }
     .player-row[data-pos="QB"] { border-left-color: var(--QB); }
     .player-row[data-pos="RB"] { border-left-color: var(--RB); }
@@ -269,10 +271,49 @@
     <input type="text" id="draftIdInput" placeholder="DK draft ID" inputmode="numeric">
     <button class="sync-btn" id="connectBtn">Connect</button>
   </div>
-  <button class="sync-btn disconnect" id="disconnectBtn" style="display:none">Disconnect</button>
+  <button class="sync-btn disconnect" id="disconnectBtn" style="display:none">← Drafts</button>
 </div>
-<div id="authWarning" style="display:none;background:#1a1206;border-bottom:1px solid #5d4037;padding:6px 14px;font-size:0.78em;color:#ff9800;">
-  ⚠ No DK session — <a href="/dk-setup" style="color:#ffb74d">set up auth first</a> to enable auto-sync.
+<div id="bookmarkletHint" style="display:none;background:#1a1206;border-bottom:1px solid #5d4037;padding:6px 14px;font-size:0.78em;color:#ff9800;">
+  🔗 No picks yet — open your DK draft page on desktop, run the console snippet, then come back here. <a href="/dk-setup" style="color:#ffb74d">Setup →</a>
+</div>
+
+<!-- ── Draft list (shown when no draft is connected) ── -->
+<div id="draftListView" style="display:none;padding:12px;">
+  <div style="font-size:0.82em;color:#78909c;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
+    <span>Your active drafts on this server:</span>
+    <button onclick="loadDraftList()" style="background:none;border:none;color:#4fc3f7;font-size:0.85em;cursor:pointer;">↻ Refresh</button>
+  </div>
+  <div id="draftListCards" style="display:flex;flex-direction:column;gap:8px;">
+    <div style="color:#546e7a;font-size:0.85em;text-align:center;padding:20px;">Loading…</div>
+  </div>
+  <div style="margin-top:16px;padding-top:12px;border-top:1px solid #2a3f5f;">
+    <div style="font-size:0.78em;color:#546e7a;margin-bottom:8px;">Connect to a specific draft ID:</div>
+    <div style="display:flex;gap:8px;">
+      <input type="text" id="manualDraftId" placeholder="e.g. 190642220" inputmode="numeric"
+        style="flex:1;padding:9px 10px;background:#1a2233;border:1px solid #2a3f5f;border-radius:6px;color:#e0e0e0;font-size:0.92em;">
+      <button onclick="connectManual()" style="padding:9px 16px;background:#4fc3f7;color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer;">Go</button>
+    </div>
+  </div>
+  <div style="margin-top:12px;">
+    <a href="/dk-setup" style="display:block;text-align:center;padding:10px;background:#111827;border:1px solid #2a3f5f;border-radius:6px;color:#78909c;font-size:0.82em;text-decoration:none;">
+      🔗 Setup console snippet on DK draft page →
+    </a>
+  </div>
+</div>
+<!-- Debug status bar (tap to expand) -->
+<div id="debugBar" style="background:#0a0f18;border-bottom:1px solid #1e3050;padding:4px 14px;font-size:0.72em;color:#546e7a;display:flex;align-items:center;gap:6px;cursor:pointer;" onclick="toggleDebug()">
+  <span style="font-size:0.9em">🔧</span>
+  <span id="debugSummary">Status: —</span>
+  <span style="margin-left:auto;font-size:0.9em" id="debugArrow">▸</span>
+</div>
+<div id="debugPanel" style="display:none;background:#060a10;border-bottom:1px solid #1e3050;padding:8px 14px;font-size:0.72em;color:#78909c;font-family:monospace;line-height:1.7;">
+  <div>Draft ID: <span id="dbgDraftId" style="color:#90a4ae">—</span></div>
+  <div>Server reachable: <span id="dbgServer" style="color:#90a4ae">—</span></div>
+  <div>Server picks: <span id="dbgServerPicks" style="color:#90a4ae">—</span></div>
+  <div>Players matched: <span id="dbgMatched" style="color:#90a4ae">—</span></div>
+  <div>My team picks: <span id="dbgMyTeam" style="color:#90a4ae">—</span></div>
+  <div>Last poll: <span id="dbgLastPoll" style="color:#90a4ae">—</span></div>
+  <div>Error: <span id="dbgError" style="color:#ef5350">—</span></div>
 </div>
 
 <div class="tabs">
@@ -326,7 +367,7 @@
     <div class="setting-group">
       <label>My Draft Position (1–12)</label>
       <input type="number" id="myPosition" min="1" max="12" value="1">
-      <div class="settings-hint">Auto-detected from the extension when connected.</div>
+      <div class="settings-hint">Required for Roster tab. Set to your pick slot (e.g. 3 = 3rd pick). Auto-detected from extension when connected.</div>
     </div>
     <div class="setting-group">
       <label>Number of Teams</label>
@@ -410,10 +451,17 @@ const SETTINGS_KEY = 'bba_settings';
 let settings = loadSettings();
 
 function defaultSettings() {
-  return { myPosition: 1, numTeams: 12, stackIntensity: 'medium', rbPriority: 'strong', diversifyStrength: 0.5, dkUsername: '' };
+  return { myPosition: 1, numTeams: 12, stackIntensity: 'medium', rbPriority: 'strong', diversifyStrength: 0.5, dkUsername: 'jvonderhoff' };
 }
 function loadSettings() {
-  try { return { ...defaultSettings(), ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    // Ensure username is never blank — default to jvonderhoff
+    if (!saved.dkUsername) saved.dkUsername = 'jvonderhoff';
+    // numTeams is always 12
+    saved.numTeams = 12;
+    return { ...defaultSettings(), ...saved };
+  }
   catch { return defaultSettings(); }
 }
 function persistSettings() {
@@ -470,14 +518,15 @@ function findPlayerByName(name, pos, team) {
   return null;
 }
 
-// Check auth status on load
+// Check intercept status on load — show hint if no picks received for this draft
 async function checkDKAuth() {
+  if (!syncDraftId) return;
   try {
-    const r = await fetch('/api/dk-auth/status');
+    const r = await fetch('/api/dk-intercept/status');
     const d = await r.json();
-    document.getElementById('authWarning').style.display = d.authenticated ? 'none' : '';
-    return d.authenticated;
-  } catch { return false; }
+    const hasDraft = (d.drafts || []).some(dr => dr.draft_id === syncDraftId && dr.pick_count > 0);
+    document.getElementById('bookmarkletHint').style.display = hasDraft ? 'none' : '';
+  } catch { /* ignore */ }
 }
 
 // Restore connection on page load if we had one
@@ -490,11 +539,17 @@ function startSync(draftId) {
   syncDraftId = draftId.trim();
   if (!syncDraftId) return;
   localStorage.setItem('bba_sync_draft_id', syncDraftId);
+  // Reset state for new draft
+  state = defaultState();
+  saveState();
+  // Show draft view (hideDraftList clears all inline display overrides)
+  hideDraftList();
+  document.getElementById('syncInputRow').style.display  = 'none';
+  document.getElementById('disconnectBtn').style.display = '';
+  document.getElementById('draftIdInput').value = syncDraftId;
   if (syncInterval) clearInterval(syncInterval);
   pollSync();
   syncInterval = setInterval(pollSync, 5000);
-  document.getElementById('syncInputRow').style.display  = 'none';
-  document.getElementById('disconnectBtn').style.display = '';
 }
 
 function stopSync() {
@@ -502,32 +557,143 @@ function stopSync() {
   syncDraftId = '';
   localStorage.removeItem('bba_sync_draft_id');
   syncConnected = false;
+  showDraftList();
+}
+
+function showDraftList() {
   document.getElementById('syncInputRow').style.display  = '';
   document.getElementById('disconnectBtn').style.display = 'none';
   document.getElementById('draftIdInput').value = '';
-  updateSyncUI(false, 'Not connected');
+  document.getElementById('draftListView').style.display = '';
+  document.getElementById('debugBar').style.display = 'none';
+  document.getElementById('bookmarkletHint').style.display = 'none';
+  // Hide tabs and tab panels
+  document.querySelector('.tabs').style.display = 'none';
+  document.querySelectorAll('.tab-panel').forEach(el => el.style.display = 'none');
+  updateSyncUI(false, 'Select a draft');
+  loadDraftList();
+}
+
+function hideDraftList() {
+  document.getElementById('draftListView').style.display = 'none';
+  document.getElementById('debugBar').style.display = '';
+  document.querySelector('.tabs').style.display = '';
+  // Clear ALL inline display overrides so CSS .tab-panel / .tab-panel.active takes over
+  document.querySelectorAll('.tab-panel').forEach(el => el.style.display = '');
+}
+
+async function loadDraftList() {
+  const el = document.getElementById('draftListCards');
+  try {
+    const r = await fetch('/api/drafts/list');
+    const data = await r.json();
+    const drafts = data.drafts || [];
+    if (!drafts.length) {
+      el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:24px 10px;">
+        No drafts found on this server yet.<br>
+        <span style="color:#ff9800;font-size:0.9em;">Run the DK console snippet on your draft page first.</span>
+      </div>`;
+      return;
+    }
+    el.innerHTML = drafts.map(d => {
+      const age = d.age_seconds != null
+        ? (d.age_seconds < 60 ? `${d.age_seconds}s ago` : `${Math.round(d.age_seconds/60)}m ago`)
+        : 'unknown';
+      const pos = d.pos_counts || {};
+      const posBadges = ['QB','RB','WR','TE'].map(p => pos[p]
+        ? `<span style="background:var(--${p});color:#fff;padding:1px 5px;border-radius:3px;font-size:0.7em;font-weight:700">${pos[p]}${p}</span>`
+        : '').join('');
+      const round = Math.ceil((d.overall_pick || 1) / 12);
+      return `<div onclick="startSync('${d.draft_id}')" style="background:#1a2233;border:1px solid #2a3f5f;border-radius:8px;padding:12px 14px;cursor:pointer;border-left:4px solid #4fc3f7;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-weight:700;color:#4fc3f7;font-size:0.95em;">Draft #${d.draft_id}</span>
+          <span style="font-size:0.72em;color:#546e7a;">${age}</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span style="font-size:0.8em;color:#90a4ae;">📋 ${d.pick_count} picks · Rd ${round}</span>
+          <span style="display:flex;gap:3px;">${posBadges}</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div style="color:#ef5350;font-size:0.85em;padding:10px;">Error: ${e.message}</div>`;
+  }
+}
+
+function connectManual() {
+  const val = document.getElementById('manualDraftId').value.trim();
+  if (val) startSync(val);
+}
+
+// ── Debug panel helpers ───────────────────────────────────────────────────────
+let _debugExpanded = false;
+function toggleDebug() {
+  _debugExpanded = !_debugExpanded;
+  document.getElementById('debugPanel').style.display = _debugExpanded ? '' : 'none';
+  document.getElementById('debugArrow').textContent = _debugExpanded ? '▾' : '▸';
+}
+function dbgSet(id, val, color) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = val;
+  if (color) el.style.color = color;
+}
+function updateDebug(info) {
+  const now = new Date().toLocaleTimeString();
+  dbgSet('dbgDraftId', syncDraftId || '—');
+  dbgSet('dbgServer', info.serverOk ? '✓ ' + (info.serverUrl || '') : '✗ unreachable', info.serverOk ? '#81c784' : '#ef5350');
+  dbgSet('dbgServerPicks', info.serverPicks != null ? String(info.serverPicks) : '—');
+  dbgSet('dbgMatched', info.matched != null ? String(info.matched) : '—');
+  dbgSet('dbgMyTeam', info.myTeam != null ? String(info.myTeam) : '—');
+  dbgSet('dbgLastPoll', now);
+  dbgSet('dbgError', info.error || '—', info.error ? '#ef5350' : '#546e7a');
+  // Update summary line
+  const summary = info.serverOk
+    ? `✓ server · ${info.serverPicks ?? '?'} server picks · ${info.matched ?? '?'} matched`
+    : `✗ server unreachable`;
+  document.getElementById('debugSummary').textContent = summary;
 }
 
 async function pollSync() {
   if (!syncDraftId) return;
 
-  // ── Primary: DK API proxy ────────────────────────────────────────
+  // ── Primary: DK intercept / API proxy ────────────────────────────
   try {
     const r = await fetch(`/api/dk-draft-state/${encodeURIComponent(syncDraftId)}`);
-    if (r.status === 401) {
-      updateSyncUI(false, '🔑 Need DK auth — <a href="/dk-setup" style="color:#ffb74d">set up here</a>');
-      document.getElementById('authWarning').style.display = '';
-      return;
-    }
     const data = await r.json();
-    if (data.error && !data.picks?.length) {
-      // DK API failed — fall back to extension push
+    const serverPicks = data.picks?.length ?? 0;
+
+    updateDebug({
+      serverOk: r.ok,
+      serverPicks,
+      matched: state.takenIds.size,
+      myTeam: state.myTeam.length,
+      error: data.error || null,
+    });
+
+    if (data.needs_bookmarklet) {
+      document.getElementById('bookmarkletHint').style.display = '';
+    } else {
+      document.getElementById('bookmarkletHint').style.display = 'none';
+    }
+
+    // Auto-apply my_position from server (detected via DK CSS class on desktop)
+    if (data.my_position && data.my_position !== settings.myPosition) {
+      settings.myPosition = data.my_position;
+      document.getElementById('myPosition').value = data.my_position;
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    }
+
+    if (data.picks?.length) {
+      applyDKPickState(data);
+      updateDebug({ serverOk: r.ok, serverPicks, matched: state.takenIds.size, myTeam: state.myTeam.length, error: null });
+      // Always also poll extension — it has my_team, my_position, and may fill gaps
       await pollExtensionState();
       return;
     }
-    applyDKPickState(data);
-    return;
-  } catch { /* fall through */ }
+  } catch (e) {
+    updateDebug({ serverOk: false, serverPicks: null, matched: state.takenIds.size, myTeam: state.myTeam.length, error: String(e) });
+  }
 
   // ── Fallback: extension push state ───────────────────────────────
   await pollExtensionState();
@@ -543,37 +709,60 @@ async function pollExtensionState() {
   }
 }
 
-// Apply picks from DK API response ({picks: [{player_name, pos, team, pick_number, username}], …})
+// Apply picks from DK API response ({picks: [{player_name, player_id, pos, team, pick_number, username}], …})
 function applyDKPickState(data) {
   const picks = data.picks || [];
   const me = (settings.dkUsername || '').toLowerCase();
   let changed = false;
 
   for (const pk of picks) {
-    const player = findPlayerByName(pk.player_name, pk.pos, pk.team);
+    // Prefer direct player_id (server now stores it); fall back to name lookup
+    let player = null;
+    if (pk.player_id) {
+      player = PLAYERS.find(p => p.id === pk.player_id);
+    }
+    if (!player) {
+      player = findPlayerByName(pk.player_name, pk.pos, pk.team);
+    }
     if (!player) continue;
-    if (state.takenIds.has(player.id)) continue;
 
-    const isMine = me && (pk.username || '').toLowerCase().includes(me);
+    // Determine if this pick belongs to the user:
+    // 1. column_idx === myPosition-1  (most reliable — column-based)
+    // 2. username match (fallback for my_picks column sends)
+    const myColIdx = settings.myPosition - 1;
+    const isMine = (pk.column_idx !== undefined && pk.column_idx !== null)
+      ? pk.column_idx === myColIdx
+      : (me && (pk.username || '').toLowerCase().includes(me));
     const pickNum = pk.pick_number || state.overallPick;
     const round   = Math.floor((pickNum - 1) / settings.numTeams) + 1;
 
-    state.takenIds.add(player.id);
+    if (!state.takenIds.has(player.id)) {
+      state.takenIds.add(player.id);
+      changed = true;
+    }
+    // Always check myTeam — server may retroactively tag picks as mine after column scan
     if (isMine && !state.myTeam.some(p => p.id === player.id)) {
       state.myTeam.push({ ...player, pick: pickNum, round });
+      changed = true;
     }
-    changed = true;
   }
 
   if (picks.length > 0) {
-    const maxPick = Math.max(...picks.map(p => p.pick_number || 0).filter(Boolean), state.overallPick - 1);
+    // Use explicit pick numbers if available, otherwise estimate from pick count
+    const numberedPicks = picks.map(p => p.pick_number || 0).filter(n => n > 0);
+    const maxPick = numberedPicks.length > 0
+      ? Math.max(...numberedPicks)
+      : (data.overall_pick > 1 ? data.overall_pick - 1 : picks.length);
     if (maxPick + 1 > state.overallPick) {
       state.overallPick = maxPick + 1;
       changed = true;
     }
   }
 
-  const src = data.source ? data.source.split('draftkings.com')[1] : 'DK API';
+  const srcRaw = data.source || 'DK';
+  const src = srcRaw === 'bookmarklet_intercept' ? '🔗 BBA Live'
+            : srcRaw.includes('draftkings.com') ? srcRaw.split('draftkings.com')[1]
+            : srcRaw;
   updateSyncUI(true, `Live · ${picks.length} picks · <span style="color:#546e7a;font-size:0.9em">${src}</span>`);
 
   if (changed) {
@@ -581,50 +770,67 @@ function applyDKPickState(data) {
     renderAll();
     document.getElementById('recsList').classList.add('live-flash');
     setTimeout(() => document.getElementById('recsList').classList.remove('live-flash'), 400);
+  } else if (picks.length > 0) {
+    // Server has picks but nothing new — still re-render to ensure UI is in sync
+    // (handles case where state was already populated but render wasn't triggered)
+    renderRecs();
+    renderHeader();
   } else {
     renderHeader();
   }
 }
 
-// Apply state pushed by the desktop extension
+// Apply state pushed by the desktop extension.
+// Safe to call alongside applyDKPickState — only adds my_team / my_position,
+// and normalizes taken_ids from bare DK numbers → "dk_XXXXXXX" format.
 function applyExtensionState(data) {
+  const hasDOMPicks = state.takenIds.size > 0;
+
   if (!data.connected) {
-    updateSyncUI(false, data.age_seconds != null
-      ? `Last ext update ${data.age_seconds}s ago`
-      : 'Waiting…');
+    // Only show "not connected" UI when we have no DOM picks either
+    if (!hasDOMPicks) {
+      updateSyncUI(false, data.age_seconds != null
+        ? `Last ext update ${data.age_seconds}s ago`
+        : 'Waiting…');
+    }
     return;
   }
 
-  const age = data.age_seconds || 0;
-  updateSyncUI(true, `Extension · pick ${data.overall_pick} · ${age}s ago`);
-
+  // Auto-detect draft position from extension (always 12 teams)
   if (data.my_position && data.my_position !== settings.myPosition) {
     settings.myPosition = data.my_position;
     document.getElementById('myPosition').value = data.my_position;
+    settings.numTeams = 12;
+    document.getElementById('numTeams').value = 12;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   }
 
   let changed = false;
-  for (const id of (data.taken_ids || [])) {
+
+  // Extension sends bare DK player IDs (e.g. 42775000); our PLAYERS use "dk_42775000"
+  for (const rawId of (data.taken_ids || [])) {
+    const id = String(rawId).startsWith('dk_') ? rawId : `dk_${rawId}`;
     if (!state.takenIds.has(id)) { state.takenIds.add(id); changed = true; }
   }
-  if (data.overall_pick && data.overall_pick !== state.overallPick) {
+
+  if (data.overall_pick && data.overall_pick > state.overallPick) {
     state.overallPick = data.overall_pick; changed = true;
   }
+
+  // Merge my_team — this is the key data the extension provides that DOM scan can't
   const remoteMyTeam = data.my_team || [];
   const remoteMyIds  = new Set(remoteMyTeam.map(p => p.id));
   for (const p of remoteMyTeam) {
     if (!state.myTeam.some(t => t.id === p.id)) { state.myTeam.push(p); changed = true; }
   }
-  if (state.myTeam.length !== remoteMyTeam.length) {
+  // Remove picks the extension no longer reports
+  if (remoteMyTeam.length > 0 && state.myTeam.length !== remoteMyTeam.length) {
     state.myTeam = state.myTeam.filter(p => remoteMyIds.has(p.id)); changed = true;
   }
 
   if (changed) {
     saveState(); renderAll();
-    document.getElementById('recsList').classList.add('live-flash');
-    setTimeout(() => document.getElementById('recsList').classList.remove('live-flash'), 400);
-  } else {
+  } else if (!hasDOMPicks) {
     renderHeader();
   }
 }
@@ -646,6 +852,8 @@ document.getElementById('draftIdInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('connectBtn').click();
 });
 document.getElementById('disconnectBtn').addEventListener('click', stopSync);
+
+// (findDraftsBtn removed — draft list is now shown as main view when not connected)
 
 // ── Tab switching ──────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
@@ -713,13 +921,15 @@ function renderPlayerList() {
   const players = getVisiblePlayers();
   const ul = document.getElementById('playerList');
   if (!players.length) { ul.innerHTML = '<div class="spinner">No players found</div>'; return; }
+  const myTeams = new Set(state.myTeam.map(p => p.team));
   ul.innerHTML = players.map(p => {
-    const isTaken   = state.takenIds.has(p.id);
-    const isMine    = state.myTeam.some(t => t.id === p.id);
+    const isTaken    = state.takenIds.has(p.id);
+    const isMine     = state.myTeam.some(t => t.id === p.id);
+    const isStack    = !isTaken && myTeams.has(p.team);
     const isSelected = selectedPlayer?.id === p.id;
     const badge = isTaken
       ? `<span class="taken-by ${isMine ? 'mine' : 'opp'}">${isMine ? 'Mine' : 'Taken'}</span>` : '';
-    return `<div class="player-row ${isTaken?'taken':''} ${isSelected?'selected':''}"
+    return `<div class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
          data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
       <div class="adp-badge">${p.adp}</div>
       <div style="flex:1">
@@ -812,6 +1022,7 @@ function renderRecs() {
   renderHeader();
 
   const available = PLAYERS.filter(p => !state.takenIds.has(p.id));
+  const takenCount = state.takenIds.size;
   const myTurn    = isMyTurn(state.overallPick, settings.numTeams, settings.myPosition);
   const pickForRec = myTurn
     ? state.overallPick
@@ -824,16 +1035,30 @@ function renderRecs() {
   );
 
   const el = document.getElementById('recsList');
-  if (!recs.length) { el.innerHTML = '<div class="no-recs">No players available.</div>'; return; }
 
-  el.innerHTML = recs.map((r, i) => {
+  // Status bar: show how many taken / available
+  const statusBar = takenCount > 0
+    ? `<div style="background:#0d1520;border:1px solid #1e3050;border-radius:6px;padding:7px 12px;margin-bottom:10px;font-size:0.78em;color:#78909c;display:flex;justify-content:space-between;align-items:center;">
+        <span>📋 <b style="color:#e0e0e0">${takenCount}</b> drafted &nbsp;·&nbsp; <b style="color:#4fc3f7">${available.length}</b> available</span>
+        <span style="color:#546e7a">${PLAYERS.length} total</span>
+       </div>`
+    : `<div style="background:#1a1206;border:1px solid #5d4037;border-radius:6px;padding:7px 12px;margin-bottom:10px;font-size:0.78em;color:#ff9800;">
+        ⚠️ No picks synced yet — run the DK console snippet to start.
+       </div>`;
+
+  if (!recs.length) {
+    el.innerHTML = statusBar + '<div class="no-recs">No players available.</div>';
+    return;
+  }
+
+  el.innerHTML = statusBar + recs.map((r, i) => {
     const p = r.player;
     return `<div class="rec-card">
       <div class="rec-rank">#${i+1}</div>
       <div><span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span></div>
       <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ADP ${p.adp}</div>
       ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
-      <button class="rec-pick-btn" onclick="quickPick('${p.id}')">Draft (My Pick)</button>
+      <button class="rec-pick-btn" onclick="quickPick('${p.id}')">+ My Pick</button>
     </div>`;
   }).join('');
 }
@@ -888,6 +1113,17 @@ populateSettings();
 renderHeader();
 checkDKAuth();
 loadPlayers();
+
+// Show draft list on load if no active sync, or reconnect if we had one
+if (syncDraftId) {
+  // Had a previous draft — reconnect UI immediately (sync starts after players load)
+  hideDraftList();
+  document.getElementById('syncInputRow').style.display  = 'none';
+  document.getElementById('disconnectBtn').style.display = '';
+  document.getElementById('draftIdInput').value = syncDraftId;
+} else {
+  showDraftList();
+}
 </script>
 </body>
 </html>

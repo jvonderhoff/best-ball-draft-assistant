@@ -16,10 +16,76 @@ app = Flask(__name__,
     static_folder=os.path.join(basedir, 'static')
 )
 app.secret_key = 'best-ball-secret-key-2024'
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
+
+@app.after_request
+def add_pna_header(response):
+    """Chrome Private Network Access — allow requests from public sites to this LAN server."""
+    if request.method == 'OPTIONS':
+        response.headers['Access-Control-Allow-Private-Network'] = 'true'
+    return response
 
 init_db()
 draft_state = DraftState()
+
+# ── Player name index (built at startup) ──────────────────────────────────────
+# Used by the DOM-text endpoint to match player names found on the DK page.
+_PLAYERS_BY_NAME  = {}   # lowercase full name → player dict
+_PLAYERS_BY_LAST  = {}   # lowercase "last pos" → [player dict, …]
+_PLAYERS_BY_ABBR  = {}   # "A_lastname_POS" → player dict  (single, first-write/low-ADP wins)
+_PLAYERS_BY_ABBR_MULTI = {}  # "A_lastname_POS" → [player, …]  (all candidates; for collision disambiguation)
+_PLAYERS_BY_ID    = {}   # "dk_42775000" → player dict  (for extension taken_ids lookup)
+
+def _load_players_index():
+    """Parse players.js and build fast lookup dicts."""
+    ext_dir = os.path.join(basedir, '..', 'best-ball-extension')
+    js_path  = os.path.join(ext_dir, 'players.js')
+    if not os.path.exists(js_path):
+        js_path = os.path.join(basedir, 'static', 'players.js')
+    try:
+        with open(js_path) as f:
+            text = f.read()
+        m = re.search(r'const PLAYERS\s*=\s*(\[.*?\]);', text, re.DOTALL)
+        if not m:
+            # Try without semicolon
+            m = re.search(r'const PLAYERS\s*=\s*(\[.*\])', text, re.DOTALL)
+        if m:
+            players = json.loads(m.group(1))
+            for p in players:
+                name = p.get('name', '')
+                if not name:
+                    continue
+                lname = name.lower()
+                _PLAYERS_BY_NAME[lname] = p
+                parts = name.split()
+                pos = p.get('pos', '')
+                if len(parts) >= 2:
+                    # "lastname_pos" index
+                    key = f"{parts[-1].lower()}_{pos}"
+                    _PLAYERS_BY_LAST.setdefault(key, []).append(p)
+                    # "Initial_lastname_pos" index for DK abbreviated names ("J. Gibbs RB")
+                    initial = parts[0][0].upper()
+                    # Use the LAST significant word as lastname (skip Jr./Sr./II/III/IV)
+                    suffixes = {'jr', 'sr', 'ii', 'iii', 'iv', 'v'}
+                    last = parts[-1].lower().rstrip('.')
+                    if last in suffixes and len(parts) >= 3:
+                        last = parts[-2].lower().rstrip('.')
+                    abbr_key = f"{initial}_{last}_{pos}"
+                    # Single-entry dict: first write (lowest ADP) wins for quick lookup
+                    _PLAYERS_BY_ABBR.setdefault(abbr_key, p)
+                    _PLAYERS_BY_ABBR.setdefault(f"{initial}_{last}", p)
+                    # Multi-entry list: ALL candidates stored for round-based disambiguation
+                    _PLAYERS_BY_ABBR_MULTI.setdefault(abbr_key, []).append(p)
+                    _PLAYERS_BY_ABBR_MULTI.setdefault(f"{initial}_{last}", []).append(p)
+                # ID index — DK IDs are "dk_XXXXXXX"
+                pid = p.get('id', '')
+                if pid:
+                    _PLAYERS_BY_ID[pid] = p
+            print(f"[Players] Loaded {len(_PLAYERS_BY_NAME)} players, {len(_PLAYERS_BY_ABBR)} abbr keys, {len(_PLAYERS_BY_ID)} id keys")
+    except Exception as e:
+        print(f"[Players] Could not load index: {e}")
+
+_load_players_index()
 
 
 @app.route('/')
@@ -290,13 +356,72 @@ def refresh_props_underdog():
         return jsonify({'ok': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
 
 
-# ── DK cookie store & proxy ───────────────────────────────────────────────────
-# Stores the last cookie string the user sent from their DK browser session.
+# ── DK intercept store ────────────────────────────────────────────────────────
+# Receives pick data intercepted by the bookmarklet running on the DK draft page.
+# The bookmarklet patches window.fetch + WebSocket on the DK page and forwards
+# DK's own authenticated API responses here — no cookie proxy needed.
+_dk_intercept = {}   # draft_id -> { picks, raw_responses, updated_at, sources }
+
+def _store_intercept(draft_id, url, data):
+    """Parse and store pick data from an intercepted DK API call."""
+    id_str = str(draft_id)
+    if id_str not in _dk_intercept:
+        _dk_intercept[id_str] = {
+            'picks': [],
+            'raw_responses': [],
+            'updated_at': time.time(),
+            'sources': [],
+        }
+    entry = _dk_intercept[id_str]
+    entry['updated_at'] = time.time()
+    # Store raw for debugging (keep last 5 responses per draft)
+    entry['raw_responses'] = (entry['raw_responses'] + [{'url': url, 'keys': list(data.keys()) if isinstance(data, dict) else str(data)[:200]}])[-5:]
+
+    picks = _parse_picks_from_response(data)
+    if picks:
+        entry['picks'] = picks
+        entry['overall_pick'] = max((p.get('pick_number') or 0 for p in picks), default=0) + 1
+        entry['sources'].append(url)
+        return len(picks)
+    return 0
+
+
+# ── DK cookie store & proxy (legacy — used for probe/debug only) ──────────────
+_DK_SESSION_FILE = os.path.join(basedir, '.dk_session.json')
+
 _dk_session = {
     'cookie':    None,   # raw Cookie header string (from document.cookie)
     'ls_tokens': {},     # JWT tokens from localStorage keyed by their key name
     'updated_at': None,
 }
+
+# Load persisted session from disk on startup
+def _load_dk_session():
+    try:
+        if os.path.exists(_DK_SESSION_FILE):
+            with open(_DK_SESSION_FILE) as f:
+                data = json.load(f)
+            if data.get('cookie'):
+                _dk_session['cookie']     = data['cookie']
+                _dk_session['ls_tokens']  = data.get('ls_tokens', {})
+                _dk_session['updated_at'] = data.get('updated_at')
+                print(f"[DK] Loaded persisted session ({len(data['cookie'])} bytes)")
+    except Exception as e:
+        print(f"[DK] Could not load session: {e}")
+
+def _save_dk_session():
+    try:
+        with open(_DK_SESSION_FILE, 'w') as f:
+            json.dump({
+                'cookie':     _dk_session['cookie'],
+                'ls_tokens':  _dk_session['ls_tokens'],
+                'updated_at': _dk_session['updated_at'],
+            }, f)
+    except Exception as e:
+        print(f"[DK] Could not save session: {e}")
+
+_load_dk_session()
+
 # Cache of draft_id -> { picks, overall_pick, my_username, updated_at }
 _dk_pick_cache = {}
 _dk_poll_threads = {}   # draft_id -> threading.Thread
@@ -326,39 +451,93 @@ def _dk_headers(extra=None):
     return h
 
 
+def _normalize_pick(p):
+    """
+    Normalize a single pick object to {player_name, pos, team, pick_number, username}.
+    Handles:
+      - Direct: {displayName, position, teamAbbreviation, pickNumber, entryName}
+      - Nested:  {player: {displayName, ...}, draftTeam: {entryName, ...}, pickNumber}
+      - React fiber: same as above with varying key names
+    """
+    if not isinstance(p, dict):
+        return None
+    # Player sub-object (DK often nests it)
+    po = p.get('player') or p.get('draftPlayer') or p
+    # Team sub-object
+    to = p.get('draftTeam') or p.get('team') or {}
+    if isinstance(to, str):
+        to = {'teamAbbreviation': to}
+
+    name = (po.get('displayName') or
+            ' '.join(filter(None, [po.get('firstName',''), po.get('lastName','')])).strip() or
+            po.get('playerName') or po.get('name') or
+            p.get('displayName') or p.get('playerName') or p.get('name') or '')
+
+    if not name:
+        return None
+
+    pos = (po.get('position') or po.get('pos') or
+           p.get('position') or p.get('pos') or '')
+    team = (po.get('teamAbbreviation') or po.get('nflTeamAbbreviation') or po.get('team') or
+            p.get('teamAbbreviation') or p.get('nflTeamAbbreviation') or
+            (to.get('teamAbbreviation') if isinstance(to, dict) else '') or '')
+    pick_num = (p.get('pickNumber') or p.get('pick_number') or p.get('overallPickNumber') or
+                p.get('draftPickNumber') or None)
+    username = (p.get('username') or p.get('entryName') or p.get('draftTeamName') or
+                (to.get('entryName') or to.get('name') if isinstance(to, dict) else '') or
+                p.get('teamName') or '')
+
+    return {
+        'player_name': name,
+        'pick_number': pick_num,
+        'username':    username,
+        'pos':         pos,
+        'team':        team,
+    }
+
+
 def _parse_picks_from_response(data):
-    """Extract a flat list of {player_name, pos, team, pick_number, username} from any DK API shape."""
-    candidates = [
-        data.get('picks'), data.get('draftPicks'), data.get('selections'),
-        data.get('draftSelections'),
-        (data.get('data') or {}).get('picks'),
-        (data.get('payload') or {}).get('picks'),
-        (data.get('draft') or {}).get('picks'),
-        data.get('entries'), data.get('roster'),
-    ]
-    for lst in candidates:
-        if not isinstance(lst, list) or not lst:
-            continue
-        first = lst[0]
-        # Must look like a pick object
-        if not any(k in first for k in ('displayName', 'firstName', 'playerName',
-                                         'name', 'lastName')):
-            continue
-        picks = []
-        for p in lst:
-            name = (p.get('displayName') or
-                    f"{p.get('firstName','')} {p.get('lastName','')}".strip() or
-                    p.get('playerName') or p.get('name') or '')
-            picks.append({
-                'player_name': name,
-                'pick_number':  p.get('pickNumber') or p.get('pick_number') or p.get('overallPickNumber'),
-                'username':     (p.get('username') or p.get('entryName') or
-                                 p.get('teamName') or p.get('draftTeamName') or ''),
-                'pos':  p.get('position') or p.get('pos') or '',
-                'team': p.get('teamAbbreviation') or p.get('team') or '',
-            })
-        return picks
-    return None
+    """
+    Extract a flat list of normalized picks from any DK API response shape.
+    Searches common field names and nested structures recursively (up to depth 4).
+    """
+    if not isinstance(data, dict):
+        # If data itself is a list, try it directly
+        if isinstance(data, list) and data:
+            results = [_normalize_pick(p) for p in data]
+            results = [r for r in results if r and r['player_name']]
+            if results:
+                return results
+        return None
+
+    # Field names that typically contain the picks array
+    pick_fields = ['picks', 'draftPicks', 'selections', 'draftSelections',
+                   'roster', 'entries', 'draftSelections', 'board', 'participants',
+                   'draftBoard', 'lineups', 'players']
+
+    def search(obj, depth):
+        if depth > 4 or not isinstance(obj, dict):
+            return None
+        for field in pick_fields:
+            lst = obj.get(field)
+            if isinstance(lst, list) and lst and isinstance(lst[0], dict):
+                # Check if items look like picks (have a name somewhere)
+                sample = lst[0]
+                po = sample.get('player') or sample.get('draftPlayer') or sample
+                if any(k in po for k in ('displayName', 'firstName', 'playerName', 'name')):
+                    results = [_normalize_pick(p) for p in lst]
+                    results = [r for r in results if r and r['player_name']]
+                    if results:
+                        return results
+        # Recurse into nested dicts
+        for v in obj.values():
+            if isinstance(v, dict):
+                r = search(v, depth + 1)
+                if r:
+                    return r
+        return None
+
+    return search(data, 0)
 
 
 def _fetch_dk_draft(draft_id):
@@ -367,12 +546,21 @@ def _fetch_dk_draft(draft_id):
     Stores result in _dk_pick_cache[draft_id].
     """
     id_str = str(draft_id)
+    # Best-ball / snake draft endpoints (ordered most-likely first)
     endpoints = [
+        # Snake draft board — most direct
+        f'https://api.draftkings.com/lineups/v1/draftselections?draftGroupId={id_str}',
+        f'https://api.draftkings.com/draft/v1/draftgroups/{id_str}/draftboard',
+        f'https://api.draftkings.com/draft/v1/draftgroups/{id_str}/selections',
+        f'https://api.draftkings.com/draft/v2/draftgroups/{id_str}/selections',
+        # Generic contest/lineup endpoints
         f'https://api.draftkings.com/lineups/v1/lineups?draftGroupId={id_str}',
         f'https://api.draftkings.com/lineups/v2/lineups?draftGroupId={id_str}',
         f'https://api.draftkings.com/draftgroups/v1/draftgroups/{id_str}',
         f'https://api.draftkings.com/draftgroups/v2/draftgroups/{id_str}',
-        f'https://api.draftkings.com/draft/v1/draftgroups/{id_str}',
+        # www endpoints
+        f'https://www.draftkings.com/lineup/getdraftboard?draftGroupId={id_str}',
+        f'https://www.draftkings.com/api/lineup/getpicks?draftGroupId={id_str}',
     ]
     h = _dk_headers()
     last_status = None
@@ -380,9 +568,12 @@ def _fetch_dk_draft(draft_id):
         try:
             r = req_lib.get(url, headers=h, timeout=10)
             last_status = r.status_code
-            if r.status_code != 200:
+            if r.status_code not in (200, 201):
                 continue
-            data = r.json()
+            try:
+                data = r.json()
+            except Exception:
+                continue
 
             # Try to extract picks
             picks = _parse_picks_from_response(data)
@@ -392,13 +583,14 @@ def _fetch_dk_draft(draft_id):
                     'overall_pick': max((p.get('pick_number') or 0 for p in picks), default=0) + 1,
                     'updated_at': time.time(),
                     'source': url,
+                    'raw': data,   # keep raw for debugging
                     'error': None,
                 }
                 return picks
 
-            # Even without picks, store metadata
+            # 200 but no picks yet — store raw for probe inspection
             _dk_pick_cache[id_str] = _dk_pick_cache.get(id_str) or {}
-            _dk_pick_cache[id_str].update({'updated_at': time.time(), 'source': url})
+            _dk_pick_cache[id_str].update({'updated_at': time.time(), 'source': url, 'raw_keys': list(data.keys()) if isinstance(data, dict) else str(data)[:200]})
 
         except Exception as e:
             last_status = f'err:{e}'
@@ -410,6 +602,426 @@ def _fetch_dk_draft(draft_id):
     _dk_pick_cache[id_str]['error'] = f'All endpoints failed (last status: {last_status})'
     _dk_pick_cache[id_str]['updated_at'] = time.time()
     return None
+
+
+def _fetch_my_dk_drafts():
+    """Try to fetch the user's active/upcoming snake drafts from DK."""
+    h = _dk_headers()
+    results = {}
+
+    # Try entries API (lists all user entries/contests)
+    for url in [
+        'https://api.draftkings.com/entries/v1/entries?statuses=InProgress,Upcoming&sport=1',
+        'https://api.draftkings.com/entries/v1/entries?sport=1',
+        'https://api.draftkings.com/lineups/v1/lineups?sport=1',
+        'https://www.draftkings.com/lineup/getentries?sport=1',
+    ]:
+        try:
+            r = req_lib.get(url, headers=h, timeout=8, allow_redirects=False)
+            if r.status_code == 200:
+                try:
+                    data = r.json()
+                    results[url] = {'status': 200, 'keys': list(data.keys()) if isinstance(data, dict) else str(data)[:300]}
+                    # Try to extract draft IDs
+                    entries = data.get('entries') or data.get('lineups') or data.get('contests') or []
+                    if isinstance(entries, list):
+                        drafts = []
+                        for e in entries:
+                            dg_id = e.get('draftGroupId') or e.get('contestId') or e.get('id')
+                            name  = e.get('contestName') or e.get('name') or e.get('draftGroupTag') or ''
+                            if dg_id:
+                                drafts.append({'id': str(dg_id), 'name': name})
+                        if drafts:
+                            return {'source': url, 'drafts': drafts, 'raw': results}
+                except Exception:
+                    results[url] = {'status': 200, 'body': r.text[:200]}
+            else:
+                results[url] = {'status': r.status_code}
+        except Exception as e:
+            results[url] = {'error': str(e)}
+
+    return {'source': None, 'drafts': [], 'raw': results}
+
+
+@app.route('/api/dk-intercept', methods=['POST'])
+def dk_intercept():
+    """
+    Receive an intercepted DK API response from the bookmarklet.
+    The bookmarklet patches window.fetch on the DK draft page and forwards
+    any draft-related API response here. Browser handles all auth transparently.
+    """
+    body = request.get_json(silent=True) or {}
+    url      = body.get('url', '')
+    draft_id = str(body.get('draft_id', '') or '').strip()
+    data     = body.get('data', {})
+
+    if not draft_id or not isinstance(data, dict):
+        return jsonify({'ok': False, 'error': 'missing draft_id or data'})
+
+    n = _store_intercept(draft_id, url, data)
+
+    # Also store in the old pick cache so dk_draft_state_proxy can see it
+    if n > 0:
+        _dk_pick_cache[draft_id] = {
+            'picks':       _dk_intercept[draft_id]['picks'],
+            'overall_pick': _dk_intercept[draft_id].get('overall_pick', 1),
+            'updated_at':  time.time(),
+            'source':      url,
+            'error':       None,
+        }
+        print(f"[DK intercept] draft={draft_id} url=…{url[-50:]} picks={n}")
+    else:
+        print(f"[DK intercept] draft={draft_id} url=…{url[-50:]} no picks — raw keys: {list(data.keys())[:10]}")
+
+    return jsonify({'ok': True, 'picks_found': n, 'draft_id': draft_id})
+
+
+@app.route('/api/dk-picks-direct', methods=['POST'])
+def dk_picks_direct():
+    """
+    Receive a raw list of pick objects scraped directly from React state.
+    The bookmarklet walks the React fiber tree and sends whatever it finds.
+    We normalize and store it exactly like an intercepted API response.
+    """
+    body = request.get_json(silent=True) or {}
+    draft_id = str(body.get('draft_id', '') or '').strip()
+    raw_picks = body.get('picks', [])
+    source    = body.get('source', 'react-fiber')
+
+    if not draft_id or not isinstance(raw_picks, list):
+        return jsonify({'ok': False, 'error': 'missing draft_id or picks'})
+
+    # Normalize each pick
+    normalized = [_normalize_pick(p) for p in raw_picks]
+    normalized = [p for p in normalized if p and p['player_name']]
+
+    if normalized:
+        id_str = draft_id
+        if id_str not in _dk_intercept:
+            _dk_intercept[id_str] = {'picks': [], 'raw_responses': [], 'updated_at': time.time(), 'sources': []}
+        entry = _dk_intercept[id_str]
+        entry['picks']      = normalized
+        entry['overall_pick'] = max((p.get('pick_number') or 0 for p in normalized), default=0) + 1
+        entry['updated_at'] = time.time()
+        entry['sources'].append(source)
+        entry['raw_responses'] = (entry['raw_responses'] + [{'url': source, 'count': len(normalized)}])[-5:]
+
+        # Mirror to pick cache
+        _dk_pick_cache[id_str] = {
+            'picks': normalized, 'overall_pick': entry['overall_pick'],
+            'updated_at': time.time(), 'source': source, 'error': None,
+        }
+        print(f"[DK direct] draft={draft_id} source={source} picks={len(normalized)}")
+
+    return jsonify({'ok': True, 'picks_stored': len(normalized), 'draft_id': draft_id})
+
+
+@app.route('/api/dk-ws-message', methods=['POST'])
+def dk_ws_message():
+    """Receive an intercepted DK WebSocket message from the bookmarklet."""
+    body = request.get_json(silent=True) or {}
+    draft_id = str(body.get('draft_id', '') or '').strip()
+    url      = body.get('url', '')
+    data     = body.get('data', {})
+
+    if not draft_id:
+        return jsonify({'ok': False, 'error': 'missing draft_id'})
+
+    n = _store_intercept(draft_id, f'ws:{url}', data)
+    print(f"[DK WS] draft={draft_id} url=…{url[-40:]} picks={n}")
+    return jsonify({'ok': True, 'picks_found': n})
+
+
+@app.route('/api/dk-dom-text', methods=['POST'])
+def dk_dom_text():
+    """
+    Receive raw DOM text from the DK draft page.
+    The bookmarklet sends document.body.innerText; we match known player names
+    from our PLAYERS index and store the result as picks.
+    """
+    body     = request.get_json(silent=True) or {}
+    draft_id = str(body.get('draft_id', '') or '').strip()
+    text     = body.get('text', '')
+
+    if not draft_id or not text:
+        return jsonify({'ok': False, 'error': 'missing draft_id or text'})
+
+    if not _PLAYERS_BY_NAME:
+        return jsonify({'ok': False, 'error': 'player index not loaded'})
+
+    board_only  = body.get('board_only', False)
+    board_text  = body.get('board_text', False)   # True = DK board textContent (abbreviated names)
+    my_picks    = body.get('my_picks', False)     # True = text is only the user's own column
+    column_idx  = body.get('column_idx')          # int or None — 0-based draft-board column index
+
+    found = {}  # player_name → player dict
+
+    # ── Strategy 1: Abbreviated name regex (DK board format: "J. Gibbs RB DET") ──
+    # DK's draft board shows picks as: {round}.{pick_in_round}{overall?}{Name}{Pos}{Team}
+    # e.g. "1.11J. GibbsRBDET" or "2.1224N. CollinsWRHOU"
+    # Require the round.pick prefix to distinguish DRAFTED picks from the player pool.
+    if board_text or _PLAYERS_BY_ABBR:
+        # Anchored pattern: captures round, team, and name for full disambiguation.
+        pick_pat = re.compile(
+            r'(\d{1,2})\.\d{1,2}'                        # group(1): round number
+            r'\d{0,3}'                                    # optional overall pick digits
+            r'([A-Z]\. [A-Za-z][A-Za-z\'\-\.\s]{0,30}?)' # group(2): abbreviated name
+            r'(QB|RB|WR|TE|K|DEF|DST)'                   # group(3): position
+            r'([A-Z]{2,4})?'                              # group(4): optional team abbr
+        )
+        for m in pick_pat.finditer(text):
+            round_num = int(m.group(1))
+            abbr_name = m.group(2).strip()
+            pos       = m.group(3)
+            team_abbr = (m.group(4) or '').upper()
+            nm = re.match(r'([A-Z])\. (.+)', abbr_name)
+            if not nm:
+                continue
+            initial    = nm.group(1)
+            name_parts = nm.group(2).strip().split()
+            suffixes   = {'jr', 'sr', 'ii', 'iii', 'iv', 'v', 'jr.', 'sr.'}
+            last = ''
+            for part in reversed(name_parts):
+                if part.lower().rstrip('.') not in suffixes:
+                    last = part.lower().rstrip('.')
+                    break
+            if not last:
+                continue
+
+            # ── Candidate resolution with round-based disambiguation ──────────
+            abbr_key = f"{initial}_{last}_{pos}"
+            candidates = list(_PLAYERS_BY_ABBR_MULTI.get(abbr_key) or
+                               _PLAYERS_BY_ABBR_MULTI.get(f"{initial}_{last}") or [])
+
+            # Filter by team if we have it and it narrows the field
+            if team_abbr and candidates:
+                team_filtered = [c for c in candidates if c.get('team', '').upper() == team_abbr]
+                if team_filtered:
+                    candidates = team_filtered
+
+            if not candidates:
+                continue
+
+            if len(candidates) == 1:
+                player = candidates[0]
+            else:
+                # Multiple players share initial+last+pos (e.g. Bijan & Brian Robinson RB ATL).
+                # Pick whichever player's expected draft round is closest to the actual round.
+                num_teams = 12
+                def expected_round(c):
+                    adp = c.get('adp', 999)
+                    return max(1, (adp - 1) // num_teams + 1)
+                player = min(candidates, key=lambda c: abs(expected_round(c) - round_num))
+
+            if player and player['name'] not in found:
+                found[player['name']] = player
+
+        print(f"[DK DOM abbr] draft={draft_id} pick-anchored matched={len(found)}")
+
+    # ── Strategy 2: Full-name substring scan (fallback / supplement) ──
+    if not board_text:
+        # Only apply cutoff for non-board scans (board text has no player pool section)
+        cutoff_markers = [
+            'available players', 'player pool', 'search players',
+            'add to watchlist', 'player rankings', 'all players',
+        ]
+        text_lower_full = text.lower()
+        cutoff_idx = len(text)
+        for marker in cutoff_markers:
+            idx = text_lower_full.find(marker)
+            if 0 < idx < cutoff_idx:
+                cutoff_idx = idx
+        if cutoff_idx < len(text):
+            text = text[:cutoff_idx]
+
+        text_lower = text.lower()
+        matches = []
+        for lname, player in _PLAYERS_BY_NAME.items():
+            idx = text_lower.find(lname)
+            if idx >= 0:
+                matches.append((idx, player))
+        matches.sort(key=lambda x: x[0])
+
+        max_picks = 250
+        pm = re.search(r'overall\s+pick\s+(\d+)', text_lower)
+        if pm:
+            max_picks = min(int(pm.group(1)) + 24, 250)
+
+        for _, player in matches:
+            name = player['name']
+            if name not in found:
+                found[name] = player
+            if len(found) >= max_picks:
+                break
+
+    if not found:
+        print(f"[DK DOM] draft={draft_id} — no player names matched in {len(text)} chars")
+        return jsonify({'ok': True, 'picks_found': 0, 'text_length': len(text)})
+
+    # Build normalized picks (no pick_number since DOM order isn't reliable)
+    picks = []
+    for player in found.values():
+        pick = {
+            'player_name': player['name'],
+            'player_id':   player.get('id', ''),   # direct ID so mobile skips name lookup
+            'pick_number': None,
+            'username':    'jvonderhoff' if my_picks else '',  # tag as user's pick if my_picks column
+            'pos':         player.get('pos', ''),
+            'team':        player.get('team', ''),
+        }
+        if column_idx is not None:
+            pick['column_idx'] = int(column_idx)
+        picks.append(pick)
+
+    # Store in intercept cache
+    id_str = draft_id
+    if id_str not in _dk_intercept:
+        _dk_intercept[id_str] = {'picks': [], 'raw_responses': [], 'updated_at': time.time(), 'sources': []}
+    entry = _dk_intercept[id_str]
+
+    if my_picks:
+        # my_picks = only user's column — update username on any already-stored picks
+        my_names = {p['player_name'].lower() for p in picks}
+        for ep in entry['picks']:
+            if ep['player_name'].lower() in my_names and not ep.get('username'):
+                ep['username'] = 'jvonderhoff'
+        # Add any not yet in the list
+        existing_names = {p['player_name'].lower() for p in entry['picks']}
+        new_picks = [p for p in picks if p['player_name'].lower() not in existing_names]
+    else:
+        # Per-column scan — update column_idx on existing picks, add new picks
+        if column_idx is not None:
+            col_names = {p['player_name'].lower() for p in picks}
+            for ep in entry['picks']:
+                if ep['player_name'].lower() in col_names and ep.get('column_idx') is None:
+                    ep['column_idx'] = int(column_idx)
+        existing_names = {p['player_name'].lower() for p in entry['picks']}
+        new_picks = [p for p in picks if p['player_name'].lower() not in existing_names]
+    entry['picks'] = entry['picks'] + new_picks
+    entry['updated_at'] = time.time()
+    entry['sources'].append('dom-text')
+    entry['raw_responses'] = (entry['raw_responses'] + [{'url': 'dom-text', 'count': len(picks)}])[-5:]
+
+    # Compute overall_pick: use max pick_number if available, else estimate from count
+    numbered = [p.get('pick_number') or 0 for p in entry['picks'] if p.get('pick_number')]
+    overall_pick = (max(numbered) + 1) if numbered else (len(entry['picks']) + 1)
+    entry['overall_pick'] = overall_pick
+
+    # Mirror to pick cache
+    _dk_pick_cache[id_str] = {
+        'picks': entry['picks'],
+        'overall_pick': overall_pick,
+        'updated_at': time.time(),
+        'source': 'dom-text',
+        'error': None,
+    }
+
+    print(f"[DK DOM] draft={draft_id} matched={len(picks)} new={len(new_picks)} total={len(entry['picks'])}")
+    return jsonify({'ok': True, 'picks_found': len(picks), 'new_picks': len(new_picks), 'total': len(entry['picks'])})
+
+
+@app.route('/api/drafts/list', methods=['GET'])
+def drafts_list():
+    """Return all draft IDs the server knows about, with their pick counts and recency."""
+    drafts = []
+    for draft_id, entry in _dk_intercept.items():
+        picks = entry.get('picks', [])
+        updated = entry.get('updated_at', 0)
+        age = round(time.time() - updated) if updated else None
+        pos_counts = {}
+        for p in picks:
+            pos = p.get('pos', '?')
+            pos_counts[pos] = pos_counts.get(pos, 0) + 1
+        drafts.append({
+            'draft_id': draft_id,
+            'pick_count': len(picks),
+            'overall_pick': entry.get('overall_pick', len(picks) + 1),
+            'updated_at': updated,
+            'age_seconds': age,
+            'pos_counts': pos_counts,
+        })
+    # Sort by most recently updated
+    drafts.sort(key=lambda d: d.get('updated_at') or 0, reverse=True)
+    return jsonify({'drafts': drafts, 'total': len(drafts)})
+
+
+@app.route('/api/dk-my-column', methods=['POST'])
+def dk_my_column():
+    """Store the 0-based column index of the user's own team (detected by DK CSS class)."""
+    body     = request.get_json(silent=True) or {}
+    draft_id = str(body.get('draft_id', '') or '').strip()
+    col_idx  = body.get('my_column_idx')
+    if not draft_id or col_idx is None:
+        return jsonify({'ok': False, 'error': 'missing draft_id or my_column_idx'})
+    col_idx = int(col_idx)
+    if draft_id not in _dk_intercept:
+        _dk_intercept[draft_id] = {'picks': [], 'raw_responses': [], 'updated_at': time.time(), 'sources': []}
+    _dk_intercept[draft_id]['my_column_idx'] = col_idx
+    # Backfill username on any picks already stored with this column_idx
+    for pk in _dk_intercept[draft_id]['picks']:
+        if pk.get('column_idx') == col_idx and not pk.get('username'):
+            pk['username'] = 'jvonderhoff'
+    print(f"[DK MY-COL] draft={draft_id} my_column_idx={col_idx} (position {col_idx + 1})")
+    return jsonify({'ok': True, 'my_column_idx': col_idx, 'my_position': col_idx + 1})
+
+
+@app.route('/api/dk-reset', methods=['POST', 'GET'])
+def dk_reset():
+    """Clear all stored picks for a draft so a fresh scan can rebuild the list."""
+    draft_id = str(request.args.get('draft_id') or (request.get_json(silent=True) or {}).get('draft_id', '') or '').strip()
+    if not draft_id:
+        return jsonify({'ok': False, 'error': 'missing draft_id'})
+    prev = len((_dk_intercept.get(draft_id) or {}).get('picks', []))
+    _dk_intercept.pop(draft_id, None)
+    _dk_pick_cache.pop(draft_id, None)
+    print(f"[DK RESET] draft={draft_id} cleared {prev} picks")
+    return jsonify({'ok': True, 'draft_id': draft_id, 'cleared': prev})
+
+
+@app.route('/api/dk-ws-url', methods=['POST'])
+def dk_ws_url():
+    """Record a WebSocket URL captured when DK establishes a new WS connection."""
+    body = request.get_json(silent=True) or {}
+    url  = body.get('url', '')
+    draft_id = str(body.get('draft_id', '') or '').strip()
+    print(f"[DK WS URL] draft={draft_id} url={url}")
+    return jsonify({'ok': True, 'ws_url': url})
+
+
+@app.route('/api/dk-globals', methods=['POST'])
+def dk_globals():
+    """Receive window globals (React/__NEXT_DATA__/etc) captured from the DK draft page."""
+    body = request.get_json(silent=True) or {}
+    draft_id = str(body.get('draft_id', '') or '').strip()
+    globals_ = body.get('globals', {})
+    print(f"[DK globals] draft={draft_id} keys={list(globals_.keys())}")
+    # Try to parse each global for pick data
+    n_total = 0
+    for k, v in globals_.items():
+        try:
+            data = json.loads(v) if isinstance(v, str) else v
+            if isinstance(data, dict):
+                n = _store_intercept(draft_id, f'global:{k}', data)
+                n_total += n
+        except Exception:
+            pass
+    return jsonify({'ok': True, 'picks_found': n_total})
+
+
+@app.route('/api/dk-intercept/status', methods=['GET'])
+def dk_intercept_status():
+    """Return a summary of all drafts we have intercepted pick data for."""
+    drafts = []
+    for draft_id, entry in _dk_intercept.items():
+        drafts.append({
+            'draft_id':    draft_id,
+            'pick_count':  len(entry.get('picks', [])),
+            'updated_at':  entry.get('updated_at', 0),
+            'sources':     entry.get('sources', [])[-3:],
+            'raw_responses': entry.get('raw_responses', []),
+        })
+    drafts.sort(key=lambda x: x['updated_at'], reverse=True)
+    return jsonify({'drafts': drafts})
 
 
 @app.route('/api/dk-auth', methods=['POST'])
@@ -437,6 +1049,7 @@ def dk_auth():
     _dk_session['cookie'] = cookie
     _dk_session['ls_tokens'] = {k: ls[k] for k in jwt_keys}
     _dk_session['updated_at'] = time.time()
+    _save_dk_session()
 
     cookie_keys = [p.split('=')[0].strip() for p in cookie.split(';') if '=' in p]
     return jsonify({
@@ -456,26 +1069,70 @@ def dk_auth_status():
     return jsonify({'authenticated': True, 'age_seconds': age, 'cookie_keys': keys})
 
 
+@app.route('/api/my-dk-drafts', methods=['GET'])
+def my_dk_drafts():
+    """Return the user's active/upcoming DK drafts (auto-discovered via DK API)."""
+    if not _dk_session['cookie']:
+        return jsonify({'error': 'Not authenticated', 'needs_auth': True}), 401
+    result = _fetch_my_dk_drafts()
+    return jsonify(result)
+
+
 @app.route('/api/dk-draft-state/<draft_id>', methods=['GET'])
 def dk_draft_state_proxy(draft_id):
     """
-    Fetch current pick state for a DK snake draft.
-    Returns picks + metadata suitable for the /recommend page.
+    Return current pick state for a DK draft.
+    Priority: 1) bookmarklet intercept cache  2) cookie-proxy cache  3) fresh proxy fetch
     """
-    if not _dk_session['cookie']:
-        return jsonify({'error': 'Not authenticated — send DK cookie first', 'needs_auth': True}), 401
+    id_str = str(draft_id)
 
-    picks = _fetch_dk_draft(draft_id)
-    cached = _dk_pick_cache.get(str(draft_id), {})
+    # 1. Check intercept cache (bookmarklet running on DK page) — preferred
+    intercepted = _dk_intercept.get(id_str)
+    if intercepted and intercepted.get('picks'):
+        age = time.time() - intercepted.get('updated_at', 0)
+        resp = {
+            'draft_id':    draft_id,
+            'picks':       intercepted['picks'],
+            'overall_pick': intercepted.get('overall_pick', 1),
+            'updated_at':  intercepted.get('updated_at'),
+            'source':      'bookmarklet_intercept',
+            'age_seconds': round(age),
+            'error':       None,
+            'pick_count':  len(intercepted['picks']),
+        }
+        if intercepted.get('my_column_idx') is not None:
+            resp['my_column_idx'] = intercepted['my_column_idx']
+            resp['my_position']   = intercepted['my_column_idx'] + 1
+        return jsonify(resp)
 
+    # 2. Check cookie-proxy cache (old approach, fallback)
+    cached = _dk_pick_cache.get(id_str, {})
+    if cached.get('picks'):
+        return jsonify({
+            'draft_id':    draft_id,
+            'picks':       cached['picks'],
+            'overall_pick': cached.get('overall_pick', 1),
+            'updated_at':  cached.get('updated_at'),
+            'source':      cached.get('source', 'cookie_proxy'),
+            'error':       None,
+            'pick_count':  len(cached['picks']),
+        })
+
+    # 3. No data yet — tell client to run bookmarklet
+    debug = {
+        'intercept_raw': (intercepted or {}).get('raw_responses', []),
+        'cache_raw_keys': cached.get('raw_keys'),
+    }
     return jsonify({
-        'draft_id': draft_id,
-        'picks': picks or [],
-        'overall_pick': cached.get('overall_pick', 1),
-        'updated_at': cached.get('updated_at'),
-        'source': cached.get('source'),
-        'error': cached.get('error'),
-        'pick_count': len(picks) if picks else 0,
+        'draft_id':    draft_id,
+        'picks':       [],
+        'overall_pick': 1,
+        'updated_at':  None,
+        'source':      None,
+        'error':       'No pick data yet — tap BBA Live bookmarklet on your DK draft page.',
+        'needs_bookmarklet': True,
+        'pick_count':  0,
+        'debug':       debug,
     })
 
 
@@ -498,15 +1155,50 @@ def live_draft_push():
     if not draft_id:
         return jsonify({'error': 'draft_id required'}), 400
     import time
+    raw_taken = data.get('taken_ids', [])
     _live_drafts[draft_id] = {
         'draft_id':    draft_id,
         'overall_pick': int(data.get('overall_pick', 1)),
         'my_position':  data.get('my_position'),
         'num_teams':    int(data.get('num_teams', 12)),
         'my_team':      data.get('my_team', []),
-        'taken_ids':    data.get('taken_ids', []),
+        'taken_ids':    raw_taken,
         'updated_at':   time.time(),
     }
+
+    # ── Merge extension taken_ids into _dk_intercept ───────────────────────────
+    # The extension sends DK-internal player IDs (e.g. 42775000).
+    # Our player index uses "dk_42775000" format — just prepend "dk_" to match.
+    # This supplements the DOM scan for picks it may have missed (name format issues).
+    if raw_taken and _PLAYERS_BY_ID:
+        id_str = draft_id
+        if id_str not in _dk_intercept:
+            _dk_intercept[id_str] = {'picks': [], 'raw_responses': [], 'updated_at': time.time(), 'sources': []}
+        entry = _dk_intercept[id_str]
+        existing_ids = {p.get('player_id', '') for p in entry['picks']}
+        new_picks = []
+        for raw_id in raw_taken:
+            dk_id = f"dk_{raw_id}" if not str(raw_id).startswith('dk_') else str(raw_id)
+            if dk_id in existing_ids:
+                continue
+            player = _PLAYERS_BY_ID.get(dk_id)
+            if player:
+                new_picks.append({
+                    'player_name': player['name'],
+                    'player_id':   dk_id,
+                    'pick_number': None,
+                    'username':    '',
+                    'pos':         player.get('pos', ''),
+                    'team':        player.get('team', ''),
+                })
+        if new_picks:
+            entry['picks'].extend(new_picks)
+            entry['updated_at'] = time.time()
+            entry['sources'].append('extension')
+            numbered = [p.get('pick_number') or 0 for p in entry['picks'] if p.get('pick_number')]
+            entry['overall_pick'] = (max(numbered) + 1) if numbered else (len(entry['picks']) + 1)
+            print(f"[EXT MERGE] draft={draft_id} added {len(new_picks)} missing picks, total={len(entry['picks'])}")
+
     return jsonify({'ok': True})
 
 
@@ -591,3 +1283,48 @@ def get_analysis():
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+
+
+@app.route('/api/dk-probe/<draft_id>')
+def dk_probe(draft_id):
+    """Debug: try many DK endpoints and return raw status + first 500 chars of each."""
+    if not _dk_session.get('cookie'):
+        return jsonify({'error': 'not authenticated — run bookmarklet first'}), 401
+    h = _dk_headers()
+    results = []
+    endpoints = [
+        # ── Snake draft specific (www.draftkings.com) ──
+        f'https://www.draftkings.com/draft/snake/{draft_id}/picks',
+        f'https://www.draftkings.com/draft/snake/{draft_id}/state',
+        f'https://www.draftkings.com/api/draft/snake/{draft_id}',
+        f'https://www.draftkings.com/api/snake/{draft_id}/picks',
+        f'https://www.draftkings.com/api/snake/draft/{draft_id}/board',
+        f'https://www.draftkings.com/api/lineup/getpicks?draftGroupId={draft_id}',
+        f'https://www.draftkings.com/lineup/getpicks?draftGroupId={draft_id}',
+        # ── api.draftkings.com endpoints ──
+        f'https://api.draftkings.com/lineups/v1/draftselections?draftGroupId={draft_id}',
+        f'https://api.draftkings.com/draft/v1/draftgroups/{draft_id}/draftboard',
+        f'https://api.draftkings.com/draft/v1/draftgroups/{draft_id}/selections',
+        f'https://api.draftkings.com/draftgroups/v2/draftgroups/{draft_id}',
+        f'https://api.draftkings.com/lineups/v1/lineups?draftGroupId={draft_id}',
+        f'https://api.draftkings.com/entries/v1/entries?draftGroupId={draft_id}',
+        # ── User context (no draft_id) ──
+        'https://api.draftkings.com/entries/v1/entries?sport=1',
+        'https://www.draftkings.com/mycontests',
+    ]
+    for url in endpoints:
+        try:
+            r = req_lib.get(url, headers=h, timeout=8, allow_redirects=False)
+            path = url.split('draftkings.com')[1] if 'draftkings.com' in url else url
+            if r.status_code == 200:
+                try:
+                    j = r.json()
+                    body = json.dumps(j)[:600]
+                except Exception:
+                    body = r.text[:300]
+            else:
+                body = r.text[:150]
+            results.append({'url': path, 'status': r.status_code, 'body': body})
+        except Exception as e:
+            results.append({'url': url, 'status': 'err', 'body': str(e)})
+    return jsonify(results)
