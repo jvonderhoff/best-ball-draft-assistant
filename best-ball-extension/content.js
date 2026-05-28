@@ -639,10 +639,28 @@ function injectFindDraftsButton() {
 
     const seen = new Set();
     const ids = [];
+
+    // 1. Check <a href="/draft/snake/ID"> links
     document.querySelectorAll('a[href*="/draft/snake/"]').forEach(a => {
       const m = a.href.match(/\/draft\/snake\/(\d+)/);
       if (m && !seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
     });
+
+    // 2. Check all <a> hrefs for any DK numeric ID pattern
+    if (!ids.length) {
+      document.querySelectorAll('a[href]').forEach(a => {
+        const m = a.href.match(/[\/=](\d{7,10})(?:[\/\?&]|$)/);
+        if (m && !seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
+      });
+    }
+
+    // 3. Fall back to scanning full page HTML for 9-digit IDs starting with 1
+    if (!ids.length) {
+      const html = document.body.innerHTML;
+      [...html.matchAll(/\b(1\d{8})\b/g)].forEach(m => {
+        if (!seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
+      });
+    }
 
     if (!ids.length) {
       btn.textContent = '⚠ No drafts found — scroll down?';
