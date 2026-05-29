@@ -756,35 +756,45 @@ async function findMyDraftIds() {
     'https://api.draftkings.com/entries/v1/entries?sport=1',
   ];
 
+  const extractSnakeIds = (data) => {
+    const raw = JSON.stringify(data);
+    // Any /draft/snake/ID in the response is reliable
+    [...raw.matchAll(/\/draft\/snake\/(\d{7,10})/g)].forEach(m => candidates.add(m[1]));
+    // Walk for draftGroupId fields within snake-draft-looking entries
+    const walk = (obj, depth = 0) => {
+      if (!obj || typeof obj !== 'object' || depth > 5) return;
+      if (Array.isArray(obj)) { obj.slice(0, 200).forEach(x => walk(x, depth + 1)); return; }
+      const objStr = JSON.stringify(obj).toLowerCase();
+      if (objStr.includes('snake') || objStr.includes('best ball') || objStr.includes('/draft/snake/')) {
+        for (const key of ['draftGroupId', 'DraftGroupId', 'draftKey', 'gameSetId']) {
+          const v = obj[key];
+          if (v && /^\d{7,10}$/.test(String(v))) candidates.add(String(v));
+        }
+      }
+      for (const v of Object.values(obj)) { if (v && typeof v === 'object') walk(v, depth + 1); }
+    };
+    walk(data);
+  };
+
+  // 1. Try __NEXT_DATA__ embedded in the page HTML (Next.js SSR data)
+  try {
+    const nextDataEl = document.getElementById('__NEXT_DATA__');
+    if (nextDataEl) {
+      const nextData = JSON.parse(nextDataEl.textContent);
+      console.log('[BBA] __NEXT_DATA__ keys:', Object.keys(nextData));
+      extractSnakeIds(nextData);
+    }
+  } catch (e) {}
+
+  // 2. DK API endpoints
   await Promise.all(entryUrls.map(async url => {
     try {
       const r = await fetch(url, { credentials: 'include' });
+      console.log('[BBA] findMyDraftIds', url.split('/').slice(-2).join('/'), '→', r.status);
       if (!r.ok) return;
       const data = await r.json();
-      const raw = JSON.stringify(data);
       console.log('[BBA] findMyDraftIds hit:', url.split('?')[0].split('/').slice(-2).join('/'), Object.keys(data));
-
-      // Only extract IDs that appear next to snake/bestball indicators in the raw JSON
-      // This avoids picking up DFS contest IDs
-      const snakeMatches = [...raw.matchAll(/\/draft\/snake\/(\d{7,10})/g)];
-      snakeMatches.forEach(m => candidates.add(m[1]));
-
-      // Also walk known draft-group ID fields, but only from entries that look like snake drafts
-      const walk = (obj, depth = 0) => {
-        if (!obj || typeof obj !== 'object' || depth > 5) return;
-        if (Array.isArray(obj)) { obj.slice(0, 200).forEach(x => walk(x, depth + 1)); return; }
-
-        const objStr = JSON.stringify(obj).toLowerCase();
-        const isSnakeDraft = objStr.includes('snake') || objStr.includes('best') || objStr.includes('/draft/snake/');
-        if (isSnakeDraft) {
-          for (const key of ['draftGroupId', 'DraftGroupId', 'draftKey', 'gameSetId']) {
-            const v = obj[key];
-            if (v && /^\d{7,10}$/.test(String(v))) candidates.add(String(v));
-          }
-        }
-        for (const v of Object.values(obj)) { if (v && typeof v === 'object') walk(v, depth + 1); }
-      };
-      walk(data);
+      extractSnakeIds(data);
     } catch (e) {
       console.log('[BBA] findMyDraftIds fetch failed:', url, e.message);
     }
