@@ -776,15 +776,27 @@ async function findMyDraftIds() {
     walk(data);
   };
 
-  // 1. Try __NEXT_DATA__ embedded in the page HTML (Next.js SSR data)
-  try {
-    const nextDataEl = document.getElementById('__NEXT_DATA__');
-    if (nextDataEl) {
-      const nextData = JSON.parse(nextDataEl.textContent);
-      console.log('[BBA] __NEXT_DATA__ keys:', Object.keys(nextData));
-      extractSnakeIds(nextData);
+  // 1. Scan all inline <script> tags for embedded snake-draft IDs
+  //    DK embeds Redux/React initial state in inline scripts
+  let foundInline = false;
+  document.querySelectorAll('script:not([src])').forEach(s => {
+    const txt = s.textContent;
+    if (!txt || txt.length < 20) return;
+    const matches = [...txt.matchAll(/\/draft\/snake\/(\d{7,10})/g)];
+    if (matches.length) {
+      matches.forEach(m => candidates.add(m[1]));
+      foundInline = true;
     }
-  } catch (e) {}
+  });
+  console.log('[BBA] inline script scan found snake IDs:', [...candidates], 'foundInline:', foundInline);
+
+  // Also try __NEXT_DATA__ and common DK state script tags
+  ['__NEXT_DATA__', '__REDUX_STATE__', '__APP_STATE__'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    console.log('[BBA] found script tag:', id, el.textContent.slice(0, 100));
+    try { extractSnakeIds(JSON.parse(el.textContent)); } catch (e) {}
+  });
 
   // 2. DK API endpoints
   await Promise.all(entryUrls.map(async url => {
