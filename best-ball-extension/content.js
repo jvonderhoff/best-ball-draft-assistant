@@ -121,6 +121,14 @@ function getDKDraftId() {
 
 const FLASK_BASE = 'https://192.168.1.161:8000';
 
+// Route all Flask calls through background.js — content scripts can't reach
+// the self-signed cert directly, but background.js (extension context) can.
+function flaskPost(endpoint, body) {
+  return new Promise(resolve => {
+    bAPI.runtime.sendMessage({ action: 'flaskPost', endpoint, body }, r => resolve(r || {}));
+  });
+}
+
 function pushLiveState() {
   const draftId = getDKDraftId();
   if (!draftId) return;
@@ -132,11 +140,7 @@ function pushLiveState() {
     my_team:     state.myTeam,
     taken_ids:   [...state.drafted],
   };
-  fetch(`${FLASK_BASE}/api/live-draft/push`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(payload),
-  }).catch(() => {}); // ignore network errors silently
+  flaskPost('/api/live-draft/push', payload); // routed through background to bypass cert issue
 }
 
 const IS_AUTO_TAB = new URLSearchParams(location.search).get('bba_auto') === '1';
@@ -643,11 +647,8 @@ function domScan(draftId, username) {
     console.log(`[BBA] domScan myColIdx=${myColIdx} user=${myUser}`);
 
     if (myColIdx >= 0) {
-      fetch(FLASK_BASE + '/api/dk-my-column', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ draft_id: draftId, my_column_idx: myColIdx }),
-      }).then(r => r.json()).then(d => console.log('[BBA] dk-my-column:', d)).catch(e => console.warn('[BBA] dk-my-column failed:', e));
+      flaskPost('/api/dk-my-column', { draft_id: draftId, my_column_idx: myColIdx })
+        .then(d => console.log('[BBA] dk-my-column:', d));
     }
 
     let totalCells = 0;
@@ -658,12 +659,8 @@ function domScan(draftId, username) {
         ? cells.map(c => c.textContent).join('\n')
         : col.textContent.trim();
       if (txt.length > 10) {
-        fetch(FLASK_BASE + '/api/dk-dom-text', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ draft_id: draftId, text: txt.slice(0, 40000), board_text: true, column_idx: idx }),
-        }).then(r => r.json()).then(d => { if (d.picks_found) console.log(`[BBA] col[${idx}] → ${d.picks_found} picks`); })
-          .catch(e => console.warn(`[BBA] dk-dom-text col[${idx}] failed:`, e));
+        flaskPost('/api/dk-dom-text', { draft_id: draftId, text: txt.slice(0, 40000), board_text: true, column_idx: idx })
+          .then(d => { if (d && d.picks_found) console.log(`[BBA] col[${idx}] → ${d.picks_found} picks`); });
       }
     });
     console.log(`[BBA] domScan sent ${columns.length} columns, ${totalCells} total cells`);
@@ -674,12 +671,8 @@ function domScan(draftId, username) {
   console.log('[BBA] domScan: no columns found — falling back to body text');
   const txt = document.body.textContent || '';
   if (txt.length > 100) {
-    fetch(FLASK_BASE + '/api/dk-dom-text', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ draft_id: draftId, text: txt.slice(0, 200000), board_text: true }),
-    }).then(r => r.json()).then(d => console.log('[BBA] body fallback scan:', d))
-      .catch(e => console.warn('[BBA] dk-dom-text body failed:', e));
+    flaskPost('/api/dk-dom-text', { draft_id: draftId, text: txt.slice(0, 200000), board_text: true })
+      .then(d => console.log('[BBA] body fallback scan:', d));
   }
 }
 
@@ -690,7 +683,6 @@ function fetchPickEndpoints(draftId) {
     `https://api.draftkings.com/lineups/v1/draftselections?draftGroupId=${draftId}`,
   ];
   urls.forEach(url => {
-    // Use XMLHttpRequest to bypass pick-interceptor's fetch override
     const xhr = new XMLHttpRequest();
     xhr.open('GET', url);
     xhr.withCredentials = true;
@@ -698,11 +690,7 @@ function fetchPickEndpoints(draftId) {
       try {
         const data = JSON.parse(this.responseText);
         console.log('[BBA] fetchPickEndpoints hit:', url.split('?')[0].split('/').slice(-2).join('/'));
-        fetch(FLASK_BASE + '/api/dk-intercept', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, draft_id: draftId, data, direct: true }),
-        }).catch(() => {});
+        flaskPost('/api/dk-intercept', { url, draft_id: draftId, data, direct: true });
       } catch (e) {}
     };
     xhr.send();
@@ -841,11 +829,7 @@ async function findMyDraftIds() {
 
 function syncDraftIds(ids) {
   // Register with Flask
-  fetch(FLASK_BASE + '/api/dk-known-drafts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ draft_ids: ids }),
-  }).catch(() => {});
+  flaskPost('/api/dk-known-drafts', { draft_ids: ids });
 
   // Fetch pick data for each draft
   ids.forEach((did, i) => {
@@ -856,14 +840,8 @@ function syncDraftIds(ids) {
       ].forEach(ep => {
         fetch(ep, { credentials: 'include' })
           .then(r => r.ok ? r.json() : null)
-          .then(data => {
-            if (!data) return;
-            fetch(FLASK_BASE + '/api/dk-intercept', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url: ep, draft_id: did, data, direct: true }),
-            }).catch(() => {});
-          }).catch(() => {});
+          .then(data => { if (data) flaskPost('/api/dk-intercept', { url: ep, draft_id: did, data, direct: true }); })
+          .catch(() => {});
       });
     }, i * 400);
   });
