@@ -746,14 +746,14 @@ function stopBoardScan() {
 async function findMyDraftIds() {
   const candidates = new Set();
 
-  // 1. DK entries API — returns all active contests/drafts for the logged-in user
+  // Call DK's entries API with the user's auth cookies.
+  // We look for entries that contain a /draft/snake/ URL or have snake-draft-specific fields.
   const entryUrls = [
     '/api/lineups/getentries?sport=1',
     '/api/lineups/getentries',
     '/api/contests/getentries',
     'https://api.draftkings.com/lineups/v1/lineups?sport=1&statuses=live',
     'https://api.draftkings.com/entries/v1/entries?sport=1',
-    'https://api.draftkings.com/contests/v1/contests?contestTypeId=78', // best ball contest type
   ];
 
   await Promise.all(entryUrls.map(async url => {
@@ -761,15 +761,27 @@ async function findMyDraftIds() {
       const r = await fetch(url, { credentials: 'include' });
       if (!r.ok) return;
       const data = await r.json();
+      const raw = JSON.stringify(data);
       console.log('[BBA] findMyDraftIds hit:', url.split('?')[0].split('/').slice(-2).join('/'), Object.keys(data));
-      // Walk the response for any 7-10 digit IDs in known fields
+
+      // Only extract IDs that appear next to snake/bestball indicators in the raw JSON
+      // This avoids picking up DFS contest IDs
+      const snakeMatches = [...raw.matchAll(/\/draft\/snake\/(\d{7,10})/g)];
+      snakeMatches.forEach(m => candidates.add(m[1]));
+
+      // Also walk known draft-group ID fields, but only from entries that look like snake drafts
       const walk = (obj, depth = 0) => {
-        if (!obj || typeof obj !== 'object' || depth > 4) return;
-        for (const key of ['draftGroupId', 'DraftGroupId', 'contestKey', 'contestId', 'draftKey', 'gameSetId']) {
-          const v = obj[key];
-          if (v && /^\d{7,10}$/.test(String(v))) candidates.add(String(v));
+        if (!obj || typeof obj !== 'object' || depth > 5) return;
+        if (Array.isArray(obj)) { obj.slice(0, 200).forEach(x => walk(x, depth + 1)); return; }
+
+        const objStr = JSON.stringify(obj).toLowerCase();
+        const isSnakeDraft = objStr.includes('snake') || objStr.includes('best') || objStr.includes('/draft/snake/');
+        if (isSnakeDraft) {
+          for (const key of ['draftGroupId', 'DraftGroupId', 'draftKey', 'gameSetId']) {
+            const v = obj[key];
+            if (v && /^\d{7,10}$/.test(String(v))) candidates.add(String(v));
+          }
         }
-        if (Array.isArray(obj)) { obj.slice(0, 100).forEach(x => walk(x, depth + 1)); return; }
         for (const v of Object.values(obj)) { if (v && typeof v === 'object') walk(v, depth + 1); }
       };
       walk(data);
@@ -778,15 +790,11 @@ async function findMyDraftIds() {
     }
   }));
 
-  // 2. Also scan page HTML for any numeric IDs in snake-draft-like hrefs or data attrs
-  document.querySelectorAll('a[href*="snake"], a[href*="draft"], [data-draft-id], [data-id]').forEach(el => {
-    const href = el.href || el.getAttribute('data-draft-id') || el.getAttribute('data-id') || '';
-    const m = href.match(/(\d{7,10})/);
+  // Also check /draft/snake/ links in the DOM (rendered entries)
+  document.querySelectorAll('a[href*="/draft/snake/"]').forEach(a => {
+    const m = a.href.match(/\/draft\/snake\/(\d+)/);
     if (m) candidates.add(m[1]);
   });
-
-  // 3. Scan full page HTML for any 9-digit numbers (broadest fallback)
-  [...document.body.innerHTML.matchAll(/\b(1\d{8})\b/g)].forEach(m => candidates.add(m[1]));
 
   const ids = [...candidates];
   console.log('[BBA] findMyDraftIds found:', ids);
