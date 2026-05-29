@@ -446,6 +446,22 @@ function persistSettings() {
   settings.diversifyStrength = parseFloat(document.getElementById('diversifyStrength').value);
   settings.dkUsername        = document.getElementById('dkUsername').value.trim().toLowerCase();
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  // Also save myPosition per-draft so it doesn't bleed across drafts
+  if (syncDraftId) localStorage.setItem(`bba_pos_${syncDraftId}`, settings.myPosition);
+}
+
+function loadDraftPosition(draftId) {
+  const saved = localStorage.getItem(`bba_pos_${draftId}`);
+  if (saved) {
+    settings.myPosition = parseInt(saved);
+    document.getElementById('myPosition').value = settings.myPosition;
+  }
+}
+
+function saveDraftPosition(draftId, pos) {
+  localStorage.setItem(`bba_pos_${draftId}`, pos);
+  settings.myPosition = pos;
+  document.getElementById('myPosition').value = pos;
 }
 function populateSettings() {
   document.getElementById('myPosition').value        = settings.myPosition;
@@ -512,6 +528,8 @@ function startSync(draftId) {
   // Reset state for new draft
   state = defaultState();
   saveState();
+  // Load this draft's saved position (so switching drafts doesn't bleed settings)
+  loadDraftPosition(syncDraftId);
   // Show draft view (hideDraftList clears all inline display overrides)
   hideDraftList();
   document.getElementById('disconnectBtn').style.display = '';
@@ -686,10 +704,9 @@ async function pollSync() {
     }
 
     // Auto-apply my_position from server (detected via DK CSS class on desktop)
+    // Save per-draft so it doesn't bleed to other drafts
     if (data.my_position && data.my_position !== settings.myPosition) {
-      settings.myPosition = data.my_position;
-      document.getElementById('myPosition').value = data.my_position;
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      saveDraftPosition(syncDraftId, data.my_position);
     }
 
     if (data.picks?.length) {
