@@ -145,12 +145,6 @@
     .rec-pos.WR { background: var(--WR); } .rec-pos.TE { background: var(--TE); }
     .rec-adp  { font-size: 0.78em; color: var(--muted); }
     .rec-reason { font-size: 0.78em; color: #90a4ae; margin-top: 5px; }
-    .rec-pick-btn {
-      margin-top: 8px; padding: 6px 12px;
-      background: var(--accent); color: #000;
-      border: none; border-radius: 5px;
-      font-size: 0.82em; font-weight: 700; cursor: pointer;
-    }
     .no-recs { text-align: center; color: var(--muted); padding: 40px 0; font-style: italic; }
 
     /* ── Picks tab ── */
@@ -177,7 +171,6 @@
     .action-bar { display: none; gap: 8px; margin-bottom: 10px; }
     .action-bar.visible { display: flex; }
     .action-bar button { flex: 1; padding: 11px; border-radius: 8px; border: none; font-size: 0.9em; font-weight: 700; cursor: pointer; }
-    .btn-mine { background: var(--accent); color: #000; }
     .btn-opp  { background: var(--border); color: var(--text); }
     .btn-undo { background: transparent; border: 1px solid var(--border) !important; color: var(--muted); flex: 0 0 44px; }
     button:active { opacity: 0.7; }
@@ -337,7 +330,6 @@
     <button class="pos-btn" data-pos="TE">TE</button>
   </div>
   <div class="action-bar" id="actionBar">
-    <button class="btn-mine" id="btnMyPick">✓ My Pick</button>
     <button class="btn-opp"  id="btnOppPick">→ Opponent</button>
     <button class="btn-undo" id="btnCancel" title="Cancel">✕</button>
   </div>
@@ -968,14 +960,12 @@ function selectPlayer(id) {
 }
 function showActionBar(p) {
   document.getElementById('actionBar').classList.add('visible');
-  document.getElementById('btnMyPick').textContent = `✓ My Pick: ${p.name.split(' ').pop()}`;
 }
 function hideActionBar() {
   document.getElementById('actionBar').classList.remove('visible');
   selectedPlayer = null;
 }
 
-document.getElementById('btnMyPick').addEventListener('click',  () => { if (selectedPlayer) addPick(selectedPlayer, true); });
 document.getElementById('btnOppPick').addEventListener('click', () => { if (selectedPlayer) addPick(selectedPlayer, false); });
 document.getElementById('btnCancel').addEventListener('click', hideActionBar);
 
@@ -1079,14 +1069,8 @@ function renderRecs() {
       <div><span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span></div>
       <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ADP ${p.adp}</div>
       ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
-      <button class="rec-pick-btn" onclick="quickPick('${p.id}')">+ My Pick</button>
     </div>`;
   }).join('');
-}
-
-function quickPick(id) {
-  const p = PLAYERS.find(p => p.id === id);
-  if (p) addPick(p, true);
 }
 
 // ── Roster ─────────────────────────────────────────────────────────────────────
