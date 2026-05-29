@@ -1177,12 +1177,6 @@ def dk_draft_state_proxy(draft_id):
     })
 
 
-@app.route('/dk-setup')
-def dk_setup():
-    """Setup page: shows user how to send their DK cookie to Flask."""
-    return render_template('dk_setup.html')
-
-
 # ── Live draft state (pushed from desktop extension) ─────────────────────────
 # Holds the latest push per draft_id.  Keyed by dk draft ID string.
 _live_drafts = {}  # { draft_id: { overall_pick, my_position, num_teams, my_team, taken_ids, updated_at } }

@@ -257,7 +257,7 @@
   <button class="sync-btn disconnect" id="disconnectBtn" style="display:none">← Drafts</button>
 </div>
 <div id="bookmarkletHint" style="display:none;background:#1a1206;border-bottom:1px solid #5d4037;padding:6px 14px;font-size:0.78em;color:#ff9800;">
-  🔗 No picks yet — open your DK draft page on desktop, run the console snippet, then come back here. <a href="/dk-setup" style="color:#ffb74d">Setup →</a>
+  🔗 No picks yet — open your DK draft page in your browser with the extension running.
 </div>
 
 <!-- ── Draft list (shown when no draft is connected) ── -->
@@ -276,11 +276,6 @@
         style="flex:1;padding:9px 10px;background:#1a2233;border:1px solid #2a3f5f;border-radius:6px;color:#e0e0e0;font-size:0.92em;">
       <button onclick="connectManual()" style="padding:9px 16px;background:#4fc3f7;color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer;">Go</button>
     </div>
-  </div>
-  <div style="margin-top:12px;">
-    <a href="/dk-setup" style="display:block;text-align:center;padding:10px;background:#111827;border:1px solid #2a3f5f;border-radius:6px;color:#78909c;font-size:0.82em;text-decoration:none;">
-      🔗 Setup console snippet on DK draft page →
-    </a>
   </div>
 </div>
 <!-- Debug status bar (tap to expand) -->
@@ -390,9 +385,6 @@
 
     <button class="btn-full btn-primary" id="saveSettings">Save Settings</button>
     <button class="btn-full btn-danger"  id="resetDraft">Reset Draft (clear all picks)</button>
-    <a href="/dk-setup" class="btn-full" style="display:block;padding:12px;border-radius:8px;border:1px solid #2a3f5f;color:#78909c;text-align:center;text-decoration:none;margin-top:8px;font-size:0.95em;">
-      🔑 DK Auth Setup
-    </a>
   </div>
 </div>
 
@@ -568,7 +560,7 @@ async function loadDraftList() {
     if (!drafts.length) {
       el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:24px 10px;">
         No drafts found yet.<br>
-        <span style="color:#ff9800;font-size:0.9em;">Go to draftkings.com/mycontests and run the Find Drafts snippet from <a href="/dk-setup" style="color:#4fc3f7">/dk-setup</a>.</span>
+        <span style="color:#ff9800;font-size:0.9em;">Open draftkings.com/mycontests with the extension running.</span>
       </div>`;
       return;
     }
