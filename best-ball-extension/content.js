@@ -776,27 +776,43 @@ async function findMyDraftIds() {
     walk(data);
   };
 
-  // 1. Scan all inline <script> tags for embedded snake-draft IDs
-  //    DK embeds Redux/React initial state in inline scripts
-  let foundInline = false;
-  document.querySelectorAll('script:not([src])').forEach(s => {
-    const txt = s.textContent;
-    if (!txt || txt.length < 20) return;
-    const matches = [...txt.matchAll(/\/draft\/snake\/(\d{7,10})/g)];
-    if (matches.length) {
-      matches.forEach(m => candidates.add(m[1]));
-      foundInline = true;
-    }
-  });
-  console.log('[BBA] inline script scan found snake IDs:', [...candidates], 'foundInline:', foundInline);
+  // 1. Inject into page context to read window globals inaccessible to content scripts
+  const pageIds = await new Promise(resolve => {
+    const evtName = '__bba_draft_ids_' + Date.now();
+    const handler = e => { window.removeEventListener(evtName, handler); resolve(e.detail || []); };
+    window.addEventListener(evtName, handler);
+    setTimeout(() => { window.removeEventListener(evtName, handler); resolve([]); }, 2000);
 
-  // Also try __NEXT_DATA__ and common DK state script tags
-  ['__NEXT_DATA__', '__REDUX_STATE__', '__APP_STATE__'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    console.log('[BBA] found script tag:', id, el.textContent.slice(0, 100));
-    try { extractSnakeIds(JSON.parse(el.textContent)); } catch (e) {}
+    const s = document.createElement('script');
+    s.textContent = `(function() {
+      var ids = [];
+      var raw = '';
+      // Read window globals DK might use
+      ['__NEXT_DATA__','__REDUX_STATE__','__APP_STATE__','dkApp','draftState','__DK__'].forEach(function(k) {
+        try { if (window[k]) raw += JSON.stringify(window[k]); } catch(e) {}
+      });
+      // Also grab all window keys that look like DK state
+      try {
+        Object.keys(window).forEach(function(k) {
+          if (/draft|contest|lineup|entry/i.test(k)) {
+            try { raw += JSON.stringify(window[k]); } catch(e) {}
+          }
+        });
+      } catch(e) {}
+      // Extract /draft/snake/ID patterns
+      var re = /\\/draft\\/snake\\/(\\d{7,10})/g, m;
+      while ((m = re.exec(raw)) !== null) ids.push(m[1]);
+      window.dispatchEvent(new CustomEvent('${evtName.replace(/'/g, "\\'")}', { detail: ids }));
+    })();`;
+    document.head.appendChild(s);
+    s.remove();
   });
+  if (pageIds.length) {
+    console.log('[BBA] page context snake IDs:', pageIds);
+    pageIds.forEach(id => candidates.add(id));
+  } else {
+    console.log('[BBA] page context: no snake IDs found in window globals');
+  }
 
   // 2. DK API endpoints
   await Promise.all(entryUrls.map(async url => {
