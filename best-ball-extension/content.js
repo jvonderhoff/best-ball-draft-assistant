@@ -685,7 +685,7 @@ function domScan(draftId, username) {
 
 function fetchPickEndpoints(draftId) {
   const urls = [
-    `/draft/snake/${draftId}/picks`,
+    `https://www.draftkings.com/draft/snake/${draftId}/picks`,
     `https://api.draftkings.com/draft/v1/draftgroups/${draftId}/draftboard`,
     `https://api.draftkings.com/lineups/v1/draftselections?draftGroupId=${draftId}`,
   ];
@@ -749,9 +749,9 @@ async function findMyDraftIds() {
   // Call DK's entries API with the user's auth cookies.
   // We look for entries that contain a /draft/snake/ URL or have snake-draft-specific fields.
   const entryUrls = [
-    '/api/lineups/getentries?sport=1',
-    '/api/lineups/getentries',
-    '/api/contests/getentries',
+    'https://www.draftkings.com/api/lineups/getentries?sport=1',
+    'https://www.draftkings.com/api/lineups/getentries',
+    'https://www.draftkings.com/api/contests/getentries',
     'https://api.draftkings.com/lineups/v1/lineups?sport=1&statuses=live',
     'https://api.draftkings.com/entries/v1/entries?sport=1',
   ];
@@ -813,7 +813,7 @@ function syncDraftIds(ids) {
   ids.forEach((did, i) => {
     setTimeout(() => {
       [
-        `/draft/snake/${did}/picks`,
+        `https://www.draftkings.com/draft/snake/${did}/picks`,
         `https://api.draftkings.com/lineups/v1/draftselections?draftGroupId=${did}`,
       ].forEach(ep => {
         fetch(ep, { credentials: 'include' })
