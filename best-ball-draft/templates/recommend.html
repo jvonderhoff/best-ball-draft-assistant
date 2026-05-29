@@ -256,9 +256,6 @@
   <div class="sync-label" id="syncLabel">Not connected</div>
   <button class="sync-btn disconnect" id="disconnectBtn" style="display:none">← Drafts</button>
 </div>
-<div id="bookmarkletHint" style="display:none;background:#1a1206;border-bottom:1px solid #5d4037;padding:6px 14px;font-size:0.78em;color:#ff9800;">
-  🔗 No picks yet — open your DK draft page in your browser with the extension running.
-</div>
 
 <!-- ── Draft list (shown when no draft is connected) ── -->
 <div id="draftListView" style="display:none;padding:12px;">
@@ -515,7 +512,6 @@ async function checkDKAuth() {
     const r = await fetch('/api/dk-intercept/status');
     const d = await r.json();
     const hasDraft = (d.drafts || []).some(dr => dr.draft_id === syncDraftId && dr.pick_count > 0);
-    document.getElementById('bookmarkletHint').style.display = hasDraft ? 'none' : '';
   } catch { /* ignore */ }
 }
 
@@ -550,7 +546,6 @@ function showDraftList() {
   document.getElementById('disconnectBtn').style.display = 'none';
   document.getElementById('draftListView').style.display = '';
   document.getElementById('debugBar').style.display = 'none';
-  document.getElementById('bookmarkletHint').style.display = 'none';
   // Hide tabs and tab panels
   document.querySelector('.tabs').style.display = 'none';
   document.querySelectorAll('.tab-panel').forEach(el => el.style.display = 'none');
@@ -598,7 +593,7 @@ async function loadDraftList() {
       let borderColor = '#2a3f5f';
       let bgColor = '#1a2233';
       if (!d.scanned) {
-        urgencyHtml = `<span style="color:#546e7a;font-size:0.75em;">⏳ Re-run Find Drafts snippet to fetch picks</span>`;
+        urgencyHtml = `<span style="color:#546e7a;font-size:0.75em;">⏳ Waiting for picks…</span>`;
       } else if (d.my_position) {
         const wait = picksUntilMyTurn(d.overall_pick, d.num_teams || 12, d.my_position);
         if (wait === 0) {
@@ -697,11 +692,6 @@ async function pollSync() {
       error: data.error || null,
     });
 
-    if (data.needs_bookmarklet) {
-      document.getElementById('bookmarkletHint').style.display = '';
-    } else {
-      document.getElementById('bookmarkletHint').style.display = 'none';
-    }
 
     // Auto-apply my_position from server (detected via DK CSS class on desktop)
     // Save per-draft so it doesn't bleed to other drafts
@@ -1063,7 +1053,7 @@ function renderRecs() {
         <span style="color:#546e7a">${PLAYERS.length} total</span>
        </div>`
     : `<div style="background:#1a1206;border:1px solid #5d4037;border-radius:6px;padding:7px 12px;margin-bottom:10px;font-size:0.78em;color:#ff9800;">
-        ⚠️ No picks synced yet — run the DK console snippet to start.
+        ⚠️ No picks synced yet — open your DK draft page with the extension running.
        </div>`;
 
   if (!recs.length) {
