@@ -608,7 +608,7 @@ async function loadDraftList() {
       const posBadges = ['QB','RB','WR','TE'].map(p => pos[p]
         ? `<span style="background:var(--${p});color:#fff;padding:1px 5px;border-radius:3px;font-size:0.7em;font-weight:700">${pos[p]}${p}</span>`
         : '').join('');
-      const round = Math.ceil((d.overall_pick || 1) / (d.num_teams || 12));
+      const round = Math.ceil(Math.max(1, (d.overall_pick || 1) - 1) / (d.num_teams || 12));
 
       // Pick urgency
       let urgencyHtml = '';
@@ -1044,9 +1044,12 @@ document.querySelectorAll('.pos-btn').forEach(btn => {
 function renderHeader() {
   const pick  = state.overallPick;
   const round = Math.floor((pick - 1) / settings.numTeams) + 1;
-  document.getElementById('hdrPick').textContent  = pick;
+  // Display the last-completed pick number (matches DK's "Pick N" label).
+  // Internally overallPick is next-pick-up (completed + 1), so subtract 1 for display.
+  const displayPick = Math.max(1, pick - 1);
+  document.getElementById('hdrPick').textContent  = displayPick;
   document.getElementById('hdrRound').textContent = round;
-  document.getElementById('pickNum').textContent  = pick;
+  document.getElementById('pickNum').textContent  = displayPick;
   document.getElementById('roundNum').textContent = round;
 
   const myTurn = isMyTurn(pick, settings.numTeams, settings.myPosition);
