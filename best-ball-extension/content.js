@@ -627,6 +627,8 @@ let _boardScanDraftId = null;
 
 function domScan(draftId, username) {
   const columns = Array.from(document.querySelectorAll('.DraftBoardColumn_draft-board-column'));
+  console.log(`[BBA] domScan draft=${draftId} columns=${columns.length}`);
+
   if (columns.length) {
     // Auto-detect user's column via DK's is-active-user class, or username text fallback
     const myUser = (username || '').toLowerCase();
@@ -638,16 +640,20 @@ function domScan(draftId, username) {
           return card && myUser && card.textContent.toLowerCase().startsWith(myUser);
         });
 
+    console.log(`[BBA] domScan myColIdx=${myColIdx} user=${myUser}`);
+
     if (myColIdx >= 0) {
       fetch(FLASK_BASE + '/api/dk-my-column', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ draft_id: draftId, my_column_idx: myColIdx }),
-      }).catch(() => {});
+      }).then(r => r.json()).then(d => console.log('[BBA] dk-my-column:', d)).catch(e => console.warn('[BBA] dk-my-column failed:', e));
     }
 
+    let totalCells = 0;
     columns.forEach((col, idx) => {
       const cells = Array.from(col.querySelectorAll('[class*="draft-cell"]'));
+      totalCells += cells.length;
       const txt = cells.length
         ? cells.map(c => c.textContent).join('\n')
         : col.textContent.trim();
@@ -656,41 +662,50 @@ function domScan(draftId, username) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ draft_id: draftId, text: txt.slice(0, 40000), board_text: true, column_idx: idx }),
-        }).catch(() => {});
+        }).then(r => r.json()).then(d => { if (d.picks_found) console.log(`[BBA] col[${idx}] → ${d.picks_found} picks`); })
+          .catch(e => console.warn(`[BBA] dk-dom-text col[${idx}] failed:`, e));
       }
     });
+    console.log(`[BBA] domScan sent ${columns.length} columns, ${totalCells} total cells`);
     return;
   }
 
   // Fallback: full body text if board columns not found yet
+  console.log('[BBA] domScan: no columns found — falling back to body text');
   const txt = document.body.textContent || '';
   if (txt.length > 100) {
     fetch(FLASK_BASE + '/api/dk-dom-text', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ draft_id: draftId, text: txt.slice(0, 200000), board_text: true }),
-    }).catch(() => {});
+    }).then(r => r.json()).then(d => console.log('[BBA] body fallback scan:', d))
+      .catch(e => console.warn('[BBA] dk-dom-text body failed:', e));
   }
 }
 
 function fetchPickEndpoints(draftId) {
   const urls = [
     `/draft/snake/${draftId}/picks`,
-    `/draft/snake/${draftId}/board`,
     `https://api.draftkings.com/draft/v1/draftgroups/${draftId}/draftboard`,
     `https://api.draftkings.com/lineups/v1/draftselections?draftGroupId=${draftId}`,
   ];
   urls.forEach(url => {
-    fetch(url, { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data) return;
+    // Use XMLHttpRequest to bypass pick-interceptor's fetch override
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url);
+    xhr.withCredentials = true;
+    xhr.onload = function () {
+      try {
+        const data = JSON.parse(this.responseText);
+        console.log('[BBA] fetchPickEndpoints hit:', url.split('?')[0].split('/').slice(-2).join('/'));
         fetch(FLASK_BASE + '/api/dk-intercept', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url, draft_id: draftId, data, direct: true }),
         }).catch(() => {});
-      }).catch(() => {});
+      } catch (e) {}
+    };
+    xhr.send();
   });
 }
 
@@ -703,15 +718,16 @@ function startBoardScan(draftId, username) {
   if (_boardScanTimer) return; // already running for this draft
 
   _boardScanDraftId = draftId;
-  console.log('[BBA] Starting automatic board scan for draft', draftId);
+  console.log('[BBA] Auto board scan starting for draft', draftId, '— username:', username);
 
   function scan() {
+    console.log('[BBA] Board scan tick for draft', draftId);
     domScan(draftId, username);
     fetchPickEndpoints(draftId);
   }
 
-  // First scan after a short delay (let the board render)
-  setTimeout(scan, 2000);
+  // First scan after a short delay (let the board render), then every 15s
+  setTimeout(scan, 2500);
   _boardScanTimer = setInterval(scan, 15000);
 }
 
