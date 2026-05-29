@@ -739,6 +739,90 @@ function stopBoardScan() {
   }
 }
 
+// ── Find draft IDs via DK's entries API ──────────────────────────────────────
+// DK's mycontests page is server-side rendered so there are no links to scrape.
+// Instead we call DK's own entries/contests API with the user's auth cookies.
+
+async function findMyDraftIds() {
+  const candidates = new Set();
+
+  // 1. DK entries API — returns all active contests/drafts for the logged-in user
+  const entryUrls = [
+    '/api/lineups/getentries?sport=1',
+    '/api/lineups/getentries',
+    '/api/contests/getentries',
+    'https://api.draftkings.com/lineups/v1/lineups?sport=1&statuses=live',
+    'https://api.draftkings.com/entries/v1/entries?sport=1',
+    'https://api.draftkings.com/contests/v1/contests?contestTypeId=78', // best ball contest type
+  ];
+
+  await Promise.all(entryUrls.map(async url => {
+    try {
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) return;
+      const data = await r.json();
+      console.log('[BBA] findMyDraftIds hit:', url.split('?')[0].split('/').slice(-2).join('/'), Object.keys(data));
+      // Walk the response for any 7-10 digit IDs in known fields
+      const walk = (obj, depth = 0) => {
+        if (!obj || typeof obj !== 'object' || depth > 4) return;
+        for (const key of ['draftGroupId', 'DraftGroupId', 'contestKey', 'contestId', 'draftKey', 'gameSetId']) {
+          const v = obj[key];
+          if (v && /^\d{7,10}$/.test(String(v))) candidates.add(String(v));
+        }
+        if (Array.isArray(obj)) { obj.slice(0, 100).forEach(x => walk(x, depth + 1)); return; }
+        for (const v of Object.values(obj)) { if (v && typeof v === 'object') walk(v, depth + 1); }
+      };
+      walk(data);
+    } catch (e) {
+      console.log('[BBA] findMyDraftIds fetch failed:', url, e.message);
+    }
+  }));
+
+  // 2. Also scan page HTML for any numeric IDs in snake-draft-like hrefs or data attrs
+  document.querySelectorAll('a[href*="snake"], a[href*="draft"], [data-draft-id], [data-id]').forEach(el => {
+    const href = el.href || el.getAttribute('data-draft-id') || el.getAttribute('data-id') || '';
+    const m = href.match(/(\d{7,10})/);
+    if (m) candidates.add(m[1]);
+  });
+
+  // 3. Scan full page HTML for any 9-digit numbers (broadest fallback)
+  [...document.body.innerHTML.matchAll(/\b(1\d{8})\b/g)].forEach(m => candidates.add(m[1]));
+
+  const ids = [...candidates];
+  console.log('[BBA] findMyDraftIds found:', ids);
+  return ids;
+}
+
+function syncDraftIds(ids) {
+  // Register with Flask
+  fetch(FLASK_BASE + '/api/dk-known-drafts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ draft_ids: ids }),
+  }).catch(() => {});
+
+  // Fetch pick data for each draft
+  ids.forEach((did, i) => {
+    setTimeout(() => {
+      [
+        `/draft/snake/${did}/picks`,
+        `https://api.draftkings.com/lineups/v1/draftselections?draftGroupId=${did}`,
+      ].forEach(ep => {
+        fetch(ep, { credentials: 'include' })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (!data) return;
+            fetch(FLASK_BASE + '/api/dk-intercept', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: ep, draft_id: did, data, direct: true }),
+            }).catch(() => {});
+          }).catch(() => {});
+      });
+    }, i * 400);
+  });
+}
+
 // ── "Find My Drafts" button injected on mycontests page ──────────────────────
 
 function injectFindDraftsButton() {
@@ -758,69 +842,16 @@ function injectFindDraftsButton() {
     btn.textContent = '⏳ Scanning…';
     btn.disabled = true;
 
-    const seen = new Set();
-    const ids = [];
-
-    // 1. Check <a href="/draft/snake/ID"> links
-    document.querySelectorAll('a[href*="/draft/snake/"]').forEach(a => {
-      const m = a.href.match(/\/draft\/snake\/(\d+)/);
-      if (m && !seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
-    });
-
-    // 2. Check all <a> hrefs for any DK numeric ID pattern
-    if (!ids.length) {
-      document.querySelectorAll('a[href]').forEach(a => {
-        const m = a.href.match(/[\/=](\d{7,10})(?:[\/\?&]|$)/);
-        if (m && !seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
-      });
-    }
-
-    // 3. Fall back to scanning full page HTML for 9-digit IDs starting with 1
-    if (!ids.length) {
-      const html = document.body.innerHTML;
-      [...html.matchAll(/\b(1\d{8})\b/g)].forEach(m => {
-        if (!seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
-      });
-    }
+    const ids = await findMyDraftIds().catch(() => []);
 
     if (!ids.length) {
-      btn.textContent = '⚠ No drafts found — scroll down?';
+      btn.textContent = '⚠ No drafts found';
       btn.disabled = false;
       setTimeout(() => { btn.textContent = '🔍 Find My Drafts'; }, 3000);
       return;
     }
 
-    // Register draft IDs with Flask
-    fetch(FLASK_BASE + '/api/dk-known-drafts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ draft_ids: ids }),
-    }).catch(() => {});
-
-    // Fetch picks for each draft from DK's same-origin API
-    const endpoints = [
-      'https://api.draftkings.com/lineups/v1/draftselections?draftGroupId={id}',
-      'https://api.draftkings.com/lineups/v1/lineups?draftGroupId={id}',
-      'https://www.draftkings.com/draft/snake/{id}/picks',
-    ];
-    ids.forEach((did, i) => {
-      setTimeout(() => {
-        endpoints.forEach(tpl => {
-          const ep = tpl.replace('{id}', did);
-          fetch(ep, { credentials: 'include' })
-            .then(r => r.ok ? r.json() : null)
-            .then(data => {
-              if (!data) return;
-              fetch(FLASK_BASE + '/api/dk-intercept', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: ep, draft_id: did, data, direct: true }),
-              }).catch(() => {});
-            }).catch(() => {});
-        });
-      }, i * 300);
-    });
-
+    syncDraftIds(ids);
     btn.textContent = `✓ Found ${ids.length} draft(s) — syncing…`;
     btn.disabled = false;
     setTimeout(() => { btn.textContent = '🔍 Find My Drafts'; }, 4000);
@@ -1420,49 +1451,11 @@ function renderSuggestion() {
 
 bAPI.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.action === 'findDrafts') {
-    // Find all snake draft links on the current page
-    const seen = new Set();
-    const ids = [];
-    document.querySelectorAll('a[href*="/draft/snake/"]').forEach(a => {
-      const m = a.href.match(/\/draft\/snake\/(\d+)/);
-      if (m && !seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
-    });
-    sendResponse({ found: ids.length });
-    if (!ids.length) return true;
-
-    // Register with Flask
-    fetch(FLASK_BASE + '/api/dk-known-drafts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ draft_ids: ids }),
-    }).catch(() => {});
-
-    // Fetch pick data for each draft from DK's same-origin API
-    const endpoints = [
-      '/draft/snake/{id}/picks',
-      '/draft/snake/{id}/state',
-      '/api/draft/snake/{id}',
-      '/api/snake/draft/{id}/board',
-      '/api/snake/{id}/picks',
-    ];
-    ids.forEach((did, i) => {
-      setTimeout(() => {
-        endpoints.forEach(tpl => {
-          const ep = tpl.replace('{id}', did);
-          fetch(ep, { credentials: 'include' })
-            .then(r => r.ok ? r.json() : null)
-            .then(data => {
-              if (!data) return;
-              fetch(FLASK_BASE + '/api/dk-intercept', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: ep, draft_id: did, data, direct: true }),
-              }).catch(() => {});
-            }).catch(() => {});
-        });
-      }, i * 300);
-    });
-    return true;
+    findMyDraftIds().then(ids => {
+      sendResponse({ found: ids.length });
+      if (ids.length) syncDraftIds(ids);
+    }).catch(() => sendResponse({ found: 0 }));
+    return true; // async
   }
 
   if (msg.action === 'settingsUpdated') {
