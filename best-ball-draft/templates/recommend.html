@@ -69,20 +69,6 @@
     .sync-dot.manual { background: var(--orange); }
     .sync-label { color: var(--muted); flex: 1; }
     .sync-label b { color: var(--text); }
-    .sync-input-row {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
-    .sync-input-row input {
-      width: 130px;
-      padding: 4px 8px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      color: var(--text);
-      font-size: 0.85em;
-    }
     .sync-btn {
       padding: 4px 10px;
       background: var(--accent);
@@ -275,10 +261,6 @@
 <div class="sync-bar">
   <div class="sync-dot" id="syncDot"></div>
   <div class="sync-label" id="syncLabel">Not connected</div>
-  <div class="sync-input-row" id="syncInputRow">
-    <input type="text" id="draftIdInput" placeholder="DK draft ID" inputmode="numeric">
-    <button class="sync-btn" id="connectBtn">Connect</button>
-  </div>
   <button class="sync-btn disconnect" id="disconnectBtn" style="display:none">← Drafts</button>
 </div>
 <div id="bookmarkletHint" style="display:none;background:#1a1206;border-bottom:1px solid #5d4037;padding:6px 14px;font-size:0.78em;color:#ff9800;">
@@ -537,11 +519,7 @@ async function checkDKAuth() {
   } catch { /* ignore */ }
 }
 
-// Restore connection on page load if we had one
-if (syncDraftId) {
-  document.getElementById('draftIdInput').value = syncDraftId;
-  // startSync called after PLAYERS loaded
-}
+// Restore connection on page load if we had one — startSync called after PLAYERS loaded
 
 function startSync(draftId) {
   syncDraftId = draftId.trim();
@@ -552,9 +530,7 @@ function startSync(draftId) {
   saveState();
   // Show draft view (hideDraftList clears all inline display overrides)
   hideDraftList();
-  document.getElementById('syncInputRow').style.display  = 'none';
   document.getElementById('disconnectBtn').style.display = '';
-  document.getElementById('draftIdInput').value = syncDraftId;
   if (syncInterval) clearInterval(syncInterval);
   pollSync();
   syncInterval = setInterval(pollSync, 5000);
@@ -569,9 +545,7 @@ function stopSync() {
 }
 
 function showDraftList() {
-  document.getElementById('syncInputRow').style.display  = '';
   document.getElementById('disconnectBtn').style.display = 'none';
-  document.getElementById('draftIdInput').value = '';
   document.getElementById('draftListView').style.display = '';
   document.getElementById('debugBar').style.display = 'none';
   document.getElementById('bookmarkletHint').style.display = 'none';
@@ -895,14 +869,6 @@ function updateSyncUI(connected, labelText) {
   lbl.innerHTML = labelText;
 }
 
-document.getElementById('connectBtn').addEventListener('click', () => {
-  const val = document.getElementById('draftIdInput').value.trim();
-  if (!val) return;
-  startSync(val);
-});
-document.getElementById('draftIdInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') document.getElementById('connectBtn').click();
-});
 document.getElementById('disconnectBtn').addEventListener('click', stopSync);
 
 // (findDraftsBtn removed — draft list is now shown as main view when not connected)
@@ -1173,9 +1139,7 @@ loadPlayers();
 if (syncDraftId) {
   // Had a previous draft — reconnect UI immediately (sync starts after players load)
   hideDraftList();
-  document.getElementById('syncInputRow').style.display  = 'none';
   document.getElementById('disconnectBtn').style.display = '';
-  document.getElementById('draftIdInput').value = syncDraftId;
 } else {
   showDraftList();
 }
