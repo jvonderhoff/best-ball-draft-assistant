@@ -618,6 +618,111 @@ async function syncDraftGroup(draftGroupId) {
   return true;
 }
 
+// ── Automatic board scan (runs on every DK draft page) ───────────────────────
+// Replaces the manual console snippet. Scans each board column separately,
+// auto-detects the user's column, and fetches pick endpoints — all every 15s.
+
+let _boardScanTimer  = null;
+let _boardScanDraftId = null;
+
+function domScan(draftId, username) {
+  const columns = Array.from(document.querySelectorAll('.DraftBoardColumn_draft-board-column'));
+  if (columns.length) {
+    // Auto-detect user's column via DK's is-active-user class, or username text fallback
+    const myUser = (username || '').toLowerCase();
+    const myActiveEl = document.querySelector('[class*="is-active-user"]');
+    const myColIdx = myActiveEl
+      ? columns.findIndex(col => col.contains(myActiveEl))
+      : columns.findIndex(col => {
+          const card = col.querySelector('[class*="summary-card"]');
+          return card && myUser && card.textContent.toLowerCase().startsWith(myUser);
+        });
+
+    if (myColIdx >= 0) {
+      fetch(FLASK_BASE + '/api/dk-my-column', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draft_id: draftId, my_column_idx: myColIdx }),
+      }).catch(() => {});
+    }
+
+    columns.forEach((col, idx) => {
+      const cells = Array.from(col.querySelectorAll('[class*="draft-cell"]'));
+      const txt = cells.length
+        ? cells.map(c => c.textContent).join('\n')
+        : col.textContent.trim();
+      if (txt.length > 10) {
+        fetch(FLASK_BASE + '/api/dk-dom-text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ draft_id: draftId, text: txt.slice(0, 40000), board_text: true, column_idx: idx }),
+        }).catch(() => {});
+      }
+    });
+    return;
+  }
+
+  // Fallback: full body text if board columns not found yet
+  const txt = document.body.textContent || '';
+  if (txt.length > 100) {
+    fetch(FLASK_BASE + '/api/dk-dom-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ draft_id: draftId, text: txt.slice(0, 200000), board_text: true }),
+    }).catch(() => {});
+  }
+}
+
+function fetchPickEndpoints(draftId) {
+  const urls = [
+    `/draft/snake/${draftId}/picks`,
+    `/draft/snake/${draftId}/board`,
+    `https://api.draftkings.com/draft/v1/draftgroups/${draftId}/draftboard`,
+    `https://api.draftkings.com/lineups/v1/draftselections?draftGroupId=${draftId}`,
+  ];
+  urls.forEach(url => {
+    fetch(url, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        fetch(FLASK_BASE + '/api/dk-intercept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, draft_id: draftId, data, direct: true }),
+        }).catch(() => {});
+      }).catch(() => {});
+  });
+}
+
+function startBoardScan(draftId, username) {
+  // Clear any scan running for a different draft
+  if (_boardScanTimer && _boardScanDraftId !== draftId) {
+    clearInterval(_boardScanTimer);
+    _boardScanTimer = null;
+  }
+  if (_boardScanTimer) return; // already running for this draft
+
+  _boardScanDraftId = draftId;
+  console.log('[BBA] Starting automatic board scan for draft', draftId);
+
+  function scan() {
+    domScan(draftId, username);
+    fetchPickEndpoints(draftId);
+  }
+
+  // First scan after a short delay (let the board render)
+  setTimeout(scan, 2000);
+  _boardScanTimer = setInterval(scan, 15000);
+}
+
+function stopBoardScan() {
+  if (_boardScanTimer) {
+    clearInterval(_boardScanTimer);
+    _boardScanTimer = null;
+    _boardScanDraftId = null;
+  }
+}
+
 // ── "Find My Drafts" button injected on mycontests page ──────────────────────
 
 function injectFindDraftsButton() {
@@ -1707,7 +1812,10 @@ function onLocationChange() {
 
   if (/draftkings\.com\/(draft|lineups?|contest\/draftboard)/.test(href)) {
     if (!document.getElementById('bba-root')) init();
+    const draftId = getDKDraftId();
+    if (draftId) loadSettings(() => startBoardScan(draftId, state.dkUsername || ''));
   } else if (/draftkings\.com\/mycontests/.test(href)) {
+    stopBoardScan();
     console.log('[BBA] mycontests page detected');
     setTimeout(injectFindDraftsButton, 1500);
     // Scrape entry fees from the mycontests table rows after the page renders
