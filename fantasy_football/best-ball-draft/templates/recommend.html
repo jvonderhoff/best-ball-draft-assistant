@@ -326,6 +326,7 @@
     <button class="pos-btn" data-pos="RB">RB</button>
     <button class="pos-btn" data-pos="WR">WR</button>
     <button class="pos-btn" data-pos="TE">TE</button>
+    <button class="pos-btn" id="stackFilterBtn" data-pos="STACK">⚡</button>
   </div>
   <div class="action-bar" id="actionBar">
     <button class="btn-opp"  id="btnOppPick">→ Opponent</button>
@@ -1001,11 +1002,18 @@ async function loadPlayers() {
 }
 
 // ── Player list ────────────────────────────────────────────────────────────────
-let searchQuery = '', posFilter = 'ALL', selectedPlayer = null;
+let searchQuery = '', posFilter = 'ALL', stackFilterOn = false, selectedPlayer = null;
+
+function isQBStackPlayer(p) {
+  const myQBTeams = new Set(state.myTeam.filter(t => t.pos === 'QB').map(t => t.team));
+  return (['WR','TE'].includes(p.pos) && myQBTeams.has(p.team)) ||
+         (p.pos === 'QB' && state.myTeam.some(t => ['WR','TE'].includes(t.pos) && t.team === p.team));
+}
 
 function getVisiblePlayers() {
   let list = PLAYERS;
-  if (posFilter !== 'ALL') list = list.filter(p => p.pos === posFilter);
+  if (posFilter !== 'ALL' && posFilter !== 'STACK') list = list.filter(p => p.pos === posFilter);
+  if (posFilter === 'STACK' || stackFilterOn) list = list.filter(p => isQBStackPlayer(p));
   if (searchQuery) {
     const q = searchQuery.toLowerCase();
     list = list.filter(p => p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q));
