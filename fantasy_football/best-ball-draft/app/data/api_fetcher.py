@@ -1,8 +1,8 @@
 """
-Fetches NFL player data from DraftKings rankings page.
-Primary source: https://www.draftkings.com/draft/rankings/NFL/<DK_RANKINGS_ID>
-  - Uses Playwright to load the JS-rendered page and intercept API responses
-  - Falls back to the DK lineup CSV (salary rank as proxy ADP)
+Fetches NFL player data and draft picks from DraftKings via direct API calls.
+Primary source: api.draftkings.com endpoints (discovered via network inspection).
+  - Firefox cookies used for authentication (read from SQLite cookie store)
+  - No browser automation required
 
 Update DK_RANKINGS_ID each season — find it in the URL of the DK best ball rankings page.
 """
@@ -11,6 +11,7 @@ import io
 import json
 import os
 import re
+import time
 import requests
 
 CACHE_PATH = os.path.join(os.path.dirname(__file__), 'player_cache.json')
@@ -150,205 +151,6 @@ def _parse_dk_lineup_csv(text: str) -> list:
     return players
 
 
-def _parse_dk_rankings_csv(text: str) -> list:
-    """
-    Parse DK's rankings/export CSV (column names may vary).
-    Looks for name, position, and team columns by keyword matching.
-    """
-    players = []
-    try:
-        reader = csv.DictReader(io.StringIO(text))
-        headers = reader.fieldnames or []
-        # Identify columns by fuzzy header match
-        name_col = next((h for h in headers if re.search(r'name|player', h, re.I)), None)
-        pos_col  = next((h for h in headers if re.search(r'\bpos', h, re.I)), None)
-        team_col = next((h for h in headers if re.search(r'team', h, re.I)), None)
-        rank_col = next((h for h in headers if re.search(r'rank|adp|overall', h, re.I)), None)
-        if not name_col or not pos_col or not team_col:
-            print(f'  [DK CSV] rankings: could not identify columns. headers={headers}')
-            return []
-        print(f'  [DK CSV] rankings columns: name={name_col}, pos={pos_col}, team={team_col}, rank={rank_col}')
-        for row in reader:
-            name = (row.get(name_col) or '').strip()
-            pos  = (row.get(pos_col) or '').strip().upper()
-            team = (row.get(team_col) or '').strip().upper()
-            adp  = None
-            if rank_col:
-                try:
-                    adp = float(row[rank_col])
-                except (ValueError, TypeError):
-                    pass
-            if pos not in SKILL_POSITIONS or not name or not team:
-                continue
-            players.append({'name': name, 'pos': pos, 'team': team, 'adp': adp})
-    except Exception as e:
-        print(f'  [DK CSV] rankings parse error: {e}')
-    return players
-
-
-# ── DraftKings JSON extraction (React/Next.js pages) ──────────────────────────
-
-def _dk_obj_to_player(obj: dict):
-    """Convert a DK JSON object to a minimal player dict, or return None."""
-    if not isinstance(obj, dict):
-        return None
-    # Name
-    name = (
-        obj.get('displayName') or obj.get('playerName') or
-        obj.get('name') or obj.get('fullName') or ''
-    ).strip()
-    if not name:
-        first = obj.get('firstName', '')
-        last  = obj.get('lastName', '')
-        name  = f'{first} {last}'.strip()
-    if not name:
-        return None
-    # Position
-    pos = (
-        obj.get('position') or obj.get('playerPosition') or obj.get('pos') or ''
-    ).strip().upper()
-    if pos not in SKILL_POSITIONS:
-        return None
-    # Team
-    team = (
-        obj.get('teamAbbreviation') or obj.get('teamAbbrev') or
-        obj.get('team') or obj.get('teamShort') or ''
-    ).strip().upper()
-    if not team or team in ('FA', 'N/A'):
-        return None
-    # ADP / rank — try every field name DK might use
-    adp = None
-    for key in ('adp', 'avgDraftPosition', 'averageDraftPosition',
-                'rank', 'ranking', 'overallRank', 'draftPosition', 'pickNumber'):
-        val = obj.get(key)
-        if val is not None:
-            try:
-                adp = float(val)
-                break
-            except (ValueError, TypeError):
-                pass
-    return {'name': name, 'pos': pos, 'team': team, 'adp': adp}
-
-
-def _walk_dk_json(data, depth=0) -> list:
-    """Recursively walk a parsed JSON object for arrays of player-like objects."""
-    if depth > 10:
-        return []
-    if isinstance(data, list) and len(data) > 5:
-        players = [p for p in (_dk_obj_to_player(item) for item in data) if p]
-        if len(players) > 10:
-            return players
-    if isinstance(data, dict):
-        for v in data.values():
-            result = _walk_dk_json(v, depth + 1)
-            if result:
-                return result
-    return []
-
-
-def _extract_dk_json_players(html: str) -> list:
-    """
-    Hunt for player data embedded in DK's React/Next.js page HTML.
-    Tries __NEXT_DATA__, window.__PRELOADED_STATE__, and raw JSON blobs.
-    """
-    # Next.js data island
-    m = re.search(r'<script[^>]*id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', html, re.DOTALL)
-    if m:
-        try:
-            players = _walk_dk_json(json.loads(m.group(1)))
-            if players:
-                print(f'  [DK JSON] found {len(players)} players in __NEXT_DATA__')
-                return players
-        except Exception:
-            pass
-
-    # window.__PRELOADED_STATE__
-    m = re.search(r'window\.__PRELOADED_STATE__\s*=\s*({.+?})\s*;?\s*(?:</script>|window\.)', html, re.DOTALL)
-    if m:
-        try:
-            players = _walk_dk_json(json.loads(m.group(1)))
-            if players:
-                print(f'  [DK JSON] found {len(players)} players in __PRELOADED_STATE__')
-                return players
-        except Exception:
-            pass
-
-    # Any script tag containing player-like JSON arrays
-    for script_m in re.finditer(r'<script[^>]*>(.*?)</script>', html, re.DOTALL):
-        content = script_m.group(1)
-        if '"position"' not in content and '"pos"' not in content:
-            continue
-        # Find all JSON-like arrays in this script block
-        for arr_m in re.finditer(r'\[(\{[^\[\]]+\}(?:,\{[^\[\]]+\})*)\]', content):
-            try:
-                arr = json.loads('[' + arr_m.group(1) + ']')
-                players = [p for p in (_dk_obj_to_player(item) for item in arr) if p]
-                if len(players) > 10:
-                    print(f'  [DK JSON] found {len(players)} players in inline script array')
-                    return players
-            except Exception:
-                pass
-
-    return []
-
-
-# ── DraftKings Playwright scraper ─────────────────────────────────────────────
-
-def _get_firefox_dk_cookies() -> list:
-    """
-    Read DraftKings session cookies from Firefox's SQLite cookie store.
-    Returns Playwright-compatible cookie dicts so the browser loads DK authenticated.
-    Copies the DB before opening it since Firefox may have it locked.
-    """
-    import glob, shutil, sqlite3, tempfile
-    patterns = [
-        '~/Library/Application Support/Firefox/Profiles/*.default-release*/cookies.sqlite',
-        '~/Library/Application Support/Firefox/Profiles/*.default/cookies.sqlite',
-        '~/.mozilla/firefox/*.default-release*/cookies.sqlite',
-        '~/.mozilla/firefox/*.default/cookies.sqlite',
-    ]
-    db_path = None
-    for pat in patterns:
-        matches = glob.glob(os.path.expanduser(pat))
-        if matches:
-            db_path = matches[0]
-            break
-    if not db_path:
-        print('  [Playwright] Firefox cookie DB not found')
-        return []
-
-    tmp = tempfile.mktemp(suffix='.sqlite')
-    try:
-        shutil.copy2(db_path, tmp)
-        conn = sqlite3.connect(tmp)
-        rows = conn.execute(
-            'SELECT name, value, host, path, expiry, isSecure, isHttpOnly '
-            'FROM moz_cookies WHERE host LIKE "%draftkings%"'
-        ).fetchall()
-        conn.close()
-    except Exception as e:
-        print(f'  [Playwright] cookie read error: {e}')
-        return []
-    finally:
-        try:
-            os.unlink(tmp)
-        except Exception:
-            pass
-
-    cookies = []
-    for name, value, domain, path, expiry, secure, http_only in rows:
-        cookies.append({
-            'name': name, 'value': value,
-            'domain': domain if domain.startswith('.') else f'.{domain}',
-            'path': path or '/',
-            # Firefox stores expiry in ms; Playwright wants seconds
-            'expires': int(expiry / 1000) if expiry and expiry > 0 else -1,
-            'secure': bool(secure),
-            'httpOnly': bool(http_only),
-            'sameSite': 'None',
-        })
-    print(f'  [Playwright] loaded {len(cookies)} DK cookies from Firefox')
-    return cookies
 
 
 def _parse_dk_api_responses(responses: dict) -> list:
@@ -435,259 +237,189 @@ def _parse_dk_api_responses(responses: dict) -> list:
     return players
 
 
-def _fetch_dk_rankings_playwright(ranking_id: str = DK_RANKINGS_ID) -> list:
+
+# Cookies pushed from the Mac via /api/sync-cookies (used when Firefox isn't local)
+_synced_cookies: dict = {}
+
+def set_synced_cookies(cookies: dict):
+    """Called by app.py when /api/sync-cookies is hit."""
+    global _synced_cookies
+    _synced_cookies = cookies
+
+
+def _get_firefox_dk_cookies_dict():
     """
-    Load DK's rankings page with Playwright (authenticated via Firefox cookies).
-    Intercepts the playerpool API response (real ADP) and draftables (team info).
-    Returns {name, pos, team, adp, dk_id} dicts sorted by adp, or [] on failure.
+    Return DK cookies as {name: value}.
+    Priority: synced cookies (pushed from Mac) → local Firefox SQLite.
     """
+    if _synced_cookies:
+        return _synced_cookies
+
+    import glob, shutil, sqlite3, tempfile
+    patterns = [
+        '~/Library/Application Support/Firefox/Profiles/*.default-release*/cookies.sqlite',
+        '~/Library/Application Support/Firefox/Profiles/*.default/cookies.sqlite',
+        '~/.mozilla/firefox/*.default-release*/cookies.sqlite',
+        '~/.mozilla/firefox/*.default/cookies.sqlite',
+    ]
+    db_path = None
+    for pat in patterns:
+        matches = glob.glob(os.path.expanduser(pat))
+        if matches:
+            db_path = matches[0]
+            break
+    if not db_path:
+        return {}
+    tmp = tempfile.mktemp(suffix='.sqlite')
     try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        print('  [Playwright] not installed — run: pip install playwright && playwright install chromium')
-        return []
-
-    url = f'https://www.draftkings.com/draft/rankings/NFL/{ranking_id}'
-    print(f'  [Playwright] loading {url}')
-
-    dk_cookies = _get_firefox_dk_cookies()
-    responses = {}  # keyed by 'playerpool' and 'draftables'
-
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent=(
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-                'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-            )
-        )
-        if dk_cookies:
-            context.add_cookies(dk_cookies)
-
-        page = context.new_page()
-
-        def _on_response(response):
-            url_lower = response.url.lower()
-            ct = response.headers.get('content-type', '')
-            if 'json' not in ct:
-                return
-            try:
-                if 'playerpool' in url_lower:
-                    responses['playerpool'] = response.json()
-                    print(f'  [Playwright] captured playerpool ({len(response.body())} bytes)')
-                elif 'draftables' in url_lower and 'draftables' not in responses:
-                    responses['draftables'] = response.json()
-                    print(f'  [Playwright] captured draftables ({len(response.body())} bytes)')
-            except Exception:
-                pass
-
-        page.on('response', _on_response)
-
+        shutil.copy2(db_path, tmp)
+        conn = sqlite3.connect(tmp)
+        rows = conn.execute(
+            'SELECT name, value FROM moz_cookies WHERE host LIKE "%draftkings%"'
+        ).fetchall()
+        conn.close()
+    except Exception as e:
+        print(f'  [DK] cookie read error: {e}')
+        return {}
+    finally:
         try:
-            page.goto(url, wait_until='domcontentloaded', timeout=20000)
-            page.wait_for_timeout(6000)
-        except Exception as e:
-            print(f'  [Playwright] navigation warning: {e}')
-
-        browser.close()
-
-    if not responses:
-        print('  [Playwright] no API responses captured — is Firefox logged in to DK?')
-        return []
-
-    players = _parse_dk_api_responses(responses)
-    if players:
-        has_adp = sum(1 for p in players if p['adp'] is not None)
-        print(f'  [Playwright] ✓ {len(players)} players, {has_adp} with ADP')
-    else:
-        print('  [Playwright] parsing returned no players')
-    return players
-
-
-def _discover_rankings_id():
-    """
-    Navigate to DK's NFL rankings page and capture the current rankings ID from the URL.
-    Returns the ID string (e.g. '146136') or None on failure.
-    """
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        return None
-
-    dk_cookies = _get_firefox_dk_cookies()
-    found_id = None
-
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent=(
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-                'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-            )
-        )
-        if dk_cookies:
-            context.add_cookies(dk_cookies)
-        page = context.new_page()
-        try:
-            page.goto('https://www.draftkings.com/draft/rankings/NFL',
-                      wait_until='domcontentloaded', timeout=15000)
-            url = page.url
-            m = re.search(r'/rankings/NFL/(\d+)', url)
-            if m:
-                found_id = m.group(1)
-                print(f'  [Playwright] discovered rankings ID: {found_id}')
-        except Exception as e:
-            print(f'  [Playwright] rankings ID discovery error: {e}')
-        browser.close()
-
-    return found_id
-
-
-def _normalize_pick(p):
-    if not isinstance(p, dict):
-        return None
-    po = p.get('player') or p.get('draftPlayer') or p
-    to = p.get('draftTeam') or p.get('team') or {}
-    if isinstance(to, str):
-        to = {'teamAbbreviation': to}
-    name = (po.get('displayName') or
-            ' '.join(filter(None, [po.get('firstName', ''), po.get('lastName', '')])).strip() or
-            po.get('playerName') or po.get('name') or
-            p.get('displayName') or p.get('playerName') or p.get('name') or '')
-    if not name:
-        return None
-    pos = po.get('position') or po.get('pos') or p.get('position') or p.get('pos') or ''
-    team = (po.get('teamAbbreviation') or po.get('nflTeamAbbreviation') or po.get('team') or
-            p.get('teamAbbreviation') or p.get('nflTeamAbbreviation') or
-            (to.get('teamAbbreviation') if isinstance(to, dict) else '') or '')
-    pick_num = (p.get('pickNumber') or p.get('pick_number') or p.get('overallPickNumber') or
-                p.get('draftPickNumber') or None)
-    username = (p.get('username') or p.get('entryName') or p.get('draftTeamName') or
-                (to.get('entryName') or to.get('name') if isinstance(to, dict) else '') or
-                p.get('teamName') or '')
-    return {'player_name': name, 'pick_number': pick_num, 'username': username,
-            'pos': pos, 'team': team}
-
-
-def fetch_dk_draft_picks(contest_id, entry_id=None):
-    """
-    Fetch the current draft board for a best ball contest by navigating to the draft page.
-    Intercepts /draftStatus and /draftables XHR calls which fire automatically.
-    Maps draftableId → player info for human-readable pick names.
-    Returns normalized pick list or None on failure.
-    """
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        print('  [Playwright] not installed')
-        return None
-
-    dk_cookies = _get_firefox_dk_cookies()
-    if not dk_cookies:
-        print('  [Playwright] no Firefox DK cookies')
-        return None
-
-    _UA = (
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-    )
-
-    status_data = [None]    # draftStatus response
-    draftable_map = {}      # draftableId -> {name, pos, team}
-    live_data = {}          # live drafts response (to discover entry_id if needed)
-    found_entry_id = [entry_id]
-    found_guid = [_load_user_guid()]
-
-    def _on_response(response):
-        try:
-            url = response.url
-            ct = response.headers.get('content-type', '')
-            if 'json' not in ct:
-                return
-            if 'draftStatus' in url and str(contest_id) in url:
-                status_data[0] = response.json()
-            elif 'draftables' in url:
-                for d in (response.json().get('draftables') or []):
-                    did = d.get('draftableId')
-                    if did:
-                        draftable_map[did] = {
-                            'name': d.get('displayName') or
-                                    f"{d.get('firstName','')} {d.get('lastName','')}".strip(),
-                            'pos': (d.get('position') or '').upper(),
-                            'team': (d.get('teamAbbreviation') or '').upper(),
-                        }
-            elif 'drafts/live' in url:
-                live_data.update(response.json())
-                m = re.search(r'/users/([0-9a-f\-]{36})/drafts/live', url)
-                if m:
-                    found_guid[0] = m.group(1)
-                # Resolve entry_id for this contest
-                if not found_entry_id[0]:
-                    for ud in (live_data.get('userDrafts') or []):
-                        if str(ud.get('contestId')) == str(contest_id):
-                            found_entry_id[0] = str(ud.get('entryId', ''))
-                            break
+            os.unlink(tmp)
         except Exception:
             pass
+    return {name: value for name, value in rows}
 
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        context = browser.new_context(user_agent=_UA)
-        context.add_cookies(dk_cookies)
-        page = context.new_page()
-        page.on('response', _on_response)
 
+def _dk_session(referer=None):
+    """Build a requests.Session with DK Firefox cookies and browser-like headers."""
+    cookies = _get_firefox_dk_cookies_dict()
+    if not cookies:
+        return None
+    s = requests.Session()
+    s.headers.update({
+        'User-Agent': (
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        ),
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Origin': 'https://www.draftkings.com',
+        'Referer': referer or 'https://www.draftkings.com/',
+    })
+    s.cookies.update(cookies)
+    return s
+
+
+# Cache draftables per draft group — 4.7 MB, refreshed at most once per hour
+_draftables_cache = {}   # draftGroupId -> (fetched_at, {draftableId: {name, pos, team}})
+_DRAFTABLES_TTL = 3600
+
+
+def _fetch_draftables(session, draft_group_id=DK_RANKINGS_ID):
+    """Fetch (and cache) the full player pool for a draft group."""
+    cached = _draftables_cache.get(str(draft_group_id))
+    if cached and (time.time() - cached[0]) < _DRAFTABLES_TTL:
+        return cached[1]
+    try:
+        r = session.get(
+            f'https://api.draftkings.com/draftgroups/v1/draftgroups/{draft_group_id}/draftables?format=json',
+            timeout=20,
+        )
+        r.raise_for_status()
+        dmap = {}
+        for d in (r.json().get('draftables') or []):
+            did = d.get('draftableId')
+            if did:
+                dmap[did] = {
+                    'name': d.get('displayName') or
+                            f"{d.get('firstName','')} {d.get('lastName','')}".strip(),
+                    'pos':  (d.get('position') or '').upper(),
+                    'team': (d.get('teamAbbreviation') or '').upper(),
+                }
+        _draftables_cache[str(draft_group_id)] = (time.time(), dmap)
+        print(f'  [DK] draftables fetched: {len(dmap)} players (group {draft_group_id})')
+        return dmap
+    except Exception as e:
+        print(f'  [DK] draftables fetch error: {e}')
+        return cached[1] if cached else {}
+
+
+def fetch_dk_draft_picks(contest_id, entry_id=None, draft_group_id=None):
+    """
+    Fetch the current draft board using direct API calls via direct DK API calls.
+    Uses Firefox cookies + api.draftkings.com endpoints discovered via network inspection.
+    Returns normalized pick list or None on failure.
+    """
+    session = _dk_session(referer=f'https://www.draftkings.com/draft/snake/{contest_id}')
+    if not session:
+        print('  [DK] No Firefox DK cookies found')
+        return None
+
+    user_guid = _load_user_guid()
+
+    # Resolve entry_id (and draft_group_id) from drafts/live if not supplied
+    if (not entry_id or not draft_group_id) and user_guid:
         try:
-            page.goto(
-                f'https://www.draftkings.com/draft/snake/{contest_id}',
-                wait_until='domcontentloaded', timeout=25000
+            r = session.get(
+                f'https://api.draftkings.com/drafts/v1/users/{user_guid}/drafts/live?format=json',
+                timeout=10,
             )
-            page.wait_for_timeout(6000)
+            if r.ok:
+                for ud in (r.json().get('userDrafts') or []):
+                    if str(ud.get('contestId')) == str(contest_id):
+                        entry_id    = entry_id    or str(ud.get('entryId', ''))
+                        draft_group_id = draft_group_id or str(ud.get('draftGroupId', ''))
+                        break
         except Exception as e:
-            print(f'  [Playwright] nav error: {e}')
+            print(f'  [DK] drafts/live lookup error: {e}')
 
-        browser.close()
-
-    if found_guid[0]:
-        _save_user_guid(found_guid[0])
-
-    if not status_data[0]:
-        print(f'  [Playwright] no draftStatus captured for contest {contest_id}')
+    if not entry_id:
+        print(f'  [DK] No entry_id for contest {contest_id} — cannot fetch picks')
         return None
 
-    draft_board = status_data[0].get('draftBoard') or []
+    # Fetch pick state
+    try:
+        r = session.get(
+            f'https://api.draftkings.com/drafts/v1/{contest_id}/entries/{entry_id}/draftStatus?format=json',
+            timeout=10,
+        )
+        r.raise_for_status()
+        draft_board = r.json().get('draftBoard') or []
+    except Exception as e:
+        print(f'  [DK] draftStatus error: {e}')
+        return None
+
     if not draft_board:
-        print('  [Playwright] draftBoard is empty')
+        print('  [DK] draftBoard is empty')
         return None
 
-    print(f'  [Playwright] draftables: {len(draftable_map)} players, draftBoard: {len(draft_board)} picks')
+    # Fetch player name/pos/team (cached — only hits the network once per hour)
+    dg_id = draft_group_id or DK_RANKINGS_ID
+    draftable_map = _fetch_draftables(session, dg_id)
+    print(f'  [DK] draftables: {len(draftable_map)} players, draftBoard: {len(draft_board)} slots')
 
-    # Normalize picks — identify user's picks by their userKey == GUID
-    # Skip entries with null draftableId (unfilled future pick slots)
-    user_guid = found_guid[0] or ''
     picks = []
     for entry in draft_board:
         did = entry.get('draftableId')
-        if not did:  # skip empty future slots
-            continue
+        if not did:
+            continue   # unfilled future slot
         player_info = draftable_map.get(did, {})
-        name = player_info.get('name') or f'Player #{did}'
-        pos = player_info.get('pos', '')
-        team = player_info.get('team', '')
+        name     = player_info.get('name') or f'Player #{did}'
+        pos      = player_info.get('pos', '')
+        team     = player_info.get('team', '')
         pick_num = entry.get('overallSelectionNumber')
         user_key = entry.get('userKey', '')
         username = 'jvonderhoff' if (user_guid and user_key == user_guid) else ''
         picks.append({
             'player_name': name,
             'pick_number': pick_num,
-            'username': username,
-            'pos': pos,
-            'team': team,
-            'round': entry.get('roundNumber'),
+            'username':    username,
+            'pos':         pos,
+            'team':        team,
+            'round':       entry.get('roundNumber'),
             'draftable_id': str(did),
         })
 
-    print(f'  [Playwright] ✓ {len(picks)} picks for contest {contest_id}')
+    print(f'  [DK] ✓ {len(picks)} picks for contest {contest_id}')
     return picks if picks else None
 
 
@@ -731,125 +463,118 @@ def _parse_live_drafts(data):
 
 def fetch_my_dk_drafts(nav_draft_id=None):
     """
-    Discover the user's active best ball drafts by navigating to any DK draft page.
-    Intercepts /drafts/live XHR which DK fires automatically on all draft pages.
-    nav_draft_id: an existing draft ID to navigate to (helps trigger the XHR).
+    Discover the user's active best ball drafts via direct API call.
+    Requires a cached user GUID (written on first pick fetch).
     Returns list of {id, entry_id, name, picks_until_clock, round} dicts.
     """
+    user_guid = _load_user_guid()
+    if not user_guid:
+        print('  [DK] No cached user GUID — cannot fetch live drafts')
+        return []
+
+    session = _dk_session()
+    if not session:
+        print('  [DK] No Firefox DK cookies found')
+        return []
+
     try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        return []
-
-    dk_cookies = _get_firefox_dk_cookies()
-    if not dk_cookies:
-        return []
-
-    _UA = (
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-    )
-
-    live_data = {}
-    found_guid = [None]
-    status_data = {}  # contestId -> draftStatus response
-
-    def _on_response(response):
-        try:
-            url = response.url
-            ct = response.headers.get('content-type', '')
-            if 'json' not in ct:
-                return
-            if 'drafts/live' in url:
-                data = response.json()
-                live_data.update(data)
-                m = re.search(r'/users/([0-9a-f\-]{36})/drafts/live', url)
-                if m:
-                    found_guid[0] = m.group(1)
-            elif 'draftStatus' in url:
-                m = re.search(r'/drafts/v1/(\d+)/entries/', url)
-                if m:
-                    status_data[m.group(1)] = response.json()
-        except Exception:
-            pass
-
-    # If no explicit nav_draft_id, try to find one from the saved drafts file
-    if not nav_draft_id:
-        saved_ids_path = os.path.normpath(os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), '..', '.saved_drafts.json'
-        ))
-        try:
-            import json as _json
-            with open(saved_ids_path) as f:
-                saved = _json.load(f)
-            if saved:
-                nav_draft_id = next(iter(saved))
-        except Exception:
-            pass
-
-    nav_url = (f'https://www.draftkings.com/draft/snake/{nav_draft_id}'
-               if nav_draft_id else 'https://www.draftkings.com/draft/snake')
-
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        context = browser.new_context(user_agent=_UA)
-        context.add_cookies(dk_cookies)
-        page = context.new_page()
-        page.on('response', _on_response)
-        try:
-            page.goto(nav_url, wait_until='domcontentloaded', timeout=20000)
-            page.wait_for_timeout(5000)
-        except Exception as e:
-            print(f'  [Playwright] nav error: {e}')
-        browser.close()
-
-    if found_guid[0]:
-        _save_user_guid(found_guid[0])
-
-    if live_data:
-        drafts = _parse_live_drafts(live_data)
-        print(f'  [Playwright] ✓ {len(drafts)} live drafts discovered')
+        r = session.get(
+            f'https://api.draftkings.com/drafts/v1/users/{user_guid}/drafts/live?format=json',
+            timeout=10,
+        )
+        r.raise_for_status()
+        drafts = _parse_live_drafts(r.json())
+        print(f'  [DK] ✓ {len(drafts)} live drafts discovered (direct API)')
         return drafts
-
-    print('  [Playwright] no live drafts XHR captured — ensure Firefox is logged in to DK')
-    return []
-
-
-def _extract_picks_from_data(data: dict) -> list:
-    """Pull a raw picks list out of various DK API response shapes."""
-    if not isinstance(data, dict):
+    except Exception as e:
+        print(f'  [DK] fetch_my_dk_drafts error: {e}')
         return []
-    # Try common wrapper keys
-    for key in ('draftSelections', 'selections', 'picks', 'draftboard',
-                 'draftBoard', 'results', 'data'):
-        val = data.get(key)
-        if isinstance(val, list) and val:
-            return val
-        if isinstance(val, dict):
-            for inner_key in ('draftSelections', 'selections', 'picks'):
-                inner = val.get(inner_key)
-                if isinstance(inner, list) and inner:
-                    return inner
-    return []
 
 
 # ── DraftKings fetch orchestrator ──────────────────────────────────────────────
 
+def _discover_rankings_id_direct() -> str:
+    """
+    Get the current DK rankings ID via direct API call — fast alternative to
+    direct API. Reads the draftGroup list
+    for NFL best-ball and returns the active group ID, or None on failure.
+    """
+    session = _dk_session(referer='https://www.draftkings.com/draft/rankings/NFL')
+    if not session:
+        return None
+    try:
+        # The draftgroup info endpoint confirms the ID is still valid
+        r = session.get(
+            f'https://api.draftkings.com/sites/US-DK/draftgroups/v3/draftgroups/{DK_RANKINGS_ID}?format=json',
+            timeout=10,
+        )
+        if r.ok:
+            groups = r.json().get('draftGroups', [])
+            if groups:
+                gid = str(groups[0].get('draftGroupId', ''))
+                if gid:
+                    return gid
+    except Exception:
+        pass
+    return None
+
+
+def _fetch_dk_rankings_direct(ranking_id: str = DK_RANKINGS_ID) -> list:
+    """
+    Fetch DK player pool + real ADP via direct API calls via direct DK API calls.
+    Uses the same endpoints the rankings page fires, discovered via network capture.
+    Returns {name, pos, team, adp, dk_id} dicts sorted by adp, or [] on failure.
+    """
+    session = _dk_session(referer=f'https://www.draftkings.com/draft/rankings/NFL/{ranking_id}')
+    if not session:
+        return []
+
+    responses = {}
+    try:
+        r = session.get(
+            f'https://api.draftkings.com/rankings/v1/draftgroups/{ranking_id}/playerpool?format=json',
+            timeout=20,
+        )
+        r.raise_for_status()
+        responses['playerpool'] = r.json()
+        count = len(responses['playerpool'].get('playerPool', {}).get('draftablePlayers', []))
+        print(f'  [DK] playerpool: {count} players')
+    except Exception as e:
+        print(f'  [DK] playerpool fetch error: {e}')
+        return []
+
+    try:
+        r = session.get(
+            f'https://api.draftkings.com/draftgroups/v1/draftgroups/{ranking_id}/draftables?format=json',
+            timeout=20,
+        )
+        r.raise_for_status()
+        responses['draftables'] = r.json()
+    except Exception as e:
+        print(f'  [DK] draftables fetch error (continuing without team/pos): {e}')
+
+    players = _parse_dk_api_responses(responses)
+    if players:
+        has_adp = sum(1 for p in players if p['adp'] is not None)
+        print(f'  [DK] ✓ {len(players)} players, {has_adp} with ADP (direct API)')
+    return players
+
+
 def fetch_dk_players(ranking_id: str = DK_RANKINGS_ID) -> list:
     """
     Fetch the DK player pool with real ADP from the rankings page.
-    Strategy 1: Playwright — auto-discovers current ID, loads JS-rendered page
-    Strategy 2: Lineup CSV — salary rank used as ADP proxy (no Playwright needed)
+    Strategy 1: Direct API (fast)
+    Strategy 2: Lineup CSV — salary rank as ADP proxy (fallback)
     Returns list of {name, pos, team, adp} dicts, adp may be None on full failure.
     """
     # Auto-discover the current season's rankings ID
-    discovered_id = _discover_rankings_id()
+    discovered_id = _discover_rankings_id_direct()
     if discovered_id and discovered_id != ranking_id:
         print(f'  [DK] rankings ID updated: {ranking_id} → {discovered_id}')
         ranking_id = discovered_id
 
-    # Strategy 1 — Playwright (real ADP from DK's rankings page)
-    players = _fetch_dk_rankings_playwright(ranking_id)
+    # Strategy 1 — Direct API (fast)
+    players = _fetch_dk_rankings_direct(ranking_id)
     if players:
         return players
 
@@ -878,9 +603,9 @@ def fetch_players(force_refresh=False):
     Return player list.  Uses cache unless force_refresh=True or no cache exists.
 
     Data pipeline:
-      1. Playwright loads DK's JS-rendered rankings page and intercepts the API
+      1. Direct API calls to api.draftkings.com (playerpool + draftables)
          response — gives real DK best ball ADP directly from the source.
-      2. Falls back to DK lineup CSV (salary rank as ADP proxy) if Playwright fails.
+      2. Falls back to DK lineup CSV (salary rank as ADP proxy) on failure.
       3. Sort by ADP ascending, assign sequential integer ADP (1 = best).
       4. Enrich with bye week + playoff schedule from static 2026 tables.
     """

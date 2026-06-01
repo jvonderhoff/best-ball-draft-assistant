@@ -1119,22 +1119,31 @@ def dk_auth_status():
 @app.route('/api/my-dk-drafts', methods=['GET'])
 def my_dk_drafts():
     """Return the user's active/upcoming DK drafts.
-    Priority: 1) user-saved draft IDs  2) Playwright auto-discover via live-drafts XHR
+    Priority: 1) user-saved draft IDs  2) direct API auto-discover via drafts/live
     """
     # Always include user-saved drafts (most reliable, persisted)
-    saved = [
-        {'id': did, 'name': info.get('name', f'Draft #{did}'), 'saved_at': info.get('saved_at')}
-        for did, info in _saved_draft_ids.items()
-    ]
+    saved = []
+    for did, info in _saved_draft_ids.items():
+        entry = {'id': did, 'name': info.get('name', f'Draft #{did}'), 'saved_at': info.get('saved_at')}
+        # Enrich with cached pick data if available
+        cache = _dk_pick_cache.get(str(did), {})
+        if cache.get('overall_pick'):
+            entry['overall_pick'] = cache['overall_pick']
+            entry['pick_count'] = len(cache.get('picks', []))
+            entry['updated_at'] = cache.get('updated_at')
+            # Derive user's draft position from their round-1 pick number
+            my_rd1 = next((p for p in (cache.get('picks') or [])
+                           if p.get('round') == 1 and p.get('username') == 'jvonderhoff'), None)
+            if my_rd1:
+                entry['my_position'] = my_rd1.get('pick_number')
+        saved.append(entry)
     saved.sort(key=lambda d: d.get('saved_at') or 0, reverse=True)
     if saved:
         return jsonify({'drafts': saved, 'source': 'saved'})
 
-    # Try Playwright auto-discover (navigates to a DK page, captures live-drafts XHR)
-    from app.data.api_fetcher import fetch_my_dk_drafts as _pw_find_drafts
-    # Use any known draft ID to navigate to (triggers the XHR faster than the lobby)
-    first_known = next(iter(_dk_known_drafts), None)
-    drafts = _pw_find_drafts(nav_draft_id=first_known)
+    # Auto-discover via direct API call
+    from app.data.api_fetcher import fetch_my_dk_drafts
+    drafts = fetch_my_dk_drafts()
     if drafts:
         # Auto-save discovered drafts so next call is instant
         for d in drafts:
@@ -1145,7 +1154,7 @@ def my_dk_drafts():
                 'saved_at': time.time(),
             }
         _persist_saved_drafts()
-        return jsonify({'drafts': drafts, 'source': 'playwright'})
+        return jsonify({'drafts': drafts, 'source': 'direct_api'})
 
     return jsonify({'drafts': [], 'source': 'none',
                     'message': 'No drafts found. Go to Setup and paste your DK draft URL.'})
@@ -1153,20 +1162,19 @@ def my_dk_drafts():
 
 @app.route('/api/dk-draft/pull/<draft_id>', methods=['POST'])
 def dk_draft_pull(draft_id):
-    """On-demand fetch: try Playwright first (Firefox cookies), fall back to requests."""
-    from app.data.api_fetcher import fetch_dk_draft_picks as _pw_fetch
+    """Fetch current picks via direct DK API calls."""
+    from app.data.api_fetcher import fetch_dk_draft_picks
 
     # entry_id stored when draft was saved/discovered
     entry_id = (_saved_draft_ids.get(str(draft_id)) or {}).get('entry_id')
 
-    # Strategy 1 — Playwright via Firefox: navigate to draft page, intercept XHR
-    picks = _pw_fetch(draft_id, entry_id=entry_id)
+    picks = fetch_dk_draft_picks(draft_id, entry_id=entry_id)
     if picks:
         _dk_pick_cache[str(draft_id)] = {
             'picks': picks,
             'overall_pick': max((p.get('pick_number') or 0 for p in picks), default=0) + 1,
             'updated_at': time.time(),
-            'source': 'playwright',
+            'source': 'direct_api',
             'error': None,
         }
         return jsonify({
@@ -1174,7 +1182,7 @@ def dk_draft_pull(draft_id):
             'picks':       picks,
             'pick_count':  len(picks),
             'overall_pick': _dk_pick_cache[str(draft_id)]['overall_pick'],
-            'source':      'playwright',
+            'source':      'direct_api',
             'error':       None,
             'updated_at':  _dk_pick_cache[str(draft_id)]['updated_at'],
         })
@@ -1469,8 +1477,66 @@ def get_analysis():
         return jsonify({'error': str(e)}), 500
 
 
+# ── Cookie sync (Mac → Render) ─────────────────────────────────────────────────
+_COOKIES_FILE = os.path.join(basedir, '.synced_cookies.json')
+
+def _load_synced_cookies():
+    """Load previously synced cookies from disk and push into api_fetcher."""
+    try:
+        if os.path.exists(_COOKIES_FILE):
+            with open(_COOKIES_FILE) as f:
+                cookies = json.load(f)
+            if cookies:
+                from app.data.api_fetcher import set_synced_cookies
+                set_synced_cookies(cookies)
+                print(f'[Cookies] Loaded {len(cookies)} synced DK cookies from disk')
+    except Exception as e:
+        print(f'[Cookies] Could not load synced cookies: {e}')
+
+_load_synced_cookies()
+
+
+@app.route('/api/sync-cookies', methods=['POST'])
+def sync_cookies():
+    """
+    Accept DK cookies pushed from the Mac (via sync_cookies.py).
+    Protected by BBA_API_KEY env var — set this in Render's environment.
+    """
+    api_key = request.headers.get('X-Api-Key') or (request.json or {}).get('api_key', '')
+    expected = os.environ.get('BBA_API_KEY', '')
+    if expected and api_key != expected:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    cookies = (request.json or {}).get('cookies', {})
+    if not cookies:
+        return jsonify({'error': 'No cookies provided'}), 400
+
+    # Push into api_fetcher and persist to disk
+    from app.data.api_fetcher import set_synced_cookies
+    set_synced_cookies(cookies)
+    try:
+        with open(_COOKIES_FILE, 'w') as f:
+            json.dump(cookies, f)
+    except Exception as e:
+        print(f'[Cookies] Could not persist cookies: {e}')
+
+    print(f'[Cookies] Synced {len(cookies)} DK cookies')
+    return jsonify({'ok': True, 'count': len(cookies)})
+
+
+@app.route('/api/sync-cookies/status', methods=['GET'])
+def sync_cookies_status():
+    """Check whether cookies have been synced and how many."""
+    from app.data.api_fetcher import _synced_cookies
+    return jsonify({
+        'synced': bool(_synced_cookies),
+        'count': len(_synced_cookies),
+    })
+
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get('PORT', 8000))
+    app.run(host='0.0.0.0', port=port)
 
 
 @app.route('/api/dk-probe/<draft_id>')
