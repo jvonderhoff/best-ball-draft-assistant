@@ -23,3 +23,10 @@ best-ball-extension/players.js
 
 # Claude internal
 .claude/
+
+# Best Ball — secrets and local state
+fantasy_football/best-ball-draft/.saved_drafts.json
+fantasy_football/best-ball-draft/app/data/.dk_user_guid
+fantasy_football/best-ball-draft/.synced_cookies.json
+fantasy_football/best-ball-draft/ssl.crt
+fantasy_football/best-ball-draft/ssl.key

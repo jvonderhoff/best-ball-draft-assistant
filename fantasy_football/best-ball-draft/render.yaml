@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: best-ball-assistant
+    runtime: python
+    rootDir: fantasy_football/best-ball-draft
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 1 --timeout 120 -b 0.0.0.0:$PORT "app.app:app"
+    envVars:
+      - key: BBA_API_KEY
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: 3.11.0
