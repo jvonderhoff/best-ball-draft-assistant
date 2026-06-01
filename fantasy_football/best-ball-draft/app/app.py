@@ -1227,14 +1227,25 @@ _SAVED_DRAFTS_FILE = os.path.join(basedir, '.saved_drafts.json')
 _saved_draft_ids = {}   # draft_id -> {name, saved_at}
 
 def _load_saved_drafts():
+    # 1 — disk file
     try:
         if os.path.exists(_SAVED_DRAFTS_FILE):
             with open(_SAVED_DRAFTS_FILE) as f:
                 data = json.load(f)
             _saved_draft_ids.update(data)
-            print(f'[Drafts] Loaded {len(_saved_draft_ids)} saved draft IDs')
+            print(f'[Drafts] Loaded {len(_saved_draft_ids)} saved draft IDs from disk')
+            return
     except Exception as e:
-        print(f'[Drafts] Could not load saved drafts: {e}')
+        print(f'[Drafts] Disk load error: {e}')
+    # 2 — environment variable
+    env_drafts = os.environ.get('DK_SAVED_DRAFTS', '')
+    if env_drafts:
+        try:
+            data = json.loads(env_drafts)
+            _saved_draft_ids.update(data)
+            print(f'[Drafts] Loaded {len(_saved_draft_ids)} saved draft IDs from env var')
+        except Exception as e:
+            print(f'[Drafts] Env var parse error: {e}')
 
 def _persist_saved_drafts():
     try:
@@ -1486,17 +1497,41 @@ def get_analysis():
 _COOKIES_FILE = os.path.join(basedir, '.synced_cookies.json')
 
 def _load_synced_cookies():
-    """Load previously synced cookies from disk and push into api_fetcher."""
+    """
+    Load DK cookies into api_fetcher on startup.
+    Priority: 1) disk file (written by /api/sync-cookies)
+              2) DK_COOKIES environment variable (persists across Render deploys)
+    """
+    from app.data.api_fetcher import set_synced_cookies, _save_user_guid
+
+    # 1 — disk file
     try:
         if os.path.exists(_COOKIES_FILE):
             with open(_COOKIES_FILE) as f:
                 cookies = json.load(f)
             if cookies:
-                from app.data.api_fetcher import set_synced_cookies
                 set_synced_cookies(cookies)
-                print(f'[Cookies] Loaded {len(cookies)} synced DK cookies from disk')
+                print(f'[Cookies] Loaded {len(cookies)} DK cookies from disk')
+                return
     except Exception as e:
-        print(f'[Cookies] Could not load synced cookies: {e}')
+        print(f'[Cookies] Disk load error: {e}')
+
+    # 2 — environment variable (survives Render redeploys)
+    env_cookies = os.environ.get('DK_COOKIES', '')
+    if env_cookies:
+        try:
+            cookies = json.loads(env_cookies)
+            if cookies:
+                set_synced_cookies(cookies)
+                print(f'[Cookies] Loaded {len(cookies)} DK cookies from DK_COOKIES env var')
+        except Exception as e:
+            print(f'[Cookies] Env var parse error: {e}')
+
+    # Also restore GUID from env var
+    env_guid = os.environ.get('DK_USER_GUID', '')
+    if env_guid:
+        _save_user_guid(env_guid)
+        print(f'[Cookies] Restored GUID from DK_USER_GUID env var')
 
 _load_synced_cookies()
 
