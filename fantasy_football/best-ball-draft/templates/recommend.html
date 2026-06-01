@@ -255,6 +255,9 @@
   <div class="sync-dot" id="syncDot"></div>
   <div class="sync-label" id="syncLabel">Not connected</div>
   <button class="sync-btn" id="pullBtn" style="display:none" onclick="pullLatest()">Pull Latest</button>
+  <button class="sync-btn" id="rankingToggleBtn"
+    style="background:transparent;border:1px solid #2a3f5f;color:#78909c;font-size:0.72em;padding:3px 8px;border-radius:4px;cursor:pointer;"
+    onclick="toggleRankingMode()">☆ My Ranks</button>
   <button class="sync-btn disconnect" id="disconnectBtn" style="display:none">← Drafts</button>
 </div>
 
@@ -395,6 +398,68 @@
 let PLAYERS = [];
 let exposure = {};
 
+// ── Custom rankings ────────────────────────────────────────────────────────────
+let useCustomRankings = localStorage.getItem('bba_use_custom_ranks') === 'true';
+let customRankMap = {};  // player_id → custom_rank
+
+async function loadCustomRankings() {
+  try {
+    const r = await fetch('/api/rankings');
+    const data = await r.json();
+    customRankMap = {};
+    for (const p of data) {
+      if (p.custom_rank != null) customRankMap[p.player_id] = p.custom_rank;
+    }
+    return Object.keys(customRankMap).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function applyCustomRanks(players) {
+  if (!useCustomRankings || !Object.keys(customRankMap).length) return players;
+  return players.map(p => {
+    const cr = customRankMap[p.id];
+    return cr != null ? { ...p, adp: cr } : p;
+  });
+}
+
+function toggleRankingMode() {
+  useCustomRankings = !useCustomRankings;
+  localStorage.setItem('bba_use_custom_ranks', useCustomRankings);
+  updateRankingToggleBtn();
+  if (useCustomRankings && !Object.keys(customRankMap).length) {
+    loadCustomRankings().then(ok => {
+      if (!ok) {
+        useCustomRankings = false;
+        localStorage.setItem('bba_use_custom_ranks', 'false');
+        updateRankingToggleBtn();
+        alert('No custom rankings saved yet — set them at /rankings first.');
+      } else {
+        renderRecs();
+        renderPlayerList();
+      }
+    });
+  } else {
+    renderRecs();
+    renderPlayerList();
+  }
+}
+
+function updateRankingToggleBtn() {
+  const btn = document.getElementById('rankingToggleBtn');
+  if (!btn) return;
+  if (useCustomRankings) {
+    btn.textContent = '★ My Ranks';
+    btn.style.background = '#1565c0';
+    btn.style.color = '#fff';
+  } else {
+    btn.textContent = '☆ My Ranks';
+    btn.style.background = 'transparent';
+    btn.style.color = '#78909c';
+  }
+}
+
 const STATE_KEY = 'bba_live_draft';
 let state = loadState();
 
@@ -520,6 +585,20 @@ async function checkDKAuth() {
 
 // Restore connection on page load if we had one — startSync called after PLAYERS loaded
 
+let _pickPollTimer = null;
+const PICK_POLL_INTERVAL = 30000; // 30 seconds
+
+function startPickPolling() {
+  stopPickPolling();
+  _pickPollTimer = setInterval(() => {
+    if (syncDraftId) pullLatest();
+  }, PICK_POLL_INTERVAL);
+}
+
+function stopPickPolling() {
+  if (_pickPollTimer) { clearInterval(_pickPollTimer); _pickPollTimer = null; }
+}
+
 function startSync(draftId, autoPull = true) {
   syncDraftId = draftId.trim();
   if (!syncDraftId) return;
@@ -532,12 +611,14 @@ function startSync(draftId, autoPull = true) {
   document.getElementById('disconnectBtn').style.display = '';
   updateSyncUI(false, `Draft #${syncDraftId} — loading…`);
   if (autoPull && PLAYERS.length) pullLatest();
+  startPickPolling();
 }
 
 function stopSync() {
   syncDraftId = '';
   localStorage.removeItem('bba_sync_draft_id');
   syncConnected = false;
+  stopPickPolling();
   document.getElementById('pullBtn').style.display = 'none';
   showDraftList();
 }
@@ -562,18 +643,32 @@ function hideDraftList() {
   document.querySelectorAll('.tab-panel').forEach(el => el.style.display = '');
 }
 
-let _draftListTimer = null;
-
 async function loadDraftList() {
   const el = document.getElementById('draftListCards');
   el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:20px;">Loading…</div>`;
+
+  // How many picks until my turn given overall_pick and my_position in a snake draft
+  function picksUntilMyTurn(overallPick, myPos, numTeams = 12) {
+    if (!myPos || !overallPick) return null;
+    for (let n = overallPick; n <= overallPick + numTeams * 20; n++) {
+      const round = Math.ceil(n / numTeams);
+      const pickInRound = n - (round - 1) * numTeams;
+      const slotPos = round % 2 === 1 ? pickInRound : numTeams - pickInRound + 1;
+      if (slotPos === myPos) return n - overallPick;
+    }
+    return null;
+  }
 
   // Try DK API (live drafts) first, fall back to local DB
   let dkDrafts = [];
   try {
     const r = await fetch('/api/my-dk-drafts');
     const d = await r.json();
-    if (d.drafts?.length) dkDrafts = d.drafts.map(dr => ({ draft_id: dr.id, label: dr.name, source: 'dk' }));
+    if (d.drafts?.length) dkDrafts = d.drafts.map(dr => ({
+      draft_id: dr.id, label: dr.name, source: 'dk',
+      overall_pick: dr.overall_pick, my_position: dr.my_position,
+      pick_count: dr.pick_count, updated_at: dr.updated_at,
+    }));
   } catch { /* server may not have auth yet */ }
 
   let dbDrafts = [];
@@ -596,35 +691,49 @@ async function loadDraftList() {
   el.innerHTML = drafts.map(d => {
     const isDK = d.source === 'dk';
     const label = d.label ? `<span style="color:#546e7a;font-size:0.78em;"> · ${d.label}</span>` : '';
-    const badge = isDK
-      ? `<span style="color:#81c784;font-size:0.72em;font-weight:700;">LIVE</span>`
-      : (() => {
-          const pos = d.pos_counts || {};
-          return ['QB','RB','WR','TE'].map(p => pos[p]
-            ? `<span style="background:var(--${p});color:#fff;padding:1px 5px;border-radius:3px;font-size:0.7em;font-weight:700">${pos[p]}${p}</span>`
-            : '').join('');
-        })();
+
+    // Turn status — show picks until next turn if we have pick data
+    let turnBadge = `<span style="color:#81c784;font-size:0.72em;font-weight:700;">LIVE</span>`;
+    if (isDK && d.overall_pick && d.my_position) {
+      const until = picksUntilMyTurn(d.overall_pick, d.my_position);
+      if (until === 0) {
+        turnBadge = `<span style="background:#1b5e20;color:#a5d6a7;padding:2px 7px;border-radius:4px;font-size:0.75em;font-weight:700;">🟢 YOUR PICK</span>`;
+      } else if (until !== null) {
+        turnBadge = `<span style="color:#ff9800;font-size:0.78em;font-weight:700;">⏳ ${until} pick${until===1?'':'s'} away</span>`;
+      }
+    } else if (!isDK) {
+      const pos = d.pos_counts || {};
+      turnBadge = ['QB','RB','WR','TE'].map(p => pos[p]
+        ? `<span style="background:var(--${p});color:#fff;padding:1px 5px;border-radius:3px;font-size:0.7em;font-weight:700">${pos[p]}${p}</span>`
+        : '').join('');
+    }
+
+    // Age of last pull
+    const ageStr = d.updated_at
+      ? (() => { const s = Math.round(Date.now()/1000 - d.updated_at); return s < 60 ? `${s}s ago` : `${Math.round(s/60)}m ago`; })()
+      : null;
+
     return `<div onclick="startSync('${d.draft_id}')"
         style="background:#1a2233;border:1px solid #2a3f5f;border-radius:8px;
-               padding:12px 14px;cursor:pointer;border-left:4px solid #2a3f5f;
+               padding:12px 14px;cursor:pointer;border-left:4px solid ${d.overall_pick && d.my_position && picksUntilMyTurn(d.overall_pick, d.my_position)===0 ? '#81c784' : '#2a3f5f'};
                transition:background 0.2s;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
         <span style="font-weight:700;color:#4fc3f7;font-size:0.92em;">#${d.draft_id}${label}</span>
-        <span style="display:flex;gap:3px;align-items:center;">${badge}</span>
+        <span style="display:flex;gap:3px;align-items:center;">${turnBadge}</span>
       </div>
-      <div style="color:#546e7a;font-size:0.75em;">Tap to load · pulls picks on demand</div>
+      <div style="color:#546e7a;font-size:0.75em;">
+        ${d.overall_pick ? `Pick ${d.overall_pick} · pos ${d.my_position || '?'} · ${d.pick_count} drafted` : 'Tap to load picks'}
+        ${ageStr ? `<span style="color:#37474f"> · ${ageStr}</span>` : ''}
+      </div>
     </div>`;
   }).join('');
 }
 
 function startDraftListPolling() {
   loadDraftList();
-  if (_draftListTimer) return;
-  _draftListTimer = setInterval(loadDraftList, 8000);
 }
 function stopDraftListPolling() {
-  clearInterval(_draftListTimer);
-  _draftListTimer = null;
+  // no-op — draft list no longer auto-polls
 }
 
 function connectManual() {
@@ -761,7 +870,7 @@ function applyDKPickState(data) {
   const src = srcRaw === 'bookmarklet_intercept' ? '🔗 BBA Live'
             : srcRaw.includes('draftkings.com') ? srcRaw.split('draftkings.com')[1]
             : srcRaw;
-  updateSyncUI(true, `Live · ${picks.length} picks · <span style="color:#546e7a;font-size:0.9em">${src}</span>`);
+  updateSyncUI(true, `Live · ${picks.length} picks · <span style="color:#546e7a;font-size:0.9em">${src}</span> · <span style="color:#546e7a;font-size:0.9em">auto ↻30s</span>`);
 
   if (changed) {
     saveState();
@@ -1012,7 +1121,7 @@ function renderRecs() {
   if (!PLAYERS.length) return;
   renderHeader();
 
-  const available = PLAYERS.filter(p => !state.takenIds.has(p.id));
+  const available = applyCustomRanks(PLAYERS.filter(p => !state.takenIds.has(p.id)));
   const takenCount = state.takenIds.size;
   const myTurn    = isMyTurn(state.overallPick, settings.numTeams, settings.myPosition);
   const pickForRec = myTurn
@@ -1047,7 +1156,7 @@ function renderRecs() {
     return `<div class="rec-card">
       <div class="rec-rank">#${i+1}</div>
       <div><span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span></div>
-      <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ADP ${p.adp}</div>
+      <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ${useCustomRankings ? 'Rank' : 'ADP'} ${Math.round(p.adp)}</div>
       ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
     </div>`;
   }).join('');
@@ -1098,6 +1207,10 @@ populateSettings();
 renderHeader();
 checkDKAuth();
 loadPlayers();
+updateRankingToggleBtn();
+
+// Pre-load custom rankings if mode was active last session
+if (useCustomRankings) loadCustomRankings();
 
 // Always start at the draft list so the user can choose which draft
 showDraftList();
