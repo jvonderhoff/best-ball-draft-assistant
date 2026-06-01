@@ -1036,7 +1036,7 @@ function renderPlayerList() {
         <div class="p-meta">${p.pos} · ${p.team}${p.bye ? ' · bye '+p.bye : ''}</div>
       </div>
       ${p.week17 ? `<div style="font-size:0.72em;color:var(--muted);font-weight:700;min-width:28px;text-align:right;margin-right:6px">wk17 ${p.week17}</div>` : ''}
-      ${(() => { const rate = exposure[p.id]?.exposure_rate ?? 0; const pct = Math.round(rate*100); const color = pct>=15?'var(--green)':pct>=7?'var(--orange)':'var(--red)'; return `<div style="font-size:0.72em;font-weight:700;min-width:32px;text-align:right;color:${color}">${pct}%</div>`; })()}
+      <div style="font-size:0.72em;font-weight:700;min-width:32px;text-align:right;color:var(--muted)">${Math.round((exposure[p.id]?.exposure_rate??0)*100)}%</div>
       ${badge}
     </div>`;
   }).join('');
