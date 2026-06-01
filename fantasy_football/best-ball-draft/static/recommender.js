@@ -187,12 +187,23 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   // Hard discount when a position slot is fully filled
   if ((needs[pos] || 0) === 0) mult = Math.min(mult, 0.65);
 
-  // QB saturation penalty — if already at QB target, apply a very heavy discount.
-  // A 3rd QB should only appear if it's an extreme ADP value steal — otherwise
-  // always prefer non-QB picks.  ×0.10 means a QB needs ~10× the raw value of
-  // a non-QB to break into the top recommendations.
+  // QB saturation penalty — scales with how early the first QB was drafted.
+  // Early QB capital (round 1-5) = you're locked in, 3rd QB almost never right.
+  // Late QB darts (round 14+) = cheap commitment, 3rd is more viable.
+  //
+  //   Earliest QB round 1-5:   ×0.05 — elite QB, 3rd essentially blocked
+  //   Earliest QB round 6-9:   ×0.15 — solid QB, very unlikely
+  //   Earliest QB round 10-13: ×0.35 — late QB, 3rd viable on good value
+  //   Earliest QB round 14+:   ×0.60 — dart throws, happy to add another
   if (pos === 'QB' && myQBs >= QB_TARGET) {
-    mult *= 0.10;
+    const myQBsList = myTeam.filter(p => p.pos === 'QB');
+    const earliestQBRound = Math.min(...myQBsList.map(p => p.round || 20));
+    let penalty;
+    if (earliestQBRound <= 5)       penalty = 0.05;
+    else if (earliestQBRound <= 9)  penalty = 0.15;
+    else if (earliestQBRound <= 13) penalty = 0.35;
+    else                             penalty = 0.60;
+    mult *= penalty;
   }
 
   // Early-round boost (position-agnostic — amplifies stacking/playoff bonuses)
