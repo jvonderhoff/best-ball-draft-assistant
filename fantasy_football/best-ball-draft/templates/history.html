@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>Draft History — Best Ball Assistant</title>
     <link rel="stylesheet" href="/static/style.css">
     <style>
@@ -71,6 +72,14 @@
         .pos-TE { border-left-color: #ff9800; }
         .empty-history { color: #546e7a; text-align: center; padding: 40px; font-style: italic; }
         .section-title { font-size: 0.75em; font-weight: 700; color: #546e7a; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px; }
+
+        @media (max-width: 600px) {
+            .history-container { padding: 12px !important; }
+            .exposure-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+            .draft-picks-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); padding: 8px; }
+            .draft-card-header { flex-wrap: wrap; gap: 8px; }
+            .draft-card-header h3 { font-size: 0.9em; }
+        }
     </style>
 </head>
 <body>

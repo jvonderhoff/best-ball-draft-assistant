@@ -143,7 +143,8 @@
       background: #0f1419;
       border: 1px solid #2a3f5f;
       border-radius: 8px;
-      overflow: hidden;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
     }
 
     table { width: 100%; border-collapse: collapse; }
@@ -292,6 +293,27 @@
     .modal h3 { color: #4fc3f7; margin-bottom: 8px; }
     .modal p  { color: #78909c; font-size: 0.88em; margin-bottom: 20px; line-height: 1.5; }
     .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+    /* ── Mobile ── */
+    @media (max-width: 600px) {
+      .nav { padding: 0 12px; gap: 14px; height: 46px; }
+      .nav-brand { font-size: 0.85em; }
+      .nav a { font-size: 0.8em; }
+      .page { padding: 12px; }
+      .page-title { font-size: 1.1em; }
+      .page-subtitle { font-size: 0.75em; }
+      .header-actions { width: 100%; }
+      .header-actions .btn { flex: 1; text-align: center; font-size: 0.78em; padding: 8px 6px; }
+      .toolbar { gap: 8px; }
+      .search-wrap { max-width: 100%; }
+      .pos-tab { padding: 5px 8px; font-size: 0.75em; }
+      .toolbar-right { margin-left: 0; width: 100%; justify-content: flex-end; }
+      /* Hide less-critical table columns on mobile */
+      .col-delta, .col-notes, .col-action { display: none; }
+      thead th.col-delta, thead th.col-notes, thead th.col-action { display: none; }
+      td { padding: 7px 8px; font-size: 0.82em; }
+      .rank-input { width: 44px; font-size: 0.85em; }
+    }
   </style>
 </head>
 <body>
@@ -310,6 +332,7 @@
       <div class="page-subtitle">Drag to reorder · Edit rank numbers · Changes auto-highlight until saved</div>
     </div>
     <div class="header-actions">
+      <button class="btn btn-reset" id="refreshAdpBtn" title="Pull latest ADP from DraftKings (keeps your custom ranks &amp; notes)">↻ Refresh ADP</button>
       <button class="btn btn-reset" id="resetBtn">Reset to DK ADP</button>
       <button class="btn btn-export" id="exportBtn">Export to Extension</button>
       <button class="btn btn-success" id="saveBtn">
@@ -665,7 +688,31 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// ── Refresh ADP ────────────────────────────────────────────────────────────────
+async function refreshAdp() {
+  const btn = document.getElementById('refreshAdpBtn');
+  btn.disabled = true;
+  btn.textContent = '↻ Fetching…';
+  setStatus('Pulling latest ADP from DraftKings…', 'info');
+  try {
+    const res = await fetch('/api/players/refresh', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      setStatus(`✓ ADP updated — ${data.player_count} players. Your custom ranks and notes are unchanged.`, 'ok');
+      await loadRankings();
+    } else {
+      setStatus('ADP refresh failed: ' + (data.error || 'unknown error'), 'error');
+    }
+  } catch (e) {
+    setStatus('ADP refresh failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Refresh ADP';
+  }
+}
+
 // ── Wire up controls ───────────────────────────────────────────────────────────
+document.getElementById('refreshAdpBtn').addEventListener('click', refreshAdp);
 document.getElementById('saveBtn').addEventListener('click', saveRankings);
 document.getElementById('exportBtn').addEventListener('click', exportToExtension);
 document.getElementById('sortAdpBtn').addEventListener('click', sortByAdp);

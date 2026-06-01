@@ -133,6 +133,24 @@
 
     /* ── Sleeper link indicator ── */
     .no-data { color: #37474f; font-style: italic; font-size: 0.85em; }
+
+    /* ── Mobile ── */
+    @media (max-width: 600px) {
+      nav { padding: 0 12px; gap: 14px; height: 44px; }
+      nav a { font-size: 0.8em; }
+      .nav-brand { font-size: 0.88em; }
+      .page { padding: 12px 10px; }
+      .page-title { font-size: 1.1em; }
+      .controls { width: 100%; }
+      .search-box { width: 100%; }
+      .btn { font-size: 0.8em; padding: 6px 10px; }
+      .pos-tabs { flex-wrap: wrap; gap: 4px; }
+      .pos-tab { padding: 4px 10px; font-size: 0.75em; }
+      .stats-bar { gap: 8px; }
+      .stat-chip { padding: 5px 10px; font-size: 0.75em; }
+      /* Freeze only rank on mobile — name too wide to also freeze */
+      th.sticky-name, td.sticky-name { min-width: 120px; }
+    }
   </style>
 </head>
 <body>
