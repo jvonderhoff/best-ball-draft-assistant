@@ -187,18 +187,12 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   // Hard discount when a position slot is fully filled
   if ((needs[pos] || 0) === 0) mult = Math.min(mult, 0.65);
 
-  // Early QB saturation penalty — if you already have 2 QBs in the first 12 rounds,
-  // heavily devalue additional QBs so scarce RB/WR/TE value isn't wasted on a 3rd QB.
-  // The penalty eases after round 12 since late QB3s have minimal cost.
-  //   2 QBs in rounds 1-6:  ×0.25 (very steep — locked in early)
-  //   2 QBs in rounds 7-12: ×0.45 (still significant)
-  //   2 QBs in rounds 13+:  no extra penalty (cheap dart throw)
-  if (pos === 'QB') {
-    if (myQBs >= QB_TARGET) {
-      if (userRound <= 6)       mult *= 0.25;
-      else if (userRound <= 12) mult *= 0.45;
-      // rounds 13+ — let normal needs/ADP logic decide
-    }
+  // QB saturation penalty — if already at QB target, apply a very heavy discount.
+  // A 3rd QB should only appear if it's an extreme ADP value steal — otherwise
+  // always prefer non-QB picks.  ×0.10 means a QB needs ~10× the raw value of
+  // a non-QB to break into the top recommendations.
+  if (pos === 'QB' && myQBs >= QB_TARGET) {
+    mult *= 0.10;
   }
 
   // Early-round boost (position-agnostic — amplifies stacking/playoff bonuses)
@@ -252,9 +246,11 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     }
   }
 
-  // Playoff game stack bonus — week 17 weighted most heavily
+  // Playoff game stack bonus — week 17 weighted most heavily.
+  // Not applied to QBs — QB stacking should come from same-team pass-catchers
+  // only (qbPull bonus above), not from playing against teams you own.
   // Skipped when stack intensity is off so pure ADP/value mode is truly stack-free.
-  if (stackIntensity !== 'off') mult *= getPlayoffBonus(player, myTeam);
+  if (stackIntensity !== 'off' && pos !== 'QB') mult *= getPlayoffBonus(player, myTeam);
 
   // Bye week penalty — discourage stacking too many players on the same bye
   mult *= getByeWeekPenalty(player, myTeam);
