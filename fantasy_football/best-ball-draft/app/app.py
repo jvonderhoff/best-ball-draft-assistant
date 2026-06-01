@@ -610,12 +610,14 @@ def _fetch_my_dk_drafts():
     h = _dk_headers()
     results = {}
 
-    # Try entries API (lists all user entries/contests)
+    # Endpoints the extension was known to hit successfully (ordered most likely first)
     for url in [
-        'https://api.draftkings.com/entries/v1/entries?statuses=InProgress,Upcoming&sport=1',
+        'https://www.draftkings.com/api/lineups/getentries?sport=1',
+        'https://www.draftkings.com/api/lineups/getentries',
+        'https://www.draftkings.com/api/contests/getentries',
+        'https://api.draftkings.com/lineups/v1/lineups?sport=1&statuses=live',
         'https://api.draftkings.com/entries/v1/entries?sport=1',
-        'https://api.draftkings.com/lineups/v1/lineups?sport=1',
-        'https://www.draftkings.com/lineup/getentries?sport=1',
+        'https://api.draftkings.com/entries/v1/entries?statuses=InProgress,Upcoming&sport=1',
     ]:
         try:
             r = req_lib.get(url, headers=h, timeout=8, allow_redirects=False)
@@ -623,19 +625,23 @@ def _fetch_my_dk_drafts():
                 try:
                     data = r.json()
                     results[url] = {'status': 200, 'keys': list(data.keys()) if isinstance(data, dict) else str(data)[:300]}
-                    # Try to extract draft IDs
-                    entries = data.get('entries') or data.get('lineups') or data.get('contests') or []
-                    if isinstance(entries, list):
+                    # DK wraps response: {data: {entries: [...]}} or flat {entries: [...]}
+                    inner = data.get('data') or data
+                    entries = (inner.get('entries') or inner.get('lineups') or
+                               inner.get('contests') or inner.get('results') or [])
+                    if isinstance(entries, list) and entries:
                         drafts = []
                         for e in entries:
-                            dg_id = e.get('draftGroupId') or e.get('contestId') or e.get('id')
-                            name  = e.get('contestName') or e.get('name') or e.get('draftGroupTag') or ''
+                            dg_id = (e.get('draftGroupId') or e.get('draftGroup', {}).get('draftGroupId')
+                                     or e.get('contestId') or e.get('id'))
+                            name  = (e.get('contestName') or e.get('draftGroupTag')
+                                     or e.get('name') or e.get('gameType') or '')
                             if dg_id:
                                 drafts.append({'id': str(dg_id), 'name': name})
                         if drafts:
                             return {'source': url, 'drafts': drafts, 'raw': results}
                 except Exception:
-                    results[url] = {'status': 200, 'body': r.text[:200]}
+                    results[url] = {'status': 200, 'body': r.text[:300]}
             else:
                 results[url] = {'status': r.status_code}
         except Exception as e:
@@ -1112,11 +1118,158 @@ def dk_auth_status():
 
 @app.route('/api/my-dk-drafts', methods=['GET'])
 def my_dk_drafts():
-    """Return the user's active/upcoming DK drafts (auto-discovered via DK API)."""
-    if not _dk_session['cookie']:
-        return jsonify({'error': 'Not authenticated', 'needs_auth': True}), 401
-    result = _fetch_my_dk_drafts()
-    return jsonify(result)
+    """Return the user's active/upcoming DK drafts.
+    Priority: 1) user-saved draft IDs  2) Playwright auto-discover via live-drafts XHR
+    """
+    # Always include user-saved drafts (most reliable, persisted)
+    saved = [
+        {'id': did, 'name': info.get('name', f'Draft #{did}'), 'saved_at': info.get('saved_at')}
+        for did, info in _saved_draft_ids.items()
+    ]
+    saved.sort(key=lambda d: d.get('saved_at') or 0, reverse=True)
+    if saved:
+        return jsonify({'drafts': saved, 'source': 'saved'})
+
+    # Try Playwright auto-discover (navigates to a DK page, captures live-drafts XHR)
+    from app.data.api_fetcher import fetch_my_dk_drafts as _pw_find_drafts
+    # Use any known draft ID to navigate to (triggers the XHR faster than the lobby)
+    first_known = next(iter(_dk_known_drafts), None)
+    drafts = _pw_find_drafts(nav_draft_id=first_known)
+    if drafts:
+        # Auto-save discovered drafts so next call is instant
+        for d in drafts:
+            did = d['id']
+            _saved_draft_ids[did] = {
+                'name': d.get('name', f'Draft #{did}'),
+                'entry_id': d.get('entry_id'),
+                'saved_at': time.time(),
+            }
+        _persist_saved_drafts()
+        return jsonify({'drafts': drafts, 'source': 'playwright'})
+
+    return jsonify({'drafts': [], 'source': 'none',
+                    'message': 'No drafts found. Go to Setup and paste your DK draft URL.'})
+
+
+@app.route('/api/dk-draft/pull/<draft_id>', methods=['POST'])
+def dk_draft_pull(draft_id):
+    """On-demand fetch: try Playwright first (Firefox cookies), fall back to requests."""
+    from app.data.api_fetcher import fetch_dk_draft_picks as _pw_fetch
+
+    # entry_id stored when draft was saved/discovered
+    entry_id = (_saved_draft_ids.get(str(draft_id)) or {}).get('entry_id')
+
+    # Strategy 1 — Playwright via Firefox: navigate to draft page, intercept XHR
+    picks = _pw_fetch(draft_id, entry_id=entry_id)
+    if picks:
+        _dk_pick_cache[str(draft_id)] = {
+            'picks': picks,
+            'overall_pick': max((p.get('pick_number') or 0 for p in picks), default=0) + 1,
+            'updated_at': time.time(),
+            'source': 'playwright',
+            'error': None,
+        }
+        return jsonify({
+            'draft_id':    draft_id,
+            'picks':       picks,
+            'pick_count':  len(picks),
+            'overall_pick': _dk_pick_cache[str(draft_id)]['overall_pick'],
+            'source':      'playwright',
+            'error':       None,
+            'updated_at':  _dk_pick_cache[str(draft_id)]['updated_at'],
+        })
+
+    # Strategy 2 — requests with stored cookies (may fail on HttpOnly-gated endpoints)
+    if _dk_session.get('cookie'):
+        _fetch_dk_draft(draft_id)
+        cached = _dk_pick_cache.get(str(draft_id), {})
+        picks = cached.get('picks', [])
+        if picks:
+            return jsonify({
+                'draft_id':    draft_id,
+                'picks':       picks,
+                'pick_count':  len(picks),
+                'overall_pick': cached.get('overall_pick', 1),
+                'source':      cached.get('source'),
+                'error':       None,
+                'updated_at':  cached.get('updated_at'),
+            })
+
+    return jsonify({
+        'draft_id':  draft_id,
+        'picks':     [],
+        'pick_count': 0,
+        'error':     'Could not fetch picks — make sure Firefox is open and logged in to DraftKings',
+        'needs_auth': True,
+    }), 200
+
+
+@app.route('/setup')
+def setup_page():
+    return render_template('setup.html')
+
+
+# ── Saved draft IDs (user-entered, persisted to disk) ─────────────────────────
+_SAVED_DRAFTS_FILE = os.path.join(basedir, '.saved_drafts.json')
+_saved_draft_ids = {}   # draft_id -> {name, saved_at}
+
+def _load_saved_drafts():
+    try:
+        if os.path.exists(_SAVED_DRAFTS_FILE):
+            with open(_SAVED_DRAFTS_FILE) as f:
+                data = json.load(f)
+            _saved_draft_ids.update(data)
+            print(f'[Drafts] Loaded {len(_saved_draft_ids)} saved draft IDs')
+    except Exception as e:
+        print(f'[Drafts] Could not load saved drafts: {e}')
+
+def _persist_saved_drafts():
+    try:
+        with open(_SAVED_DRAFTS_FILE, 'w') as f:
+            json.dump(_saved_draft_ids, f)
+    except Exception as e:
+        print(f'[Drafts] Could not save drafts: {e}')
+
+_load_saved_drafts()
+
+
+@app.route('/api/dk-draft/save-id', methods=['POST'])
+def save_draft_id():
+    """Save a user-supplied draft ID (from DK notification URL) persistently."""
+    data = request.get_json(silent=True) or {}
+    raw = str(data.get('draft_id') or data.get('url') or '').strip()
+    if not raw:
+        return jsonify({'error': 'draft_id required'}), 400
+    # Accept a full URL like https://www.draftkings.com/draft/snake/12345678
+    import re as _re
+    m = _re.search(r'(\d{6,})', raw)
+    if not m:
+        return jsonify({'error': 'Could not find a draft ID (6+ digit number) in the input'}), 400
+    draft_id = m.group(1)
+    name = data.get('name') or f'Draft #{draft_id}'
+    _saved_draft_ids[draft_id] = {'name': name, 'saved_at': time.time()}
+    _persist_saved_drafts()
+    print(f'[Drafts] Saved draft ID {draft_id} — {name}')
+    return jsonify({'ok': True, 'draft_id': draft_id, 'name': name})
+
+
+@app.route('/api/dk-draft/saved-ids', methods=['GET'])
+def get_saved_draft_ids():
+    """Return all user-saved draft IDs."""
+    drafts = [
+        {'id': did, 'name': info.get('name', f'Draft #{did}'), 'saved_at': info.get('saved_at')}
+        for did, info in _saved_draft_ids.items()
+    ]
+    drafts.sort(key=lambda d: d.get('saved_at') or 0, reverse=True)
+    return jsonify({'drafts': drafts})
+
+
+@app.route('/api/dk-draft/delete-id/<draft_id>', methods=['DELETE'])
+def delete_saved_draft_id(draft_id):
+    """Remove a user-saved draft ID."""
+    _saved_draft_ids.pop(str(draft_id), None)
+    _persist_saved_drafts()
+    return jsonify({'ok': True})
 
 
 @app.route('/api/dk-draft-state/<draft_id>', methods=['GET'])

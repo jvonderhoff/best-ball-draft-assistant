@@ -254,14 +254,18 @@
 <div class="sync-bar">
   <div class="sync-dot" id="syncDot"></div>
   <div class="sync-label" id="syncLabel">Not connected</div>
+  <button class="sync-btn" id="pullBtn" style="display:none" onclick="pullLatest()">Pull Latest</button>
   <button class="sync-btn disconnect" id="disconnectBtn" style="display:none">← Drafts</button>
 </div>
 
 <!-- ── Draft list (shown when no draft is connected) ── -->
 <div id="draftListView" style="display:none;padding:12px;">
   <div style="font-size:0.82em;color:#78909c;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
-    <span>Your active drafts on this server:</span>
-    <button onclick="loadDraftList()" style="background:none;border:none;color:#4fc3f7;font-size:0.85em;cursor:pointer;">↻ Refresh</button>
+    <span>Your active drafts:</span>
+    <span style="display:flex;gap:10px;align-items:center;">
+      <a href="/setup" style="color:#4fc3f7;font-size:0.85em;text-decoration:none;">⚙ Setup</a>
+      <button onclick="loadDraftList()" style="background:none;border:none;color:#4fc3f7;font-size:0.85em;cursor:pointer;">↻ Refresh</button>
+    </span>
   </div>
   <div id="draftListCards" style="display:flex;flex-direction:column;gap:8px;">
     <div style="color:#546e7a;font-size:0.85em;text-align:center;padding:20px;">Loading…</div>
@@ -470,8 +474,7 @@ function populateSettings() {
 }
 
 // ── Live sync ──────────────────────────────────────────────────────────────────
-let syncDraftId  = localStorage.getItem('bba_sync_draft_id') || '';
-let syncInterval = null;
+let syncDraftId   = localStorage.getItem('bba_sync_draft_id') || '';
 let syncConnected = false;
 
 // Name lookup: "bijan robinson" → player object
@@ -517,28 +520,25 @@ async function checkDKAuth() {
 
 // Restore connection on page load if we had one — startSync called after PLAYERS loaded
 
-function startSync(draftId) {
+function startSync(draftId, autoPull = true) {
   syncDraftId = draftId.trim();
   if (!syncDraftId) return;
   localStorage.setItem('bba_sync_draft_id', syncDraftId);
-  // Reset state for new draft
   state = defaultState();
   saveState();
-  // Load this draft's saved position (so switching drafts doesn't bleed settings)
   loadDraftPosition(syncDraftId);
-  // Show draft view (hideDraftList clears all inline display overrides)
   hideDraftList();
+  document.getElementById('pullBtn').style.display = '';
   document.getElementById('disconnectBtn').style.display = '';
-  if (syncInterval) clearInterval(syncInterval);
-  pollSync();
-  syncInterval = setInterval(pollSync, 5000);
+  updateSyncUI(false, `Draft #${syncDraftId} — loading…`);
+  if (autoPull && PLAYERS.length) pullLatest();
 }
 
 function stopSync() {
-  if (syncInterval) { clearInterval(syncInterval); syncInterval = null; }
   syncDraftId = '';
   localStorage.removeItem('bba_sync_draft_id');
   syncConnected = false;
+  document.getElementById('pullBtn').style.display = 'none';
   showDraftList();
 }
 
@@ -566,69 +566,55 @@ let _draftListTimer = null;
 
 async function loadDraftList() {
   const el = document.getElementById('draftListCards');
+  el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:20px;">Loading…</div>`;
+
+  // Try DK API (live drafts) first, fall back to local DB
+  let dkDrafts = [];
+  try {
+    const r = await fetch('/api/my-dk-drafts');
+    const d = await r.json();
+    if (d.drafts?.length) dkDrafts = d.drafts.map(dr => ({ draft_id: dr.id, label: dr.name, source: 'dk' }));
+  } catch { /* server may not have auth yet */ }
+
+  let dbDrafts = [];
   try {
     const r = await fetch('/api/drafts/list');
-    const data = await r.json();
-    const drafts = data.drafts || [];
-    if (!drafts.length) {
-      el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:24px 10px;">
-        No drafts found yet.<br>
-        <span style="color:#ff9800;font-size:0.9em;">Open draftkings.com/mycontests with the extension running.</span>
-      </div>`;
-      return;
-    }
+    const d = await r.json();
+    dbDrafts = (d.drafts || []).filter(dr => !dkDrafts.some(dk => dk.draft_id === String(dr.draft_id)));
+  } catch { /* ignore */ }
 
-    el.innerHTML = drafts.map(d => {
-      const age = d.age_seconds != null
-        ? (d.age_seconds < 60 ? `${d.age_seconds}s ago` : `${Math.round(d.age_seconds/60)}m ago`)
-        : null;
-      const pos = d.pos_counts || {};
-      const posBadges = ['QB','RB','WR','TE'].map(p => pos[p]
-        ? `<span style="background:var(--${p});color:#fff;padding:1px 5px;border-radius:3px;font-size:0.7em;font-weight:700">${pos[p]}${p}</span>`
-        : '').join('');
-      const round = Math.ceil(Math.max(1, (d.overall_pick || 1) - 1) / (d.num_teams || 12));
+  const drafts = [...dkDrafts, ...dbDrafts];
 
-      // Pick urgency
-      let urgencyHtml = '';
-      let borderColor = '#2a3f5f';
-      let bgColor = '#1a2233';
-      if (!d.scanned) {
-        urgencyHtml = `<span style="color:#546e7a;font-size:0.75em;">⏳ Waiting for picks…</span>`;
-      } else if (d.my_position) {
-        const wait = picksUntilMyTurn(d.overall_pick, d.num_teams || 12, d.my_position);
-        if (wait === 0) {
-          urgencyHtml = `<span style="color:#ef5350;font-weight:700;font-size:0.88em;animation:pulse 1s infinite;">🔴 YOUR TURN</span>`;
-          borderColor = '#ef5350'; bgColor = '#2d1a1a';
-        } else if (wait <= 3) {
-          urgencyHtml = `<span style="color:#ff9800;font-weight:700;font-size:0.85em;">⚡ ${wait} pick${wait===1?'':'s'} away</span>`;
-          borderColor = '#ff9800'; bgColor = '#1f1700';
-        } else {
-          urgencyHtml = `<span style="color:#546e7a;font-size:0.78em;">${wait} picks away · Pos ${d.my_position}</span>`;
-        }
-      } else {
-        urgencyHtml = `<span style="color:#546e7a;font-size:0.75em;">Position unknown — re-paste BBA Live</span>`;
-      }
-
-      const label = d.label ? `<span style="color:#546e7a;font-size:0.78em;"> · ${d.label}</span>` : '';
-      const staleWarn = d.age_seconds > 30 ? `<span style="color:#546e7a;font-size:0.7em;"> · stale ${age}</span>` : '';
-
-      return `<div onclick="startSync('${d.draft_id}')"
-          style="background:${bgColor};border:1px solid ${borderColor};border-radius:8px;
-                 padding:12px 14px;cursor:pointer;border-left:4px solid ${borderColor};
-                 transition:background 0.2s;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-          <span style="font-weight:700;color:#4fc3f7;font-size:0.92em;">#${d.draft_id}${label}</span>
-          <span style="font-size:0.7em;color:#546e7a;">Rd ${round} · ${d.pick_count} picks${staleWarn}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
-          ${urgencyHtml}
-          <span style="display:flex;gap:3px;">${posBadges}</span>
-        </div>
-      </div>`;
-    }).join('');
-  } catch(e) {
-    el.innerHTML = `<div style="color:#ef5350;font-size:0.85em;padding:10px;">Error: ${e.message}</div>`;
+  if (!drafts.length) {
+    el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:24px 10px;">
+      No drafts found.<br>
+      <a href="/setup" style="color:#4fc3f7;font-size:0.9em;">Go to Setup to authenticate with DraftKings →</a>
+    </div>`;
+    return;
   }
+
+  el.innerHTML = drafts.map(d => {
+    const isDK = d.source === 'dk';
+    const label = d.label ? `<span style="color:#546e7a;font-size:0.78em;"> · ${d.label}</span>` : '';
+    const badge = isDK
+      ? `<span style="color:#81c784;font-size:0.72em;font-weight:700;">LIVE</span>`
+      : (() => {
+          const pos = d.pos_counts || {};
+          return ['QB','RB','WR','TE'].map(p => pos[p]
+            ? `<span style="background:var(--${p});color:#fff;padding:1px 5px;border-radius:3px;font-size:0.7em;font-weight:700">${pos[p]}${p}</span>`
+            : '').join('');
+        })();
+    return `<div onclick="startSync('${d.draft_id}')"
+        style="background:#1a2233;border:1px solid #2a3f5f;border-radius:8px;
+               padding:12px 14px;cursor:pointer;border-left:4px solid #2a3f5f;
+               transition:background 0.2s;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+        <span style="font-weight:700;color:#4fc3f7;font-size:0.92em;">#${d.draft_id}${label}</span>
+        <span style="display:flex;gap:3px;align-items:center;">${badge}</span>
+      </div>
+      <div style="color:#546e7a;font-size:0.75em;">Tap to load · pulls picks on demand</div>
+    </div>`;
+  }).join('');
 }
 
 function startDraftListPolling() {
@@ -675,52 +661,36 @@ function updateDebug(info) {
   document.getElementById('debugSummary').textContent = summary;
 }
 
-async function pollSync() {
+async function pullLatest() {
   if (!syncDraftId) return;
-
-  // ── Primary: DK intercept / API proxy ────────────────────────────
+  const btn = document.getElementById('pullBtn');
+  btn.disabled = true;
+  btn.textContent = 'Pulling…';
   try {
-    const r = await fetch(`/api/dk-draft-state/${encodeURIComponent(syncDraftId)}`);
+    const r = await fetch(`/api/dk-draft/pull/${encodeURIComponent(syncDraftId)}`, { method: 'POST' });
     const data = await r.json();
     const serverPicks = data.picks?.length ?? 0;
 
-    updateDebug({
-      serverOk: r.ok,
-      serverPicks,
-      matched: state.takenIds.size,
-      myTeam: state.myTeam.length,
-      error: data.error || null,
-    });
-
-
-    // Auto-apply my_position from server (detected via DK CSS class on desktop)
-    // Save per-draft so it doesn't bleed to other drafts
-    if (data.my_position && data.my_position !== settings.myPosition) {
-      saveDraftPosition(syncDraftId, data.my_position);
+    if (data.needs_auth) {
+      updateSyncUI(false, 'Not authenticated — visit /setup');
+      updateDebug({ serverOk: false, serverPicks: 0, matched: state.takenIds.size, myTeam: state.myTeam.length, error: 'Not authenticated' });
+      return;
     }
+
+    updateDebug({ serverOk: r.ok, serverPicks, matched: state.takenIds.size, myTeam: state.myTeam.length, error: data.error || null });
 
     if (data.picks?.length) {
       applyDKPickState(data);
-      updateDebug({ serverOk: r.ok, serverPicks, matched: state.takenIds.size, myTeam: state.myTeam.length, error: null });
-      // Always also poll extension — it has my_team, my_position, and may fill gaps
-      await pollExtensionState();
-      return;
+      updateDebug({ serverOk: true, serverPicks, matched: state.takenIds.size, myTeam: state.myTeam.length, error: null });
+    } else {
+      updateSyncUI(false, data.error || 'No picks yet');
     }
   } catch (e) {
-    updateDebug({ serverOk: false, serverPicks: null, matched: state.takenIds.size, myTeam: state.myTeam.length, error: String(e) });
-  }
-
-  // ── Fallback: extension push state ───────────────────────────────
-  await pollExtensionState();
-}
-
-async function pollExtensionState() {
-  try {
-    const r = await fetch(`/api/live-draft/state?draft_id=${encodeURIComponent(syncDraftId)}`);
-    const data = await r.json();
-    applyExtensionState(data);
-  } catch {
     updateSyncUI(false, 'Server unreachable');
+    updateDebug({ serverOk: false, serverPicks: null, matched: state.takenIds.size, myTeam: state.myTeam.length, error: String(e) });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Pull Latest';
   }
 }
 
@@ -773,6 +743,17 @@ function applyDKPickState(data) {
     if (maxPick + 1 > state.overallPick) {
       state.overallPick = maxPick + 1;
       changed = true;
+    }
+
+    // Auto-detect draft position from the user's round-1 pick number
+    // In a 12-team draft, round-1 pick N = position N
+    const myRd1 = picks.find(p => p.round === 1 && me && (p.username || '').toLowerCase().includes(me));
+    if (myRd1?.pick_number) {
+      const detectedPos = myRd1.pick_number;
+      if (detectedPos !== settings.myPosition) {
+        saveDraftPosition(syncDraftId, detectedPos);
+        changed = true;
+      }
     }
   }
 
@@ -1041,7 +1022,7 @@ function renderRecs() {
   const recs = getTopRecommendations(
     available, state.myTeam, pickForRec,
     settings.stackIntensity, exposure, settings.diversifyStrength,
-    5, settings.rbPriority
+    10, settings.rbPriority
   );
 
   const el = document.getElementById('recsList');
@@ -1053,7 +1034,7 @@ function renderRecs() {
         <span style="color:#546e7a">${PLAYERS.length} total</span>
        </div>`
     : `<div style="background:#1a1206;border:1px solid #5d4037;border-radius:6px;padding:7px 12px;margin-bottom:10px;font-size:0.78em;color:#ff9800;">
-        ⚠️ No picks synced yet — open your DK draft page with the extension running.
+        ⚠️ No picks synced yet — tap <b>Pull Latest</b> to load from DraftKings.
        </div>`;
 
   if (!recs.length) {
@@ -1118,14 +1099,8 @@ renderHeader();
 checkDKAuth();
 loadPlayers();
 
-// Show draft list on load if no active sync, or reconnect if we had one
-if (syncDraftId) {
-  // Had a previous draft — reconnect UI immediately (sync starts after players load)
-  hideDraftList();
-  document.getElementById('disconnectBtn').style.display = '';
-} else {
-  showDraftList();
-}
+// Always start at the draft list so the user can choose which draft
+showDraftList();
 </script>
 </body>
 </html>

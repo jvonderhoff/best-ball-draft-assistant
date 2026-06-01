@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Setup — Best Ball Assistant</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0b0f14; --panel: #111827; --card: #1a2233;
+      --border: #2a3f5f; --accent: #4fc3f7; --green: #81c784;
+      --red: #ef5350; --orange: #ff9800; --text: #e0e0e0; --muted: #78909c;
+    }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 15px; min-height: 100dvh;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .hdr {
+      background: #0d1520; border-bottom: 1px solid var(--border);
+      padding: 12px 16px; display: flex; align-items: center;
+      justify-content: space-between; position: sticky; top: 0; z-index: 100;
+    }
+    .hdr-title { font-weight: 700; color: var(--accent); font-size: 1em; }
+    .hdr a { color: var(--muted); font-size: 0.82em; text-decoration: none; }
+    .content { padding: 16px; display: flex; flex-direction: column; gap: 16px; max-width: 520px; margin: 0 auto; }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px;
+    }
+    .card h2 { font-size: 0.9em; font-weight: 700; color: var(--accent); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .status-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 7px;
+      background: #0d1520; border: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot.red   { background: var(--red); }
+    .dot.orange { background: var(--orange); }
+    .status-text { font-size: 0.85em; }
+    .status-text b { color: var(--text); }
+    .status-text small { color: var(--muted); display: block; margin-top: 2px; font-size: 0.82em; }
+    .step { display: flex; gap: 12px; margin-bottom: 14px; }
+    .step-num {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: var(--accent); color: #000;
+      font-size: 0.75em; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .step-body { flex: 1; }
+    .step-body b { color: var(--text); font-size: 0.88em; display: block; margin-bottom: 4px; }
+    .step-body p { color: var(--muted); font-size: 0.8em; line-height: 1.5; }
+    .step-body code { font-family: monospace; font-size: 0.82em; color: var(--accent); background: #0d1520; padding: 2px 5px; border-radius: 3px; }
+    .btn {
+      display: block; width: 100%; padding: 12px;
+      background: var(--accent); color: #000;
+      border: none; border-radius: 7px;
+      font-size: 0.92em; font-weight: 700; cursor: pointer;
+      text-align: center; text-decoration: none;
+      margin-top: 10px;
+    }
+    .btn.secondary {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .btn.danger {
+      background: transparent; border: 1px solid var(--red);
+      color: var(--red); padding: 7px 12px; width: auto; display: inline-block; font-size: 0.8em;
+    }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .input-row { display: flex; gap: 8px; margin-top: 10px; }
+    .input-row input {
+      flex: 1; background: #0d1520; border: 1px solid var(--border);
+      color: var(--text); border-radius: 7px; padding: 11px 12px;
+      font-size: 0.88em; outline: none;
+    }
+    .input-row input:focus { border-color: var(--accent); }
+    .input-row input::placeholder { color: var(--muted); }
+    .input-row .add-btn {
+      background: var(--accent); color: #000; border: none;
+      border-radius: 7px; padding: 11px 16px;
+      font-size: 0.88em; font-weight: 700; cursor: pointer; white-space: nowrap;
+    }
+    .draft-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    .draft-card {
+      background: #0d1520; border: 1px solid var(--border); border-radius: 7px;
+      padding: 11px 13px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .draft-card-info { flex: 1; }
+    .draft-card-id { font-size: 0.85em; font-weight: 700; color: var(--accent); }
+    .draft-card-name { font-size: 0.75em; color: var(--muted); margin-top: 2px; }
+    .msg { font-size: 0.8em; color: var(--muted); text-align: center; padding: 16px 0; }
+    .msg.error { color: var(--red); }
+    .msg.success { color: var(--green); }
+  </style>
+</head>
+<body>
+<div class="hdr">
+  <span class="hdr-title">Best Ball Setup</span>
+  <a href="/recommend">← Live Draft</a>
+</div>
+
+<div class="content">
+
+  <!-- Auth status -->
+  <div class="card">
+    <h2>DraftKings Auth</h2>
+    <div class="status-row" id="authStatus">
+      <div class="dot orange" id="authDot"></div>
+      <div class="status-text"><b id="authLabel">Checking…</b><small id="authDetail"></small></div>
+    </div>
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <b>Log in to DraftKings in Firefox</b>
+        <p>The app reads your session from Firefox's cookie store automatically — no copy-paste needed.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <b>That's it for auth</b>
+        <p>Once Firefox is logged in, tap "Pull Latest" in the draft view to sync picks. Re-login to DK in Firefox if picks stop loading.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add draft manually -->
+  <div class="card">
+    <h2>My Active Drafts</h2>
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <b>Open your DK draft in a browser</b>
+        <p>When you get a "it's your pick" notification, open the draft. The URL will look like:<br>
+        <code>draftkings.com/draft/snake/12345678</code></p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <b>Copy the URL or just the ID and paste it below</b>
+        <p>The number at the end of the URL is your draft ID.</p>
+      </div>
+    </div>
+    <div class="input-row">
+      <input id="draftInput" type="text" placeholder="Paste URL or draft ID (e.g. 12345678)" autocomplete="off" autocorrect="off" spellcheck="false">
+      <button class="add-btn" onclick="addDraft()">Add</button>
+    </div>
+    <div id="addMsg"></div>
+
+    <div id="draftListArea">
+      <p class="msg">Loading saved drafts…</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+async function checkAuth() {
+  try {
+    const r = await fetch('/api/dk-auth/status');
+    const d = await r.json();
+    const dot = document.getElementById('authDot');
+    const label = document.getElementById('authLabel');
+    const detail = document.getElementById('authDetail');
+    if (d.authenticated) {
+      dot.className = 'dot green';
+      label.textContent = 'Authenticated';
+      const hrs = Math.round(d.age_seconds / 3600);
+      detail.textContent = `Session saved ${hrs < 1 ? 'just now' : hrs + 'h ago'} · ${d.cookie_keys?.length ?? 0} cookies`;
+    } else {
+      dot.className = 'dot red';
+      label.textContent = 'Not authenticated';
+      detail.textContent = 'Log in to DraftKings in Firefox';
+    }
+  } catch {
+    document.getElementById('authLabel').textContent = 'Server unreachable';
+  }
+}
+
+async function loadSavedDrafts() {
+  const area = document.getElementById('draftListArea');
+  try {
+    const r = await fetch('/api/dk-draft/saved-ids');
+    const d = await r.json();
+    const drafts = d.drafts || [];
+    if (!drafts.length) {
+      area.innerHTML = '<p class="msg">No drafts saved yet. Add one above.</p>';
+      return;
+    }
+    area.innerHTML = '<div class="draft-list">' + drafts.map(dr => `
+      <div class="draft-card">
+        <div class="draft-card-info">
+          <div class="draft-card-id">#${dr.id}</div>
+          <div class="draft-card-name">${dr.name || 'Best Ball Draft'}</div>
+        </div>
+        <button class="btn danger" onclick="removeDraft('${dr.id}')">Remove</button>
+      </div>`).join('') + '</div>';
+  } catch(e) {
+    area.innerHTML = `<p class="msg error">Error loading drafts: ${e.message}</p>`;
+  }
+}
+
+async function addDraft() {
+  const input = document.getElementById('draftInput');
+  const msg = document.getElementById('addMsg');
+  const val = input.value.trim();
+  if (!val) return;
+
+  msg.innerHTML = '<p class="msg">Adding…</p>';
+  try {
+    const r = await fetch('/api/dk-draft/save-id', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({draft_id: val}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      msg.innerHTML = `<p class="msg success">Draft #${d.draft_id} saved!</p>`;
+      input.value = '';
+      await loadSavedDrafts();
+      setTimeout(() => { msg.innerHTML = ''; }, 3000);
+    } else {
+      msg.innerHTML = `<p class="msg error">${d.error || 'Failed to save'}</p>`;
+    }
+  } catch(e) {
+    msg.innerHTML = `<p class="msg error">Error: ${e.message}</p>`;
+  }
+}
+
+async function removeDraft(draftId) {
+  await fetch(`/api/dk-draft/delete-id/${draftId}`, {method: 'DELETE'});
+  await loadSavedDrafts();
+}
+
+// Allow pressing Enter in the input
+document.getElementById('draftInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addDraft();
+});
+
+// Init
+checkAuth();
+loadSavedDrafts();
+</script>
+</body>
+</html>

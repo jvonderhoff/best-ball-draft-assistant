@@ -1259,18 +1259,24 @@ function togglePanel() {
 }
 
 function makeDraggable(handle, target) {
-  let startX, startY, startRight, startTop;
+  let startX, startY, startLeft, startTop;
   handle.addEventListener('mousedown', e => {
     e.preventDefault();
     startX = e.clientX; startY = e.clientY;
     const rect = target.getBoundingClientRect();
-    startRight = window.innerWidth - rect.right;
-    startTop = rect.top;
+    startLeft = rect.left;
+    startTop  = rect.top;
+    // Switch from right-anchored to left-anchored so free dragging works in both directions
+    target.style.right = 'auto';
+    target.style.left  = startLeft + 'px';
     const onMove = e => {
-      target.style.right = Math.max(0, startRight + (startX - e.clientX)) + 'px';
-      target.style.top   = Math.max(0, startTop  + (e.clientY - startY))  + 'px';
+      target.style.left = (startLeft + (e.clientX - startX)) + 'px';
+      target.style.top  = (startTop  + (e.clientY - startY)) + 'px';
     };
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
@@ -1440,7 +1446,7 @@ function renderSuggestion() {
   const box = document.getElementById('bba-suggestion');
   if (!state.isSetup || !state.available.length) { box.style.display = 'none'; return; }
 
-  const recs = getTopRecommendations(state.available, state.myTeam, state.overallPick, state.stackIntensity, exposure, state.diversifyStrength, 5, state.rbPriority);
+  const recs = getTopRecommendations(state.available, state.myTeam, state.overallPick, state.stackIntensity, exposure, state.diversifyStrength, 10, state.rbPriority);
   if (!recs.length) { box.style.display = 'none'; return; }
 
   const myTurn = isMyTurn(state.overallPick, state.numTeams, state.myPosition);
