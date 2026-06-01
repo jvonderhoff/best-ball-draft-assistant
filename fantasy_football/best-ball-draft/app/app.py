@@ -1507,11 +1507,12 @@ def sync_cookies():
     if expected and api_key != expected:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    cookies = (request.json or {}).get('cookies', {})
+    body = request.json or {}
+    cookies = body.get('cookies', {})
     if not cookies:
         return jsonify({'error': 'No cookies provided'}), 400
 
-    # Push into api_fetcher and persist to disk
+    # Push cookies into api_fetcher and persist to disk
     from app.data.api_fetcher import set_synced_cookies
     set_synced_cookies(cookies)
     try:
@@ -1519,8 +1520,24 @@ def sync_cookies():
             json.dump(cookies, f)
     except Exception as e:
         print(f'[Cookies] Could not persist cookies: {e}')
-
     print(f'[Cookies] Synced {len(cookies)} DK cookies')
+
+    # Sync GUID if provided
+    guid = body.get('guid', '')
+    if guid:
+        from app.data.api_fetcher import _save_user_guid
+        _save_user_guid(guid)
+        print(f'[Cookies] Synced user GUID: {guid[:8]}…')
+
+    # Sync saved draft IDs if provided
+    synced_drafts = body.get('saved_drafts', {})
+    if synced_drafts:
+        for did, info in synced_drafts.items():
+            if did not in _saved_draft_ids:
+                _saved_draft_ids[did] = info
+        _persist_saved_drafts()
+        print(f'[Cookies] Synced {len(synced_drafts)} saved draft ID(s)')
+
     return jsonify({'ok': True, 'count': len(cookies)})
 
 

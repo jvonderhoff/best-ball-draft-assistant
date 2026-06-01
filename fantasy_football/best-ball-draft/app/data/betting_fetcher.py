@@ -13,7 +13,12 @@ Returns: {player_name: {prop_type: {line, over_odds, under_odds}}}
 
 import asyncio
 import re
-from playwright.async_api import async_playwright
+
+try:
+    from playwright.async_api import async_playwright
+    _PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    _PLAYWRIGHT_AVAILABLE = False
 
 DK_NFL_URL = 'https://sportsbook.draftkings.com/leagues/football/nfl'
 
@@ -202,5 +207,9 @@ def fetch_season_props(verbose=True) -> dict:
     """
     Scrape DK Sportsbook season player prop O/U lines.
     Returns {player_name: {prop_type: {line, over_odds, under_odds}}}
+    Returns {} if Playwright is not installed.
     """
+    if not _PLAYWRIGHT_AVAILABLE:
+        print('  [Props] Playwright not installed — skipping prop fetch')
+        return {}
     return asyncio.run(_run_scraper(verbose=verbose))
