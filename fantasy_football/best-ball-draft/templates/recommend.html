@@ -1019,7 +1019,8 @@ function renderPlayerList() {
   const players = getVisiblePlayers();
   const ul = document.getElementById('playerList');
   if (!players.length) { ul.innerHTML = '<div class="spinner">No players found</div>'; return; }
-  const myTeams = new Set(state.myTeam.map(p => p.team));
+  const myTeams  = new Set(state.myTeam.map(p => p.team));
+  const myQBTeams = new Set(state.myTeam.filter(p => p.pos === 'QB').map(p => p.team));
   ul.innerHTML = players.map(p => {
     const isTaken    = state.takenIds.has(p.id);
     const isMine     = state.myTeam.some(t => t.id === p.id);
@@ -1027,11 +1028,18 @@ function renderPlayerList() {
     const isSelected = selectedPlayer?.id === p.id;
     const badge = isTaken
       ? `<span class="taken-by ${isMine ? 'mine' : 'opp'}">${isMine ? 'Mine' : 'Taken'}</span>` : '';
+
+    // ⚡ QB stack icon: WR/TE whose QB I own, or QB whose WR/TE I own
+    const isQBStack = !isTaken && (
+      (['WR','TE'].includes(p.pos) && myQBTeams.has(p.team)) ||
+      (p.pos === 'QB' && state.myTeam.some(t => ['WR','TE'].includes(t.pos) && t.team === p.team))
+    );
+
     return `<div class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
          data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
       <div class="adp-badge">${p.adp}</div>
       <div style="flex:1">
-        <div class="p-name">${p.name}</div>
+        <div class="p-name">${p.name}${isQBStack ? ' <span style="font-size:0.75em;color:var(--accent)" title="QB stack">⚡</span>' : ''}</div>
         <div class="p-meta">${p.pos} · ${p.team}${p.bye ? ' · bye '+p.bye : ''}</div>
       </div>
       ${p.week17 ? `<div style="font-size:0.72em;font-weight:700;min-width:28px;text-align:right;margin-right:6px;color:${myTeams.has(p.week17)?'var(--green)':'var(--muted)'}">wk17 ${p.week17}</div>` : ''}
