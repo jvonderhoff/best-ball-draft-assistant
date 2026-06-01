@@ -1108,12 +1108,17 @@ def dk_auth():
 
 @app.route('/api/dk-auth/status', methods=['GET'])
 def dk_auth_status():
-    """Check whether we have a DK cookie stored."""
-    if not _dk_session['cookie']:
-        return jsonify({'authenticated': False})
-    age = round(time.time() - (_dk_session['updated_at'] or 0))
-    keys = [p.split('=')[0].strip() for p in _dk_session['cookie'].split(';') if '=' in p]
-    return jsonify({'authenticated': True, 'age_seconds': age, 'cookie_keys': keys})
+    """Check whether we have DK cookies available (synced or local session)."""
+    from app.data.api_fetcher import _synced_cookies
+    if _synced_cookies:
+        age = round(time.time() - (os.path.getmtime(_COOKIES_FILE) if os.path.exists(_COOKIES_FILE) else 0))
+        return jsonify({'authenticated': True, 'age_seconds': age,
+                        'cookie_keys': list(_synced_cookies.keys())[:5]})
+    if _dk_session.get('cookie'):
+        age = round(time.time() - (_dk_session['updated_at'] or 0))
+        keys = [p.split('=')[0].strip() for p in _dk_session['cookie'].split(';') if '=' in p]
+        return jsonify({'authenticated': True, 'age_seconds': age, 'cookie_keys': keys})
+    return jsonify({'authenticated': False})
 
 
 @app.route('/api/my-dk-drafts', methods=['GET'])
