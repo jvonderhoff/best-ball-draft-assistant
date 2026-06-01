@@ -1035,7 +1035,7 @@ function renderPlayerList() {
         <div class="p-name">${p.name}</div>
         <div class="p-meta">${p.pos} · ${p.team}${p.bye ? ' · bye '+p.bye : ''}</div>
       </div>
-      ${p.week17 ? `<div style="font-size:0.72em;color:var(--muted);font-weight:700;min-width:28px;text-align:right">vs ${p.week17}</div>` : ''}
+      ${p.week17 ? `<div style="font-size:0.72em;color:var(--muted);font-weight:700;min-width:28px;text-align:right">wk17 ${p.week17}</div>` : ''}
       ${badge}
     </div>`;
   }).join('');
