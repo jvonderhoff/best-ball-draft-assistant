@@ -130,7 +130,11 @@ function byeWeekWarning(player, myTeam) {
 // ── Core value calculation ────────────────────────────────────────────────────
 
 function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', rbPriority = 'strong') {
-  const adpValue = Math.max(0, 100 - player.adp);
+  // Use inverse ADP so value is always positive and naturally orders players.
+  // adp=1 → 1000, adp=50 → 20, adp=100 → 10, adp=200 → 5, adp=500 → 2
+  // This ensures late-round players still have relative ordering rather than
+  // all collapsing to 0 when ADP > 100 (which caused random late-round picks).
+  const adpValue = 1000 / (player.adp || 1);
   const pos = player.pos;
 
   // ADP is the primary signal. RB and WR compete on pure ADP.
