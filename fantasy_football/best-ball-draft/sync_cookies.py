@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-sync_cookies.py — Push Firefox DraftKings cookies to the Render server.
-
-Run this once after deploying, and again whenever DK logs you out (~every few weeks).
+sync_cookies.py — Push Firefox DraftKings cookies, user GUID, and saved draft IDs
+to the Render server. Run this once after deploying, and again if DK logs you out.
 
     python3 sync_cookies.py
 
@@ -16,7 +15,10 @@ import sqlite3
 import tempfile
 import requests
 
-CONFIG_FILE = os.path.expanduser('~/.bba_sync_config')
+CONFIG_FILE   = os.path.expanduser('~/.bba_sync_config')
+BASEDIR       = os.path.dirname(os.path.abspath(__file__))
+GUID_FILE     = os.path.join(BASEDIR, 'app', 'data', '.dk_user_guid')
+DRAFTS_FILE   = os.path.join(BASEDIR, '.saved_drafts.json')
 
 
 def load_config():
@@ -30,20 +32,18 @@ def load_config():
 def save_config(cfg):
     with open(CONFIG_FILE, 'w') as f:
         json.dump(cfg, f, indent=2)
-    os.chmod(CONFIG_FILE, 0o600)  # readable only by you
+    os.chmod(CONFIG_FILE, 0o600)
 
 
 def get_config():
     cfg = load_config()
-
     if not cfg.get('url') or not cfg.get('api_key'):
         print('First-time setup — enter your Render details.')
         print('(Find these in the Render dashboard after deploying)\n')
-        cfg['url']     = input('Render app URL (e.g. https://best-ball-assistant.onrender.com): ').strip().rstrip('/')
-        cfg['api_key'] = input('BBA_API_KEY (from Render environment variables): ').strip()
+        cfg['url']     = input('Render app URL (e.g. https://best-ball-draft-assistant.onrender.com): ').strip().rstrip('/')
+        cfg['api_key'] = input('BBA_API_KEY (from Render → Environment): ').strip()
         save_config(cfg)
         print(f'\nConfig saved to {CONFIG_FILE}\n')
-
     return cfg
 
 
@@ -61,7 +61,7 @@ def read_firefox_dk_cookies():
             db_path = matches[0]
             break
     if not db_path:
-        raise FileNotFoundError('Firefox cookie database not found — make sure Firefox is installed')
+        raise FileNotFoundError('Firefox cookie database not found')
 
     tmp = tempfile.mktemp(suffix='.sqlite')
     try:
@@ -76,8 +76,23 @@ def read_firefox_dk_cookies():
             os.unlink(tmp)
         except Exception:
             pass
-
     return {name: value for name, value in rows}
+
+
+def read_guid():
+    try:
+        with open(GUID_FILE) as f:
+            return f.read().strip()
+    except Exception:
+        return None
+
+
+def read_saved_drafts():
+    try:
+        with open(DRAFTS_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 def main():
@@ -94,22 +109,38 @@ def main():
         print('ERROR: No DraftKings cookies found — make sure you are logged in to DraftKings in Firefox.')
         return
 
-    print(f'Found {len(cookies)} cookies. Syncing to {cfg["url"]}…')
+    guid         = read_guid()
+    saved_drafts = read_saved_drafts()
+
+    payload = {'cookies': cookies}
+    if guid:
+        payload['guid'] = guid
+    if saved_drafts:
+        payload['saved_drafts'] = saved_drafts
+
+    print(f'Found {len(cookies)} cookies'
+          + (f', GUID: {guid[:8]}…' if guid else ', no GUID cached')
+          + (f', {len(saved_drafts)} saved draft(s)' if saved_drafts else ', no saved drafts'))
+    print(f'Syncing to {cfg["url"]}…')
+
     try:
         r = requests.post(
             f'{cfg["url"]}/api/sync-cookies',
-            json={'cookies': cookies},
+            json=payload,
             headers={'X-Api-Key': cfg['api_key']},
             timeout=30,
         )
         r.raise_for_status()
         data = r.json()
         print(f'✓ Synced {data.get("count", "?")} cookies. DraftKings auth is live on Render.')
+        if guid:
+            print('✓ GUID synced.')
+        if saved_drafts:
+            print(f'✓ {len(saved_drafts)} draft ID(s) synced.')
     except requests.HTTPError as e:
         print(f'ERROR {e.response.status_code}: {e.response.text[:200]}')
         if e.response.status_code == 401:
             print('Hint: API key mismatch — check BBA_API_KEY in Render environment variables.')
-            # Clear saved key so next run prompts again
             cfg.pop('api_key', None)
             save_config(cfg)
     except requests.ConnectionError:
