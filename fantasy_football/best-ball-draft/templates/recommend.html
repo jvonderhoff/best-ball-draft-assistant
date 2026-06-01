@@ -1205,7 +1205,7 @@ function renderRoster() {
     : Object.entries(byPos).map(([pos, players]) => players.length === 0 ? '' :
         `<div style="margin-bottom:14px">
           <div class="pos-header">${pos} (${players.length})</div>
-          ${players.map(p => `<div class="roster-chip ${pos}"><span>${p.name}</span><span class="rnd">Rd${p.round||'?'}</span></div>`).join('')}
+          ${players.map(p => `<div class="roster-chip ${pos}"><span>${p.name}</span><span class="rnd" style="color:var(--muted)">${p.bye?'bye'+p.bye+' · ':''}Rd${p.round||'?'}</span></div>`).join('')}
         </div>`
       ).join('');
 }
