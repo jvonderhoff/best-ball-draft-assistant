@@ -1165,6 +1165,56 @@ def my_dk_drafts():
                     'message': 'No drafts found. Go to Setup and paste your DK draft URL.'})
 
 
+@app.route('/api/dk-draft/queue/<draft_id>', methods=['POST'])
+def dk_draft_queue(draft_id):
+    """Add a player to the DK draft queue via direct API call."""
+    from app.data.api_fetcher import _dk_session
+    data = request.get_json(silent=True) or {}
+    draftable_id = data.get('draftable_id')
+    if not draftable_id:
+        return jsonify({'error': 'draftable_id required'}), 400
+
+    entry_id = (_saved_draft_ids.get(str(draft_id)) or {}).get('entry_id')
+    if not entry_id:
+        # Try getting it from pick cache
+        cache = _dk_pick_cache.get(str(draft_id), {})
+        my_picks = [p for p in cache.get('picks', []) if p.get('username') == 'jvonderhoff']
+        # entry_id not directly in cache - fall back to live drafts
+        if not entry_id:
+            from app.data.api_fetcher import _load_user_guid
+            guid = _load_user_guid()
+            if guid:
+                session = _dk_session(referer=f'https://www.draftkings.com/draft/snake/{draft_id}')
+                if session:
+                    try:
+                        r = session.get(f'https://api.draftkings.com/drafts/v1/users/{guid}/drafts/live?format=json', timeout=10)
+                        if r.ok:
+                            for ud in r.json().get('userDrafts', []):
+                                if str(ud.get('contestId')) == str(draft_id):
+                                    entry_id = str(ud.get('entryId', ''))
+                                    _saved_draft_ids[str(draft_id)]['entry_id'] = entry_id
+                                    _persist_saved_drafts()
+                                    break
+                    except Exception:
+                        pass
+
+    if not entry_id:
+        return jsonify({'error': 'Could not find entry_id for this draft'}), 400
+
+    session = _dk_session(referer=f'https://www.draftkings.com/draft/snake/{draft_id}')
+    if not session:
+        return jsonify({'error': 'No DK cookies — run sync_cookies.py'}), 401
+
+    try:
+        url = f'https://api.draftkings.com/drafts/v1/snake/{draft_id}/entries/{entry_id}/draftPreferences/queue/players?format=json'
+        r = session.post(url, json={'draftableId': int(draftable_id)}, timeout=10)
+        if r.ok:
+            return jsonify({'ok': True, 'response': r.json()})
+        return jsonify({'error': f'DK returned {r.status_code}', 'body': r.text[:200]}), r.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/dk-draft/pull/<draft_id>', methods=['POST'])
 def dk_draft_pull(draft_id):
     """Fetch current picks via direct DK API calls."""

@@ -1170,13 +1170,46 @@ function renderRecs() {
 
   el.innerHTML = statusBar + recs.map((r, i) => {
     const p = r.player;
+    const draftableId = p.id?.replace('dk_', '');
     return `<div class="rec-card">
       <div class="rec-rank">#${i+1}</div>
-      <div><span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span></div>
-      <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ${useCustomRankings ? 'Rank' : 'ADP'} ${Math.round(p.adp)}</div>
-      ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div>
+          <div><span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span></div>
+          <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ${useCustomRankings ? 'Rank' : 'ADP'} ${Math.round(p.adp)}</div>
+          ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
+        </div>
+        ${syncDraftId && draftableId ? `<button onclick="queuePlayer('${syncDraftId}','${draftableId}',this)" style="flex-shrink:0;background:#0d2f4a;color:#4fc3f7;border:1px solid #1565c0;border-radius:5px;padding:5px 10px;font-size:0.75em;font-weight:700;cursor:pointer;white-space:nowrap">+ Queue</button>` : ''}
+      </div>
     </div>`;
   }).join('');
+}
+
+async function queuePlayer(draftId, draftableId, btn) {
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const r = await fetch(`/api/dk-draft/queue/${draftId}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({draftable_id: draftableId}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      btn.textContent = '✓';
+      btn.style.color = 'var(--green)';
+      btn.style.borderColor = 'var(--green)';
+      setTimeout(() => { btn.textContent = orig; btn.style.color = ''; btn.style.borderColor = ''; btn.disabled = false; }, 2000);
+    } else {
+      btn.textContent = '✗';
+      btn.style.color = 'var(--red)';
+      setTimeout(() => { btn.textContent = orig; btn.style.color = ''; btn.disabled = false; }, 2000);
+    }
+  } catch {
+    btn.textContent = '✗';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+  }
 }
 
 // ── Roster ─────────────────────────────────────────────────────────────────────
