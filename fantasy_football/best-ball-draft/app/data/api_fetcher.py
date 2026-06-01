@@ -220,7 +220,7 @@ def _parse_dk_api_responses(responses: dict) -> list:
         if not team or team in ('FA', 'N/A', ''):
             continue
 
-        adp = p.get('averageDraftPosition') or p.get('rank')
+        adp = p.get('averageDraftPosition')
         try:
             adp = float(adp) if adp is not None else None
         except (ValueError, TypeError):
