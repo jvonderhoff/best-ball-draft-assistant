@@ -49,21 +49,19 @@ def get_config():
         cfg['api_key'] = input('BBA_API_KEY (from Render → Environment): ').strip()
         changed = True
 
-    if not cfg.get('render_api_key'):
+    if 'render_api_key' not in cfg:
         print('\nOptional: Render API key lets cookies persist across deploys automatically.')
         print('Get it from: Render dashboard → Account (top-right) → API Keys → Create API Key')
         key = input('Render API Key (press Enter to skip): ').strip()
-        if key:
-            cfg['render_api_key'] = key
-            changed = True
+        cfg['render_api_key'] = key  # store even if empty, to avoid prompting again
+        changed = True
 
-    if cfg.get('render_api_key') and not cfg.get('render_service_id'):
+    if cfg.get('render_api_key') and 'render_service_id' not in cfg:
         print('\nRender Service ID — from your service URL:')
         print('  dashboard.render.com/web/srv-XXXXXXXXX  →  srv-XXXXXXXXX')
         sid = input('Render Service ID (press Enter to skip): ').strip()
-        if sid:
-            cfg['render_service_id'] = sid
-            changed = True
+        cfg['render_service_id'] = sid
+        changed = True
 
     if changed:
         save_config(cfg)
