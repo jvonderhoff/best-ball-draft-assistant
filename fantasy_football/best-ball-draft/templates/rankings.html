@@ -179,7 +179,8 @@
 
     td { padding: 8px 12px; font-size: 0.85em; vertical-align: middle; }
 
-    .col-handle { width: 24px; color: #2a3f5f; font-size: 1em; cursor: grab; padding-right: 4px; }
+    .col-handle { width: 24px; color: #2a3f5f; font-size: 1em; cursor: grab; padding-right: 4px; touch-action: none; user-select: none; -webkit-user-select: none; }
+    @media (max-width: 600px) { .col-handle { font-size: 1.3em; padding: 6px 8px; color: #4a6a8a; } }
     .col-rank   { width: 80px; }
     .col-name   { min-width: 160px; }
     .col-pos    { width: 60px; }
@@ -549,9 +550,34 @@ function bindRowEvents(tbody) {
     });
   });
 
-  // Drag-and-drop reorder
+  // ── Drag + Touch reorder ──────────────────────────────────────────────────
   let dragSrc = null;
+
+  function reorderRows(fromId, toId) {
+    const fromI = displayed.findIndex(p => p.player_id === fromId);
+    const toI   = displayed.findIndex(p => p.player_id === toId);
+    if (fromI === -1 || toI === -1 || fromI === toI) return;
+    const [moved] = displayed.splice(fromI, 1);
+    displayed.splice(toI, 0, moved);
+    displayed.forEach((p, i) => {
+      const g = allPlayers.find(a => a.player_id === p.player_id);
+      if (g) g.custom_rank = i + 1;
+      p.custom_rank = i + 1;
+    });
+    renderTable();
+    markDirty();
+  }
+
+  function rowAtY(y) {
+    for (const r of tbody.querySelectorAll('tr[data-id]')) {
+      const rect = r.getBoundingClientRect();
+      if (y >= rect.top && y <= rect.bottom) return r;
+    }
+    return null;
+  }
+
   tbody.querySelectorAll('tr[draggable]').forEach(row => {
+    // ── Mouse drag ──
     row.addEventListener('dragstart', e => {
       dragSrc = row;
       row.classList.add('dragging');
@@ -570,26 +596,36 @@ function bindRowEvents(tbody) {
       e.preventDefault();
       if (!dragSrc || dragSrc === row) return;
       row.classList.remove('drag-over');
+      reorderRows(dragSrc.dataset.id, row.dataset.id);
+    });
 
-      // Reorder displayed array
-      const fromId = dragSrc.dataset.id;
-      const toId   = row.dataset.id;
-      const fromI  = displayed.findIndex(p => p.player_id === fromId);
-      const toI    = displayed.findIndex(p => p.player_id === toId);
-      if (fromI === -1 || toI === -1) return;
+    // ── Touch drag (mobile) ──
+    const handle = row.querySelector('.col-handle');
+    if (!handle) return;
 
-      const [moved] = displayed.splice(fromI, 1);
-      displayed.splice(toI, 0, moved);
+    handle.addEventListener('touchstart', e => {
+      dragSrc = row;
+      row.classList.add('dragging');
+      // prevent page scroll while dragging
+      e.preventDefault();
+    }, { passive: false });
 
-      // Re-assign sequential custom ranks across the displayed list
-      displayed.forEach((p, i) => {
-        const globalP = allPlayers.find(a => a.player_id === p.player_id);
-        if (globalP) globalP.custom_rank = i + 1;
-        p.custom_rank = i + 1;
-      });
+    handle.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      tbody.querySelectorAll('tr').forEach(r => r.classList.remove('drag-over'));
+      const target = rowAtY(touch.clientY);
+      if (target && target !== dragSrc) target.classList.add('drag-over');
+    }, { passive: false });
 
-      renderTable();
-      markDirty();
+    handle.addEventListener('touchend', e => {
+      const touch = e.changedTouches[0];
+      tbody.querySelectorAll('tr').forEach(r => r.classList.remove('drag-over'));
+      row.classList.remove('dragging');
+      if (!dragSrc) return;
+      const target = rowAtY(touch.clientY);
+      if (target && target !== dragSrc) reorderRows(dragSrc.dataset.id, target.dataset.id);
+      dragSrc = null;
     });
   });
 }
