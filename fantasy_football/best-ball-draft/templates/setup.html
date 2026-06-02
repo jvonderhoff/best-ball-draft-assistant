@@ -133,6 +133,8 @@
   <!-- Add draft manually -->
   <div class="card">
     <h2>My Active Drafts</h2>
+    <button class="btn" id="refreshDraftsBtn" onclick="refreshFromDK()" style="margin-bottom:12px">↻ Refresh from DraftKings</button>
+    <div id="refreshMsg"></div>
     <div class="step">
       <div class="step-num">1</div>
       <div class="step-body">
@@ -243,6 +245,31 @@ async function removeDraft(draftId) {
 document.getElementById('draftInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') addDraft();
 });
+
+async function refreshFromDK() {
+  const btn = document.getElementById('refreshDraftsBtn');
+  const msg = document.getElementById('refreshMsg');
+  btn.disabled = true;
+  btn.textContent = '↻ Fetching…';
+  msg.innerHTML = '';
+  try {
+    const r = await fetch('/api/dk-draft/refresh-from-dk', {method: 'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      const newCount = d.added.length;
+      msg.innerHTML = `<p class="msg success">✓ Found ${d.total} live draft(s)${newCount ? ` · Added ${newCount} new` : ' · No new drafts'}</p>`;
+      await loadSavedDrafts();
+    } else {
+      msg.innerHTML = `<p class="msg error">${d.error || 'Failed to fetch drafts'}</p>`;
+    }
+  } catch(e) {
+    msg.innerHTML = `<p class="msg error">Error: ${e.message}</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Refresh from DraftKings';
+    setTimeout(() => { msg.innerHTML = ''; }, 4000);
+  }
+}
 
 // Init
 checkAuth();

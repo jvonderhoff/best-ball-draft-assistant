@@ -1272,6 +1272,31 @@ def setup_page():
     return render_template('setup.html')
 
 
+@app.route('/api/dk-draft/refresh-from-dk', methods=['POST'])
+def refresh_drafts_from_dk():
+    """Auto-discover all current live drafts from DK and add any new ones."""
+    from app.data.api_fetcher import fetch_my_dk_drafts
+    drafts = fetch_my_dk_drafts()
+    if not drafts:
+        return jsonify({'ok': False, 'error': 'Could not reach DraftKings — check auth'}), 400
+    added = []
+    for d in drafts:
+        did = str(d['id'])
+        if did not in _saved_draft_ids:
+            _saved_draft_ids[did] = {
+                'name': d.get('name', f'Draft #{did}'),
+                'entry_id': d.get('entry_id'),
+                'saved_at': time.time(),
+            }
+            added.append(did)
+        else:
+            # Update entry_id if we now have it
+            if d.get('entry_id'):
+                _saved_draft_ids[did]['entry_id'] = d['entry_id']
+    _persist_saved_drafts()
+    return jsonify({'ok': True, 'total': len(drafts), 'added': added})
+
+
 # ── Saved draft IDs (user-entered, persisted to disk) ─────────────────────────
 _SAVED_DRAFTS_FILE = os.path.join(basedir, '.saved_drafts.json')
 _saved_draft_ids = {}   # draft_id -> {name, saved_at}
