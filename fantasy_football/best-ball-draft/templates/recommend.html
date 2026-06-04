@@ -194,9 +194,8 @@
     .p-pos { font-size: 0.65em; font-weight: 700; padding: 1px 4px; border-radius: 3px; color: #fff; flex-shrink: 0; }
     .p-pos.QB { background: var(--QB); } .p-pos.RB { background: var(--RB); }
     .p-pos.WR { background: var(--WR); } .p-pos.TE { background: var(--TE); }
-    .p-body { flex: 1; min-width: 0; }
-    .p-name { font-weight: 600; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .p-sub  { font-size: 0.7em; color: var(--muted); margin-top: 1px; }
+    .p-body { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.85em; font-weight: 600; }
+    .p-body .p-sub { font-weight: 400; color: var(--muted); font-size: 0.85em; }
     .p-right { flex-shrink: 0; text-align: right; font-size: 0.7em; color: var(--muted); line-height: 1.6; }
     .taken-by { font-size: 0.65em; font-weight: 700; padding: 1px 5px; border-radius: 10px; flex-shrink: 0; }
     .taken-by.mine { background: #1a3a4d; color: var(--accent); }
@@ -1086,10 +1085,7 @@ function renderPlayerList() {
          data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
       <div class="adp-badge">${p.adp}</div>
       <span class="p-pos ${p.pos}">${p.pos}</span>
-      <div class="p-body">
-        <div class="p-name">${p.name}${isQBStack ? ' ⚡' : ''}</div>
-        <div class="p-sub">${p.team}${byeStr}</div>
-      </div>
+      <div class="p-body">${p.name}${isQBStack ? ' ⚡' : ''} <span class="p-sub">· ${p.team}${byeStr}</span></div>
       <div class="p-right">${wk17str}<br>${expPct}%</div>
       ${badge}
     </div>`;
