@@ -175,10 +175,10 @@
     .btn-undo { background: transparent; border: 1px solid var(--border) !important; color: var(--muted); flex: 0 0 44px; }
     button:active { opacity: 0.7; }
 
-    .player-list { display: flex; flex-direction: column; gap: 4px; max-height: 45vh; overflow-y: auto; }
+    .player-list { display: flex; flex-direction: column; gap: 2px; max-height: 45vh; overflow-y: auto; }
     .player-row {
       display: flex; align-items: center; background: var(--card);
-      border-radius: 6px; padding: 8px 10px; gap: 10px;
+      border-radius: 5px; padding: 5px 8px; gap: 6px;
       border-left: 3px solid transparent; cursor: pointer; user-select: none;
     }
     .player-row:active { background: #1e2d44; }
@@ -190,10 +190,13 @@
     .player-row[data-pos="WR"] { border-left-color: var(--WR); }
     .player-row[data-pos="TE"] { border-left-color: var(--TE); }
     .player-row.taken[data-pos] { border-left-color: transparent; }
-    .adp-badge { min-width: 32px; text-align: center; font-size: 0.72em; color: var(--muted); font-weight: 700; }
-    .p-name { flex: 1; font-weight: 600; font-size: 0.88em; }
-    .p-meta { font-size: 0.75em; color: var(--muted); }
-    .taken-by { font-size: 0.7em; font-weight: 700; padding: 2px 6px; border-radius: 10px; }
+    .adp-badge { min-width: 26px; text-align: center; font-size: 0.68em; color: var(--muted); font-weight: 700; flex-shrink: 0; }
+    .p-pos { font-size: 0.65em; font-weight: 700; padding: 1px 4px; border-radius: 3px; color: #fff; flex-shrink: 0; }
+    .p-pos.QB { background: var(--QB); } .p-pos.RB { background: var(--RB); }
+    .p-pos.WR { background: var(--WR); } .p-pos.TE { background: var(--TE); }
+    .p-name { flex: 1; font-weight: 600; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .p-meta { font-size: 0.68em; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+    .taken-by { font-size: 0.65em; font-weight: 700; padding: 1px 5px; border-radius: 10px; flex-shrink: 0; }
     .taken-by.mine { background: #1a3a4d; color: var(--accent); }
     .taken-by.opp  { background: #2d1a1a; color: var(--muted); }
 
@@ -1073,16 +1076,17 @@ function renderPlayerList() {
       (p.pos === 'QB' && state.myTeam.some(t => ['WR','TE'].includes(t.pos) && t.team === p.team))
     );
 
-    const expPct = Math.round((exposure[p.id]?.exposure_rate ?? 0) * 100);
-    const wk17str = p.week17 ? ` · <span style="font-weight:700;color:${myTeams.has(p.week17)?'var(--green)':'var(--muted)'}">wk17 ${p.week17}</span>` : '';
-    const expStr  = expPct > 0 ? ` · <span style="font-weight:700;color:var(--muted)">${expPct}%</span>` : '';
+    const expPct  = Math.round((exposure[p.id]?.exposure_rate ?? 0) * 100);
+    const byeStr  = p.bye  ? ` · b${p.bye}` : '';
+    const wk17col = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'var(--muted)';
+    const wk17str = p.week17 ? ` · <span style="color:${wk17col}">${p.week17}</span>` : '';
+    const expStr  = expPct > 0 ? ` · ${expPct}%` : '';
     return `<div class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
          data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
       <div class="adp-badge">${p.adp}</div>
-      <div style="flex:1;min-width:0">
-        <div class="p-name">${p.name}${isQBStack ? ' <span style="font-size:0.75em;color:var(--accent)" title="QB stack">⚡</span>' : ''}</div>
-        <div class="p-meta">${p.pos} · ${p.team}${p.bye ? ' · bye '+p.bye : ''}${wk17str}${expStr}</div>
-      </div>
+      <span class="p-pos ${p.pos}">${p.pos}</span>
+      <div class="p-name">${p.name}${isQBStack ? ' ⚡' : ''}</div>
+      <div class="p-meta">${p.team}${byeStr}${wk17str}${expStr}</div>
       ${badge}
     </div>`;
   }).join('');
