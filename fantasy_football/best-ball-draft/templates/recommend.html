@@ -737,9 +737,22 @@ async function refreshFromDKSilent() {
   } catch { /* ignore — auth may not be set up */ }
 }
 
+async function pullAllDrafts() {
+  try {
+    const r = await fetch('/api/dk-draft/saved-ids');
+    const d = await r.json();
+    const drafts = d.drafts || [];
+    if (!drafts.length) return;
+    await Promise.all(drafts.map(dr =>
+      fetch(`/api/dk-draft/pull/${encodeURIComponent(dr.id)}`, { method: 'POST' }).catch(() => {})
+    ));
+    loadDraftList();
+  } catch { /* ignore */ }
+}
+
 function startDraftListPolling() {
   loadDraftList();
-  refreshFromDKSilent();
+  refreshFromDKSilent().then(() => pullAllDrafts());
 }
 function stopDraftListPolling() {
   // no-op — draft list no longer auto-polls
