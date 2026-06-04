@@ -610,6 +610,14 @@ function startSync(draftId, autoPull = true) {
   document.getElementById('pullBtn').style.display = '';
   document.getElementById('disconnectBtn').style.display = '';
   updateSyncUI(false, `Draft #${syncDraftId} — loading…`);
+
+  // Clear stale content immediately so previous draft doesn't linger
+  renderHeader();
+  document.getElementById('recsList').innerHTML = '<div class="spinner">Loading draft…</div>';
+  document.getElementById('playerList').innerHTML = '<div class="spinner">Loading…</div>';
+  document.getElementById('needsRow').innerHTML = '';
+  document.getElementById('rosterDisplay').innerHTML = '';
+
   if (autoPull && PLAYERS.length) pullLatest();
   startPickPolling();
 }
