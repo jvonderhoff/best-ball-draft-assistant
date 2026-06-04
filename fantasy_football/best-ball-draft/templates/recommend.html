@@ -1068,15 +1068,16 @@ function renderPlayerList() {
       (p.pos === 'QB' && state.myTeam.some(t => ['WR','TE'].includes(t.pos) && t.team === p.team))
     );
 
+    const expPct = Math.round((exposure[p.id]?.exposure_rate ?? 0) * 100);
+    const wk17str = p.week17 ? ` · <span style="font-weight:700;color:${myTeams.has(p.week17)?'var(--green)':'var(--muted)'}">wk17 ${p.week17}</span>` : '';
+    const expStr  = expPct > 0 ? ` · <span style="font-weight:700;color:var(--muted)">${expPct}%</span>` : '';
     return `<div class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
          data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
       <div class="adp-badge">${p.adp}</div>
-      <div style="flex:1">
+      <div style="flex:1;min-width:0">
         <div class="p-name">${p.name}${isQBStack ? ' <span style="font-size:0.75em;color:var(--accent)" title="QB stack">⚡</span>' : ''}</div>
-        <div class="p-meta">${p.pos} · ${p.team}${p.bye ? ' · bye '+p.bye : ''}</div>
+        <div class="p-meta">${p.pos} · ${p.team}${p.bye ? ' · bye '+p.bye : ''}${wk17str}${expStr}</div>
       </div>
-      ${p.week17 ? `<div style="font-size:0.72em;font-weight:700;min-width:28px;text-align:right;margin-right:6px;color:${myTeams.has(p.week17)?'var(--green)':'var(--muted)'}">wk17 ${p.week17}</div>` : ''}
-      <div style="font-size:0.72em;font-weight:700;min-width:32px;text-align:right;color:var(--muted)">${Math.round((exposure[p.id]?.exposure_rate??0)*100)}%</div>
       ${badge}
     </div>`;
   }).join('');
