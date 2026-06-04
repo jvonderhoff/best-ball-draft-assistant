@@ -1077,7 +1077,7 @@ function renderPlayerList() {
     );
 
     const expPct  = Math.round((exposure[p.id]?.exposure_rate ?? 0) * 100);
-    const byeStr  = p.bye  ? ` · b${p.bye}` : '';
+    const byeStr  = p.bye  ? ` · bye ${p.bye}` : '';
     const wk17col = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'var(--muted)';
     const wk17str = p.week17 ? ` · <span style="color:${wk17col}">${p.week17}</span>` : '';
     const expStr  = expPct > 0 ? ` · ${expPct}%` : '';
