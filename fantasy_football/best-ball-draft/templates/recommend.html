@@ -132,22 +132,19 @@
     .rec-card {
       background: var(--card);
       border-radius: 8px;
-      padding: 7px 10px;
-      margin-bottom: 5px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
       border-left: 4px solid var(--accent);
-      display: flex;
-      align-items: center;
-      gap: 7px;
+      position: relative;
     }
     .rec-card:first-child { border-left-color: var(--green); }
-    .rec-rank { font-size: 0.7em; color: var(--muted); font-weight: 700; min-width: 20px; text-align: right; flex-shrink: 0; }
-    .rec-pos  { display: inline-block; font-size: 0.7em; font-weight: 700; padding: 2px 5px; border-radius: 3px; color: #fff; flex-shrink: 0; }
+    .rec-rank { position: absolute; top: 8px; right: 10px; font-size: 0.72em; color: var(--muted); font-weight: 700; }
+    .rec-name { font-weight: 700; font-size: 1em; margin-bottom: 3px; }
+    .rec-pos  { display: inline-block; font-size: 0.72em; font-weight: 700; padding: 1px 6px; border-radius: 3px; color: #fff; margin-right: 4px; }
     .rec-pos.QB { background: var(--QB); } .rec-pos.RB { background: var(--RB); }
     .rec-pos.WR { background: var(--WR); } .rec-pos.TE { background: var(--TE); }
-    .rec-main { flex: 1; min-width: 0; }
-    .rec-name { font-weight: 700; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .rec-reason { font-size: 0.7em; color: #90a4ae; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .rec-meta { text-align: right; font-size: 0.7em; color: var(--muted); flex-shrink: 0; line-height: 1.4; }
+    .rec-adp  { font-size: 0.78em; color: var(--muted); }
+    .rec-reason { font-size: 0.78em; color: #90a4ae; margin-top: 5px; }
     .no-recs { text-align: center; color: var(--muted); padding: 40px 0; font-style: italic; }
 
     /* ── Picks tab ── */
@@ -1198,12 +1195,9 @@ function renderRecs() {
     const p = r.player;
     return `<div class="rec-card">
       <div class="rec-rank">#${i+1}</div>
-      <span class="rec-pos ${p.pos}">${p.pos}</span>
-      <div class="rec-main">
-        <div class="rec-name">${p.name}</div>
-        ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
-      </div>
-      <div class="rec-meta">${p.team}${p.bye ? ' · b'+p.bye : ''}<br>${useCustomRankings ? 'Rank' : 'ADP'} ${Math.round(p.adp)}</div>
+      <div><span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span></div>
+      <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ${useCustomRankings ? 'Rank' : 'ADP'} ${Math.round(p.adp)}</div>
+      ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
     </div>`;
   }).join('');
 }
