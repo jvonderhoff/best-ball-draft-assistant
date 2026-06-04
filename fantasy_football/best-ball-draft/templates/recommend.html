@@ -1079,16 +1079,16 @@ function renderPlayerList() {
     const expPct  = Math.round((exposure[p.id]?.exposure_rate ?? 0) * 100);
     const byeStr  = p.bye ? ` · bye ${p.bye}` : '';
     const wk17col = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'inherit';
-    const wk17line = p.week17 ? `<div style="color:${wk17col}">wk 17 ${p.week17} · ${expPct}%</div>` : `<div>${expPct}%</div>`;
+    const wk17line = p.week17 ? `<span style="color:${wk17col}">wk 17 ${p.week17}</span> · ${expPct}%` : `${expPct}%`;
     return `<div class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
          data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
       <div class="adp-badge">${p.adp}</div>
       <span class="p-pos ${p.pos}">${p.pos}</span>
-      <div class="p-name" style="flex:1;min-width:0">${p.name}${isQBStack ? ' ⚡' : ''}</div>
-      <div class="p-meta">
-        <div>${p.team}${byeStr}</div>
-        ${wk17line}
+      <div style="flex:1;min-width:0">
+        <div class="p-name">${p.name}${isQBStack ? ' ⚡' : ''}</div>
+        <div class="p-meta">${p.team}${byeStr}</div>
       </div>
+      <div class="p-meta" style="text-align:right">${wk17line}</div>
       ${badge}
     </div>`;
   }).join('');
