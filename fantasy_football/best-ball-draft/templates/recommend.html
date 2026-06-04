@@ -1080,7 +1080,7 @@ function renderPlayerList() {
     const expPct  = Math.round((exposure[p.id]?.exposure_rate ?? 0) * 100);
     const byeStr  = p.bye  ? ` · bye ${p.bye}` : '';
     const wk17col = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'var(--muted)';
-    const wk17str = p.week17 ? ` · <span style="color:${wk17col}">${p.week17}</span>` : '';
+    const wk17str = p.week17 ? ` · <span style="color:${wk17col}">wk 17 ${p.week17}</span>` : '';
     const expStr  = expPct > 0 ? ` · ${expPct}%` : '';
     return `<div class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
          data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
