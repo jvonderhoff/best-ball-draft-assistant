@@ -194,8 +194,9 @@
     .p-pos { font-size: 0.65em; font-weight: 700; padding: 1px 4px; border-radius: 3px; color: #fff; flex-shrink: 0; }
     .p-pos.QB { background: var(--QB); } .p-pos.RB { background: var(--RB); }
     .p-pos.WR { background: var(--WR); } .p-pos.TE { background: var(--TE); }
-    .p-name { flex: 1; font-weight: 600; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-    .p-meta { font-size: 0.68em; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+    .p-name { font-weight: 600; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
+    .p-meta { font-size: 0.68em; color: var(--muted); white-space: nowrap; flex-shrink: 0; margin-left: 5px; }
+    .p-info { flex: 1; min-width: 0; display: flex; align-items: center; overflow: hidden; }
     .taken-by { font-size: 0.65em; font-weight: 700; padding: 1px 5px; border-radius: 10px; flex-shrink: 0; }
     .taken-by.mine { background: #1a3a4d; color: var(--accent); }
     .taken-by.opp  { background: #2d1a1a; color: var(--muted); }
@@ -1085,8 +1086,10 @@ function renderPlayerList() {
          data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
       <div class="adp-badge">${p.adp}</div>
       <span class="p-pos ${p.pos}">${p.pos}</span>
-      <div class="p-name">${p.name}${isQBStack ? ' ⚡' : ''}</div>
-      <div class="p-meta">${p.team}${byeStr}${wk17str}${expStr}</div>
+      <div class="p-info">
+        <div class="p-name">${p.name}${isQBStack ? ' ⚡' : ''}</div>
+        <div class="p-meta">${p.team}${byeStr}${wk17str}${expStr}</div>
+      </div>
       ${badge}
     </div>`;
   }).join('');
