@@ -729,8 +729,17 @@ async function loadDraftList() {
   }).join('');
 }
 
+async function refreshFromDKSilent() {
+  try {
+    const r = await fetch('/api/dk-draft/refresh-from-dk', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok && d.added?.length) loadDraftList();
+  } catch { /* ignore — auth may not be set up */ }
+}
+
 function startDraftListPolling() {
   loadDraftList();
+  refreshFromDKSilent();
 }
 function stopDraftListPolling() {
   // no-op — draft list no longer auto-polls
