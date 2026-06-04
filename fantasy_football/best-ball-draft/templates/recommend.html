@@ -190,12 +190,14 @@
     .player-row[data-pos="WR"] { border-left-color: var(--WR); }
     .player-row[data-pos="TE"] { border-left-color: var(--TE); }
     .player-row.taken[data-pos] { border-left-color: transparent; }
-    .adp-badge { min-width: 26px; text-align: center; font-size: 0.68em; color: var(--muted); font-weight: 700; flex-shrink: 0; }
+    .adp-badge { min-width: 26px; text-align: center; font-size: 0.7em; color: var(--muted); font-weight: 700; flex-shrink: 0; }
     .p-pos { font-size: 0.65em; font-weight: 700; padding: 1px 4px; border-radius: 3px; color: #fff; flex-shrink: 0; }
     .p-pos.QB { background: var(--QB); } .p-pos.RB { background: var(--RB); }
     .p-pos.WR { background: var(--WR); } .p-pos.TE { background: var(--TE); }
-    .p-name { font-weight: 600; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-    .p-meta { font-size: 0.67em; color: var(--muted); white-space: nowrap; flex-shrink: 0; text-align: right; line-height: 1.5; }
+    .p-body { flex: 1; min-width: 0; }
+    .p-name { font-weight: 600; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .p-sub  { font-size: 0.7em; color: var(--muted); margin-top: 1px; }
+    .p-right { flex-shrink: 0; text-align: right; font-size: 0.7em; color: var(--muted); line-height: 1.6; }
     .taken-by { font-size: 0.65em; font-weight: 700; padding: 1px 5px; border-radius: 10px; flex-shrink: 0; }
     .taken-by.mine { background: #1a3a4d; color: var(--accent); }
     .taken-by.opp  { background: #2d1a1a; color: var(--muted); }
@@ -1076,19 +1078,19 @@ function renderPlayerList() {
       (p.pos === 'QB' && state.myTeam.some(t => ['WR','TE'].includes(t.pos) && t.team === p.team))
     );
 
-    const expPct  = Math.round((exposure[p.id]?.exposure_rate ?? 0) * 100);
-    const byeStr  = p.bye ? ` · bye ${p.bye}` : '';
-    const wk17col = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'inherit';
-    const wk17line = p.week17 ? `<span style="color:${wk17col}">wk 17 ${p.week17}</span> · ${expPct}%` : `${expPct}%`;
+    const expPct   = Math.round((exposure[p.id]?.exposure_rate ?? 0) * 100);
+    const byeStr   = p.bye ? ` · bye ${p.bye}` : '';
+    const wk17col  = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'var(--muted)';
+    const wk17str  = p.week17 ? `<span style="color:${wk17col}">wk 17 ${p.week17}</span>` : '—';
     return `<div class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
          data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
       <div class="adp-badge">${p.adp}</div>
       <span class="p-pos ${p.pos}">${p.pos}</span>
-      <div style="flex:1;min-width:0">
+      <div class="p-body">
         <div class="p-name">${p.name}${isQBStack ? ' ⚡' : ''}</div>
-        <div class="p-meta">${p.team}${byeStr}</div>
+        <div class="p-sub">${p.team}${byeStr}</div>
       </div>
-      <div class="p-meta" style="text-align:right">${wk17line}</div>
+      <div class="p-right">${wk17str}<br>${expPct}%</div>
       ${badge}
     </div>`;
   }).join('');
