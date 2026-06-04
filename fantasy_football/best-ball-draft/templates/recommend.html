@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>Live Draft — Best Ball Assistant</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
     :root {
       --bg:     #0b0f14;
@@ -70,15 +70,16 @@
     .sync-label { color: var(--muted); flex: 1; }
     .sync-label b { color: var(--text); }
     .sync-btn {
-      padding: 4px 10px;
+      padding: 7px 14px;
       background: var(--accent);
       color: #000;
       border: none;
-      border-radius: 4px;
+      border-radius: 6px;
       font-size: 0.82em;
       font-weight: 700;
       cursor: pointer;
       white-space: nowrap;
+      min-height: 36px;
     }
     .sync-btn.disconnect {
       background: transparent;
@@ -97,13 +98,13 @@
     }
     .tab {
       flex: 1;
-      padding: 9px 4px;
+      padding: 13px 4px;
       text-align: center;
-      font-size: 0.78em;
+      font-size: 0.82em;
       font-weight: 600;
       color: var(--muted);
       cursor: pointer;
-      border-bottom: 2px solid transparent;
+      border-bottom: 3px solid transparent;
       letter-spacing: 0.03em;
       text-transform: uppercase;
     }
@@ -116,17 +117,17 @@
     .pick-banner {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 10px;
       padding: 10px 14px;
       margin-bottom: 12px;
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-    .pick-banner .big { font-size: 1.2em; font-weight: 700; color: var(--accent); }
-    .pick-banner .lbl { font-size: 0.72em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-    .my-turn-badge  { background: var(--green); color: #000; font-size: 0.75em; font-weight: 700; padding: 3px 10px; border-radius: 12px; }
-    .not-turn-badge { background: #1a2233; color: var(--muted); font-size: 0.75em; padding: 3px 10px; border-radius: 12px; }
+    .pick-banner .big { font-size: 1.4em; font-weight: 700; color: var(--accent); }
+    .pick-banner .lbl { font-size: 0.7em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .my-turn-badge  { background: var(--green); color: #000; font-size: 0.85em; font-weight: 700; padding: 8px 16px; border-radius: 20px; }
+    .not-turn-badge { background: #1a2233; color: var(--muted); font-size: 0.82em; padding: 8px 14px; border-radius: 20px; border: 1px solid var(--border); }
 
     /* ── Rec cards ── */
     .rec-card {
@@ -158,8 +159,9 @@
     .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
     .pos-filters { display: flex; gap: 6px; margin-bottom: 10px; }
     .pos-btn {
-      padding: 5px 10px; border-radius: 20px; border: 1px solid var(--border);
-      background: transparent; color: var(--muted); font-size: 0.78em; font-weight: 700; cursor: pointer;
+      padding: 8px 14px; border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); font-size: 0.82em; font-weight: 700; cursor: pointer;
+      min-height: 38px;
     }
     .pos-btn.active { color: #fff; border-color: transparent; }
     .pos-btn[data-pos="ALL"].active { background: var(--accent); color: #000; }
@@ -178,8 +180,9 @@
     .player-list { display: flex; flex-direction: column; gap: 2px; max-height: 45vh; overflow-y: auto; }
     .player-row {
       display: flex; align-items: center; background: var(--card);
-      border-radius: 5px; padding: 5px 8px; gap: 6px;
+      border-radius: 6px; padding: 9px 10px; gap: 8px;
       border-left: 3px solid transparent; cursor: pointer; user-select: none;
+      min-height: 44px;
     }
     .player-row:active { background: #1e2d44; }
     .player-row.taken    { opacity: 0.32; }
