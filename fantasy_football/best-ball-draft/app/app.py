@@ -246,7 +246,9 @@ def refresh_players():
     global draft_state
     try:
         from app.data.api_fetcher import fetch_players
+        from app.database import refresh_players as db_refresh_players
         players = fetch_players(force_refresh=True)
+        db_refresh_players(players)
         draft_state = DraftState()
         return jsonify({'success': True, 'player_count': len(players)})
     except Exception as e:
