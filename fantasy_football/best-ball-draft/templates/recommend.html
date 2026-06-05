@@ -606,10 +606,9 @@ function stopPickPolling() {
   if (_pickPollTimer) { clearInterval(_pickPollTimer); _pickPollTimer = null; }
 }
 
-function startSync(draftId, autoPull = true) {
+function startSync(draftId, autoPull = true, pushHistory = true) {
   syncDraftId = draftId.trim();
   if (!syncDraftId) return;
-  localStorage.setItem('bba_sync_draft_id', syncDraftId);
   state = defaultState();
   saveState();
   loadDraftPosition(syncDraftId);
@@ -617,6 +616,9 @@ function startSync(draftId, autoPull = true) {
   document.getElementById('pullBtn').style.display = '';
   document.getElementById('disconnectBtn').style.display = '';
   updateSyncUI(false, `Draft #${syncDraftId} — loading…`);
+
+  // Push history state so the browser back button returns to the draft list
+  if (pushHistory) history.pushState({ draftId: syncDraftId }, '', `/recommend?draft=${syncDraftId}`);
 
   // Clear stale content immediately so previous draft doesn't linger
   renderHeader();
@@ -629,14 +631,23 @@ function startSync(draftId, autoPull = true) {
   startPickPolling();
 }
 
-function stopSync() {
+function stopSync(pushHistory = true) {
   syncDraftId = '';
-  localStorage.removeItem('bba_sync_draft_id');
   syncConnected = false;
   stopPickPolling();
   document.getElementById('pullBtn').style.display = 'none';
+  if (pushHistory) history.pushState({}, '', '/recommend');
   showDraftList();
 }
+
+// Handle browser back/forward
+window.addEventListener('popstate', (e) => {
+  if (e.state?.draftId) {
+    startSync(e.state.draftId, true, false);
+  } else {
+    stopSync(false);
+  }
+});
 
 function showDraftList() {
   document.getElementById('disconnectBtn').style.display = 'none';
@@ -1265,8 +1276,16 @@ updateRankingToggleBtn();
 // Pre-load custom rankings if mode was active last session
 if (useCustomRankings) loadCustomRankings();
 
-// Always start at the draft list so the user can choose which draft
-showDraftList();
+// If URL contains ?draft=ID (e.g. from a shared link or back-nav), load that draft
+const _urlDraft = new URLSearchParams(location.search).get('draft');
+if (_urlDraft) {
+  // Replace current history entry so back button goes to /recommend (not a ?draft= URL)
+  history.replaceState({ draftId: _urlDraft }, '', `/recommend?draft=${_urlDraft}`);
+  startSync(_urlDraft, true, false);
+} else {
+  history.replaceState({}, '', '/recommend');
+  showDraftList();
+}
 </script>
 </body>
 </html>
