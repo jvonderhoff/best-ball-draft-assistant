@@ -546,7 +546,7 @@ function populateSettings() {
 }
 
 // ── Live sync ──────────────────────────────────────────────────────────────────
-let syncDraftId   = localStorage.getItem('bba_sync_draft_id') || '';
+let syncDraftId   = '';
 let syncConnected = false;
 
 // Name lookup: "bijan robinson" → player object
@@ -1030,8 +1030,6 @@ async function loadPlayers() {
     buildNameLookup();
     renderPlayerList();
     renderRecs();
-    // Restore live sync after players are ready
-    if (syncDraftId) startSync(syncDraftId);
   } catch {
     document.getElementById('playerList').innerHTML =
       '<div class="spinner" style="color:#ef5350">Failed to load players.</div>';
