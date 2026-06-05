@@ -33,21 +33,24 @@
       padding-bottom: env(safe-area-inset-bottom);
     }
 
-    /* ── Header ── */
-    .hdr {
-      background: #0d1520;
+    /* ── Nav (shared style) ── */
+    nav {
+      background: #111e2e;
       border-bottom: 1px solid var(--border);
-      padding: 10px 14px;
+      padding: 0 24px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 24px;
+      height: 48px;
       position: sticky;
       top: 0;
       z-index: 100;
     }
-    .hdr-title { font-weight: 700; font-size: 1em; color: var(--accent); }
-    .hdr-meta  { font-size: 0.78em; color: var(--muted); text-align: right; }
-    .hdr-meta span { color: var(--text); font-weight: 600; }
+    nav a { color: var(--muted); text-decoration: none; font-size: 0.88em; font-weight: 600; padding: 4px 0; border-bottom: 2px solid transparent; }
+    nav a:hover { color: var(--text); }
+    nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .nav-brand { color: var(--accent); font-weight: 700; font-size: 1em; margin-right: 8px; }
+    @media (max-width: 480px) { nav { padding: 0 12px; gap: 14px; } nav a { font-size: 0.8em; } }
 
     /* ── Sync bar ── */
     .sync-bar {
@@ -93,7 +96,7 @@
       border-bottom: 1px solid var(--border);
       background: #0d1520;
       position: sticky;
-      top: 82px;
+      top: 88px;
       z-index: 99;
     }
     .tab {
@@ -242,20 +245,14 @@
 </head>
 <body>
 
-<div class="hdr">
-  <div class="hdr-title">🏈 Live Draft</div>
-  <div style="display:flex;align-items:center;gap:12px;">
-    <div class="hdr-meta">
-      Pick <span id="hdrPick">—</span> &nbsp;·&nbsp; Rd <span id="hdrRound">—</span>
-    </div>
-    <div style="font-size:0.78em;display:flex;gap:10px;">
-      <a href="/history" style="color:#4fc3f7;text-decoration:none;">History</a>
-      <a href="/rankings" style="color:#4fc3f7;text-decoration:none;">Rankings</a>
-      <a href="/analysis" style="color:#4fc3f7;text-decoration:none;">Analysis</a>
-      <a href="/setup" style="color:#78909c;text-decoration:none;">Setup</a>
-    </div>
-  </div>
-</div>
+<nav>
+  <span class="nav-brand">⚡ BBA</span>
+  <a href="/recommend" class="active">Live Draft</a>
+  <a href="/history">History</a>
+  <a href="/rankings">Rankings</a>
+  <a href="/analysis">Analysis</a>
+  <a href="/setup">Setup</a>
+</nav>
 
 <!-- ── Sync bar ── -->
 <div class="sync-bar">
@@ -1164,8 +1161,6 @@ function renderHeader() {
   // Display the last-completed pick number (matches DK's "Pick N" label).
   // Internally overallPick is next-pick-up (completed + 1), so subtract 1 for display.
   const displayPick = Math.max(1, pick - 1);
-  document.getElementById('hdrPick').textContent  = displayPick;
-  document.getElementById('hdrRound').textContent = round;
   document.getElementById('pickNum').textContent  = displayPick;
   document.getElementById('roundNum').textContent = round;
 
