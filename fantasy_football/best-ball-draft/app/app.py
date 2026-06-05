@@ -90,7 +90,7 @@ _load_players_index()
 
 @app.route('/')
 def index():
-    return redirect(url_for('analysis_page'))
+    return redirect(url_for('recommend_page'))
 
 @app.route('/draft')
 def draft():

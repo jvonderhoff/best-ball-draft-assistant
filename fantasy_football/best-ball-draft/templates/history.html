@@ -6,9 +6,13 @@
     <title>Draft History — Best Ball Assistant</title>
     <link rel="stylesheet" href="/static/style.css">
     <style>
+        nav { background: #111e2e; border-bottom: 1px solid #2a3f5f; padding: 0 24px; display: flex; align-items: center; gap: 24px; height: 48px; position: sticky; top: 0; z-index: 100; }
+        nav a { color: #78909c; text-decoration: none; font-size: 0.88em; font-weight: 600; padding: 4px 0; border-bottom: 2px solid transparent; }
+        nav a:hover { color: #e0e0e0; }
+        nav a.active { color: #4fc3f7; border-bottom-color: #4fc3f7; }
+        .nav-brand { color: #4fc3f7; font-weight: 700; font-size: 1em; margin-right: 8px; }
+        @media (max-width: 480px) { nav { padding: 0 12px; gap: 14px; } nav a { font-size: 0.8em; } }
         .history-container { max-width: 1100px; margin: 0 auto; }
-        .back-link { color: #4fc3f7; text-decoration: none; font-size: 0.9em; }
-        .back-link:hover { text-decoration: underline; }
         .exposure-section { margin-bottom: 30px; }
         .exposure-grid {
             display: grid;
@@ -83,11 +87,18 @@
     </style>
 </head>
 <body>
+<nav>
+  <span class="nav-brand">⚡ BBA</span>
+  <a href="/recommend">Live Draft</a>
+  <a href="/history" class="active">History</a>
+  <a href="/rankings">Rankings</a>
+  <a href="/analysis">Analysis</a>
+  <a href="/setup">Setup</a>
+</nav>
     <div class="history-container" style="padding: 24px;">
         <div style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
             <div>
-                <a href="/recommend" class="back-link">← Live Draft</a>
-                <h1 style="color:#fff; margin-top: 6px;">Draft History</h1>
+                <h1 style="color:#fff;">Draft History</h1>
             </div>
             <div id="totalDrafts" style="color: #78909c; font-size: 0.9em;"></div>
         </div>
