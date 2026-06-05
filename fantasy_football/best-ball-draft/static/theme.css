@@ -1,0 +1,73 @@
+/* ── Theme toggle ────────────────────────────────────────────────────────────
+   Dark is default. Light mode activates via html[data-theme="light"].
+   html[data-theme="light"] beats :root in specificity so it overrides
+   each page's inline :root variables without touching them.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+html[data-theme="light"] {
+  --bg:     #f1f5f9;
+  --panel:  #ffffff;
+  --card:   #ffffff;
+  --border: #cbd5e1;
+  --accent: #0284c7;
+  --green:  #16a34a;
+  --red:    #dc2626;
+  --orange: #d97706;
+  --text:   #0f172a;
+  --muted:  #64748b;
+}
+
+/* Nav background responds to theme */
+html[data-theme="light"] nav {
+  background: #ffffff;
+  border-bottom-color: #cbd5e1;
+}
+html[data-theme="light"] nav a        { color: #64748b; }
+html[data-theme="light"] nav a:hover  { color: #0f172a; }
+html[data-theme="light"] nav a.active { color: #0284c7; border-bottom-color: #0284c7; }
+html[data-theme="light"] .nav-brand   { color: #0284c7; }
+
+/* Sync bar */
+html[data-theme="light"] .sync-bar { background: #f8fafc; border-bottom-color: #cbd5e1; }
+
+/* Tabs */
+html[data-theme="light"] .tabs { background: #f8fafc; border-bottom-color: #cbd5e1; }
+
+/* Debug bar */
+html[data-theme="light"] #debugBar { background: #f1f5f9; border-bottom-color: #cbd5e1; color: #64748b; }
+
+/* Settings selects/inputs */
+html[data-theme="light"] .setting-group select,
+html[data-theme="light"] .setting-group input[type=number] {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+/* Search input */
+html[data-theme="light"] .search-wrap input {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+/* Pos filter buttons */
+html[data-theme="light"] .pos-btn { border-color: #cbd5e1; color: #64748b; }
+
+/* Draft list view */
+html[data-theme="light"] #draftListView { background: var(--bg); }
+
+/* ── Theme toggle button ──────────────────────────────────────────────────── */
+.theme-toggle {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 0.8em;
+  cursor: pointer;
+  color: var(--muted);
+  white-space: nowrap;
+  transition: border-color 0.2s, color 0.2s;
+}
+.theme-toggle:hover { color: var(--text); border-color: var(--accent); }

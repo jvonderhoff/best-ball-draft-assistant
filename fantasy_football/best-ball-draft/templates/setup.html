@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>Setup — Best Ball Assistant</title>
+  <script src="/static/theme.js"></script>
+  <link rel="stylesheet" href="/static/theme.css">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -98,15 +100,15 @@
   </style>
 </head>
 <body>
-<div class="hdr">
-  <span class="hdr-title">⚙ Setup</span>
-  <div style="display:flex;gap:12px;font-size:0.82em;">
-    <a href="/recommend">Live Draft</a>
-    <a href="/history">History</a>
-    <a href="/rankings">Rankings</a>
-    <a href="/analysis">Analysis</a>
-  </div>
-</div>
+<nav>
+  <span class="nav-brand">⚡ BBA</span>
+  <a href="/recommend">Live Draft</a>
+  <a href="/history">History</a>
+  <a href="/rankings">Rankings</a>
+  <a href="/analysis">Analysis</a>
+  <a href="/setup" class="active">Setup</a>
+  <button class="theme-toggle" onclick="toggleTheme()">☀️ Light</button>
+</nav>
 
 <div class="content">
 
