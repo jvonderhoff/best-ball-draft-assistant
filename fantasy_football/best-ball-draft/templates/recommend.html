@@ -10,16 +10,24 @@
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
     :root {
-      --bg:     #0b0f14;
-      --panel:  #111827;
-      --card:   #1a2233;
-      --border: #2a3f5f;
-      --accent: #4fc3f7;
-      --green:  #81c784;
-      --red:    #ef5350;
-      --orange: #ff9800;
-      --text:   #e0e0e0;
-      --muted:  #78909c;
+      --bg:          #0b0f14;
+      --panel:       #111827;
+      --card:        #1a2233;
+      --surface:     #0d1520;   /* sync bar, tabs, inputs */
+      --border:      #2a3f5f;
+      --border-soft: #1e3050;
+      --accent:      #4fc3f7;
+      --green:       #81c784;
+      --red:         #ef5350;
+      --orange:      #ff9800;
+      --text:        #e0e0e0;
+      --muted:       #78909c;
+      --muted2:      #546e7a;
+      --selected:    #1a2d4d;   /* selected row, stack chip */
+      --mine-bg:     #1a3a4d;   /* "mine" badge */
+      --opp-bg:      #2d1a1a;   /* "taken" badge */
+      --warn-bg:     #1a1206;   /* no-picks warning */
+      --warn-border: #5d4037;
       --QB:     #e91e63;
       --RB:     #2196f3;
       --WR:     #4caf50;
@@ -62,7 +70,7 @@
       align-items: center;
       gap: 8px;
       border-bottom: 1px solid var(--border);
-      background: #0d1520;
+      background: var(--surface);
     }
     .sync-dot {
       width: 8px; height: 8px; border-radius: 50%;
@@ -132,7 +140,7 @@
     .pick-banner .big { font-size: 1.4em; font-weight: 700; color: var(--accent); }
     .pick-banner .lbl { font-size: 0.7em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
     .my-turn-badge  { background: var(--green); color: #000; font-size: 0.85em; font-weight: 700; padding: 8px 16px; border-radius: 20px; }
-    .not-turn-badge { background: #1a2233; color: var(--muted); font-size: 0.82em; padding: 8px 14px; border-radius: 20px; border: 1px solid var(--border); }
+    .not-turn-badge { background: var(--card); color: var(--muted); font-size: 0.82em; padding: 8px 14px; border-radius: 20px; border: 1px solid var(--border); }
 
     /* ── Rec cards ── */
     .rec-card {
@@ -150,7 +158,7 @@
     .rec-pos.QB { background: var(--QB); } .rec-pos.RB { background: var(--RB); }
     .rec-pos.WR { background: var(--WR); } .rec-pos.TE { background: var(--TE); }
     .rec-adp  { font-size: 0.78em; color: var(--muted); }
-    .rec-reason { font-size: 0.78em; color: #90a4ae; margin-top: 5px; }
+    .rec-reason { font-size: 0.78em; color: var(--muted); margin-top: 5px; }
     .no-recs { text-align: center; color: var(--muted); padding: 40px 0; font-style: italic; }
 
     /* ── Picks tab ── */
@@ -189,10 +197,10 @@
       border-left: 3px solid transparent; cursor: pointer; user-select: none;
       min-height: 44px;
     }
-    .player-row:active { background: #1e2d44; }
+    .player-row:active { background: var(--selected); }
     .player-row.taken    { opacity: 0.32; }
     .player-row.stack .p-body { color: var(--green) !important; font-weight: 700; }
-    .player-row.selected { background: #1a2d4d; border-left-color: var(--accent); }
+    .player-row.selected { background: var(--selected); border-left-color: var(--accent); }
     .player-row[data-pos="QB"] { border-left-color: var(--QB); }
     .player-row[data-pos="RB"] { border-left-color: var(--RB); }
     .player-row[data-pos="WR"] { border-left-color: var(--WR); }
@@ -206,8 +214,8 @@
     .p-body .p-sub { font-weight: 400; color: var(--muted); font-size: 0.85em; }
     .p-right { flex-shrink: 0; text-align: right; font-size: 0.7em; color: var(--muted); line-height: 1.6; }
     .taken-by { font-size: 0.65em; font-weight: 700; padding: 1px 5px; border-radius: 10px; flex-shrink: 0; }
-    .taken-by.mine { background: #1a3a4d; color: var(--accent); }
-    .taken-by.opp  { background: #2d1a1a; color: var(--muted); }
+    .taken-by.mine { background: var(--mine-bg); color: var(--accent); }
+    .taken-by.opp  { background: var(--opp-bg); color: var(--muted); }
 
     /* ── Roster ── */
     .needs-row { display: flex; gap: 8px; margin-bottom: 12px; }
@@ -223,7 +231,7 @@
     .roster-chip.WR { border-left-color: var(--WR); } .roster-chip.TE { border-left-color: var(--TE); }
     .roster-chip .rnd { font-size: 0.75em; color: var(--muted); }
     .pos-header { font-size: 0.7em; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
-    .stack-chip { display: inline-flex; align-items: center; gap: 6px; background: #1a2d4d; border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; margin: 3px 3px 0 0; font-size: 0.78em; }
+    .stack-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--selected); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; margin: 3px 3px 0 0; font-size: 0.78em; }
 
     /* ── Settings ── */
     .settings-grid { display: flex; flex-direction: column; gap: 14px; }
@@ -238,6 +246,24 @@
     .btn-danger  { background: transparent; border: 1px solid var(--red) !important; color: var(--red); }
 
     .spinner { text-align: center; padding: 40px; color: var(--muted); font-size: 0.9em; }
+
+    /* ── Debug bar ── */
+    #debugBar   { background: var(--bg); border-bottom: 1px solid var(--border-soft); padding: 4px 14px; font-size: 0.72em; color: var(--muted2); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    #debugPanel { display: none; background: var(--bg); border-bottom: 1px solid var(--border-soft); padding: 8px 14px; font-size: 0.72em; color: var(--muted); font-family: monospace; line-height: 1.7; }
+
+    /* ── Draft list card ── */
+    .draft-list-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; cursor: pointer; border-left: 4px solid var(--border); transition: background 0.2s; }
+    .draft-list-card:active { background: var(--selected); }
+    .draft-list-card.my-pick { border-left-color: var(--green); }
+    .draft-card-id { font-weight: 700; color: var(--accent); font-size: 0.92em; }
+    .draft-card-meta { color: var(--muted2); font-size: 0.75em; margin-top: 4px; }
+
+    /* ── Rec status bars ── */
+    .rec-status-bar { background: var(--surface); border: 1px solid var(--border-soft); border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.78em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
+    .rec-warn-bar   { background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.78em; color: var(--orange); }
+
+    /* ── Manual draft input ── */
+    #manualDraftId { flex: 1; padding: 9px 10px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.92em; }
 
     /* Live-update flash */
     @keyframes flash { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
@@ -280,22 +306,21 @@
   <div id="draftListCards" style="display:flex;flex-direction:column;gap:8px;">
     <div style="color:#546e7a;font-size:0.85em;text-align:center;padding:20px;">Loading…</div>
   </div>
-  <div style="margin-top:16px;padding-top:12px;border-top:1px solid #2a3f5f;">
-    <div style="font-size:0.78em;color:#546e7a;margin-bottom:8px;">Connect to a specific draft ID:</div>
+  <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+    <div style="font-size:0.78em;color:var(--muted2);margin-bottom:8px;">Connect to a specific draft ID:</div>
     <div style="display:flex;gap:8px;">
-      <input type="text" id="manualDraftId" placeholder="e.g. 190642220" inputmode="numeric"
-        style="flex:1;padding:9px 10px;background:#1a2233;border:1px solid #2a3f5f;border-radius:6px;color:#e0e0e0;font-size:0.92em;">
-      <button onclick="connectManual()" style="padding:9px 16px;background:#4fc3f7;color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer;">Go</button>
+      <input type="text" id="manualDraftId" placeholder="e.g. 190642220" inputmode="numeric">
+      <button onclick="connectManual()" style="padding:9px 16px;background:var(--accent);color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer;">Go</button>
     </div>
   </div>
 </div>
 <!-- Debug status bar (tap to expand) -->
-<div id="debugBar" style="background:#0a0f18;border-bottom:1px solid #1e3050;padding:4px 14px;font-size:0.72em;color:#546e7a;display:flex;align-items:center;gap:6px;cursor:pointer;" onclick="toggleDebug()">
+<div id="debugBar" onclick="toggleDebug()">
   <span style="font-size:0.9em">🔧</span>
   <span id="debugSummary">Status: —</span>
   <span style="margin-left:auto;font-size:0.9em" id="debugArrow">▸</span>
 </div>
-<div id="debugPanel" style="display:none;background:#060a10;border-bottom:1px solid #1e3050;padding:8px 14px;font-size:0.72em;color:#78909c;font-family:monospace;line-height:1.7;">
+<div id="debugPanel">
   <div>Draft ID: <span id="dbgDraftId" style="color:#90a4ae">—</span></div>
   <div>Server reachable: <span id="dbgServer" style="color:#90a4ae">—</span></div>
   <div>Server picks: <span id="dbgServerPicks" style="color:#90a4ae">—</span></div>
@@ -724,7 +749,7 @@ async function loadDraftList() {
     if (isDK && d.overall_pick && d.my_position) {
       const until = picksUntilMyTurn(d.overall_pick, d.my_position);
       if (until === 0) {
-        turnBadge = `<span style="background:#1b5e20;color:#a5d6a7;padding:2px 7px;border-radius:4px;font-size:0.75em;font-weight:700;">🟢 YOUR PICK</span>`;
+        turnBadge = `<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:4px;font-size:0.75em;font-weight:700;">🟢 YOUR PICK</span>`;
       } else if (until !== null) {
         turnBadge = `<span style="color:#ff9800;font-size:0.78em;font-weight:700;">⏳ ${until} pick${until===1?'':'s'} away</span>`;
       }
@@ -740,17 +765,15 @@ async function loadDraftList() {
       ? (() => { const s = Math.round(Date.now()/1000 - d.updated_at); return s < 60 ? `${s}s ago` : `${Math.round(s/60)}m ago`; })()
       : null;
 
-    return `<div onclick="startSync('${d.draft_id}')"
-        style="background:#1a2233;border:1px solid #2a3f5f;border-radius:8px;
-               padding:12px 14px;cursor:pointer;border-left:4px solid ${d.overall_pick && d.my_position && picksUntilMyTurn(d.overall_pick, d.my_position)===0 ? '#81c784' : '#2a3f5f'};
-               transition:background 0.2s;">
+    const isMyPick = d.overall_pick && d.my_position && picksUntilMyTurn(d.overall_pick, d.my_position) === 0;
+    return `<div onclick="startSync('${d.draft_id}')" class="draft-list-card ${isMyPick ? 'my-pick' : ''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-        <span style="font-weight:700;color:#4fc3f7;font-size:0.92em;">#${d.draft_id}${label}</span>
+        <span class="draft-card-id">#${d.draft_id}${label}</span>
         <span style="display:flex;gap:3px;align-items:center;">${turnBadge}</span>
       </div>
-      <div style="color:#546e7a;font-size:0.75em;">
+      <div class="draft-card-meta">
         ${d.overall_pick ? `Pick ${d.overall_pick} · pos ${d.my_position || '?'} · ${d.pick_count} drafted` : 'Tap to load picks'}
-        ${ageStr ? `<span style="color:#37474f"> · ${ageStr}</span>` : ''}
+        ${ageStr ? ` · ${ageStr}` : ''}
       </div>
     </div>`;
   }).join('');
@@ -1201,11 +1224,11 @@ function renderRecs() {
 
   // Status bar: show how many taken / available
   const statusBar = takenCount > 0
-    ? `<div style="background:#0d1520;border:1px solid #1e3050;border-radius:6px;padding:7px 12px;margin-bottom:10px;font-size:0.78em;color:#78909c;display:flex;justify-content:space-between;align-items:center;">
-        <span>📋 <b style="color:#e0e0e0">${takenCount}</b> drafted &nbsp;·&nbsp; <b style="color:#4fc3f7">${available.length}</b> available</span>
-        <span style="color:#546e7a">${PLAYERS.length} total</span>
+    ? `<div class="rec-status-bar">
+        <span>📋 <b style="color:var(--text)">${takenCount}</b> drafted &nbsp;·&nbsp; <b style="color:var(--accent)">${available.length}</b> available</span>
+        <span>${PLAYERS.length} total</span>
        </div>`
-    : `<div style="background:#1a1206;border:1px solid #5d4037;border-radius:6px;padding:7px 12px;margin-bottom:10px;font-size:0.78em;color:#ff9800;">
+    : `<div class="rec-warn-bar">
         ⚠️ No picks synced yet — tap <b>Pull Latest</b> to load from DraftKings.
        </div>`;
 
