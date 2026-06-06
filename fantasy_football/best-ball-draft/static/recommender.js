@@ -14,6 +14,25 @@ const STACK_SETTINGS = {
   heavy:  { first: 1.40, second: 1.18, qbPull: 1.28, cluster: 1.15, rbCorrel: 1.08 },
 };
 
+// ── QB run detection ──────────────────────────────────────────────────────────
+// Detects when multiple QBs are being drafted in opponent picks since your last
+// turn, signaling you may miss a QB tier if you don't act now.
+//
+// recentOppPicks: [{pos, pick_number}] — opponent picks since your last pick.
+// 0–1 QBs → no boost | 2 QBs → ×1.15 | 3+ QBs → ×1.25
+function getQBRunBoost(recentOppPicks) {
+  const qbCount = recentOppPicks.filter(p => p.pos === 'QB').length;
+  if (qbCount < 2) return 1.0;
+  return qbCount === 2 ? 1.15 : 1.25;
+}
+
+// Human-readable label for active QB run, or null.
+function qbRunLabel(recentOppPicks) {
+  const qbCount = recentOppPicks.filter(p => p.pos === 'QB').length;
+  if (qbCount < 2) return null;
+  return `QB run — ${qbCount} QB${qbCount > 1 ? 's' : ''} taken since your last pick`;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getTeamCounts(myTeam) {
@@ -129,7 +148,7 @@ function byeWeekWarning(player, myTeam) {
 
 // ── Core value calculation ────────────────────────────────────────────────────
 
-function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', rbPriority = 'strong') {
+function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', rbPriority = 'strong', recentOppPicks = []) {
   // Use inverse ADP so value is always positive and naturally orders players.
   // adp=1 → 1000, adp=50 → 20, adp=100 → 10, adp=200 → 5, adp=500 → 2
   // This ensures late-round players still have relative ordering rather than
@@ -138,10 +157,11 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const pos = player.pos;
 
   // ADP is the primary signal. RB and WR compete on pure ADP.
-  // QB and TE get urgency-based adjustments since they fill capped slots.
+  // QB, TE, and WR get urgency-based adjustments when falling behind pace.
   const totalDrafted = myTeam.length;
   const myTEs  = myTeam.filter(p => p.pos === 'TE').length;
   const myQBs  = myTeam.filter(p => p.pos === 'QB').length;
+  const myWRs  = myTeam.filter(p => p.pos === 'WR').length;
   const userRound = totalDrafted + 1;
   // Late-round zero: if you hit round 13+ with none drafted you'll need 3
   // to maintain adequate position quality across the remaining picks.
@@ -165,6 +185,24 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     }
   }
 
+  // WR urgency — activates mid-draft when WR count is behind pace.
+  // Uses pace deficit rather than absolute need since WR depth runs much deeper.
+  // Expected pace: 8 WRs in 20 picks = 0.40 per pick drafted.
+  // A 1.5-pick grace margin prevents boosting when only slightly behind.
+  //   Rd 1-6:  no boost — plenty of WR depth available
+  //   Rd 8:    weight 0.33 → mild nudge if behind
+  //   Rd 10:   weight 0.67 → meaningful push if behind
+  //   Rd 12+:  weight 1.0  → full urgency if behind
+  const wrUrgencyWeight = Math.max(0, Math.min(1, (userRound - 6) / 6));
+
+  if (pos === 'WR' && wrUrgencyWeight > 0) {
+    const expectedWRs = totalDrafted * 0.40;
+    const deficit = Math.max(0, expectedWRs - myWRs - 1.5);
+    if (deficit > 0) {
+      mult *= (1 + Math.min(deficit * 0.20 * wrUrgencyWeight, 0.60));
+    }
+  }
+
   // QB urgency — starts early; good QBs dry up fast and you can't pivot late.
   //   Rd 1-3:  no boost
   //   Rd 5:    weight 0.20 → gentle push
@@ -178,13 +216,6 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     if (qbNeeded > 0) {
       const urgency = (qbNeeded / picksLeft) * qbUrgencyWeight;
       mult *= (1 + Math.min(urgency * 3.0, 2.0));
-    }
-    // Mild pace nudge in earlier rounds (±15%)
-    if (totalDrafted > 0) {
-      const pace    = totalDrafted / 20;
-      const ideal   = QB_TARGET * pace;
-      const deficit = ideal - myQBs;
-      mult += Math.max(-0.15, Math.min(0.15, deficit * 0.07));
     }
   }
 
@@ -218,7 +249,11 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   //   mild:    rounds 1-3 ×1.10, rounds 4-5 ×1.05
   //   strong:  rounds 1-3 ×1.20, rounds 4-5 ×1.10
   //   extreme: rounds 1-3 ×1.35, rounds 4-5 ×1.18, rounds 6-7 ×1.08
-  if (pos === 'RB' && rbPriority !== 'off') {
+  // Guard: suppress boost when already RB-heavy relative to WR count.
+  // Having ≥2 more RBs than WRs means the roster is imbalanced enough that
+  // the urgency signal has already been acted on — don't keep piling on.
+  const myRBs = myTeam.filter(p => p.pos === 'RB').length;
+  if (pos === 'RB' && rbPriority !== 'off' && myRBs < myWRs + 2) {
     const boosts = {
       mild:    [0, 1.10, 1.10, 1.10, 1.05, 1.05, 1.0],
       strong:  [0, 1.20, 1.20, 1.20, 1.10, 1.10, 1.0],
@@ -269,6 +304,9 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
 
   // Bye week penalty — discourage stacking too many players on the same bye
   mult *= getByeWeekPenalty(player, myTeam);
+
+  // QB run boost — amplify QB urgency when opponents are taking QBs fast
+  if (pos === 'QB') mult *= getQBRunBoost(recentOppPicks);
 
   // Value-steal boost / reach penalty: compares ADP to current overall pick.
   // myPickNumber is the overall pick; player.adp is also overall — apples to apples.
@@ -366,16 +404,17 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
 }
 
 // Returns the top N recommendations sorted by value score.
-function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, n = 5, rbPriority = 'strong') {
+function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, n = 5, rbPriority = 'strong', recentOppPicks = []) {
   if (!available.length) return [];
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
   const myQBCount = myTeam.filter(p => p.pos === 'QB').length;
   const pool = myQBCount >= 3 ? available.filter(p => p.pos !== 'QB') : available;
   if (!pool.length) return [];
+  const qbRun = qbRunLabel(recentOppPicks);
 
   const scored = pool.map(p => {
-    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, rbPriority);
+    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, rbPriority, recentOppPicks);
     if (diversifyStrength > 0 && exposure[p.id]) {
       val *= (1 - exposure[p.id].exposure_rate * diversifyStrength);
     }
@@ -403,6 +442,9 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
     }
     const byeWarn = byeWeekWarning(p, myTeam);
     if (byeWarn) reason = reason ? `${reason} · ⚠ ${byeWarn}` : `⚠ ${byeWarn}`;
+    if (p.pos === 'QB' && qbRun) {
+      reason = reason ? `${reason} · ⚡ ${qbRun}` : `⚡ ${qbRun}`;
+    }
 
     return { player: p, value: val, reason };
   });
