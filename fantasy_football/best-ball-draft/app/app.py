@@ -1658,6 +1658,19 @@ def sync_cookies():
     return jsonify({'ok': True, 'count': len(cookies)})
 
 
+@app.route('/api/db/download', methods=['GET'])
+def download_db():
+    """Download the live drafts.db — protected by BBA_API_KEY."""
+    from flask import send_file
+    api_key = request.headers.get('X-Api-Key') or request.args.get('api_key', '')
+    expected = os.environ.get('BBA_API_KEY', '')
+    if expected and api_key != expected:
+        return jsonify({'error': 'Unauthorized'}), 401
+    db_path = os.path.join(basedir, 'drafts.db')
+    return send_file(db_path, as_attachment=True, download_name='drafts.db',
+                     mimetype='application/x-sqlite3')
+
+
 @app.route('/api/sync-cookies/status', methods=['GET'])
 def sync_cookies_status():
     """Check whether cookies have been synced and how many."""
