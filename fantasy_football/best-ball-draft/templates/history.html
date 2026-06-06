@@ -107,16 +107,16 @@
     <div class="history-container" style="padding: 24px;">
         <div style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
             <div>
-                <h1 style="color:#fff;">Draft History</h1>
+                <h1 style="color:var(--text);">Draft History</h1>
             </div>
-            <div id="totalDrafts" style="color: #78909c; font-size: 0.9em;"></div>
+            <div id="totalDrafts" style="color:var(--muted);font-size:0.9em;"></div>
         </div>
 
         <!-- Exposure section -->
         <div class="exposure-section panel" style="margin-bottom: 20px;">
             <div class="panel-header">
                 <h2>Player Exposure</h2>
-                <span id="exposureSubtitle" style="font-size:0.8em; color:#78909c;"></span>
+                <span id="exposureSubtitle" style="font-size:0.8em;color:var(--muted);"></span>
             </div>
             <div style="padding: 14px;">
                 <div class="section-title">Most Drafted (highest exposure first)</div>
@@ -175,7 +175,7 @@
                         <div class="exp-bar-wrap">
                             <div class="exp-bar ${barClass}" style="width:${pct}%"></div>
                         </div>
-                        <div style="font-size:0.72em; color:#90a4ae; margin-top:3px;">${pct}% exposure</div>
+                        <div style="font-size:0.72em;color:var(--muted);margin-top:3px;">${pct}% exposure</div>
                     </div>`;
             }).join('');
         }
