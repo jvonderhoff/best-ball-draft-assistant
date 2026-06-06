@@ -250,24 +250,24 @@ def get_analysis_data(force_refresh: bool = False):
         p['prop_adp_delta'] = p.get('dk_prop_adp_delta') or p.get('ud_prop_adp_delta')
 
     # ── Composite scoring ─────────────────────────────────────────────────────
-    # Normalise 2025 pts_ppr per position so QB vs RB vs WR are comparable
-    pos_max = {}
+    # Normalise 2026 projected pts_ppr per position so QB vs RB vs WR are comparable
+    pos_max_proj = {}
     for pos in SKILL_POSITIONS:
-        vals = [p['pts_ppr'] for p in players if p['pos'] == pos and p['pts_ppr'] > 0]
-        pos_max[pos] = max(vals) if vals else 1
+        vals = [p['proj_pts_ppr'] for p in players if p['pos'] == pos and p['proj_pts_ppr'] > 0]
+        pos_max_proj[pos] = max(vals) if vals else 1
 
     total = len(players)
 
     for p in players:
-        adp   = p.get('adp') or total
-        pts   = p['pts_ppr']
-        gp    = p['gp']
-        pos   = p['pos']
+        adp  = p.get('adp') or total
+        proj = p['proj_pts_ppr']
+        gp   = p['gp']
+        pos  = p['pos']
 
-        # 1. Last-season performance (position-normalized, 0-1)
-        perf_score = (pts / pos_max.get(pos, 1)) if pts > 0 else 0
+        # 1. 2026 projection (position-normalized, 0-1)
+        proj_score = (proj / pos_max_proj.get(pos, 1)) if proj > 0 else 0
 
-        # 2. Durability bonus (played full 17-game season = 1.0)
+        # 2. Durability (games played last season, 0-1)
         durability = min(gp / 17, 1.0) if gp > 0 else 0
 
         # 3. ADP score (inverted rank, 0-1)
@@ -278,13 +278,13 @@ def get_analysis_data(force_refresh: bool = False):
 
         # Composite (weights reflect what matters most in best ball)
         composite = (
-            perf_score  * 0.45 +
+            proj_score  * 0.45 +
             adp_score   * 0.30 +
             durability  * 0.15 +
             schedule    * 0.10
         ) * 100
 
-        p['perf_score']     = round(perf_score * 100, 1)
+        p['proj_score']     = round(proj_score * 100, 1)
         p['adp_score']      = round(adp_score  * 100, 1)
         p['durability']     = round(durability  * 100, 1)
         p['schedule_score'] = round(schedule    * 100, 1)
