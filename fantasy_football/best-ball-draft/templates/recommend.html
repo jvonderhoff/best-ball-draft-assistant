@@ -496,7 +496,6 @@ function updateRankingToggleBtn() {
 
 const STATE_KEY = 'bba_live_draft';
 let state = loadState();
-let _recentOppPicks = []; // [{pos, pick_number}] — opponent picks since my last turn
 
 function defaultState() {
   return {
@@ -940,24 +939,6 @@ function applyDKPickState(data) {
     }
   }
 
-  // Recompute opponent picks since my last turn for position run detection
-  {
-    const myColIdx = settings.myPosition - 1;
-    const me = (settings.dkUsername || '').toLowerCase();
-    const lastMyPickNum = state.myTeam.length > 0
-      ? Math.max(...state.myTeam.map(p => p.pick || 0))
-      : 0;
-    _recentOppPicks = picks
-      .filter(pk => {
-        if ((pk.pick_number || 0) <= lastMyPickNum) return false;
-        const isMine = (pk.column_idx !== undefined && pk.column_idx !== null)
-          ? pk.column_idx === myColIdx
-          : (me && (pk.username || '').toLowerCase().includes(me));
-        return !isMine && pk.pos;
-      })
-      .map(pk => ({ pos: pk.pos, pick_number: pk.pick_number }));
-  }
-
   const srcRaw = data.source || 'DK';
   const src = srcRaw === 'bookmarklet_intercept' ? '🔗 BBA Live'
             : srcRaw.includes('draftkings.com') ? srcRaw.split('draftkings.com')[1]
@@ -1234,10 +1215,11 @@ function renderRecs() {
     ? state.overallPick
     : (nextMyOverallPick(state.overallPick, settings.numTeams, settings.myPosition) || state.overallPick);
 
+  const qbsTaken = PLAYERS.filter(p => p.pos === 'QB' && state.takenIds.has(p.id)).length;
   const recs = getTopRecommendations(
     available, state.myTeam, pickForRec,
     settings.stackIntensity, exposure, settings.diversifyStrength,
-    10, settings.rbPriority, _recentOppPicks
+    10, settings.rbPriority, qbsTaken
   );
 
   const el = document.getElementById('recsList');
@@ -1258,7 +1240,8 @@ function renderRecs() {
   }
 
   const runAlert = (() => {
-    const label = qbRunLabel(_recentOppPicks);
+    const myQBCount = state.myTeam.filter(p => p.pos === 'QB').length;
+    const label = qbTierLabel(qbsTaken, myQBCount);
     if (!label) return '';
     return `<div class="qb-run-alert">⚡ ${label}</div>`;
   })();
