@@ -1,6 +1,6 @@
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 from flask_cors import CORS
-from app.database import init_db, save_draft, get_all_drafts, get_exposure, delete_draft, get_rankings, save_rankings, save_props, get_all_props
+from app.database import init_db, save_draft, get_all_drafts, get_exposure, delete_draft, get_rankings, save_rankings, save_props, get_all_props, save_projections, get_raw_projections, projections_meta
 import json
 import os
 import re
@@ -230,24 +230,15 @@ def get_props():
 @app.route('/api/projections', methods=['GET'])
 def get_projections():
     """
-    Convert raw season prop lines into PPR fantasy-point projections per player.
-    Returns { player_id: { mean, weekly_stddev } } keyed by DK player ID.
+    Return { player_id: { mean, weekly_stddev, source } } keyed by DK player ID.
 
-    Scoring: pass_yd/25·1pt, pass_td·4, rush_yd/10·1pt, rush_td·6,
-             rec_yd/10·1pt, rec_yd/9·1pt (est. receptions PPR), rec_td·6.
-    Weekly stddev is position-based CV × weekly mean (WR most volatile, QB least).
-    Players not in player_props fall back to ADP-derived estimates client-side.
+    Priority:
+      1. FantasyPros season projections (player_projections table) — full PPR fpts
+      2. DK prop lines (player_props table) — converted to PPR fpts
+      (ADP-based fallback handled client-side for remaining players)
+
+    Weekly stddev = position CV × weekly mean (WR 0.75, TE 0.65, RB 0.55, QB 0.35).
     """
-    from app.database import get_db
-    with get_db() as conn:
-        rows = conn.execute('SELECT player_name, prop_type, line FROM player_props').fetchall()
-
-    # Group props by name
-    props_by_name = {}
-    for r in rows:
-        props_by_name.setdefault(r['player_name'].lower(), {})[r['prop_type']] = r['line']
-
-    # Normalize a name for matching (strip punctuation, remove generational suffixes)
     _suffixes = {'jr', 'sr', 'ii', 'iii', 'iv', 'v'}
     def normalize(name):
         n = re.sub(r'[.\']', '', name.lower()).strip()
@@ -258,36 +249,80 @@ def get_projections():
 
     pos_cv = {'QB': 0.35, 'RB': 0.55, 'WR': 0.75, 'TE': 0.65}
 
+    # Load FantasyPros projections (keyed by player_name as stored)
+    fp_raw = get_raw_projections()
+    fp_by_norm = {normalize(k): v for k, v in fp_raw.items()}
+
+    # Load prop lines as fallback
+    from app.database import get_db
+    with get_db() as conn:
+        prop_rows = conn.execute('SELECT player_name, prop_type, line FROM player_props').fetchall()
+    props_by_name = {}
+    for r in prop_rows:
+        props_by_name.setdefault(r['player_name'].lower(), {})[r['prop_type']] = r['line']
+    props_by_norm = {normalize(k): v for k, v in props_by_name.items()}
+
     result = {}
-    for raw_name, p in props_by_name.items():
-        # Try exact match first, then normalized
-        player = _PLAYERS_BY_NAME.get(raw_name) or _PLAYERS_BY_NAME.get(normalize(raw_name))
-        if not player:
-            continue
+    for raw_name, player in _PLAYERS_BY_NAME.items():
         pid = player.get('id')
         pos = player.get('pos', 'WR')
         if not pid:
             continue
 
-        mean = (
-            p.get('pass_yd', 0) * 0.04 +
-            p.get('pass_td', 0) * 4 +
-            p.get('rush_yd', 0) * 0.1 +
-            p.get('rush_td', 0) * 6 +
-            p.get('rec_yd',  0) * 0.1 +
-            p.get('rec_yd',  0) / 9 +   # estimated receptions (PPR)
-            p.get('rec_td',  0) * 6
-        )
+        norm = normalize(raw_name)
+        mean = source = None
 
-        weekly_mean   = mean / 17
-        weekly_stddev = weekly_mean * pos_cv.get(pos, 0.5)
+        # 1. FantasyPros
+        fp = fp_raw.get(raw_name) or fp_by_norm.get(norm)
+        if fp and fp.get('fpts'):
+            mean   = fp['fpts']
+            source = 'fp'
 
-        result[pid] = {
-            'mean':          round(mean, 1),
-            'weekly_stddev': round(weekly_stddev, 2),
-        }
+        # 2. Prop lines
+        if mean is None:
+            p = props_by_name.get(raw_name) or props_by_norm.get(norm)
+            if p:
+                mean = (
+                    p.get('pass_yd', 0) * 0.04 +
+                    p.get('pass_td', 0) * 4 +
+                    p.get('rush_yd', 0) * 0.1 +
+                    p.get('rush_td', 0) * 6 +
+                    p.get('rec_yd',  0) * 0.1 +
+                    p.get('rec_yd',  0) / 9 +
+                    p.get('rec_td',  0) * 6
+                )
+                source = 'props'
+
+        if mean and mean > 0:
+            weekly_mean = mean / 17
+            result[pid] = {
+                'mean':          round(mean, 1),
+                'weekly_stddev': round(weekly_mean * pos_cv.get(pos, 0.5), 2),
+                'source':        source,
+            }
 
     return jsonify(result)
+
+
+@app.route('/api/projections/refresh', methods=['POST'])
+def refresh_projections():
+    """Scrape fresh FantasyPros PPR projections and store them."""
+    try:
+        from app.data.fantasypros_fetcher import fetch_projections
+        projections = fetch_projections(verbose=True)
+        if not projections:
+            return jsonify({'ok': False, 'error': 'No projections returned — FantasyPros may require JS rendering or the page structure changed'}), 200
+        count = save_projections(projections)
+        return jsonify({'ok': True, 'players': count, 'source': 'FantasyPros'})
+    except Exception as e:
+        import traceback
+        return jsonify({'ok': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
+
+
+@app.route('/api/projections/meta', methods=['GET'])
+def get_projections_meta():
+    meta = projections_meta()
+    return jsonify(meta or {'count': 0, 'last_updated': None})
 
 
 @app.route('/api/props/refresh', methods=['POST'])

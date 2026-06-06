@@ -59,6 +59,15 @@ def init_db():
                 week17      TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS player_projections (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_name TEXT    NOT NULL UNIQUE,
+                fpts        REAL,
+                pos         TEXT,
+                source      TEXT    DEFAULT 'FantasyPros',
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS players (
                 player_id  TEXT PRIMARY KEY,
                 name       TEXT,
@@ -219,6 +228,44 @@ def get_all_props():
             'updated_at': r['updated_at'],
         }
     return result
+
+
+# ── Player projections ───────────────────────────────────────────────────────
+
+def save_projections(projections: dict, source: str = 'FantasyPros'):
+    """Upsert from {player_name: {'fpts': float, 'pos': str}}."""
+    with get_db() as conn:
+        count = 0
+        for player_name, data in projections.items():
+            conn.execute("""
+                INSERT INTO player_projections (player_name, fpts, pos, source, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(player_name) DO UPDATE SET
+                    fpts       = excluded.fpts,
+                    pos        = excluded.pos,
+                    source     = excluded.source,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (player_name, data.get('fpts'), data.get('pos'), source))
+            count += 1
+    return count
+
+
+def get_raw_projections():
+    """Return {player_name: {fpts, pos, source, updated_at}}."""
+    with get_db() as conn:
+        rows = conn.execute(
+            'SELECT player_name, fpts, pos, source, updated_at FROM player_projections'
+        ).fetchall()
+    return {r['player_name']: dict(r) for r in rows}
+
+
+def projections_meta():
+    """Return count and most recent updated_at, or None if empty."""
+    with get_db() as conn:
+        row = conn.execute(
+            'SELECT COUNT(*) AS n, MAX(updated_at) AS last FROM player_projections'
+        ).fetchone()
+    return {'count': row['n'], 'last_updated': row['last']} if row['n'] else None
 
 
 # ── Player rankings ───────────────────────────────────────────────────────────

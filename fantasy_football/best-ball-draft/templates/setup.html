@@ -124,6 +124,17 @@
     </div>
   </div>
 
+  <!-- Projections -->
+  <div class="card">
+    <h2>Season Projections</h2>
+    <div class="status-row" id="projStatus">
+      <div class="dot orange" id="projDot"></div>
+      <div class="status-text"><b id="projLabel">Checking…</b><small id="projDetail"></small></div>
+    </div>
+    <button class="btn" id="refreshProjBtn" onclick="refreshProjections()">↻ Refresh from FantasyPros</button>
+    <div id="projMsg"></div>
+  </div>
+
   <!-- Add draft manually -->
   <div class="card">
     <h2>My Active Drafts</h2>
@@ -265,8 +276,55 @@ async function refreshFromDK() {
   }
 }
 
+async function checkProjections() {
+  try {
+    const r = await fetch('/api/projections/meta');
+    const d = await r.json();
+    const dot   = document.getElementById('projDot');
+    const label = document.getElementById('projLabel');
+    const detail = document.getElementById('projDetail');
+    if (d.count > 0) {
+      dot.className = 'dot green';
+      label.textContent = `${d.count} players loaded`;
+      const ago = d.last_updated ? new Date(d.last_updated + 'Z').toLocaleDateString() : '';
+      detail.textContent = ago ? `Last updated ${ago}` : '';
+    } else {
+      dot.className = 'dot orange';
+      label.textContent = 'No projections — click Refresh';
+      detail.textContent = 'FantasyPros PPR consensus';
+    }
+  } catch {
+    document.getElementById('projLabel').textContent = 'Server unreachable';
+  }
+}
+
+async function refreshProjections() {
+  const btn = document.getElementById('refreshProjBtn');
+  const msg = document.getElementById('projMsg');
+  btn.disabled = true;
+  btn.textContent = '↻ Fetching…';
+  msg.innerHTML = '';
+  try {
+    const r = await fetch('/api/projections/refresh', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      msg.innerHTML = `<p class="msg success">✓ Loaded ${d.players} players from ${d.source}</p>`;
+      await checkProjections();
+    } else {
+      msg.innerHTML = `<p class="msg error">${d.error || 'Refresh failed'}</p>`;
+    }
+  } catch(e) {
+    msg.innerHTML = `<p class="msg error">Error: ${e.message}</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Refresh from FantasyPros';
+    setTimeout(() => { msg.innerHTML = ''; }, 5000);
+  }
+}
+
 // Init
 checkAuth();
+checkProjections();
 loadSavedDrafts();
 </script>
 </body>
