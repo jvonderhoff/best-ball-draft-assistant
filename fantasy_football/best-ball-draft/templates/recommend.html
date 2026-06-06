@@ -208,6 +208,7 @@
     .rec-status-bar { background: var(--surface); border: 1px solid var(--border-soft); border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.78em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
     .rec-warn-bar   { background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.78em; color: var(--orange); }
     .qb-run-alert   { background: var(--green-bg); border: 1px solid var(--green); border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.82em; color: var(--green); font-weight: 600; }
+    .mc-badge { font-size: 0.65em; font-weight: 700; padding: 1px 5px; border-radius: 3px; background: var(--green-bg); color: var(--green); margin-left: 6px; vertical-align: middle; }
 
     /* ── Manual draft input ── */
     #manualDraftId { flex: 1; padding: 9px 10px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.92em; }
@@ -376,6 +377,7 @@
 // ── Draft state ────────────────────────────────────────────────────────────────
 let PLAYERS = [];
 let exposure = {};
+let PROJECTIONS = {};  // player_id → { mean, weekly_stddev } from /api/projections
 
 // ── Custom rankings ────────────────────────────────────────────────────────────
 let useCustomRankings = localStorage.getItem('bba_use_custom_ranks') === 'true';
@@ -1005,9 +1007,14 @@ document.getElementById('resetDraft').addEventListener('click', () => {
 // ── Player loading ─────────────────────────────────────────────────────────────
 async function loadPlayers() {
   try {
-    const [pr, er] = await Promise.all([fetch('/api/players'), fetch('/api/drafts/exposure')]);
-    PLAYERS  = await pr.json();
-    exposure = (await er.json()).players || {};
+    const [pr, er, proj] = await Promise.all([
+      fetch('/api/players'),
+      fetch('/api/drafts/exposure'),
+      fetch('/api/projections'),
+    ]);
+    PLAYERS     = await pr.json();
+    exposure    = (await er.json()).players || {};
+    PROJECTIONS = await proj.json();
     buildNameLookup();
     renderPlayerList();
     renderRecs();
@@ -1191,11 +1198,22 @@ function renderRecs() {
     return `<div class="qb-run-alert">⚡ ${label}</div>`;
   })();
 
+  // Monte Carlo marginal contributions — compute base once, then delta per candidate
+  const hasProjData = Object.keys(PROJECTIONS).length > 0;
+  const mcBase   = hasProjData ? simulateSeason(state.myTeam, PROJECTIONS) : null;
+  const mcScores = hasProjData
+    ? recs.map(r => simulateSeason([...state.myTeam, r.player], PROJECTIONS) - mcBase)
+    : recs.map(() => null);
+
   el.innerHTML = statusBar + runAlert + recs.map((r, i) => {
-    const p = r.player;
+    const p  = r.player;
+    const mc = mcScores[i];
+    const mcBadge = mc !== null
+      ? `<span class="mc-badge" title="Monte Carlo: expected best-ball pts added">+${mc.toFixed(1)}</span>`
+      : '';
     return `<div class="rec-card">
       <div class="rec-rank">#${i+1}</div>
-      <div><span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span></div>
+      <div><span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span>${mcBadge}</div>
       <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ${useCustomRankings ? 'Rank' : 'ADP'} ${Math.round(p.adp)}</div>
       ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
     </div>`;

@@ -227,6 +227,69 @@ def get_props():
     return jsonify(get_all_props())
 
 
+@app.route('/api/projections', methods=['GET'])
+def get_projections():
+    """
+    Convert raw season prop lines into PPR fantasy-point projections per player.
+    Returns { player_id: { mean, weekly_stddev } } keyed by DK player ID.
+
+    Scoring: pass_yd/25·1pt, pass_td·4, rush_yd/10·1pt, rush_td·6,
+             rec_yd/10·1pt, rec_yd/9·1pt (est. receptions PPR), rec_td·6.
+    Weekly stddev is position-based CV × weekly mean (WR most volatile, QB least).
+    Players not in player_props fall back to ADP-derived estimates client-side.
+    """
+    from app.database import get_db
+    with get_db() as conn:
+        rows = conn.execute('SELECT player_name, prop_type, line FROM player_props').fetchall()
+
+    # Group props by name
+    props_by_name = {}
+    for r in rows:
+        props_by_name.setdefault(r['player_name'].lower(), {})[r['prop_type']] = r['line']
+
+    # Normalize a name for matching (strip punctuation, remove generational suffixes)
+    _suffixes = {'jr', 'sr', 'ii', 'iii', 'iv', 'v'}
+    def normalize(name):
+        n = re.sub(r'[.\']', '', name.lower()).strip()
+        parts = n.split()
+        if parts and parts[-1] in _suffixes:
+            parts = parts[:-1]
+        return ' '.join(parts)
+
+    pos_cv = {'QB': 0.35, 'RB': 0.55, 'WR': 0.75, 'TE': 0.65}
+
+    result = {}
+    for raw_name, p in props_by_name.items():
+        # Try exact match first, then normalized
+        player = _PLAYERS_BY_NAME.get(raw_name) or _PLAYERS_BY_NAME.get(normalize(raw_name))
+        if not player:
+            continue
+        pid = player.get('id')
+        pos = player.get('pos', 'WR')
+        if not pid:
+            continue
+
+        mean = (
+            p.get('pass_yd', 0) * 0.04 +
+            p.get('pass_td', 0) * 4 +
+            p.get('rush_yd', 0) * 0.1 +
+            p.get('rush_td', 0) * 6 +
+            p.get('rec_yd',  0) * 0.1 +
+            p.get('rec_yd',  0) / 9 +   # estimated receptions (PPR)
+            p.get('rec_td',  0) * 6
+        )
+
+        weekly_mean   = mean / 17
+        weekly_stddev = weekly_mean * pos_cv.get(pos, 0.5)
+
+        result[pid] = {
+            'mean':          round(mean, 1),
+            'weekly_stddev': round(weekly_stddev, 2),
+        }
+
+    return jsonify(result)
+
+
 @app.route('/api/props/refresh', methods=['POST'])
 def refresh_props():
     try:
