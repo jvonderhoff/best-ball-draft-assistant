@@ -237,7 +237,12 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   //   mild:    rounds 1-3 ×1.10, rounds 4-5 ×1.05
   //   strong:  rounds 1-3 ×1.20, rounds 4-5 ×1.10
   //   extreme: rounds 1-3 ×1.35, rounds 4-5 ×1.18, rounds 6-7 ×1.08
-  if (pos === 'RB' && rbPriority !== 'off') {
+  // Guard: suppress boost when already RB-heavy relative to WR count.
+  // Having ≥2 more RBs than WRs means the roster is imbalanced enough that
+  // the urgency signal has already been acted on — don't keep piling on.
+  const myRBs = myTeam.filter(p => p.pos === 'RB').length;
+  const myWRs = myTeam.filter(p => p.pos === 'WR').length;
+  if (pos === 'RB' && rbPriority !== 'off' && myRBs < myWRs + 2) {
     const boosts = {
       mild:    [0, 1.10, 1.10, 1.10, 1.05, 1.05, 1.0],
       strong:  [0, 1.20, 1.20, 1.20, 1.10, 1.10, 1.0],
