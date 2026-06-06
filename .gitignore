@@ -10,6 +10,7 @@ venv/
 # Flask / local data
 best-ball-draft/app/data/player_cache.json
 best-ball-draft/drafts.db
+drafts.db
 
 # Extension — generated file, rebuild with generate_players.py
 best-ball-extension/players.js
