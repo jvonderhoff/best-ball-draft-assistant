@@ -14,6 +14,25 @@ const STACK_SETTINGS = {
   heavy:  { first: 1.40, second: 1.18, qbPull: 1.28, cluster: 1.15, rbCorrel: 1.08 },
 };
 
+// ── QB run detection ──────────────────────────────────────────────────────────
+// Detects when multiple QBs are being drafted in opponent picks since your last
+// turn, signaling you may miss a QB tier if you don't act now.
+//
+// recentOppPicks: [{pos, pick_number}] — opponent picks since your last pick.
+// 0–1 QBs → no boost | 2 QBs → ×1.15 | 3+ QBs → ×1.25
+function getQBRunBoost(recentOppPicks) {
+  const qbCount = recentOppPicks.filter(p => p.pos === 'QB').length;
+  if (qbCount < 2) return 1.0;
+  return qbCount === 2 ? 1.15 : 1.25;
+}
+
+// Human-readable label for active QB run, or null.
+function qbRunLabel(recentOppPicks) {
+  const qbCount = recentOppPicks.filter(p => p.pos === 'QB').length;
+  if (qbCount < 2) return null;
+  return `QB run — ${qbCount} QB${qbCount > 1 ? 's' : ''} taken since your last pick`;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getTeamCounts(myTeam) {
@@ -129,7 +148,7 @@ function byeWeekWarning(player, myTeam) {
 
 // ── Core value calculation ────────────────────────────────────────────────────
 
-function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', rbPriority = 'strong') {
+function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', rbPriority = 'strong', recentOppPicks = []) {
   // Use inverse ADP so value is always positive and naturally orders players.
   // adp=1 → 1000, adp=50 → 20, adp=100 → 10, adp=200 → 5, adp=500 → 2
   // This ensures late-round players still have relative ordering rather than
@@ -270,6 +289,9 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   // Bye week penalty — discourage stacking too many players on the same bye
   mult *= getByeWeekPenalty(player, myTeam);
 
+  // QB run boost — amplify QB urgency when opponents are taking QBs fast
+  if (pos === 'QB') mult *= getQBRunBoost(recentOppPicks);
+
   // Value-steal boost / reach penalty: compares ADP to current overall pick.
   // myPickNumber is the overall pick; player.adp is also overall — apples to apples.
   // Normalised by the user's current round so early gaps carry more weight.
@@ -366,16 +388,17 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
 }
 
 // Returns the top N recommendations sorted by value score.
-function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, n = 5, rbPriority = 'strong') {
+function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, n = 5, rbPriority = 'strong', recentOppPicks = []) {
   if (!available.length) return [];
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
   const myQBCount = myTeam.filter(p => p.pos === 'QB').length;
   const pool = myQBCount >= 3 ? available.filter(p => p.pos !== 'QB') : available;
   if (!pool.length) return [];
+  const qbRun = qbRunLabel(recentOppPicks);
 
   const scored = pool.map(p => {
-    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, rbPriority);
+    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, rbPriority, recentOppPicks);
     if (diversifyStrength > 0 && exposure[p.id]) {
       val *= (1 - exposure[p.id].exposure_rate * diversifyStrength);
     }
@@ -403,6 +426,9 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
     }
     const byeWarn = byeWeekWarning(p, myTeam);
     if (byeWarn) reason = reason ? `${reason} · ⚠ ${byeWarn}` : `⚠ ${byeWarn}`;
+    if (p.pos === 'QB' && qbRun) {
+      reason = reason ? `${reason} · ⚡ ${qbRun}` : `⚡ ${qbRun}`;
+    }
 
     return { player: p, value: val, reason };
   });

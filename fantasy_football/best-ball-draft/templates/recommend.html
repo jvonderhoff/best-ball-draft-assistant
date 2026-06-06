@@ -261,6 +261,7 @@
     /* ── Rec status bars ── */
     .rec-status-bar { background: var(--surface); border: 1px solid var(--border-soft); border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.78em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
     .rec-warn-bar   { background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.78em; color: var(--orange); }
+    .qb-run-alert   { background: #1a2a1a; border: 1px solid #2e7d32; border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.82em; color: #81c784; font-weight: 600; }
 
     /* ── Manual draft input ── */
     #manualDraftId { flex: 1; padding: 9px 10px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.92em; }
@@ -495,6 +496,7 @@ function updateRankingToggleBtn() {
 
 const STATE_KEY = 'bba_live_draft';
 let state = loadState();
+let _recentOppPicks = []; // [{pos, pick_number}] — opponent picks since my last turn
 
 function defaultState() {
   return {
@@ -938,6 +940,24 @@ function applyDKPickState(data) {
     }
   }
 
+  // Recompute opponent picks since my last turn for position run detection
+  {
+    const myColIdx = settings.myPosition - 1;
+    const me = (settings.dkUsername || '').toLowerCase();
+    const lastMyPickNum = state.myTeam.length > 0
+      ? Math.max(...state.myTeam.map(p => p.pick || 0))
+      : 0;
+    _recentOppPicks = picks
+      .filter(pk => {
+        if ((pk.pick_number || 0) <= lastMyPickNum) return false;
+        const isMine = (pk.column_idx !== undefined && pk.column_idx !== null)
+          ? pk.column_idx === myColIdx
+          : (me && (pk.username || '').toLowerCase().includes(me));
+        return !isMine && pk.pos;
+      })
+      .map(pk => ({ pos: pk.pos, pick_number: pk.pick_number }));
+  }
+
   const srcRaw = data.source || 'DK';
   const src = srcRaw === 'bookmarklet_intercept' ? '🔗 BBA Live'
             : srcRaw.includes('draftkings.com') ? srcRaw.split('draftkings.com')[1]
@@ -1217,7 +1237,7 @@ function renderRecs() {
   const recs = getTopRecommendations(
     available, state.myTeam, pickForRec,
     settings.stackIntensity, exposure, settings.diversifyStrength,
-    10, settings.rbPriority
+    10, settings.rbPriority, _recentOppPicks
   );
 
   const el = document.getElementById('recsList');
@@ -1237,7 +1257,13 @@ function renderRecs() {
     return;
   }
 
-  el.innerHTML = statusBar + recs.map((r, i) => {
+  const runAlert = (() => {
+    const label = qbRunLabel(_recentOppPicks);
+    if (!label) return '';
+    return `<div class="qb-run-alert">⚡ ${label}</div>`;
+  })();
+
+  el.innerHTML = statusBar + runAlert + recs.map((r, i) => {
     const p = r.player;
     return `<div class="rec-card">
       <div class="rec-rank">#${i+1}</div>
