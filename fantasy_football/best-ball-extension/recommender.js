@@ -198,13 +198,6 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
       const urgency = (qbNeeded / picksLeft) * qbUrgencyWeight;
       mult *= (1 + Math.min(urgency * 3.0, 2.0));
     }
-    // Mild pace nudge in earlier rounds (±15%)
-    if (totalDrafted > 0) {
-      const pace    = totalDrafted / 20;
-      const ideal   = QB_TARGET * pace;
-      const deficit = ideal - myQBs;
-      mult += Math.max(-0.15, Math.min(0.15, deficit * 0.07));
-    }
   }
 
   // Hard discount when a position slot is fully filled
