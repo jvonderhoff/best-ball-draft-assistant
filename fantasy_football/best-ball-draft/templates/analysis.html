@@ -131,7 +131,6 @@
     @media (max-width: 600px) {
       nav { padding: 0 12px; gap: 14px; height: 44px; }
       nav a { font-size: 0.8em; }
-      .nav-brand { font-size: 0.88em; }
       .page { padding: 12px 10px; }
       .page-title { font-size: 1.1em; }
       .controls { width: 100%; }
@@ -149,13 +148,12 @@
 <body>
 
 <nav>
-  <span class="nav-brand">⚡ BBA</span>
   <a href="/recommend">Live Draft</a>
   <a href="/history">History</a>
   <a href="/rankings">Rankings</a>
   <a href="/analysis" class="active">Analysis</a>
   <a href="/setup">Setup</a>
-  <button class="theme-toggle" onclick="toggleTheme()">☀️ Light</button>
+  <button class="theme-toggle" onclick="toggleTheme()"><!-- label via CSS ::after --></button>
 </nav>
 
 <div class="page">

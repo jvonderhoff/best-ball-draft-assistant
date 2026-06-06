@@ -275,7 +275,6 @@
     /* ── Mobile ── */
     @media (max-width: 600px) {
       nav { padding: 0 12px; gap: 14px; height: 46px; }
-      .nav-brand { font-size: 0.85em; }
       nav a { font-size: 0.8em; }
       .page { padding: 12px; }
       .page-title { font-size: 1.1em; }
@@ -297,13 +296,12 @@
 <body>
 
 <nav>
-  <span class="nav-brand">⚡ BBA</span>
   <a href="/recommend">Live Draft</a>
   <a href="/history">History</a>
   <a href="/rankings" class="active">Rankings</a>
   <a href="/analysis">Analysis</a>
   <a href="/setup">Setup</a>
-  <button class="theme-toggle" onclick="toggleTheme()">☀️ Light</button>
+  <button class="theme-toggle" onclick="toggleTheme()"><!-- label via CSS ::after --></button>
 </nav>
 
 <div class="page">

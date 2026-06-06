@@ -13,15 +13,4 @@ function toggleTheme() {
     document.documentElement.setAttribute('data-theme', next);
   }
   localStorage.setItem('bba_theme', next);
-  document.querySelectorAll('.theme-toggle').forEach(btn => {
-    btn.textContent = next === 'light' ? '🌙 Dark' : '☀️ Light';
-  });
 }
-
-// Set initial button label once DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-  document.querySelectorAll('.theme-toggle').forEach(btn => {
-    btn.textContent = isLight ? '🌙 Dark' : '☀️ Light';
-  });
-});

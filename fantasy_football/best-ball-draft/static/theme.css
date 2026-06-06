@@ -59,10 +59,9 @@ nav {
   top: 0;
   z-index: 100;
 }
-nav a { color: var(--muted); text-decoration: none; font-size: 0.88em; font-weight: 600; padding: 4px 0; border-bottom: 2px solid transparent; }
+nav a { color: var(--muted); text-decoration: none; font-size: 0.88em; font-weight: 600; padding: 4px 0; border-bottom: 2px solid transparent; white-space: nowrap; }
 nav a:hover { color: var(--text); }
 nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
-.nav-brand { color: var(--accent); font-weight: 700; font-size: 1em; margin-right: 8px; }
 
 @media (max-width: 480px) {
   nav { padding: 0 12px; gap: 14px; }
@@ -102,7 +101,6 @@ html[data-theme="light"] nav {
 html[data-theme="light"] nav a        { color: #64748b; }
 html[data-theme="light"] nav a:hover  { color: #0f172a; }
 html[data-theme="light"] nav a.active { color: #0284c7; border-bottom-color: #0284c7; }
-html[data-theme="light"] .nav-brand   { color: #0284c7; }
 
 /* Sync bar */
 html[data-theme="light"] .sync-bar { background: #f8fafc; border-bottom-color: #cbd5e1; }
@@ -186,3 +184,7 @@ html[data-theme="light"] { --surface: #f8fafc; }
   transition: border-color 0.2s, color 0.2s;
 }
 .theme-toggle:hover { color: var(--text); border-color: var(--accent); }
+
+/* Label derived from theme attribute — correct before JS runs */
+.theme-toggle::after                        { content: "☀️ Light"; }
+html[data-theme="light"] .theme-toggle::after { content: "🌙 Dark"; }

@@ -221,13 +221,12 @@
 <body>
 
 <nav>
-  <span class="nav-brand">⚡ BBA</span>
   <a href="/recommend" class="active">Live Draft</a>
   <a href="/history">History</a>
   <a href="/rankings">Rankings</a>
   <a href="/analysis">Analysis</a>
   <a href="/setup">Setup</a>
-  <button class="theme-toggle" onclick="toggleTheme()">☀️ Light</button>
+  <button class="theme-toggle" onclick="toggleTheme()"><!-- label via CSS ::after --></button>
 </nav>
 
 <!-- ── Sync bar ── -->
@@ -235,23 +234,23 @@
   <div class="sync-dot" id="syncDot"></div>
   <div class="sync-label" id="syncLabel">Not connected</div>
   <button class="sync-btn" id="pullBtn" style="display:none" onclick="pullLatest()">Pull Latest</button>
-  <button class="sync-btn" id="rankingToggleBtn"
-    style="background:transparent;border:1px solid #2a3f5f;color:#78909c;font-size:0.72em;padding:3px 8px;border-radius:4px;cursor:pointer;"
+  <button class="sync-btn disconnect" id="rankingToggleBtn"
+    style="font-size:0.72em;padding:3px 8px;border-radius:4px;"
     onclick="toggleRankingMode()">☆ My Ranks</button>
   <button class="sync-btn disconnect" id="disconnectBtn" style="display:none">← Drafts</button>
 </div>
 
 <!-- ── Draft list (shown when no draft is connected) ── -->
 <div id="draftListView" style="display:none;padding:12px;">
-  <div style="font-size:0.82em;color:#78909c;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
+  <div style="font-size:0.82em;color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
     <span>Your active drafts:</span>
     <span style="display:flex;gap:10px;align-items:center;">
-      <a href="/setup" style="color:#4fc3f7;font-size:0.85em;text-decoration:none;">⚙ Setup</a>
-      <button onclick="loadDraftList()" style="background:none;border:none;color:#4fc3f7;font-size:0.85em;cursor:pointer;">↻ Refresh</button>
+      <a href="/setup" style="color:var(--accent);font-size:0.85em;text-decoration:none;">⚙ Setup</a>
+      <button onclick="loadDraftList()" style="background:none;border:none;color:var(--accent);font-size:0.85em;cursor:pointer;">↻ Refresh</button>
     </span>
   </div>
   <div id="draftListCards" style="display:flex;flex-direction:column;gap:8px;">
-    <div style="color:#546e7a;font-size:0.85em;text-align:center;padding:20px;">Loading…</div>
+    <div style="color:var(--muted2);font-size:0.85em;text-align:center;padding:20px;">Loading…</div>
   </div>
   <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
     <div style="font-size:0.78em;color:var(--muted2);margin-bottom:8px;">Connect to a specific draft ID:</div>
