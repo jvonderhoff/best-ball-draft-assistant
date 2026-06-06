@@ -1,7 +1,76 @@
+/* ── Base: canonical dark palette ────────────────────────────────────────────
+   Single source of truth for all pages. Pages may override individual vars
+   in their own :root block if they need a different tone for that page.
+   ──────────────────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box; margin: 0; padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root {
+  --bg:          #0b0f14;
+  --panel:       #111827;
+  --card:        #1a2233;
+  --surface:     #0d1520;
+  --border:      #2a3f5f;
+  --border-soft: #1e3050;
+  --accent:      #4fc3f7;
+  --green:       #81c784;
+  --green-bg:    #0d1a0d;
+  --red:         #ef5350;
+  --orange:      #ff9800;
+  --text:        #e0e0e0;
+  --muted:       #78909c;
+  --muted2:      #546e7a;
+  --selected:    #1a2d4d;
+  --mine-bg:     #1a3a4d;
+  --opp-bg:      #2d1a1a;
+  --warn-bg:     #1a1206;
+  --warn-border: #5d4037;
+  --QB:          #e91e63;
+  --RB:          #2196f3;
+  --WR:          #4caf50;
+  --TE:          #ff9800;
+  --card-hi:     #1a2f4d;
+  --hover:       #151f2e;
+  --input-bg:    #1a2a3a;
+  --row-border:  #1a2a3a;
+  --no-data:     #37474f;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 15px;
+  min-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+nav {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 48px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+nav a { color: var(--muted); text-decoration: none; font-size: 0.88em; font-weight: 600; padding: 4px 0; border-bottom: 2px solid transparent; }
+nav a:hover { color: var(--text); }
+nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+.nav-brand { color: var(--accent); font-weight: 700; font-size: 1em; margin-right: 8px; }
+
+@media (max-width: 480px) {
+  nav { padding: 0 12px; gap: 14px; }
+  nav a { font-size: 0.8em; }
+}
+
 /* ── Theme toggle ────────────────────────────────────────────────────────────
    Dark is default. Light mode activates via html[data-theme="light"].
-   html[data-theme="light"] beats :root in specificity so it overrides
-   each page's inline :root variables without touching them.
    ──────────────────────────────────────────────────────────────────────────── */
 
 html[data-theme="light"] {

@@ -7,60 +7,6 @@
   <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/theme.css?v=3">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-
-    :root {
-      --bg:          #0b0f14;
-      --panel:       #111827;
-      --card:        #1a2233;
-      --surface:     #0d1520;   /* sync bar, tabs, inputs */
-      --border:      #2a3f5f;
-      --border-soft: #1e3050;
-      --accent:      #4fc3f7;
-      --green:       #81c784;
-      --red:         #ef5350;
-      --orange:      #ff9800;
-      --text:        #e0e0e0;
-      --muted:       #78909c;
-      --muted2:      #546e7a;
-      --selected:    #1a2d4d;   /* selected row, stack chip */
-      --mine-bg:     #1a3a4d;   /* "mine" badge */
-      --opp-bg:      #2d1a1a;   /* "taken" badge */
-      --warn-bg:     #1a1206;   /* no-picks warning */
-      --warn-border: #5d4037;
-      --QB:     #e91e63;
-      --RB:     #2196f3;
-      --WR:     #4caf50;
-      --TE:     #ff9800;
-    }
-
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 15px;
-      min-height: 100dvh;
-      padding-bottom: env(safe-area-inset-bottom);
-    }
-
-    /* ── Nav (shared style) ── */
-    nav {
-      background: #111e2e;
-      border-bottom: 1px solid var(--border);
-      padding: 0 24px;
-      display: flex;
-      align-items: center;
-      gap: 24px;
-      height: 48px;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-    nav a { color: var(--muted); text-decoration: none; font-size: 0.88em; font-weight: 600; padding: 4px 0; border-bottom: 2px solid transparent; }
-    nav a:hover { color: var(--text); }
-    nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .nav-brand { color: var(--accent); font-weight: 700; font-size: 1em; margin-right: 8px; }
-    @media (max-width: 480px) { nav { padding: 0 12px; gap: 14px; } nav a { font-size: 0.8em; } }
 
     /* ── Sync bar ── */
     .sync-bar {
@@ -261,7 +207,7 @@
     /* ── Rec status bars ── */
     .rec-status-bar { background: var(--surface); border: 1px solid var(--border-soft); border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.78em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
     .rec-warn-bar   { background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.78em; color: var(--orange); }
-    .qb-run-alert   { background: #1a2a1a; border: 1px solid #2e7d32; border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.82em; color: #81c784; font-weight: 600; }
+    .qb-run-alert   { background: var(--green-bg); border: 1px solid var(--green); border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.82em; color: var(--green); font-weight: 600; }
 
     /* ── Manual draft input ── */
     #manualDraftId { flex: 1; padding: 9px 10px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.92em; }

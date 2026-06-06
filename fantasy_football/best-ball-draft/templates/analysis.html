@@ -8,23 +8,12 @@
   <link rel="stylesheet" href="/static/theme.css?v=3">
   <style>
     :root {
-      --bg:      #0f1419; --surface: #1a2535; --border: #2a3f5f;
+      --bg:      #0f1419; --surface: #1a2535;
       --panel:   #111e2e; --card:    #111827; --hover:  #151f2e;
-      --text:    #e0e0e0; --muted:   #78909c; --accent: #4fc3f7;
-      --green:   #4caf50; --amber:   #ffc107; --red:    #ef5350;
+      --green:   #4caf50; --amber:   #ffc107;
       --elite:   #ffd700; --strong:  #4caf50; --solid:  #4fc3f7;
       --spec:    #ff9800; --flier:   #78909c; --selected: #0d1f33;
-      --no-data: #37474f;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
-
-    /* ── Nav ── */
-    nav { background: var(--panel); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; gap: 24px; height: 48px; }
-    nav a { color: var(--muted); text-decoration: none; font-size: 0.88em; font-weight: 600; padding: 4px 0; border-bottom: 2px solid transparent; }
-    nav a:hover { color: var(--text); }
-    nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .nav-brand { color: var(--accent); font-weight: 700; font-size: 1em; margin-right: 8px; }
 
     /* ── Page layout ── */
     .page { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
