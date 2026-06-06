@@ -512,4 +512,3 @@ function currentRound(overallPick, numTeams) {
   if (!numTeams) return null;
   return Math.floor((overallPick - 1) / numTeams) + 1;
 }
-// hook test
