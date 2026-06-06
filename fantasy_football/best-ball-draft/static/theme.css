@@ -94,6 +94,15 @@ html[data-theme="light"] .pos-TE { background: #ffedd5; color: #9a3412; }
 html[data-theme="light"] #totalDrafts,
 html[data-theme="light"] #exposureSubtitle { color: var(--muted) !important; }
 
+/* ── style.css panel overrides ── */
+html[data-theme="light"] .panel { background: #ffffff; border-color: #cbd5e1; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+html[data-theme="light"] .panel-header { background: #e8f0fe; border-bottom-color: #cbd5e1; }
+html[data-theme="light"] .panel-header h2 { color: #0f172a; }
+html[data-theme="light"] .panel-footer { background: #f1f5f9; border-top-color: #cbd5e1; }
+
+/* ── Setup page surface overrides ── */
+html[data-theme="light"] { --surface: #f8fafc; }
+
 /* ── Theme toggle button ──────────────────────────────────────────────────── */
 .theme-toggle {
   margin-left: auto;
