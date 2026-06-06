@@ -8,17 +8,19 @@
   <link rel="stylesheet" href="/static/theme.css">
   <style>
     :root {
-      --bg: #0f1419; --surface: #1a2535; --border: #2a3f5f;
-      --text: #e0e0e0; --muted: #78909c; --accent: #4fc3f7;
-      --green: #4caf50; --amber: #ffc107; --red: #ef5350;
-      --elite: #ffd700; --strong: #4caf50; --solid: #4fc3f7;
-      --spec: #ff9800; --flier: #78909c;
+      --bg:      #0f1419; --surface: #1a2535; --border: #2a3f5f;
+      --panel:   #111e2e; --card:    #111827; --hover:  #151f2e;
+      --text:    #e0e0e0; --muted:   #78909c; --accent: #4fc3f7;
+      --green:   #4caf50; --amber:   #ffc107; --red:    #ef5350;
+      --elite:   #ffd700; --strong:  #4caf50; --solid:  #4fc3f7;
+      --spec:    #ff9800; --flier:   #78909c; --selected: #0d1f33;
+      --no-data: #37474f;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
 
     /* ── Nav ── */
-    nav { background: #111e2e; border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; gap: 24px; height: 48px; }
+    nav { background: var(--panel); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; gap: 24px; height: 48px; }
     nav a { color: var(--muted); text-decoration: none; font-size: 0.88em; font-weight: 600; padding: 4px 0; border-bottom: 2px solid transparent; }
     nav a:hover { color: var(--text); }
     nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
@@ -56,7 +58,7 @@
       cursor: pointer; transition: all 0.15s;
     }
     .pos-tab:hover { color: var(--text); border-color: #4a6080; }
-    .pos-tab.active { border-color: var(--accent); color: var(--accent); background: #0d1f33; }
+    .pos-tab.active { border-color: var(--accent); color: var(--accent); background: var(--selected); }
 
     /* ── Stats bar ── */
     .stats-bar { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -71,14 +73,14 @@
     /* Freeze rank + player name columns when scrolling horizontally */
     th.sticky, td.sticky {
       position: sticky;
-      background: #111827;
+      background: var(--card);
       z-index: 2;
     }
-    thead th.sticky { background: #111e2e; z-index: 3; }
+    thead th.sticky { background: var(--panel); z-index: 3; }
     th.sticky-rank,  td.sticky-rank  { left: 0;    min-width: 36px; }
-    th.sticky-name,  td.sticky-name  { left: 36px; min-width: 160px; border-right: 1px solid #2a3a50; }
+    th.sticky-name,  td.sticky-name  { left: 36px; min-width: 160px; border-right: 1px solid var(--border); }
     table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
-    thead { background: #111e2e; position: sticky; top: 0; z-index: 1; }
+    thead { background: var(--panel); position: sticky; top: 0; z-index: 1; }
     th {
       padding: 10px 10px; text-align: left; color: var(--muted); font-weight: 700;
       font-size: 0.78em; letter-spacing: 0.04em; border-bottom: 1px solid var(--border);
@@ -87,9 +89,9 @@
     th:hover { color: var(--text); }
     th.sorted { color: var(--accent); }
     th .sort-arrow { margin-left: 3px; font-size: 0.8em; }
-    td { padding: 8px 10px; border-bottom: 1px solid #1a2535; vertical-align: middle; }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--surface); vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #151f2e; }
+    tr:hover td { background: var(--hover); }
 
     /* ── Tier badge ── */
     .tier {
@@ -134,7 +136,7 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ── Sleeper link indicator ── */
-    .no-data { color: #37474f; font-style: italic; font-size: 0.85em; }
+    .no-data { color: var(--no-data); font-style: italic; font-size: 0.85em; }
 
     /* ── Mobile ── */
     @media (max-width: 600px) {

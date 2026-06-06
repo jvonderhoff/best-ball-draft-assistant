@@ -8,11 +8,17 @@
     <script src="/static/theme.js"></script>
     <link rel="stylesheet" href="/static/theme.css">
     <style>
-        nav { background: #111e2e; border-bottom: 1px solid #2a3f5f; padding: 0 24px; display: flex; align-items: center; gap: 24px; height: 48px; position: sticky; top: 0; z-index: 100; }
-        nav a { color: #78909c; text-decoration: none; font-size: 0.88em; font-weight: 600; padding: 4px 0; border-bottom: 2px solid transparent; }
-        nav a:hover { color: #e0e0e0; }
-        nav a.active { color: #4fc3f7; border-bottom-color: #4fc3f7; }
-        .nav-brand { color: #4fc3f7; font-weight: 700; font-size: 1em; margin-right: 8px; }
+        :root {
+          --bg: #0d1117; --panel: #111e2e; --card: #0f1419; --card-hi: #1a2f4d;
+          --border: #2a3f5f; --text: #e0e0e0; --muted: #78909c; --accent: #4fc3f7;
+          --green: #81c784; --red: #ef5350; --orange: #ff9800;
+        }
+        body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        nav { background: var(--panel); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; gap: 24px; height: 48px; position: sticky; top: 0; z-index: 100; }
+        nav a { color: var(--muted); text-decoration: none; font-size: 0.88em; font-weight: 600; padding: 4px 0; border-bottom: 2px solid transparent; }
+        nav a:hover { color: var(--text); }
+        nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .nav-brand { color: var(--accent); font-weight: 700; font-size: 1em; margin-right: 8px; }
         @media (max-width: 480px) { nav { padding: 0 12px; gap: 14px; } nav a { font-size: 0.8em; } }
         .history-container { max-width: 1100px; margin: 0 auto; }
         .exposure-section { margin-bottom: 30px; }
@@ -23,22 +29,22 @@
             margin-top: 12px;
         }
         .exposure-card {
-            background: #1a2f4d;
+            background: var(--card-hi);
             border-radius: 6px;
             padding: 10px 12px;
-            border-left: 3px solid #4fc3f7;
+            border-left: 3px solid var(--accent);
         }
-        .exposure-card .exp-name { font-weight: 600; font-size: 0.88em; color: #fff; }
-        .exposure-card .exp-meta { font-size: 0.75em; color: #78909c; margin-top: 2px; }
-        .exp-bar-wrap { margin-top: 6px; background: #0f1419; border-radius: 3px; height: 5px; }
-        .exp-bar { height: 5px; border-radius: 3px; background: #4fc3f7; transition: width 0.3s; }
-        .exp-bar.high { background: #ef5350; }
-        .exp-bar.med  { background: #ff9800; }
+        .exposure-card .exp-name { font-weight: 600; font-size: 0.88em; color: var(--text); }
+        .exposure-card .exp-meta { font-size: 0.75em; color: var(--muted); margin-top: 2px; }
+        .exp-bar-wrap { margin-top: 6px; background: var(--bg); border-radius: 3px; height: 5px; }
+        .exp-bar { height: 5px; border-radius: 3px; background: var(--accent); transition: width 0.3s; }
+        .exp-bar.high { background: var(--red); }
+        .exp-bar.med  { background: var(--orange); }
 
         .draft-list { display: flex; flex-direction: column; gap: 12px; }
         .draft-card {
-            background: #0f1419;
-            border: 1px solid #2a3f5f;
+            background: var(--card);
+            border: 1px solid var(--border);
             border-radius: 8px;
             overflow: hidden;
         }
@@ -46,17 +52,17 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: #1a2f4d;
+            background: var(--card-hi);
             padding: 12px 16px;
         }
-        .draft-card-header h3 { font-size: 1em; color: #fff; margin: 0; }
-        .draft-meta { font-size: 0.8em; color: #78909c; }
-        .draft-proj { font-weight: 700; color: #81c784; font-size: 0.95em; }
+        .draft-card-header h3 { font-size: 1em; color: var(--text); margin: 0; }
+        .draft-meta { font-size: 0.8em; color: var(--muted); }
+        .draft-proj { font-weight: 700; color: var(--green); font-size: 0.95em; }
         .delete-btn {
-            background: none; border: 1px solid #37474f; color: #78909c;
+            background: none; border: 1px solid var(--border); color: var(--muted);
             border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 0.78em;
         }
-        .delete-btn:hover { background: #37474f; color: #cfd8dc; }
+        .delete-btn:hover { background: var(--border); color: var(--text); }
         .draft-picks-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -64,20 +70,20 @@
             padding: 12px;
         }
         .pick-chip {
-            background: #1a2f4d;
+            background: var(--card-hi);
             border-radius: 4px;
             padding: 6px 8px;
             font-size: 0.78em;
-            border-left: 3px solid #4fc3f7;
+            border-left: 3px solid var(--accent);
         }
-        .pick-chip .pick-name { font-weight: 600; color: #fff; }
-        .pick-chip .pick-meta { color: #78909c; font-size: 0.85em; }
+        .pick-chip .pick-name { font-weight: 600; color: var(--text); }
+        .pick-chip .pick-meta { color: var(--muted); font-size: 0.85em; }
         .pos-QB { border-left-color: #e91e63; }
         .pos-RB { border-left-color: #2196f3; }
         .pos-WR { border-left-color: #4caf50; }
         .pos-TE { border-left-color: #ff9800; }
-        .empty-history { color: #546e7a; text-align: center; padding: 40px; font-style: italic; }
-        .section-title { font-size: 0.75em; font-weight: 700; color: #546e7a; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px; }
+        .empty-history { color: var(--muted); text-align: center; padding: 40px; font-style: italic; }
+        .section-title { font-size: 0.75em; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px; }
 
         @media (max-width: 600px) {
             .history-container { padding: 12px !important; }

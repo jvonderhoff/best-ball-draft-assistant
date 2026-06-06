@@ -65,6 +65,35 @@ html[data-theme="light"] .pos-btn { border-color: #cbd5e1; color: #64748b; }
 /* Draft list view */
 html[data-theme="light"] #draftListView { background: var(--bg); }
 
+/* ── Analysis page ── */
+html[data-theme="light"] { --panel: #ffffff; --card: #ffffff; --hover: #f0f7ff; --selected: #dbeafe; --no-data: #94a3b8; }
+
+/* ── History page ── */
+html[data-theme="light"] { --card-hi: #e8f0fe; }
+
+/* ── Rankings page ── */
+html[data-theme="light"] { --input-bg: #f1f5f9; --row-border: #e2e8f0; }
+html[data-theme="light"] .table-wrap { background: #ffffff; }
+html[data-theme="light"] #statusBar.ok    { background: #dcfce7; color: #166534; }
+html[data-theme="light"] #statusBar.error { background: #fee2e2; color: #991b1b; }
+
+/* ── Analysis tier badges in light mode ── */
+html[data-theme="light"] .tier-Elite      { background: #fef9c3; border-color: #ca8a04; color: #92400e; }
+html[data-theme="light"] .tier-Strong     { background: #dcfce7; border-color: #16a34a; color: #166534; }
+html[data-theme="light"] .tier-Solid      { background: #dbeafe; border-color: #2563eb; color: #1e40af; }
+html[data-theme="light"] .tier-Speculative{ background: #ffedd5; border-color: #d97706; color: #92400e; }
+html[data-theme="light"] .tier-Flier      { background: #f1f5f9; border-color: #94a3b8; color: #475569; }
+
+/* ── Analysis pos badges in light mode ── */
+html[data-theme="light"] .pos-QB { background: #fce7f3; color: #9d174d; }
+html[data-theme="light"] .pos-RB { background: #dbeafe; color: #1e40af; }
+html[data-theme="light"] .pos-WR { background: #dcfce7; color: #166534; }
+html[data-theme="light"] .pos-TE { background: #ffedd5; color: #9a3412; }
+
+/* ── History inline color overrides ── */
+html[data-theme="light"] #totalDrafts,
+html[data-theme="light"] #exposureSubtitle { color: var(--muted) !important; }
+
 /* ── Theme toggle button ──────────────────────────────────────────────────── */
 .theme-toggle {
   margin-left: auto;
