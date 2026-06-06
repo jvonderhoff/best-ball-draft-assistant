@@ -157,10 +157,11 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const pos = player.pos;
 
   // ADP is the primary signal. RB and WR compete on pure ADP.
-  // QB and TE get urgency-based adjustments since they fill capped slots.
+  // QB, TE, and WR get urgency-based adjustments when falling behind pace.
   const totalDrafted = myTeam.length;
   const myTEs  = myTeam.filter(p => p.pos === 'TE').length;
   const myQBs  = myTeam.filter(p => p.pos === 'QB').length;
+  const myWRs  = myTeam.filter(p => p.pos === 'WR').length;
   const userRound = totalDrafted + 1;
   // Late-round zero: if you hit round 13+ with none drafted you'll need 3
   // to maintain adequate position quality across the remaining picks.
@@ -181,6 +182,24 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     if (teNeeded > 0) {
       const urgency = (teNeeded / picksLeft) * teUrgencyWeight;
       mult *= (1 + Math.min(urgency * 3.0, 2.0));
+    }
+  }
+
+  // WR urgency — activates mid-draft when WR count is behind pace.
+  // Uses pace deficit rather than absolute need since WR depth runs much deeper.
+  // Expected pace: 8 WRs in 20 picks = 0.40 per pick drafted.
+  // A 1.5-pick grace margin prevents boosting when only slightly behind.
+  //   Rd 1-6:  no boost — plenty of WR depth available
+  //   Rd 8:    weight 0.33 → mild nudge if behind
+  //   Rd 10:   weight 0.67 → meaningful push if behind
+  //   Rd 12+:  weight 1.0  → full urgency if behind
+  const wrUrgencyWeight = Math.max(0, Math.min(1, (userRound - 6) / 6));
+
+  if (pos === 'WR' && wrUrgencyWeight > 0) {
+    const expectedWRs = totalDrafted * 0.40;
+    const deficit = Math.max(0, expectedWRs - myWRs - 1.5);
+    if (deficit > 0) {
+      mult *= (1 + Math.min(deficit * 0.20 * wrUrgencyWeight, 0.60));
     }
   }
 
@@ -234,7 +253,6 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   // Having ≥2 more RBs than WRs means the roster is imbalanced enough that
   // the urgency signal has already been acted on — don't keep piling on.
   const myRBs = myTeam.filter(p => p.pos === 'RB').length;
-  const myWRs = myTeam.filter(p => p.pos === 'WR').length;
   if (pos === 'RB' && rbPriority !== 'off' && myRBs < myWRs + 2) {
     const boosts = {
       mild:    [0, 1.10, 1.10, 1.10, 1.05, 1.05, 1.0],
