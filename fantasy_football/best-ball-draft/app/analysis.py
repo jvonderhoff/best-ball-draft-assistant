@@ -167,25 +167,16 @@ def get_analysis_data(force_refresh: bool = False):
         p['proj_pass_td']  = int(proj.get('pass_td')  or 0)
         p['proj_gp']       = round(float(proj.get('gp') or 0), 1)
 
-    # ── Market delta: projected rank vs DK ADP ────────────────────────────────
-    # Rank all players who have projections by proj_pts_ppr (position-agnostic
-    # overall rank, since DK ADP is also overall).
-    proj_players = sorted(
+    # ── SL rank: rank by Sleeper proj_pts_ppr ────────────────────────────────
+    sl_ranked = sorted(
         [p for p in players if p['proj_pts_ppr'] > 0],
         key=lambda x: -x['proj_pts_ppr']
     )
-    for rank, p in enumerate(proj_players, 1):
+    for rank, p in enumerate(sl_ranked, 1):
         p['proj_rank'] = rank
-
     for p in players:
         if 'proj_rank' not in p:
             p['proj_rank'] = None
-        # market_delta: positive = market is too LOW (undervalued by DK ADP)
-        #               negative = market is too HIGH (overvalued)
-        if p['proj_rank'] and p.get('adp'):
-            p['market_delta'] = round(p['adp'] - p['proj_rank'])
-        else:
-            p['market_delta'] = None
 
     # ── FantasyPros season projections (from DB) ─────────────────────────────
     fp_raw = get_raw_projections()   # {player_name: {fpts, pos, ...}}
@@ -193,6 +184,42 @@ def get_analysis_data(force_refresh: bool = False):
     for p in players:
         fp = fp_norm.get(_normalize(p['name']))
         p['fp_pts_ppr'] = round(float(fp['fpts']), 1) if fp and fp.get('fpts') else 0
+
+    # ── FP rank: rank by FantasyPros fp_pts_ppr ──────────────────────────────
+    fp_ranked = sorted(
+        [p for p in players if p['fp_pts_ppr'] > 0],
+        key=lambda x: -x['fp_pts_ppr']
+    )
+    for rank, p in enumerate(fp_ranked, 1):
+        p['fp_rank'] = rank
+    for p in players:
+        if 'fp_rank' not in p:
+            p['fp_rank'] = None
+
+    # ── Consensus rank & PPR (FP + SL average) ───────────────────────────────
+    for p in players:
+        sl_r  = p.get('proj_rank')
+        fp_r  = p.get('fp_rank')
+        sl_pt = p['proj_pts_ppr']
+        fp_pt = p['fp_pts_ppr']
+
+        if sl_r and fp_r:
+            p['consensus_rank'] = round((sl_r + fp_r) / 2, 1)
+            p['consensus_ppr']  = round((sl_pt + fp_pt) / 2, 1)
+        elif fp_r:
+            p['consensus_rank'] = float(fp_r)
+            p['consensus_ppr']  = fp_pt
+        elif sl_r:
+            p['consensus_rank'] = float(sl_r)
+            p['consensus_ppr']  = sl_pt
+        else:
+            p['consensus_rank'] = None
+            p['consensus_ppr']  = 0
+
+        # market_delta: positive = market too LOW (undervalued), negative = too HIGH
+        adp = p.get('adp')
+        cr  = p['consensus_rank']
+        p['market_delta'] = round(adp - cr) if adp and cr else None
 
     # ── Betting prop lines (from DB, scraped separately) ─────────────────────
     all_props_by_book = get_all_props()   # {book: {player_name: {prop_type: {...}}}}
@@ -307,7 +334,9 @@ def get_analysis_data(force_refresh: bool = False):
     # Sort by composite score
     players.sort(key=lambda p: -p['composite'])
 
-    # Add analysis rank and delta vs ADP
+    # Add analysis rank (= consensus rank where available, else composite-based order)
+    # Re-sort by consensus rank first so analysis_rank reflects consensus
+    players.sort(key=lambda p: p['consensus_rank'] if p['consensus_rank'] else 9999)
     for i, p in enumerate(players, 1):
         p['analysis_rank'] = i
         adp = p.get('adp') or 0
