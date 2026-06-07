@@ -338,8 +338,17 @@ def _yahoo_redirect_uri():
 @app.route('/api/yahoo/auth')
 def yahoo_auth():
     """Redirect user to Yahoo OAuth login page."""
-    from app.data.yahoo_fetcher import get_auth_url
-    url = get_auth_url(_yahoo_redirect_uri())
+    from app.data.yahoo_fetcher import get_auth_url, CLIENT_ID
+    if not CLIENT_ID:
+        return (
+            "<h2>Yahoo not configured</h2>"
+            "<p>Set <code>YAHOO_CLIENT_ID</code> and <code>YAHOO_CLIENT_SECRET</code> "
+            "as environment variables on Render, then redeploy.</p>", 500
+        )
+    redirect_uri = _yahoo_redirect_uri()
+    url = get_auth_url(redirect_uri)
+    print(f'[Yahoo] Auth redirect → {url}')
+    print(f'[Yahoo] Redirect URI: {redirect_uri}')
     return redirect(url)
 
 
@@ -359,11 +368,13 @@ def yahoo_callback():
 
 @app.route('/api/yahoo/status')
 def yahoo_status():
-    from app.data.yahoo_fetcher import is_authenticated, _load_tokens
+    from app.data.yahoo_fetcher import is_authenticated, _load_tokens, CLIENT_ID
     tokens = _load_tokens()
     expires_at = tokens.get('expires_at')
     return jsonify({
         'authenticated': is_authenticated(),
+        'configured': bool(CLIENT_ID),
+        'redirect_uri': _yahoo_redirect_uri(),
         'expires_at': expires_at,
         'age_seconds': round(time.time() - (tokens.get('expires_at', time.time()) - 3600)) if expires_at else None,
     })
