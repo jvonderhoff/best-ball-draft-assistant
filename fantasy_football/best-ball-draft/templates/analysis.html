@@ -188,13 +188,12 @@
     <table id="analysis-table" style="display:none">
       <thead>
         <tr>
-          <th data-col="analysis_rank" class="sticky sticky-rank"># <span class="sort-arrow"></span></th>
+          <th data-col="custom_rank" class="sticky sticky-rank" title="Your personal rank from the Rankings page">My Rank <span class="sort-arrow"></span></th>
           <th data-col="name" class="sticky sticky-name">Player</th>
           <th data-col="pos">Pos</th>
           <th data-col="tier">Tier</th>
           <th data-col="composite" title="Composite score: Sleeper proj (45%) · ADP value (30%) · durability (15%) · schedule (10%)">Score <span class="sort-arrow"></span></th>
           <th data-col="adp" class="sorted">DK ADP <span class="sort-arrow">▼</span></th>
-          <th data-col="custom_rank" title="Your personal rank from the Rankings page">My Rank <span class="sort-arrow"></span></th>
           <th data-col="consensus_rank" title="Average of FP rank and Sleeper rank. Lower = better. Falls back to whichever source is available.">Consensus <span class="sort-arrow"></span></th>
           <th data-col="market_delta" title="DK ADP minus Consensus rank. + = market undervalues this player (buy), − = market overvalues (sell)">Mkt Δ <span class="sort-arrow"></span></th>
           <th data-col="consensus_ppr" title="Average of FantasyPros and Sleeper projected PPR points">Avg PPR <span class="sort-arrow"></span></th>
@@ -404,7 +403,7 @@ function renderTable() {
 
     return `
       <tr>
-        <td class="sticky sticky-rank" style="color:var(--muted);font-weight:700">${p.analysis_rank}</td>
+        <td class="sticky sticky-rank" style="color:${p.custom_rank ? 'var(--accent)' : 'var(--muted)'};font-weight:${p.custom_rank ? '700' : '400'}">${p.custom_rank ?? '<span class="no-data">—</span>'}</td>
         <td class="sticky sticky-name">
           <span style="font-weight:600;color:var(--text)">${p.name}</span>
           <span style="color:var(--muted);font-size:0.82em;margin-left:5px">${p.team}</span>
@@ -413,7 +412,6 @@ function renderTable() {
         <td><span class="tier tier-${p.tier.replace(' ','')}">${p.tier}</span></td>
         <td style="color:var(--muted);font-weight:600">${p.composite}</td>
         <td style="color:var(--muted)">${p.adp ?? '—'}</td>
-        <td style="color:${p.custom_rank ? 'var(--accent)' : 'var(--muted)'};font-weight:${p.custom_rank ? '700' : '400'}">${p.custom_rank ?? '<span class="no-data">—</span>'}</td>
         <td style="color:var(--text);font-weight:700">${p.consensus_rank != null ? p.consensus_rank : '<span class="no-data">—</span>'}</td>
         <td><span class="delta ${mdCls}" title="DK ADP ${p.adp} vs consensus rank ${p.consensus_rank ?? '?'}">${mdStr}</span></td>
         <td style="color:var(--accent);font-weight:700">${p.consensus_ppr > 0 ? p.consensus_ppr : '<span class="no-data">—</span>'}</td>
@@ -448,7 +446,7 @@ document.querySelectorAll('th[data-col]').forEach(th => {
       sortDir *= -1;
     } else {
       sortCol = col;
-      sortDir = col === 'analysis_rank' || col === 'adp' || col === 'custom_rank' || col === 'proj_rank' || col === 'consensus_rank' || col === 'fp_rank' ? 1 : -1;
+      sortDir = col === 'adp' || col === 'custom_rank' || col === 'proj_rank' || col === 'consensus_rank' || col === 'fp_rank' ? 1 : -1;
     }
     document.querySelectorAll('th[data-col]').forEach(t => {
       t.classList.remove('sorted');
