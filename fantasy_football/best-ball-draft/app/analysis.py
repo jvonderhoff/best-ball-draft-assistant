@@ -196,30 +196,48 @@ def get_analysis_data(force_refresh: bool = False):
         if 'fp_rank' not in p:
             p['fp_rank'] = None
 
-    # ── Consensus rank & PPR (FP + SL average) ───────────────────────────────
+    # ── Consensus PPR (FP + SL average) ──────────────────────────────────────
     for p in players:
-        sl_r  = p.get('proj_rank')
-        fp_r  = p.get('fp_rank')
         sl_pt = p['proj_pts_ppr']
         fp_pt = p['fp_pts_ppr']
-
-        if sl_r and fp_r:
-            p['consensus_rank'] = round((sl_r + fp_r) / 2, 1)
-            p['consensus_ppr']  = round((sl_pt + fp_pt) / 2, 1)
-        elif fp_r:
-            p['consensus_rank'] = float(fp_r)
-            p['consensus_ppr']  = fp_pt
-        elif sl_r:
-            p['consensus_rank'] = float(sl_r)
-            p['consensus_ppr']  = sl_pt
+        if sl_pt > 0 and fp_pt > 0:
+            p['consensus_ppr'] = round((sl_pt + fp_pt) / 2, 1)
+        elif fp_pt > 0:
+            p['consensus_ppr'] = fp_pt
+        elif sl_pt > 0:
+            p['consensus_ppr'] = sl_pt
         else:
+            p['consensus_ppr'] = 0
+
+    # ── Positional consensus rank (QB1, RB7, WR12 …) ─────────────────────────
+    for pos in SKILL_POSITIONS:
+        pos_players = sorted(
+            [p for p in players if p['pos'] == pos and p['consensus_ppr'] > 0],
+            key=lambda x: -x['consensus_ppr']
+        )
+        for rank, p in enumerate(pos_players, 1):
+            p['consensus_rank'] = rank
+            p['consensus_label'] = f"{pos}{rank}"
+    for p in players:
+        if 'consensus_rank' not in p:
             p['consensus_rank'] = None
-            p['consensus_ppr']  = 0
+            p['consensus_label'] = None
+
+    # ── Overall consensus rank for market delta (rank all players by consensus_ppr)
+    overall_ranked = sorted(
+        [p for p in players if p['consensus_ppr'] > 0],
+        key=lambda x: -x['consensus_ppr']
+    )
+    for rank, p in enumerate(overall_ranked, 1):
+        p['consensus_overall'] = rank
+    for p in players:
+        if 'consensus_overall' not in p:
+            p['consensus_overall'] = None
 
         # market_delta: positive = market too LOW (undervalued), negative = too HIGH
         adp = p.get('adp')
-        cr  = p['consensus_rank']
-        p['market_delta'] = round(adp - cr) if adp and cr else None
+        co  = p.get('consensus_overall')
+        p['market_delta'] = round(adp - co) if adp and co else None
 
     # ── Best-ball specific metrics ────────────────────────────────────────────
     import statistics as _stats

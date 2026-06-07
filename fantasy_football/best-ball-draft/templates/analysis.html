@@ -192,10 +192,9 @@
           <th data-col="name" class="sticky sticky-name">Player</th>
           <th data-col="pos">Pos</th>
           <th data-col="tier">Tier</th>
-          <th data-col="composite" title="Composite score: Sleeper proj (45%) · ADP value (30%) · durability (15%) · schedule (10%)">Score <span class="sort-arrow"></span></th>
           <th data-col="adp" class="sorted">DK ADP <span class="sort-arrow">▼</span></th>
-          <th data-col="consensus_rank" title="Average of FP rank and Sleeper rank. Lower = better. Falls back to whichever source is available.">Consensus <span class="sort-arrow"></span></th>
-          <th data-col="market_delta" title="DK ADP minus Consensus rank. + = market undervalues this player (buy), − = market overvalues (sell)">Mkt Δ <span class="sort-arrow"></span></th>
+          <th data-col="consensus_rank" title="Positional consensus rank from FP + Sleeper (QB1, RB7, WR12…). Sorted by rank within position.">Consensus <span class="sort-arrow"></span></th>
+          <th data-col="market_delta" title="DK ADP minus overall consensus rank. + = market undervalues this player (buy), − = market overvalues (sell)">Mkt Δ <span class="sort-arrow"></span></th>
           <th data-col="consensus_ppr" title="Average of FantasyPros and Sleeper projected PPR points">Avg PPR <span class="sort-arrow"></span></th>
           <th data-col="proj_pts_ppr" title="Sleeper 2026 projected full-PPR season points">SL PPR <span class="sort-arrow"></span></th>
           <th data-col="fp_pts_ppr" title="FantasyPros 2026 PPR consensus season projection">FP PPR <span class="sort-arrow"></span></th>
@@ -410,9 +409,8 @@ function renderTable() {
         </td>
         <td><span class="pos pos-${p.pos}">${p.pos}</span></td>
         <td><span class="tier tier-${p.tier.replace(' ','')}">${p.tier}</span></td>
-        <td style="color:var(--muted);font-weight:600">${p.composite}</td>
         <td style="color:var(--muted)">${p.adp ?? '—'}</td>
-        <td style="color:var(--text);font-weight:700">${p.consensus_rank != null ? p.consensus_rank : '<span class="no-data">—</span>'}</td>
+        <td style="color:var(--text);font-weight:700">${p.consensus_label ?? '<span class="no-data">—</span>'}</td>
         <td><span class="delta ${mdCls}" title="DK ADP ${p.adp} vs consensus rank ${p.consensus_rank ?? '?'}">${mdStr}</span></td>
         <td style="color:var(--accent);font-weight:700">${p.consensus_ppr > 0 ? p.consensus_ppr : '<span class="no-data">—</span>'}</td>
         <td>${hasProj ? `<strong style="color:#b0bec5">${p.proj_pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
