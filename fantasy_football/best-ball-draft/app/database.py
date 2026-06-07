@@ -77,6 +77,12 @@ def init_db():
                 updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS kv_store (
+                key         TEXT PRIMARY KEY,
+                value       TEXT,
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS players (
                 player_id  TEXT PRIMARY KEY,
                 name       TEXT,
@@ -301,6 +307,23 @@ def yahoo_projections_meta():
             'SELECT COUNT(*) AS n, MAX(updated_at) AS last FROM yahoo_projections'
         ).fetchone()
     return {'count': row['n'], 'last_updated': row['last']} if row['n'] else None
+
+
+def kv_set(key: str, value: str):
+    """Store a string value by key (upsert)."""
+    with get_db() as conn:
+        conn.execute(
+            'INSERT INTO kv_store (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) '
+            'ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP',
+            (key, value)
+        )
+
+
+def kv_get(key: str) -> str | None:
+    """Retrieve a string value by key."""
+    with get_db() as conn:
+        row = conn.execute('SELECT value FROM kv_store WHERE key=?', (key,)).fetchone()
+    return row['value'] if row else None
 
 
 def projections_meta():

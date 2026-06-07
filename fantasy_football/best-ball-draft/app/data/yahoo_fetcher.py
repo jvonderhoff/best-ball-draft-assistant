@@ -39,14 +39,23 @@ def _load_tokens():
     global _token_cache
     if _token_cache:
         return _token_cache
-    # 1. Disk
+    # 1. SQLite (shared across all Render workers)
+    try:
+        from app.database import kv_get
+        val = kv_get('yahoo_tokens')
+        if val:
+            _token_cache = json.loads(val)
+            return _token_cache
+    except Exception as e:
+        print(f'[Yahoo] DB token load failed: {e}')
+    # 2. Disk fallback
     try:
         with open(_TOKEN_FILE) as f:
             _token_cache = json.load(f)
             return _token_cache
     except Exception:
         pass
-    # 2. Env var (survives Render redeploys)
+    # 3. Env var fallback
     env = os.environ.get('YAHOO_TOKENS', '')
     if env:
         try:
@@ -60,6 +69,14 @@ def _load_tokens():
 def _save_tokens(tokens: dict):
     global _token_cache
     _token_cache = tokens
+    # 1. SQLite (primary — survives across workers and redeploys)
+    try:
+        from app.database import kv_set
+        kv_set('yahoo_tokens', json.dumps(tokens))
+        print('[Yahoo] Tokens saved to DB')
+    except Exception as e:
+        print(f'[Yahoo] Could not save tokens to DB: {e}')
+    # 2. Disk fallback
     try:
         with open(_TOKEN_FILE, 'w') as f:
             json.dump(tokens, f)
@@ -264,13 +281,35 @@ def fetch_yahoo_projections(verbose: bool = True) -> dict:
     result = {}
     positions = ['QB', 'RB', 'WR', 'TE']
 
+    # Try projected first, fall back to last season actuals if not yet published
+    stat_types = ['projected_season_stats', 'season_stats']
+
     for pos in positions:
         if verbose:
             print(f'  [Yahoo] Fetching {pos} projections…')
         start = 0
         pos_rank = 1
+        stat_type = stat_types[0]
+
+        # Detect which stat type is available by trying first page
+        for st in stat_types:
+            probe = _api_get(f'/game/{game_key}/players;position={pos};sort=AR;start=0;count=3/stats;type={st}')
+            if probe:
+                try:
+                    c = probe['fantasy_content']['game']
+                    pb = c[1].get('players', {}) if len(c) > 1 else {}
+                    if pb.get('count', 0) > 0:
+                        stat_type = st
+                        print(f'  [Yahoo] {pos}: using stat_type={st}')
+                        break
+                except Exception:
+                    pass
+        else:
+            print(f'  [Yahoo] {pos}: no stat data available, skipping')
+            continue
+
         while True:
-            path = f'/game/{game_key}/players;position={pos};sort=AR;start={start};count=25/stats;type=projected_season_stats'
+            path = f'/game/{game_key}/players;position={pos};sort=AR;start={start};count=25/stats;type={stat_type}'
             data = _api_get(path)
             if not data:
                 print(f'  [Yahoo] No response for {path}')
@@ -281,10 +320,8 @@ def fetch_yahoo_projections(verbose: bool = True) -> dict:
                 players_block = content[1].get('players', {}) if len(content) > 1 else {}
                 count = players_block.get('count', 0)
                 if verbose:
-                    print(f'  [Yahoo] {pos} start={start}: players_block count={count}, keys={list(players_block.keys())[:5]}')
+                    print(f'  [Yahoo] {pos} start={start}: count={count}')
                 if not count:
-                    # Log raw content structure to diagnose
-                    print(f'  [Yahoo] {pos} raw content keys: {[type(c).__name__ + str(list(c.keys()) if isinstance(c, dict) else "") for c in content[:3]]}')
                     break
                 for i in range(count):
                     p_data = players_block.get(str(i), {}).get('player')
