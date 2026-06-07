@@ -355,15 +355,38 @@ def yahoo_auth():
 @app.route('/api/yahoo/callback')
 def yahoo_callback():
     """Handle Yahoo OAuth callback — exchange code for tokens."""
+    # Yahoo sends error details if the user denied or something went wrong
+    error = request.args.get('error')
+    error_desc = request.args.get('error_description', '')
+    if error:
+        return (
+            f"<h2>Yahoo OAuth error: {error}</h2>"
+            f"<p>{error_desc}</p>"
+            f"<p>Full params: {dict(request.args)}</p>"
+            f"<a href='/setup'>← Back to Setup</a>", 400
+        )
+
     code = request.args.get('code')
     if not code:
-        return jsonify({'error': 'No code in callback'}), 400
+        return (
+            f"<h2>No code received from Yahoo</h2>"
+            f"<p>Params received: {dict(request.args)}</p>"
+            f"<a href='/setup'>← Back to Setup</a>", 400
+        )
     try:
         from app.data.yahoo_fetcher import exchange_code
         tokens = exchange_code(code, _yahoo_redirect_uri())
+        print(f"[Yahoo] Token exchange successful, expires_in={tokens.get('expires_in')}")
         return redirect('/setup?yahoo=connected')
     except Exception as e:
-        return f"Yahoo auth failed: {e}", 500
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[Yahoo] Token exchange failed: {e}\n{tb}")
+        return (
+            f"<h2>Yahoo token exchange failed</h2>"
+            f"<pre>{e}</pre>"
+            f"<a href='/setup'>← Back to Setup</a>", 500
+        )
 
 
 @app.route('/api/yahoo/status')
