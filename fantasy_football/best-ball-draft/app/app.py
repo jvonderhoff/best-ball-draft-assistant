@@ -349,7 +349,19 @@ def yahoo_auth():
     url = get_auth_url(redirect_uri)
     print(f'[Yahoo] Auth redirect → {url}')
     print(f'[Yahoo] Redirect URI: {redirect_uri}')
+    # ?debug=1 shows the URL instead of redirecting — useful for troubleshooting
+    if request.args.get('debug'):
+        return f"<pre>Auth URL:\n{url}\n\nRedirect URI:\n{redirect_uri}\n\nClient ID:\n{CLIENT_ID[:20]}...</pre>"
     return redirect(url)
+
+
+@app.route('/api/yahoo/auth/debug')
+def yahoo_auth_debug():
+    """Show OAuth URL without redirecting — for troubleshooting."""
+    from app.data.yahoo_fetcher import get_auth_url, CLIENT_ID
+    redirect_uri = _yahoo_redirect_uri()
+    url = get_auth_url(redirect_uri)
+    return f"<pre>Auth URL:\n{url}\n\nRedirect URI:\n{redirect_uri}\n\nClient ID (first 20 chars):\n{CLIENT_ID[:20]}...</pre>"
 
 
 @app.route('/api/yahoo/callback')

@@ -74,7 +74,6 @@ def get_auth_url(redirect_uri: str) -> str:
         'client_id':     CLIENT_ID,
         'redirect_uri':  redirect_uri,
         'response_type': 'code',
-        'language':      'en-us',
     }
     return f"{AUTH_URL}?{urlencode(params)}"
 
