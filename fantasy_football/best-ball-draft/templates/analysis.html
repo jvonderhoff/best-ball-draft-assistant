@@ -17,12 +17,13 @@
 
     /* ── Page layout ── */
     .page { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
-    .page-header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+    .page-header { margin-bottom: 8px; }
+    .page-header .page-title { margin-bottom: 4px; }
     .page-title { font-size: 1.3em; font-weight: 700; color: var(--accent); }
     .page-sub { font-size: 0.8em; color: var(--muted); margin-top: 3px; }
 
     /* ── Controls ── */
-    .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
     .search-box {
       background: var(--surface); border: 1px solid var(--border); color: var(--text);
       border-radius: 6px; padding: 6px 12px; font-size: 0.85em; width: 200px;
@@ -158,16 +159,15 @@
 
 <div class="page">
   <div class="page-header">
-    <div>
-      <div class="page-title">Player Analysis</div>
-      <div class="page-sub">SL = Sleeper · FP = FantasyPros</div>
-    </div>
-    <div class="controls">
-      <input class="search-box" id="search" type="text" placeholder="Search player or team…">
-      <button class="btn btn-refresh" id="refresh-btn" onclick="loadData(true)">↻ Refresh Stats</button>
-      <button class="btn" id="dk-btn" onclick="fetchProps('dk')" style="border-color:#7b1fa2;color:#ce93d8" title="Scrape DK Sportsbook season prop lines (takes ~30s)">📊 Fetch DK Lines</button>
-      <button class="btn" id="ud-btn" onclick="fetchProps('ud')" style="border-color:#1565c0;color:#90caf9" title="Fetch Underdog Fantasy season prop lines">🐶 Fetch Underdog Lines</button>
-    </div>
+    <div class="page-title">Player Analysis</div>
+    <div class="page-sub">SL = Sleeper · FP = FantasyPros</div>
+  </div>
+
+  <div class="controls">
+    <input class="search-box" id="search" type="text" placeholder="Search player or team…">
+    <button class="btn btn-refresh" id="refresh-btn" onclick="loadData(true)">↻ Refresh Stats</button>
+    <button class="btn" id="dk-btn" onclick="fetchProps('dk')" style="border-color:#7b1fa2;color:#ce93d8" title="Scrape DK Sportsbook season prop lines (takes ~30s)">📊 Fetch DK Lines</button>
+    <button class="btn" id="ud-btn" onclick="fetchProps('ud')" style="border-color:#1565c0;color:#90caf9" title="Fetch Underdog Fantasy season prop lines">🐶 Fetch Underdog Lines</button>
   </div>
 
   <div class="pos-tabs" id="pos-tabs">
