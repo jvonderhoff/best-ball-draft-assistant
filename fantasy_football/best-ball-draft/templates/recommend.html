@@ -874,8 +874,22 @@ function applyDKPickState(data) {
       changed = true;
     }
 
+    // Auto-detect num_teams from how many picks are in round 1
+    // (server may also send it directly — prefer that)
+    const serverNumTeams = data.num_teams;
+    const rd1Picks = picks.filter(p => p.round === 1 && (p.pick_number || 0) > 0);
+    const detectedTeams = serverNumTeams
+      || (rd1Picks.length >= 4 ? Math.max(...rd1Picks.map(p => p.pick_number)) : null);
+    if (detectedTeams && detectedTeams !== settings.numTeams) {
+      settings.numTeams = detectedTeams;
+      const nt = document.getElementById('numTeams');
+      if (nt) nt.value = detectedTeams;
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      changed = true;
+    }
+
     // Auto-detect draft position from the user's round-1 pick number
-    // In a 12-team draft, round-1 pick N = position N
+    // In a snake draft, round-1 pick N = position N
     const myRd1 = picks.find(p => p.round === 1 && me && (p.username || '').toLowerCase().includes(me));
     if (myRd1?.pick_number) {
       const detectedPos = myRd1.pick_number;

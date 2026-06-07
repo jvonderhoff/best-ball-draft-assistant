@@ -1376,19 +1376,26 @@ def dk_draft_state_proxy(draft_id):
     """
     id_str = str(draft_id)
 
+    def _num_teams_from_picks(picks):
+        """Infer draft size from the highest pick_number in round 1."""
+        rd1 = [p.get('pick_number') or 0 for p in picks if (p.get('round') or 0) == 1]
+        return max(rd1) if len(rd1) >= 4 else None
+
     # 1. Check intercept cache (bookmarklet running on DK page) — preferred
     intercepted = _dk_intercept.get(id_str)
     if intercepted and intercepted.get('picks'):
         age = time.time() - intercepted.get('updated_at', 0)
+        picks = intercepted['picks']
         resp = {
             'draft_id':    draft_id,
-            'picks':       intercepted['picks'],
+            'picks':       picks,
             'overall_pick': intercepted.get('overall_pick', 1),
             'updated_at':  intercepted.get('updated_at'),
             'source':      'bookmarklet_intercept',
             'age_seconds': round(age),
             'error':       None,
-            'pick_count':  len(intercepted['picks']),
+            'pick_count':  len(picks),
+            'num_teams':   intercepted.get('num_teams') or _num_teams_from_picks(picks),
         }
         if intercepted.get('my_column_idx') is not None:
             resp['my_column_idx'] = intercepted['my_column_idx']
@@ -1398,14 +1405,16 @@ def dk_draft_state_proxy(draft_id):
     # 2. Check cookie-proxy cache (old approach, fallback)
     cached = _dk_pick_cache.get(id_str, {})
     if cached.get('picks'):
+        picks = cached['picks']
         return jsonify({
             'draft_id':    draft_id,
-            'picks':       cached['picks'],
+            'picks':       picks,
             'overall_pick': cached.get('overall_pick', 1),
             'updated_at':  cached.get('updated_at'),
             'source':      cached.get('source', 'cookie_proxy'),
             'error':       None,
-            'pick_count':  len(cached['picks']),
+            'pick_count':  len(picks),
+            'num_teams':   _num_teams_from_picks(picks),
         })
 
     # 3. No data yet — tell client to run bookmarklet
