@@ -221,6 +221,61 @@ def get_analysis_data(force_refresh: bool = False):
         cr  = p['consensus_rank']
         p['market_delta'] = round(adp - cr) if adp and cr else None
 
+    # ── Best-ball specific metrics ────────────────────────────────────────────
+    import statistics as _stats
+
+    # 1. Position-adjusted Z-score (FP PPR normalised within each position)
+    pos_groups = {}
+    for pos in SKILL_POSITIONS:
+        vals = [p['fp_pts_ppr'] for p in players if p['pos'] == pos and p['fp_pts_ppr'] > 0]
+        if len(vals) >= 2:
+            pos_groups[pos] = (_stats.mean(vals), _stats.stdev(vals))
+
+    for p in players:
+        grp = pos_groups.get(p['pos'])
+        if grp and p['fp_pts_ppr'] > 0:
+            mean, std = grp
+            p['pos_z'] = round((p['fp_pts_ppr'] - mean) / std, 2) if std > 0 else 0.0
+        else:
+            p['pos_z'] = None
+
+    # 2. Upside score (0–100)
+    #    40% position CV (how boom-capable is the position in best-ball)
+    #    30% source spread (FP vs SL disagreement — uncertainty = opportunity)
+    #    30% upward trajectory (consensus above last year's actual)
+    _POS_CV  = {'QB': 0.35, 'RB': 0.55, 'WR': 0.75, 'TE': 0.65}
+    _CV_MIN, _CV_MAX = 0.35, 0.75
+
+    spreads = [abs(p['fp_pts_ppr'] - p['proj_pts_ppr'])
+               for p in players if p['fp_pts_ppr'] > 0 and p['proj_pts_ppr'] > 0]
+    max_spread = max(spreads) if spreads else 1
+
+    for p in players:
+        cv       = _POS_CV.get(p['pos'], 0.5)
+        cv_score = (cv - _CV_MIN) / (_CV_MAX - _CV_MIN)
+
+        if p['fp_pts_ppr'] > 0 and p['proj_pts_ppr'] > 0:
+            spread_score = min(abs(p['fp_pts_ppr'] - p['proj_pts_ppr']) / max_spread, 1.0)
+        else:
+            spread_score = 0.0
+
+        if p['pts_ppr'] > 0 and p['consensus_ppr'] > 0:
+            traj_raw  = (p['consensus_ppr'] - p['pts_ppr']) / p['pts_ppr']
+            traj_score = min(max(traj_raw, 0.0), 1.0)
+        elif p['consensus_ppr'] > 0:
+            traj_score = 0.3   # rookie / no 2025 data — neutral-positive
+        else:
+            traj_score = 0.0
+
+        p['upside'] = round((cv_score * 0.40 + spread_score * 0.30 + traj_score * 0.30) * 100, 1)
+
+    # 3. Trajectory — % change from 2025 actual to 2026 consensus projection
+    for p in players:
+        if p['pts_ppr'] > 0 and p['consensus_ppr'] > 0:
+            p['trajectory'] = round((p['consensus_ppr'] - p['pts_ppr']) / p['pts_ppr'] * 100, 1)
+        else:
+            p['trajectory'] = None   # rookie or missing data
+
     # ── Betting prop lines (from DB, scraped separately) ─────────────────────
     all_props_by_book = get_all_props()   # {book: {player_name: {prop_type: {...}}}}
     dk_props  = all_props_by_book.get('DraftKings', {})
