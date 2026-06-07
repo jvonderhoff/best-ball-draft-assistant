@@ -160,7 +160,7 @@
   <div class="page-header">
     <div>
       <div class="page-title">Player Analysis</div>
-      <div class="page-sub">Composite score: Sleeper 2026 proj (45%) · ADP value (30%) · durability (15%) · playoff schedule (10%) · SL = Sleeper · FP = FantasyPros</div>
+      <div class="page-sub">SL = Sleeper · FP = FantasyPros</div>
     </div>
     <div class="controls">
       <input class="search-box" id="search" type="text" placeholder="Search player or team…">
@@ -178,13 +178,6 @@
     <button class="pos-tab" data-pos="TE">TE</button>
   </div>
 
-  <div class="stats-bar" id="stats-bar" style="display:none">
-    <div class="stat-chip">Total: <strong id="stat-total">—</strong></div>
-    <div class="stat-chip">Elite: <strong id="stat-elite">—</strong></div>
-    <div class="stat-chip">Strong: <strong id="stat-strong">—</strong></div>
-    <div class="stat-chip">Solid: <strong id="stat-solid">—</strong></div>
-    <div class="stat-chip">Avg Composite: <strong id="stat-avg">—</strong></div>
-  </div>
 
   <div class="table-wrap">
     <div class="loading" id="loading">
@@ -198,7 +191,6 @@
           <th data-col="analysis_rank" class="sorted sticky sticky-rank"># <span class="sort-arrow">▼</span></th>
           <th data-col="name" class="sticky sticky-name">Player</th>
           <th data-col="pos">Pos</th>
-          <th data-col="composite">Score <span class="sort-arrow"></span></th>
           <th data-col="tier">Tier</th>
           <th data-col="adp">DK ADP <span class="sort-arrow"></span></th>
           <th data-col="custom_rank" title="Your personal rank from the Rankings page">My Rank <span class="sort-arrow"></span></th>
@@ -321,7 +313,6 @@ async function loadData(forceRefresh = false) {
   document.getElementById('analysis-table').style.display = 'none';
   document.getElementById('error-msg').style.display = 'none';
   document.getElementById('empty-msg').style.display = 'none';
-  document.getElementById('stats-bar').style.display = 'none';
 
   try {
     const url = '/api/analysis' + (forceRefresh ? '?refresh=1' : '');
@@ -330,7 +321,6 @@ async function loadData(forceRefresh = false) {
     if (!res.ok || !json.ok) throw new Error(json.error || 'Unknown error');
     allPlayers = json.players;
     document.getElementById('loading').style.display = 'none';
-    document.getElementById('stats-bar').style.display = '';
     document.getElementById('analysis-table').style.display = '';
     renderTable();
   } catch (e) {
@@ -363,15 +353,6 @@ function renderTable() {
     if (typeof bv === 'string') bv = bv.toLowerCase();
     return av < bv ? -sortDir : av > bv ? sortDir : 0;
   });
-
-  // Stats bar
-  const showing = rows;
-  document.getElementById('stat-total').textContent = showing.length;
-  document.getElementById('stat-elite').textContent = showing.filter(p => p.tier === 'Elite').length;
-  document.getElementById('stat-strong').textContent = showing.filter(p => p.tier === 'Strong').length;
-  document.getElementById('stat-solid').textContent = showing.filter(p => p.tier === 'Solid').length;
-  const avgComp = showing.length ? (showing.reduce((s, p) => s + p.composite, 0) / showing.length).toFixed(1) : '—';
-  document.getElementById('stat-avg').textContent = avgComp;
 
   const tbody = document.getElementById('tbody');
   if (!rows.length) {
@@ -424,12 +405,6 @@ function renderTable() {
           <span style="color:var(--muted);font-size:0.82em;margin-left:5px">${p.team}</span>
         </td>
         <td><span class="pos pos-${p.pos}">${p.pos}</span></td>
-        <td>
-          <div class="score-bar-wrap">
-            ${miniBar(p.composite, 100, barColor(p.composite))}
-            <span class="composite-val">${p.composite}</span>
-          </div>
-        </td>
         <td><span class="tier tier-${p.tier.replace(' ','')}">${p.tier}</span></td>
         <td style="color:var(--muted)">${p.adp ?? '—'}</td>
         <td style="color:${p.custom_rank ? 'var(--accent)' : 'var(--muted)'};font-weight:${p.custom_rank ? '700' : '400'}">${p.custom_rank ?? '<span class="no-data">—</span>'}</td>
