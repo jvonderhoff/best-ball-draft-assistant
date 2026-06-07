@@ -188,11 +188,12 @@
     <table id="analysis-table" style="display:none">
       <thead>
         <tr>
-          <th data-col="analysis_rank" class="sorted sticky sticky-rank"># <span class="sort-arrow">▼</span></th>
+          <th data-col="analysis_rank" class="sticky sticky-rank"># <span class="sort-arrow"></span></th>
           <th data-col="name" class="sticky sticky-name">Player</th>
           <th data-col="pos">Pos</th>
           <th data-col="tier">Tier</th>
-          <th data-col="adp">DK ADP <span class="sort-arrow"></span></th>
+          <th data-col="composite" title="Composite score: Sleeper proj (45%) · ADP value (30%) · durability (15%) · schedule (10%)">Score <span class="sort-arrow"></span></th>
+          <th data-col="adp" class="sorted">DK ADP <span class="sort-arrow">▼</span></th>
           <th data-col="custom_rank" title="Your personal rank from the Rankings page">My Rank <span class="sort-arrow"></span></th>
           <th data-col="consensus_rank" title="Average of FP rank and Sleeper rank. Lower = better. Falls back to whichever source is available.">Consensus <span class="sort-arrow"></span></th>
           <th data-col="market_delta" title="DK ADP minus Consensus rank. + = market undervalues this player (buy), − = market overvalues (sell)">Mkt Δ <span class="sort-arrow"></span></th>
@@ -232,7 +233,7 @@
 
 <script>
 let allPlayers = [];
-let sortCol = 'analysis_rank';
+let sortCol = 'adp';
 let sortDir = 1;   // 1 = asc, -1 = desc
 let activePos = '';
 let searchQ = '';
@@ -407,6 +408,7 @@ function renderTable() {
         </td>
         <td><span class="pos pos-${p.pos}">${p.pos}</span></td>
         <td><span class="tier tier-${p.tier.replace(' ','')}">${p.tier}</span></td>
+        <td style="color:var(--muted);font-weight:600">${p.composite}</td>
         <td style="color:var(--muted)">${p.adp ?? '—'}</td>
         <td style="color:${p.custom_rank ? 'var(--accent)' : 'var(--muted)'};font-weight:${p.custom_rank ? '700' : '400'}">${p.custom_rank ?? '<span class="no-data">—</span>'}</td>
         <td style="color:var(--text);font-weight:700">${p.consensus_rank != null ? p.consensus_rank : '<span class="no-data">—</span>'}</td>
