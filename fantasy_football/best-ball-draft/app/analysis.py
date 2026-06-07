@@ -10,7 +10,7 @@ Scoring is full PPR.
 """
 import re
 import requests
-from app.database import get_db, get_all_props
+from app.database import get_db, get_all_props, get_raw_projections
 from app.data.betting_fetcher import props_to_fantasy_pts
 
 SLEEPER_STATS_URL       = 'https://api.sleeper.app/v1/stats/nfl/regular/2025'
@@ -186,6 +186,13 @@ def get_analysis_data(force_refresh: bool = False):
             p['market_delta'] = round(p['adp'] - p['proj_rank'])
         else:
             p['market_delta'] = None
+
+    # ── FantasyPros season projections (from DB) ─────────────────────────────
+    fp_raw = get_raw_projections()   # {player_name: {fpts, pos, ...}}
+    fp_norm = {_normalize(k): v for k, v in fp_raw.items()}
+    for p in players:
+        fp = fp_norm.get(_normalize(p['name']))
+        p['fp_pts_ppr'] = round(float(fp['fpts']), 1) if fp and fp.get('fpts') else 0
 
     # ── Betting prop lines (from DB, scraped separately) ─────────────────────
     all_props_by_book = get_all_props()   # {book: {player_name: {prop_type: {...}}}}
