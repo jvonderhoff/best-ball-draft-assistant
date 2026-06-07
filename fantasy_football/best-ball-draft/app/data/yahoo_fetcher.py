@@ -75,7 +75,6 @@ def get_auth_url(redirect_uri: str) -> str:
         'redirect_uri':  redirect_uri,
         'response_type': 'code',
         'language':      'en-us',
-        'scope':         'fspt-r',   # Fantasy Sports read
     }
     return f"{AUTH_URL}?{urlencode(params)}"
 
