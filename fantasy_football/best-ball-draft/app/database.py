@@ -68,6 +68,15 @@ def init_db():
                 updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS yahoo_projections (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_name TEXT    NOT NULL UNIQUE,
+                fpts        REAL,
+                pos         TEXT,
+                yahoo_rank  INTEGER,
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS players (
                 player_id  TEXT PRIMARY KEY,
                 name       TEXT,
@@ -257,6 +266,41 @@ def get_raw_projections():
             'SELECT player_name, fpts, pos, source, updated_at FROM player_projections'
         ).fetchall()
     return {r['player_name']: dict(r) for r in rows}
+
+
+def save_yahoo_projections(projections: dict):
+    """Upsert Yahoo projections {player_name: {'fpts': float, 'pos': str, 'yahoo_rank': int}}."""
+    with get_db() as conn:
+        count = 0
+        for player_name, data in projections.items():
+            conn.execute("""
+                INSERT INTO yahoo_projections (player_name, fpts, pos, yahoo_rank, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(player_name) DO UPDATE SET
+                    fpts       = excluded.fpts,
+                    pos        = excluded.pos,
+                    yahoo_rank = excluded.yahoo_rank,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (player_name, data.get('fpts'), data.get('pos'), data.get('yahoo_rank')))
+            count += 1
+    return count
+
+
+def get_yahoo_projections():
+    """Return {player_name: {fpts, pos, yahoo_rank, updated_at}}."""
+    with get_db() as conn:
+        rows = conn.execute(
+            'SELECT player_name, fpts, pos, yahoo_rank, updated_at FROM yahoo_projections'
+        ).fetchall()
+    return {r['player_name']: dict(r) for r in rows}
+
+
+def yahoo_projections_meta():
+    with get_db() as conn:
+        row = conn.execute(
+            'SELECT COUNT(*) AS n, MAX(updated_at) AS last FROM yahoo_projections'
+        ).fetchone()
+    return {'count': row['n'], 'last_updated': row['last']} if row['n'] else None
 
 
 def projections_meta():

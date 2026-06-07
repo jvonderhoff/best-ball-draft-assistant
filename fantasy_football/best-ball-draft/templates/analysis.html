@@ -197,6 +197,7 @@
           <th data-col="consensus_ppr" title="Average of FantasyPros and Sleeper projected PPR points">Avg PPR <span class="sort-arrow"></span></th>
           <th data-col="proj_pts_ppr" title="Sleeper 2026 projected full-PPR season points">SL PPR <span class="sort-arrow"></span></th>
           <th data-col="fp_pts_ppr" title="FantasyPros 2026 PPR consensus season projection">FP PPR <span class="sort-arrow"></span></th>
+          <th data-col="yahoo_pts_ppr" title="Yahoo Fantasy 2026 projected PPR season points">YH PPR <span class="sort-arrow"></span></th>
           <th data-col="pts_ppr" title="2025 actual full-PPR points">2025 PPR <span class="sort-arrow"></span></th>
           <th data-col="gp">GP <span class="sort-arrow"></span></th>
           <th data-col="trajectory" title="% change from 2025 actual PPR to 2026 consensus projection. Green = trending up (breakout), red = trending down (bust risk). NEW = rookie or no 2025 data.">Traj <span class="sort-arrow"></span></th>
@@ -413,6 +414,7 @@ function renderTable() {
         <td style="color:var(--accent);font-weight:700">${p.consensus_ppr > 0 ? p.consensus_ppr : '<span class="no-data">—</span>'}</td>
         <td>${hasProj ? `<strong style="color:#b0bec5">${p.proj_pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
         <td>${p.fp_pts_ppr > 0 ? `<strong style="color:var(--green)">${p.fp_pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
+        <td>${p.yahoo_pts_ppr > 0 ? `<strong style="color:#7986cb">${p.yahoo_pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
         <td>${hasStats ? `<strong>${p.pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
         <td>${hasStats ? p.gp : '<span class="no-data">—</span>'}</td>
         <td>${(() => {

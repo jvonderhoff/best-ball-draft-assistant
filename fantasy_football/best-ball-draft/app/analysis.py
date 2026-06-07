@@ -10,7 +10,7 @@ Scoring is full PPR.
 """
 import re
 import requests
-from app.database import get_db, get_all_props, get_raw_projections
+from app.database import get_db, get_all_props, get_raw_projections, get_yahoo_projections
 from app.data.betting_fetcher import props_to_fantasy_pts
 
 SLEEPER_STATS_URL       = 'https://api.sleeper.app/v1/stats/nfl/regular/2025'
@@ -196,18 +196,21 @@ def get_analysis_data(force_refresh: bool = False):
         if 'fp_rank' not in p:
             p['fp_rank'] = None
 
-    # ── Consensus PPR (FP + SL average) ──────────────────────────────────────
+    # ── Yahoo projections (from DB) ───────────────────────────────────────────
+    yahoo_raw  = get_yahoo_projections()   # {player_name: {fpts, pos, yahoo_rank, ...}}
+    yahoo_norm = {_normalize(k): v for k, v in yahoo_raw.items()}
     for p in players:
-        sl_pt = p['proj_pts_ppr']
-        fp_pt = p['fp_pts_ppr']
-        if sl_pt > 0 and fp_pt > 0:
-            p['consensus_ppr'] = round((sl_pt + fp_pt) / 2, 1)
-        elif fp_pt > 0:
-            p['consensus_ppr'] = fp_pt
-        elif sl_pt > 0:
-            p['consensus_ppr'] = sl_pt
-        else:
-            p['consensus_ppr'] = 0
+        yp = yahoo_norm.get(_normalize(p['name']))
+        p['yahoo_pts_ppr'] = round(float(yp['fpts']), 1) if yp and yp.get('fpts') else 0
+        p['yahoo_rank']    = yp.get('yahoo_rank') if yp else None
+
+    # ── Consensus PPR (average of available sources: FP + SL + Yahoo) ────────
+    for p in players:
+        sl_pt    = p['proj_pts_ppr']
+        fp_pt    = p['fp_pts_ppr']
+        yahoo_pt = p['yahoo_pts_ppr']
+        pts      = [v for v in (sl_pt, fp_pt, yahoo_pt) if v > 0]
+        p['consensus_ppr'] = round(sum(pts) / len(pts), 1) if pts else 0
 
     # ── Positional consensus rank (QB1, RB7, WR12 …) ─────────────────────────
     for pos in SKILL_POSITIONS:

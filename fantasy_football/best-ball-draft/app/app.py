@@ -1,6 +1,6 @@
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 from flask_cors import CORS
-from app.database import init_db, save_draft, get_all_drafts, get_exposure, delete_draft, get_rankings, save_rankings, save_props, get_all_props, save_projections, get_raw_projections, projections_meta
+from app.database import init_db, save_draft, get_all_drafts, get_exposure, delete_draft, get_rankings, save_rankings, save_props, get_all_props, save_projections, get_raw_projections, projections_meta, save_yahoo_projections, get_yahoo_projections, yahoo_projections_meta
 import json
 import os
 import re
@@ -323,6 +323,67 @@ def refresh_projections():
 def get_projections_meta():
     meta = projections_meta()
     return jsonify(meta or {'count': 0, 'last_updated': None})
+
+
+# ── Yahoo Fantasy OAuth ───────────────────────────────────────────────────────
+
+def _yahoo_redirect_uri():
+    """Detect whether we're on Render or localhost and return the right callback URL."""
+    host = request.host
+    if 'render.com' in host or 'onrender.com' in host:
+        return f"https://{host}/api/yahoo/callback"
+    return f"http://{host}/api/yahoo/callback"
+
+
+@app.route('/api/yahoo/auth')
+def yahoo_auth():
+    """Redirect user to Yahoo OAuth login page."""
+    from app.data.yahoo_fetcher import get_auth_url
+    url = get_auth_url(_yahoo_redirect_uri())
+    return redirect(url)
+
+
+@app.route('/api/yahoo/callback')
+def yahoo_callback():
+    """Handle Yahoo OAuth callback — exchange code for tokens."""
+    code = request.args.get('code')
+    if not code:
+        return jsonify({'error': 'No code in callback'}), 400
+    try:
+        from app.data.yahoo_fetcher import exchange_code
+        tokens = exchange_code(code, _yahoo_redirect_uri())
+        return redirect('/setup?yahoo=connected')
+    except Exception as e:
+        return f"Yahoo auth failed: {e}", 500
+
+
+@app.route('/api/yahoo/status')
+def yahoo_status():
+    from app.data.yahoo_fetcher import is_authenticated, _load_tokens
+    tokens = _load_tokens()
+    expires_at = tokens.get('expires_at')
+    return jsonify({
+        'authenticated': is_authenticated(),
+        'expires_at': expires_at,
+        'age_seconds': round(time.time() - (tokens.get('expires_at', time.time()) - 3600)) if expires_at else None,
+    })
+
+
+@app.route('/api/yahoo/projections/refresh', methods=['POST'])
+def refresh_yahoo_projections():
+    """Fetch Yahoo Fantasy player projections and store them."""
+    try:
+        from app.data.yahoo_fetcher import fetch_yahoo_projections, is_authenticated
+        if not is_authenticated():
+            return jsonify({'ok': False, 'error': 'Not authenticated — connect Yahoo first'}), 200
+        projections = fetch_yahoo_projections(verbose=True)
+        if not projections:
+            return jsonify({'ok': False, 'error': 'No projections returned from Yahoo'}), 200
+        count = save_yahoo_projections(projections)
+        return jsonify({'ok': True, 'players': count, 'source': 'Yahoo'})
+    except Exception as e:
+        import traceback
+        return jsonify({'ok': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
 
 
 @app.route('/api/props/refresh', methods=['POST'])
