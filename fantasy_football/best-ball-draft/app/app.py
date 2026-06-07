@@ -415,6 +415,16 @@ def yahoo_status():
     })
 
 
+@app.route('/api/yahoo/raw-test')
+def yahoo_raw_test():
+    """Dump raw Yahoo API response for debugging — /api/yahoo/raw-test?path=/game/470/players;position=QB;sort=AR;count=3"""
+    from app.data.yahoo_fetcher import _api_get, _get_nfl_game_key
+    game_key = _get_nfl_game_key()
+    path = request.args.get('path', f'/game/{game_key}/players;position=QB;sort=AR;start=0;count=3/stats;type=projected_season_stats')
+    data = _api_get(path)
+    return jsonify({'path': path, 'game_key': game_key, 'response': data})
+
+
 @app.route('/api/yahoo/projections/refresh', methods=['POST'])
 def refresh_yahoo_projections():
     """Fetch Yahoo Fantasy player projections and store them."""

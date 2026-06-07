@@ -270,17 +270,21 @@ def fetch_yahoo_projections(verbose: bool = True) -> dict:
         start = 0
         pos_rank = 1
         while True:
-            data = _api_get(
-                f'/game/{game_key}/players;position={pos};sort=AR;start={start};count=25/stats;type=projected_season_stats',
-            )
+            path = f'/game/{game_key}/players;position={pos};sort=AR;start={start};count=25/stats;type=projected_season_stats'
+            data = _api_get(path)
             if not data:
+                print(f'  [Yahoo] No response for {path}')
                 break
             try:
                 content = data['fantasy_content']['game']
                 # content[0] = game info dict, content[1] = players dict
                 players_block = content[1].get('players', {}) if len(content) > 1 else {}
                 count = players_block.get('count', 0)
+                if verbose:
+                    print(f'  [Yahoo] {pos} start={start}: players_block count={count}, keys={list(players_block.keys())[:5]}')
                 if not count:
+                    # Log raw content structure to diagnose
+                    print(f'  [Yahoo] {pos} raw content keys: {[type(c).__name__ + str(list(c.keys()) if isinstance(c, dict) else "") for c in content[:3]]}')
                     break
                 for i in range(count):
                     p_data = players_block.get(str(i), {}).get('player')
