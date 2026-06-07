@@ -888,15 +888,14 @@ function applyDKPickState(data) {
       changed = true;
     }
 
-    // Auto-detect draft position from the user's round-1 pick number
-    // In a snake draft, round-1 pick N = position N
+    // Detect draft position — prefer server-provided value (detected from DK round-1 slots)
+    // then fall back to finding the user's own round-1 pick
+    const serverPos = data.my_position;
     const myRd1 = picks.find(p => p.round === 1 && me && (p.username || '').toLowerCase().includes(me));
-    if (myRd1?.pick_number) {
-      const detectedPos = myRd1.pick_number;
-      if (detectedPos !== settings.myPosition) {
-        saveDraftPosition(syncDraftId, detectedPos);
-        changed = true;
-      }
+    const detectedPos = serverPos || myRd1?.pick_number;
+    if (detectedPos && detectedPos !== settings.myPosition) {
+      saveDraftPosition(syncDraftId, detectedPos);
+      changed = true;
     }
   }
 

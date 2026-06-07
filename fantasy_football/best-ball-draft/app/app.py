@@ -1220,16 +1220,19 @@ def dk_draft_pull(draft_id):
     # entry_id stored when draft was saved/discovered
     entry_id = (_saved_draft_ids.get(str(draft_id)) or {}).get('entry_id')
 
-    picks = fetch_dk_draft_picks(draft_id, entry_id=entry_id)
-    if picks:
+    result = fetch_dk_draft_picks(draft_id, entry_id=entry_id)
+    if result:
+        picks       = result.get('picks', [])
+        my_position = result.get('my_position')
         _dk_pick_cache[str(draft_id)] = {
             'picks': picks,
             'overall_pick': max((p.get('pick_number') or 0 for p in picks), default=0) + 1,
             'updated_at': time.time(),
             'source': 'direct_api',
+            'my_position': my_position,
             'error': None,
         }
-        return jsonify({
+        resp = {
             'draft_id':    draft_id,
             'picks':       picks,
             'pick_count':  len(picks),
@@ -1237,7 +1240,10 @@ def dk_draft_pull(draft_id):
             'source':      'direct_api',
             'error':       None,
             'updated_at':  _dk_pick_cache[str(draft_id)]['updated_at'],
-        })
+        }
+        if my_position:
+            resp['my_position'] = my_position
+        return jsonify(resp)
 
     # Strategy 2 — requests with stored cookies (may fail on HttpOnly-gated endpoints)
     if _dk_session.get('cookie'):
@@ -1406,7 +1412,7 @@ def dk_draft_state_proxy(draft_id):
     cached = _dk_pick_cache.get(id_str, {})
     if cached.get('picks'):
         picks = cached['picks']
-        return jsonify({
+        resp = {
             'draft_id':    draft_id,
             'picks':       picks,
             'overall_pick': cached.get('overall_pick', 1),
@@ -1415,7 +1421,10 @@ def dk_draft_state_proxy(draft_id):
             'error':       None,
             'pick_count':  len(picks),
             'num_teams':   _num_teams_from_picks(picks),
-        })
+        }
+        if cached.get('my_position'):
+            resp['my_position'] = cached['my_position']
+        return jsonify(resp)
 
     # 3. No data yet — tell client to run bookmarklet
     debug = {

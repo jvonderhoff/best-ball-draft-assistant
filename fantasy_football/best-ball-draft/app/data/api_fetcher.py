@@ -397,11 +397,23 @@ def fetch_dk_draft_picks(contest_id, entry_id=None, draft_group_id=None):
     draftable_map = _fetch_draftables(session, dg_id)
     print(f'  [DK] draftables: {len(draftable_map)} players, draftBoard: {len(draft_board)} slots')
 
+    # Scan ALL entries (including unfilled future slots) to detect user's draft position
+    # Round-1 slots have userKey set even before the pick is made
+    my_position = None
+    if user_guid:
+        for entry in draft_board:
+            if entry.get('roundNumber') == 1 and entry.get('userKey') == user_guid:
+                pick_num = entry.get('overallSelectionNumber')
+                if pick_num:
+                    my_position = int(pick_num)
+                    print(f'  [DK] Detected my_position={my_position} from round-1 slot')
+                    break
+
     picks = []
     for entry in draft_board:
         did = entry.get('draftableId')
         if not did:
-            continue   # unfilled future slot
+            continue   # unfilled future slot — skip for picks list
         player_info = draftable_map.get(did, {})
         name     = player_info.get('name') or f'Player #{did}'
         pos      = player_info.get('pos', '')
@@ -419,8 +431,8 @@ def fetch_dk_draft_picks(contest_id, entry_id=None, draft_group_id=None):
             'draftable_id': str(did),
         })
 
-    print(f'  [DK] ✓ {len(picks)} picks for contest {contest_id}')
-    return picks if picks else None
+    print(f'  [DK] ✓ {len(picks)} picks for contest {contest_id}, my_position={my_position}')
+    return {'picks': picks, 'my_position': my_position} if picks or my_position else None
 
 
 # Path to cache the user's DK GUID so we can call the live-drafts endpoint directly
