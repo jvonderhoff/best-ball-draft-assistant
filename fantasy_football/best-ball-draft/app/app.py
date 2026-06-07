@@ -419,14 +419,19 @@ def yahoo_status():
 def refresh_yahoo_projections():
     """Fetch Yahoo Fantasy player projections and store them."""
     try:
-        from app.data.yahoo_fetcher import fetch_yahoo_projections, is_authenticated
-        if not is_authenticated():
-            return jsonify({'ok': False, 'error': 'Not authenticated — connect Yahoo first'}), 200
+        from app.data.yahoo_fetcher import fetch_yahoo_projections, is_authenticated, _get_nfl_game_key, _load_tokens
+        tokens = _load_tokens()
+        auth = bool(tokens.get('access_token'))
+        if not auth:
+            return jsonify({'ok': False, 'error': 'Not authenticated — connect Yahoo first', 'tokens_found': bool(tokens)}), 200
+        game_key = _get_nfl_game_key()
+        if not game_key:
+            return jsonify({'ok': False, 'error': 'Could not determine NFL game key — check Render logs for details'}), 200
         projections = fetch_yahoo_projections(verbose=True)
         if not projections:
-            return jsonify({'ok': False, 'error': 'No projections returned from Yahoo'}), 200
+            return jsonify({'ok': False, 'error': f'No projections returned from Yahoo (game_key={game_key})'}), 200
         count = save_yahoo_projections(projections)
-        return jsonify({'ok': True, 'players': count, 'source': 'Yahoo'})
+        return jsonify({'ok': True, 'players': count, 'source': 'Yahoo', 'game_key': game_key})
     except Exception as e:
         import traceback
         return jsonify({'ok': False, 'error': str(e), 'trace': traceback.format_exc()}), 500

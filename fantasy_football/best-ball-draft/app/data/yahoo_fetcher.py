@@ -165,21 +165,34 @@ def _get_nfl_game_key() -> str | None:
     if _nfl_game_key_cache:
         return _nfl_game_key_cache
 
-    data = _api_get('/games;game_codes=nfl;is_available_for_league_type=full_draft')
-    if not data:
-        return None
-    try:
-        games = data['fantasy_content']['games']
-        count = games.get('count', 0)
-        for i in range(count):
-            g = games.get(str(i), {}).get('game', [{}])
-            key = g[0].get('game_key') if g else None
-            if key:
-                _nfl_game_key_cache = key
-                print(f'[Yahoo] NFL game key: {key}')
-                return key
-    except Exception as e:
-        print(f'[Yahoo] game_key parse error: {e}')
+    # Try with draft filter first, then without (pre-season the draft flag may be unset)
+    for path in [
+        '/games;game_codes=nfl;is_available_for_league_type=full_draft',
+        '/games;game_codes=nfl',
+    ]:
+        data = _api_get(path)
+        if not data:
+            print(f'[Yahoo] No response from {path}')
+            continue
+        try:
+            games = data['fantasy_content']['games']
+            count = games.get('count', 0)
+            print(f'[Yahoo] game_key search {path}: count={count}')
+            # Pick the game with the highest game_key (most recent season)
+            best_key = None
+            for i in range(count):
+                g = games.get(str(i), {}).get('game', [{}])
+                key = g[0].get('game_key') if g else None
+                season = g[0].get('season') if g else None
+                print(f'[Yahoo]   game {i}: key={key} season={season}')
+                if key and (best_key is None or int(key) > int(best_key)):
+                    best_key = key
+            if best_key:
+                _nfl_game_key_cache = best_key
+                print(f'[Yahoo] Using NFL game key: {best_key}')
+                return best_key
+        except Exception as e:
+            print(f'[Yahoo] game_key parse error ({path}): {e}')
     return None
 
 
