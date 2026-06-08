@@ -1701,7 +1701,7 @@ def get_players():
     """Return all players — from player_cache.json (primary) or players.js (legacy extension file)."""
     import re
     # Primary: player_cache.json committed to repo
-    cache_path = os.path.join(basedir, 'data', 'player_cache.json')
+    from app.data.api_fetcher import CACHE_PATH as cache_path
     try:
         with open(cache_path) as f:
             data = json.load(f)
