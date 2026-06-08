@@ -204,7 +204,7 @@ def get_analysis_data(force_refresh: bool = False):
         p['yahoo_pts_ppr'] = round(float(yp['fpts']), 1) if yp and yp.get('fpts') else 0
         p['yahoo_rank']    = yp.get('yahoo_rank') if yp else None
 
-    # ── Consensus PPR (average of available sources: FP + SL + Yahoo) ────────
+    # ── Consensus PPR (average of available PPR point sources: FP + SL + Yahoo) ─
     for p in players:
         sl_pt    = p['proj_pts_ppr']
         fp_pt    = p['fp_pts_ppr']
@@ -212,15 +212,44 @@ def get_analysis_data(force_refresh: bool = False):
         pts      = [v for v in (sl_pt, fp_pt, yahoo_pt) if v > 0]
         p['consensus_ppr'] = round(sum(pts) / len(pts), 1) if pts else 0
 
-    # ── Positional consensus rank (QB1, RB7, WR12 …) ─────────────────────────
+    # ── Positional ranks per source (used for rank-based consensus) ───────────
     for pos in SKILL_POSITIONS:
-        pos_players = sorted(
-            [p for p in players if p['pos'] == pos and p['consensus_ppr'] > 0],
-            key=lambda x: -x['consensus_ppr']
+        # SL positional rank
+        sl_sorted = sorted(
+            [p for p in players if p['pos'] == pos and p['proj_pts_ppr'] > 0],
+            key=lambda x: -x['proj_pts_ppr']
         )
-        for rank, p in enumerate(pos_players, 1):
+        for rank, p in enumerate(sl_sorted, 1):
+            p['sl_pos_rank'] = rank
+
+        # FP positional rank
+        fp_sorted = sorted(
+            [p for p in players if p['pos'] == pos and p['fp_pts_ppr'] > 0],
+            key=lambda x: -x['fp_pts_ppr']
+        )
+        for rank, p in enumerate(fp_sorted, 1):
+            p['fp_pos_rank'] = rank
+
+    for p in players:
+        p.setdefault('sl_pos_rank', None)
+        p.setdefault('fp_pos_rank', None)
+
+    # ── Positional consensus rank — average available positional ranks ─────────
+    # Uses: FP rank, SL rank, Yahoo AR rank (all positional, lower = better)
+    # This lets Yahoo contribute even when PPR projections aren't yet published.
+    for pos in SKILL_POSITIONS:
+        pos_players = [p for p in players if p['pos'] == pos]
+        ranked = []
+        for p in pos_players:
+            ranks = [r for r in (p['fp_pos_rank'], p['sl_pos_rank'], p.get('yahoo_rank')) if r]
+            if ranks:
+                p['_avg_rank'] = sum(ranks) / len(ranks)
+                ranked.append(p)
+        ranked.sort(key=lambda x: x['_avg_rank'])
+        for rank, p in enumerate(ranked, 1):
             p['consensus_rank'] = rank
             p['consensus_label'] = f"{pos}{rank}"
+
     for p in players:
         if 'consensus_rank' not in p:
             p['consensus_rank'] = None

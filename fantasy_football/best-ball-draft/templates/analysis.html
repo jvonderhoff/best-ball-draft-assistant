@@ -414,7 +414,7 @@ function renderTable() {
         <td style="color:var(--accent);font-weight:700">${p.consensus_ppr > 0 ? p.consensus_ppr : '<span class="no-data">—</span>'}</td>
         <td>${hasProj ? `<strong style="color:#b0bec5">${p.proj_pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
         <td>${p.fp_pts_ppr > 0 ? `<strong style="color:var(--green)">${p.fp_pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
-        <td>${p.yahoo_pts_ppr > 0 ? `<strong style="color:#7986cb">${p.yahoo_pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
+        <td>${p.yahoo_pts_ppr > 0 ? `<strong style="color:#7986cb">${p.yahoo_pts_ppr}</strong>` : p.yahoo_rank ? `<span style="color:#9fa8da;font-size:0.85em">AR${p.yahoo_rank}</span>` : '<span class="no-data">—</span>'}</td>
         <td>${hasStats ? `<strong>${p.pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
         <td>${hasStats ? p.gp : '<span class="no-data">—</span>'}</td>
         <td>${(() => {
