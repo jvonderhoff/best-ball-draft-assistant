@@ -122,8 +122,10 @@ def _parse_dk_lineup_csv(text: str) -> list:
             pos  = (row.get('Position') or '').strip().upper()
             name = (row.get('Name') or '').strip()
             team = (row.get('TeamAbbrev') or '').strip().upper()
-            if pos not in SKILL_POSITIONS or not name or not team or team == 'FA':
+            if pos not in SKILL_POSITIONS or not name:
                 continue
+            if not team:
+                team = 'FA'
             try:
                 salary = int(row.get('Salary') or 9999)
             except (ValueError, TypeError):
@@ -217,8 +219,9 @@ def _parse_dk_api_responses(responses: dict) -> list:
             continue
 
         team = pid_to_team.get(pid, '').upper()
-        if not team or team in ('FA', 'N/A', ''):
-            continue
+        # Keep FA players — DK includes free agents in best ball drafts
+        if not team:
+            team = 'FA'
 
         adp = p.get('averageDraftPosition')
         try:
@@ -230,10 +233,11 @@ def _parse_dk_api_responses(responses: dict) -> list:
         dk_id = f'dk_{did}' if did else f'dk_{pid}'
         players.append({'name': name, 'pos': pos, 'team': team, 'adp': adp, 'dk_id': dk_id})
 
-    players_with_adp = [p for p in players if p['adp'] is not None]
-    if players_with_adp:
-        players_with_adp.sort(key=lambda p: p['adp'])
-        return players_with_adp
+    # Keep all players — assign a high ADP to undrafted ones so they sort last
+    for p in players:
+        if p['adp'] is None:
+            p['adp'] = 9999.0
+    players.sort(key=lambda p: p['adp'])
     return players
 
 
