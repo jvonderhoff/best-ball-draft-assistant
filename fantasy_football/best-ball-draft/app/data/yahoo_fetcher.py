@@ -224,8 +224,8 @@ def _normalize(name: str) -> str:
 
 def _parse_player_block(player_list: list) -> dict | None:
     """
-    Yahoo wraps player info as: [{ player fields... }, { player_stats: {...} }]
-    Extract name, position, projected points.
+    Yahoo wraps player info as: [[info_items...], {player_stats}]
+    info_items is a list of single-key dicts e.g. [{'player_key': ...}, {'name': {...}}, ...]
     """
     if not player_list or not isinstance(player_list, list):
         return None
@@ -233,13 +233,19 @@ def _parse_player_block(player_list: list) -> dict | None:
     info = player_list[0] if isinstance(player_list[0], list) else []
     stats_block = player_list[1] if len(player_list) > 1 else {}
 
-    # info is a list of dicts like [{'player_key': ...}, {'full_name': ...}, ...]
+    # Build a flat map from the list of single-key dicts
     field_map = {}
     for item in info:
         if isinstance(item, dict):
             field_map.update(item)
 
-    name = field_map.get('full_name', '')
+    # Name is nested: {"name": {"full": "Josh Allen", ...}}
+    name_data = field_map.get('name', {})
+    if isinstance(name_data, dict):
+        name = name_data.get('full', '')
+    else:
+        name = str(name_data)
+
     pos_data = field_map.get('display_position', '') or field_map.get('primary_position', '')
     pos = pos_data.split(',')[0].strip().upper() if pos_data else ''
     if pos not in ('QB', 'RB', 'WR', 'TE'):
@@ -281,61 +287,36 @@ def fetch_yahoo_projections(verbose: bool = True) -> dict:
     result = {}
     positions = ['QB', 'RB', 'WR', 'TE']
 
-    # Try projected first, fall back to last season actuals if not yet published
-    stat_types = ['projected_season_stats', 'season_stats']
-
     for pos in positions:
         if verbose:
-            print(f'  [Yahoo] Fetching {pos} projections…')
+            print(f'  [Yahoo] Fetching {pos} AR rankings…')
         start = 0
         pos_rank = 1
-        stat_type = stat_types[0]
-
-        # Detect which stat type is available by trying first page
-        for st in stat_types:
-            probe = _api_get(f'/game/{game_key}/players;position={pos};sort=AR;start=0;count=3/stats;type={st}')
-            if probe:
-                try:
-                    c = probe['fantasy_content']['game']
-                    pb = c[1].get('players', {}) if len(c) > 1 else {}
-                    if pb.get('count', 0) > 0:
-                        stat_type = st
-                        print(f'  [Yahoo] {pos}: using stat_type={st}')
-                        break
-                except Exception:
-                    pass
-        else:
-            print(f'  [Yahoo] {pos}: no stat data available, skipping')
-            continue
-
         while True:
-            path = f'/game/{game_key}/players;position={pos};sort=AR;start={start};count=25/stats;type={stat_type}'
+            # Fetch players sorted by Analyst Rank (AR) — no stats subresource needed
+            path = f'/game/{game_key}/players;position={pos};sort=AR;start={start};count=25'
             data = _api_get(path)
             if not data:
-                print(f'  [Yahoo] No response for {path}')
+                print(f'  [Yahoo] No response for {pos} start={start}')
                 break
             try:
                 content = data['fantasy_content']['game']
-                # content[0] = game info dict, content[1] = players dict
                 players_block = content[1].get('players', {}) if len(content) > 1 else {}
                 count = players_block.get('count', 0)
-                if verbose:
-                    print(f'  [Yahoo] {pos} start={start}: count={count}')
                 if not count:
                     break
                 for i in range(count):
                     p_data = players_block.get(str(i), {}).get('player')
                     parsed = _parse_player_block(p_data)
                     if parsed:
-                        parsed['yahoo_rank'] = pos_rank
                         result[parsed['name']] = {
-                            'fpts':       parsed['fpts'],
+                            'fpts':       0.0,   # projected pts not yet published pre-season
                             'pos':        parsed['pos'],
                             'yahoo_rank': pos_rank,
                         }
                         pos_rank += 1
                 if verbose:
-                    print(f'  [Yahoo] {pos}: {count} players (start={start})')
+                    print(f'  [Yahoo] {pos}: {count} players fetched (start={start})')
                 if count < 25:
                     break
                 start += 25
