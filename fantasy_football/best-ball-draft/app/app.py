@@ -404,14 +404,24 @@ def yahoo_callback():
 @app.route('/api/yahoo/status')
 def yahoo_status():
     from app.data.yahoo_fetcher import is_authenticated, _load_tokens, CLIENT_ID
+    from app.database import kv_get
     tokens = _load_tokens()
     expires_at = tokens.get('expires_at')
+    # Check each token source independently
+    db_raw = kv_get('yahoo_tokens')
+    import os
+    from app.data.yahoo_fetcher import _TOKEN_FILE
+    disk_exists = os.path.exists(_TOKEN_FILE)
+    env_set = bool(os.environ.get('YAHOO_TOKENS', ''))
     return jsonify({
         'authenticated': is_authenticated(),
         'configured': bool(CLIENT_ID),
         'redirect_uri': _yahoo_redirect_uri(),
         'expires_at': expires_at,
-        'age_seconds': round(time.time() - (tokens.get('expires_at', time.time()) - 3600)) if expires_at else None,
+        'token_in_db': bool(db_raw),
+        'token_on_disk': disk_exists,
+        'token_in_env': env_set,
+        'has_access_token': bool(tokens.get('access_token')),
     })
 
 
