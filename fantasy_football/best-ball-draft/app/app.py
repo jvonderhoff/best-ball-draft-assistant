@@ -1698,20 +1698,29 @@ def recommend_page():
 
 @app.route('/api/players', methods=['GET'])
 def get_players():
-    """Return all players from players.js (the extension's player cache)."""
+    """Return all players — from player_cache.json (primary) or players.js (legacy extension file)."""
     import re
-    players_js = os.path.join(basedir, '..', 'best-ball-extension', 'players.js')
-    players_js = os.path.normpath(players_js)
+    # Primary: player_cache.json committed to repo
+    cache_path = os.path.join(basedir, 'data', 'player_cache.json')
+    try:
+        with open(cache_path) as f:
+            data = json.load(f)
+        players = data if isinstance(data, list) else data.get('players', [])
+        if players:
+            return jsonify(players)
+    except Exception:
+        pass
+    # Fallback: legacy extension players.js
+    players_js = os.path.normpath(os.path.join(basedir, '..', 'best-ball-extension', 'players.js'))
     try:
         with open(players_js) as f:
             content = f.read()
         m = re.search(r'const PLAYERS\s*=\s*(\[.*\]);', content, re.DOTALL)
-        if not m:
-            return jsonify({'error': 'Could not parse players.js'}), 500
-        players = json.loads(m.group(1))
-        return jsonify(players)
-    except FileNotFoundError:
-        return jsonify({'error': 'players.js not found — run generate_players.py'}), 404
+        if m:
+            return jsonify(json.loads(m.group(1)))
+    except Exception:
+        pass
+    return jsonify({'error': 'No player data found'}), 404
 
 
 # ── Analysis ──────────────────────────────────────────────────────────────────
