@@ -427,12 +427,29 @@ def yahoo_status():
 
 @app.route('/api/yahoo/raw-test')
 def yahoo_raw_test():
-    """Dump raw Yahoo API response for debugging — /api/yahoo/raw-test?path=/game/470/players;position=QB;sort=AR;count=3"""
-    from app.data.yahoo_fetcher import _api_get, _get_nfl_game_key
+    """Dump raw Yahoo API response for debugging."""
+    from app.data.yahoo_fetcher import _get_access_token, _get_nfl_game_key, API_BASE
+    import requests as req
     game_key = _get_nfl_game_key()
     path = request.args.get('path', f'/game/{game_key}/players;position=QB;sort=AR;start=0;count=3/stats;type=projected_season_stats')
-    data = _api_get(path)
-    return jsonify({'path': path, 'game_key': game_key, 'response': data})
+    token = _get_access_token()
+    if not token:
+        return jsonify({'error': 'no token', 'game_key': game_key})
+    try:
+        r = req.get(
+            f"{API_BASE}{path}",
+            headers={'Authorization': f'Bearer {token}'},
+            params={'format': 'json'},
+            timeout=20,
+        )
+        return jsonify({
+            'path': path,
+            'game_key': game_key,
+            'status_code': r.status_code,
+            'response': r.json() if r.headers.get('content-type', '').startswith('application/json') else r.text[:2000],
+        })
+    except Exception as e:
+        return jsonify({'path': path, 'game_key': game_key, 'error': str(e)})
 
 
 @app.route('/api/yahoo/projections/refresh', methods=['POST'])
