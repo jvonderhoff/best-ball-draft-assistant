@@ -1352,6 +1352,7 @@ function renderRoster() {
 function renderStackWindows() {
   const NUM_TEAMS = settings.numTeams || 12;
   const myTeamSet = new Set(state.myTeam.map(p => p.id));
+  const myTeams   = new Set(state.myTeam.map(p => p.team));
 
   // All QBs sorted by ADP — include ones I own even if "taken"
   const qbs = PLAYERS
@@ -1366,63 +1367,69 @@ function renderStackWindows() {
   }
   for (const t in teamPC) teamPC[t].sort((a, b) => (a.adp||999) - (b.adp||999));
 
-  // Group QBs by draft round tier (each tier = 2 rounds to keep list compact)
-  const tiers = [];
-  for (const qb of qbs) {
-    const round = Math.ceil((qb.adp || 1) / NUM_TEAMS);
-    const tier  = Math.ceil(round / 2); // group every 2 rounds
-    if (!tiers[tier]) tiers[tier] = [];
-    tiers[tier].push(qb);
-  }
+  function buildCard(qb, roundLabel) {
+    const isMine    = myTeamSet.has(qb.id);
+    const isQBTaken = state.takenIds.has(qb.id) && !isMine;
+    if (isQBTaken) return null;
 
-  let html = '';
-  for (let i = 1; i < tiers.length; i++) {
-    const tierQBs = tiers[i];
-    if (!tierQBs) continue;
-    const r1 = (i - 1) * 2 + 1, r2 = i * 2;
-    const roundLabel = r1 === r2 ? `Round ${r1}` : `Rounds ${r1}–${r2}`;
+    const pcs = (teamPC[qb.team] || []).slice(0, 6);
+    if (!pcs.length) return null;
 
-    const cards = tierQBs.map(qb => {
-      const isMine     = myTeamSet.has(qb.id);
-      const isQBTaken  = state.takenIds.has(qb.id) && !isMine;
-      if (isQBTaken) return '';   // skip QBs taken by opponents
-
-      const pcs = (teamPC[qb.team] || []).slice(0, 6);
-      if (!pcs.length) return '';
-
-      const pcChips = pcs.map(pc => {
-        const pcMine  = myTeamSet.has(pc.id);
-        const pcTaken = state.takenIds.has(pc.id) && !pcMine;
-        const cls = pcMine ? 'mine-pc' : pcTaken ? 'taken-pc' : 'available';
-        const adpStr = pcMine ? '' : `<span class="rw-pc-adp">${Math.round(pc.adp||0)}</span>`;
-        const posColor = { WR: 'var(--WR)', TE: 'var(--TE)' }[pc.pos] || 'var(--muted)';
-        return `<span class="rw-pc-chip ${cls}">
-          <span style="font-size:0.7em;font-weight:700;color:${posColor}">${pc.pos}</span>
-          ${pc.name}${adpStr}
-          ${pcMine ? '<span style="font-size:0.7em;color:var(--accent)">✓</span>' : ''}
-        </span>`;
-      }).join('');
-
-      if (!pcChips) return '';
-
-      return `<div class="round-window">
-        <div class="rw-header">
-          <span class="rw-round">${roundLabel}</span>
-          <span class="rw-qb-name">${qb.name}</span>
-          <span style="font-size:0.62em;font-weight:700;padding:1px 4px;border-radius:3px;background:var(--QB);color:#fff;flex-shrink:0">QB</span>
-          <span class="rw-qb-adp">ADP ${Math.round(qb.adp||0)}</span>
-          ${isMine ? '<span class="rw-mine-tag">Mine</span>' : ''}
-        </div>
-        <div class="rw-pass-catchers">${pcChips}</div>
-      </div>`;
+    const pcChips = pcs.map(pc => {
+      const pcMine  = myTeamSet.has(pc.id);
+      const pcTaken = state.takenIds.has(pc.id) && !pcMine;
+      const cls     = pcMine ? 'mine-pc' : pcTaken ? 'taken-pc' : 'available';
+      const adpStr  = pcMine ? '' : `<span class="rw-pc-adp">${Math.round(pc.adp||0)}</span>`;
+      const posColor = { WR: 'var(--WR)', TE: 'var(--TE)' }[pc.pos] || 'var(--muted)';
+      return `<span class="rw-pc-chip ${cls}">
+        <span style="font-size:0.7em;font-weight:700;color:${posColor}">${pc.pos}</span>
+        ${pc.name}${adpStr}
+        ${pcMine ? '<span style="font-size:0.7em;color:var(--accent)">✓</span>' : ''}
+      </span>`;
     }).join('');
 
-    html += cards;
+    // A QB "has stack" if I own them OR I own at least one of their pass catchers
+    const hasStack = isMine || pcs.some(pc => myTeamSet.has(pc.id));
+
+    return { html: `<div class="round-window${hasStack ? ' rw-active' : ''}">
+      <div class="rw-header">
+        <span class="rw-round">${roundLabel}</span>
+        <span class="rw-qb-name">${qb.name}</span>
+        <span style="font-size:0.62em;font-weight:700;padding:1px 4px;border-radius:3px;background:var(--QB);color:#fff;flex-shrink:0">QB</span>
+        <span class="rw-qb-adp">ADP ${Math.round(qb.adp||0)}</span>
+        ${isMine ? '<span class="rw-mine-tag">Mine</span>' : ''}
+      </div>
+      <div class="rw-pass-catchers">${pcChips}</div>
+    </div>`, hasStack };
   }
 
-  return html
-    ? `<div class="stack-section-lbl">📋 Stack Windows — Available by Round</div>${html}`
-    : '';
+  // Build all cards, tagging whether they have a stack connection
+  const stackCards = [];
+  const roundCards = [];
+
+  for (const qb of qbs) {
+    const round = Math.ceil((qb.adp || 1) / NUM_TEAMS);
+    const tier  = Math.ceil(round / 2);
+    const r1 = (tier - 1) * 2 + 1, r2 = tier * 2;
+    const roundLabel = r1 === r2 ? `Round ${r1}` : `Rounds ${r1}–${r2}`;
+
+    const card = buildCard(qb, roundLabel);
+    if (!card) continue;
+    if (card.hasStack) stackCards.push(card.html);
+    else               roundCards.push(card.html);
+  }
+
+  if (!stackCards.length && !roundCards.length) return '';
+
+  let html = '';
+  if (stackCards.length) {
+    html += `<div class="stack-section-lbl">⚡ Your Stack Connections</div>${stackCards.join('')}`;
+  }
+  if (roundCards.length) {
+    const lbl = stackCards.length ? 'Other Available Stacks by Round' : 'Stack Windows — Available by Round';
+    html += `<div class="stack-section-lbl">📋 ${lbl}</div>${roundCards.join('')}`;
+  }
+  return html;
 }
 
 function computeStackGroups() {
