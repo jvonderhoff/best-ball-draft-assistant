@@ -761,7 +761,11 @@ async function loadDraftList() {
     dbDrafts = (d.drafts || []).filter(dr => !dkDrafts.some(dk => dk.draft_id === String(dr.draft_id)));
   } catch { /* ignore */ }
 
-  const drafts = [...dkDrafts, ...dbDrafts];
+  const drafts = [...dkDrafts, ...dbDrafts].sort((a, b) => {
+    const ua = picksUntilMyTurn(a.overall_pick, a.my_position) ?? Infinity;
+    const ub = picksUntilMyTurn(b.overall_pick, b.my_position) ?? Infinity;
+    return ua - ub;
+  });
 
   if (!drafts.length) {
     el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:24px 10px;">
