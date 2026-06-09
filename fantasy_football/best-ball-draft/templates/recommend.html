@@ -1359,10 +1359,10 @@ function renderStackWindows() {
     .filter(p => p.pos === 'QB' && (p.adp || 0) <= 216)
     .sort((a, b) => (a.adp || 999) - (b.adp || 999));
 
-  // Build team → pass catchers map (WR + TE, sorted by ADP)
+  // Build team → skill players map (RB + WR + TE, sorted by ADP)
   const teamPC = {};
   for (const p of PLAYERS) {
-    if (!['WR','TE'].includes(p.pos)) continue;
+    if (!['RB','WR','TE'].includes(p.pos)) continue;
     (teamPC[p.team] = teamPC[p.team] || []).push(p);
   }
   for (const t in teamPC) teamPC[t].sort((a, b) => (a.adp||999) - (b.adp||999));
@@ -1372,7 +1372,7 @@ function renderStackWindows() {
     const isQBTaken = state.takenIds.has(qb.id) && !isMine;
     if (isQBTaken) return null;
 
-    const pcs = (teamPC[qb.team] || []).slice(0, 6);
+    const pcs = (teamPC[qb.team] || []).slice(0, 8);
     if (!pcs.length) return null;
 
     const pcChips = pcs.map(pc => {
@@ -1380,7 +1380,7 @@ function renderStackWindows() {
       const pcTaken = state.takenIds.has(pc.id) && !pcMine;
       const cls     = pcMine ? 'mine-pc' : pcTaken ? 'taken-pc' : 'available';
       const adpStr  = pcMine ? '' : `<span class="rw-pc-adp">${Math.round(pc.adp||0)}</span>`;
-      const posColor = { WR: 'var(--WR)', TE: 'var(--TE)' }[pc.pos] || 'var(--muted)';
+      const posColor = { RB: 'var(--RB)', WR: 'var(--WR)', TE: 'var(--TE)' }[pc.pos] || 'var(--muted)';
       return `<span class="rw-pc-chip ${cls}">
         <span style="font-size:0.7em;font-weight:700;color:${posColor}">${pc.pos}</span>
         ${pc.name}${adpStr}
