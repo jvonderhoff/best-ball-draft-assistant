@@ -238,6 +238,38 @@
     .spr-taken { font-size: 0.63em; color: var(--muted2); flex-shrink: 0; }
     .spr-rnd   { font-size: 0.63em; font-weight: 700; padding: 1px 5px; border-radius: 8px; background: var(--surface); color: var(--muted); border: 1px solid var(--border-soft); flex-shrink: 0; }
 
+    /* ── Stack windows by round ── */
+    .round-window {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; margin-bottom: 6px; overflow: hidden;
+    }
+    .rw-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; background: var(--surface);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .rw-round {
+      font-size: 0.7em; font-weight: 700; padding: 2px 8px;
+      border-radius: 8px; background: var(--panel); color: var(--muted);
+      border: 1px solid var(--border); white-space: nowrap; flex-shrink: 0;
+    }
+    .rw-qb-name { font-weight: 700; font-size: 0.88em; }
+    .rw-qb-adp  { font-size: 0.72em; color: var(--muted); flex-shrink: 0; }
+    .rw-mine-tag { font-size: 0.63em; font-weight: 700; padding: 1px 5px; border-radius: 8px; background: var(--mine-bg); color: var(--accent); flex-shrink: 0; }
+    .rw-pass-catchers {
+      padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 5px;
+    }
+    .rw-pc-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 8px; border-radius: 16px; font-size: 0.75em; font-weight: 600;
+      border: 1px solid var(--border-soft);
+    }
+    .rw-pc-chip.available { background: var(--surface); color: var(--text); }
+    .rw-pc-chip.mine-pc   { background: var(--mine-bg); color: var(--accent); border-color: var(--accent); }
+    .rw-pc-chip.taken-pc  { background: transparent; color: var(--muted2); text-decoration: line-through; opacity: 0.5; }
+    .rw-pc-adp  { color: var(--muted); font-size: 0.85em; }
+    .rw-empty   { font-size: 0.75em; color: var(--muted2); padding: 6px 12px 8px; font-style: italic; }
+
     /* ── Debug bar ── */
     #debugBar   { background: var(--bg); border-bottom: 1px solid var(--border-soft); padding: 4px 14px; font-size: 0.72em; color: var(--muted2); display: flex; align-items: center; gap: 6px; cursor: pointer; }
     #debugPanel { display: none; background: var(--bg); border-bottom: 1px solid var(--border-soft); padding: 8px 14px; font-size: 0.72em; color: var(--muted); font-family: monospace; line-height: 1.7; }
@@ -1317,6 +1349,82 @@ function renderRoster() {
 }
 
 // ── Stack map ──────────────────────────────────────────────────────────────────
+function renderStackWindows() {
+  const NUM_TEAMS = settings.numTeams || 12;
+  const myTeamSet = new Set(state.myTeam.map(p => p.id));
+
+  // All QBs sorted by ADP — include ones I own even if "taken"
+  const qbs = PLAYERS
+    .filter(p => p.pos === 'QB' && (p.adp || 0) <= 216)
+    .sort((a, b) => (a.adp || 999) - (b.adp || 999));
+
+  // Build team → pass catchers map (WR + TE, sorted by ADP)
+  const teamPC = {};
+  for (const p of PLAYERS) {
+    if (!['WR','TE'].includes(p.pos)) continue;
+    (teamPC[p.team] = teamPC[p.team] || []).push(p);
+  }
+  for (const t in teamPC) teamPC[t].sort((a, b) => (a.adp||999) - (b.adp||999));
+
+  // Group QBs by draft round tier (each tier = 2 rounds to keep list compact)
+  const tiers = [];
+  for (const qb of qbs) {
+    const round = Math.ceil((qb.adp || 1) / NUM_TEAMS);
+    const tier  = Math.ceil(round / 2); // group every 2 rounds
+    if (!tiers[tier]) tiers[tier] = [];
+    tiers[tier].push(qb);
+  }
+
+  let html = '';
+  for (let i = 1; i < tiers.length; i++) {
+    const tierQBs = tiers[i];
+    if (!tierQBs) continue;
+    const r1 = (i - 1) * 2 + 1, r2 = i * 2;
+    const roundLabel = r1 === r2 ? `Round ${r1}` : `Rounds ${r1}–${r2}`;
+
+    const cards = tierQBs.map(qb => {
+      const isMine     = myTeamSet.has(qb.id);
+      const isQBTaken  = state.takenIds.has(qb.id) && !isMine;
+      if (isQBTaken) return '';   // skip QBs taken by opponents
+
+      const pcs = (teamPC[qb.team] || []).slice(0, 6);
+      if (!pcs.length) return '';
+
+      const pcChips = pcs.map(pc => {
+        const pcMine  = myTeamSet.has(pc.id);
+        const pcTaken = state.takenIds.has(pc.id) && !pcMine;
+        const cls = pcMine ? 'mine-pc' : pcTaken ? 'taken-pc' : 'available';
+        const adpStr = pcMine ? '' : `<span class="rw-pc-adp">${Math.round(pc.adp||0)}</span>`;
+        const posColor = { WR: 'var(--WR)', TE: 'var(--TE)' }[pc.pos] || 'var(--muted)';
+        return `<span class="rw-pc-chip ${cls}">
+          <span style="font-size:0.7em;font-weight:700;color:${posColor}">${pc.pos}</span>
+          ${pc.name}${adpStr}
+          ${pcMine ? '<span style="font-size:0.7em;color:var(--accent)">✓</span>' : ''}
+        </span>`;
+      }).join('');
+
+      if (!pcChips) return '';
+
+      return `<div class="round-window">
+        <div class="rw-header">
+          <span class="rw-round">${roundLabel}</span>
+          <span class="rw-qb-name">${qb.name}</span>
+          <span style="font-size:0.62em;font-weight:700;padding:1px 4px;border-radius:3px;background:var(--QB);color:#fff;flex-shrink:0">QB</span>
+          <span class="rw-qb-adp">ADP ${Math.round(qb.adp||0)}</span>
+          ${isMine ? '<span class="rw-mine-tag">Mine</span>' : ''}
+        </div>
+        <div class="rw-pass-catchers">${pcChips}</div>
+      </div>`;
+    }).join('');
+
+    html += cards;
+  }
+
+  return html
+    ? `<div class="stack-section-lbl">📋 Stack Windows — Available by Round</div>${html}`
+    : '';
+}
+
 function computeStackGroups() {
   const teamMap = {};
   for (const p of PLAYERS) {
@@ -1385,7 +1493,7 @@ function renderStacks() {
   // Opponent teams not already in my groups
   const oppTeams = [...new Set(Object.values(oppMap).flatMap(s => [...s]))].filter(t => !myNFLTeams.has(t));
 
-  let html = '';
+  let html = renderStackWindows();
 
   if (needsWork.length) {
     html += `<div class="stack-section-lbl">⚡ Action Needed</div>${needsWork.map(renderStackCard).join('')}`;
