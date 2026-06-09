@@ -422,8 +422,8 @@
       <select id="stackIntensity">
         <option value="off">Off — pure ADP/positional value</option>
         <option value="light">Light — small nudge toward stackmates</option>
-        <option value="medium" selected>Medium — balanced (recommended)</option>
-        <option value="heavy">Heavy — aggressively stack your QB</option>
+        <option value="medium">Medium — balanced</option>
+        <option value="heavy" selected>Heavy — aggressively stack your QB</option>
       </select>
     </div>
     <div class="setting-group">
@@ -555,7 +555,7 @@ const SETTINGS_KEY = 'bba_settings';
 let settings = loadSettings();
 
 function defaultSettings() {
-  return { myPosition: 1, numTeams: 12, stackIntensity: 'medium', rbPriority: 'strong', diversifyStrength: 0, dkUsername: 'jvonderhoff' };
+  return { myPosition: 1, numTeams: 12, stackIntensity: 'heavy', rbPriority: 'strong', diversifyStrength: 0, dkUsername: 'jvonderhoff' };
 }
 function loadSettings() {
   try {
