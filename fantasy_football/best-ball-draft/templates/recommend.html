@@ -193,6 +193,51 @@
 
     .spinner { text-align: center; padding: 40px; color: var(--muted); font-size: 0.9em; }
 
+    /* ── Stack map ── */
+    .stack-section-lbl {
+      font-size: 0.7em; font-weight: 700; letter-spacing: 0.07em;
+      text-transform: uppercase; color: var(--muted); margin: 10px 0 6px;
+    }
+    .stack-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; margin-bottom: 8px; overflow: hidden;
+    }
+    .stack-card-hdr {
+      display: flex; align-items: center; gap: 7px;
+      padding: 9px 12px; border-bottom: 1px solid var(--border-soft);
+    }
+    .stk-team {
+      font-size: 0.78em; font-weight: 700; padding: 3px 8px;
+      border-radius: 6px; background: var(--surface); color: var(--text);
+      letter-spacing: 0.05em;
+    }
+    .stk-badge {
+      font-size: 0.7em; font-weight: 700; padding: 2px 8px;
+      border-radius: 10px; flex-shrink: 0;
+    }
+    .stk-complete  { background: #0d2a0d; color: var(--green);  border: 1px solid var(--green); }
+    .stk-qb-only   { background: #2a1a0d; color: var(--orange); border: 1px solid var(--orange); }
+    .stk-pass-only { background: #1a0d2a; color: #ce93d8;       border: 1px solid #9c27b0; }
+    .stk-rb-only   { background: #0d1a2a; color: var(--accent); border: 1px solid var(--border); }
+    .stk-opp       { background: #2a0d0d; color: #ef9a9a;       border: 1px solid #c62828; }
+    .stk-hint { font-size: 0.73em; color: var(--muted); flex: 1; }
+    .stack-players { padding: 7px 10px; display: flex; flex-direction: column; gap: 3px; }
+    .spr {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 8px; border-radius: 6px; font-size: 0.82em;
+    }
+    .spr.mine   { background: var(--selected); }
+    .spr.target { background: var(--surface); border: 1px solid var(--border-soft); cursor: pointer; }
+    .spr.taken  { opacity: 0.35; }
+    .spr-pos { font-size: 0.63em; font-weight: 700; padding: 1px 4px; border-radius: 3px; color: #fff; flex-shrink: 0; }
+    .spr-pos.QB { background: var(--QB); } .spr-pos.RB { background: var(--RB); }
+    .spr-pos.WR { background: var(--WR); } .spr-pos.TE { background: var(--TE); }
+    .spr-name  { flex: 1; font-weight: 600; }
+    .spr-adp   { font-size: 0.76em; color: var(--muted); flex-shrink: 0; }
+    .spr-mine  { font-size: 0.63em; font-weight: 700; padding: 1px 5px; border-radius: 8px; background: var(--mine-bg); color: var(--accent); flex-shrink: 0; }
+    .spr-taken { font-size: 0.63em; color: var(--muted2); flex-shrink: 0; }
+    .spr-rnd   { font-size: 0.63em; font-weight: 700; padding: 1px 5px; border-radius: 8px; background: var(--surface); color: var(--muted); border: 1px solid var(--border-soft); flex-shrink: 0; }
+
     /* ── Debug bar ── */
     #debugBar   { background: var(--bg); border-bottom: 1px solid var(--border-soft); padding: 4px 14px; font-size: 0.72em; color: var(--muted2); display: flex; align-items: center; gap: 6px; cursor: pointer; }
     #debugPanel { display: none; background: var(--bg); border-bottom: 1px solid var(--border-soft); padding: 8px 14px; font-size: 0.72em; color: var(--muted); font-family: monospace; line-height: 1.7; }
@@ -223,7 +268,6 @@
 
 <nav>
   <a href="/recommend" class="active">Live Draft</a>
-  <a href="/draft-mapper">Stack Mapper</a>
   <a href="/history">History</a>
   <a href="/rankings">Rankings</a>
   <a href="/analysis">Analysis</a>
@@ -282,6 +326,7 @@
   <div class="tab active" data-tab="recs">Recs</div>
   <div class="tab" data-tab="picks">Draft</div>
   <div class="tab" data-tab="roster">Roster</div>
+  <div class="tab" data-tab="stacks">Stacks</div>
   <div class="tab" data-tab="settings">Settings</div>
 </div>
 
@@ -321,6 +366,11 @@
   <div class="needs-row" id="needsRow"></div>
   <div id="stackSummary"></div>
   <div id="rosterDisplay" style="margin-top:12px;"></div>
+</div>
+
+<!-- ── Stacks Tab ── -->
+<div id="tab-stacks" class="tab-panel">
+  <div id="stacksContent"><div class="no-recs">Connect to your draft to see stack opportunities.</div></div>
 </div>
 
 <!-- ── Settings Tab ── -->
@@ -998,6 +1048,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (t === 'recs')     renderRecs();
     if (t === 'roster')   renderRoster();
     if (t === 'picks')    renderPlayerList();
+    if (t === 'stacks')   renderStacks();
     if (t === 'settings') populateSettings();
   });
 });
@@ -1265,6 +1316,142 @@ function renderRoster() {
       ).join('');
 }
 
+// ── Stack map ──────────────────────────────────────────────────────────────────
+function computeStackGroups() {
+  const teamMap = {};
+  for (const p of PLAYERS) {
+    if (!['QB','RB','WR','TE'].includes(p.pos)) continue;
+    (teamMap[p.team] = teamMap[p.team] || []).push(p);
+  }
+  for (const t in teamMap) teamMap[t].sort((a, b) => (a.adp||999) - (b.adp||999));
+
+  const myTeamSet = new Set(state.myTeam.map(p => p.id));
+  const myNFLTeams = [...new Set(state.myTeam.map(p => p.team))];
+
+  return myNFLTeams.map(team => {
+    const all       = teamMap[team] || [];
+    const mine      = state.myTeam.filter(p => p.team === team);
+    const myQBs     = mine.filter(p => p.pos === 'QB');
+    const myPC      = mine.filter(p => ['WR','TE'].includes(p.pos));
+    const myRBs     = mine.filter(p => p.pos === 'RB');
+
+    let type, label, cls;
+    if (myQBs.length && myPC.length)            { type='complete';  label=`${myQBs.length}QB + ${myPC.length} pass catcher${myPC.length>1?'s':''}`;   cls='stk-complete';  }
+    else if (myQBs.length && !myPC.length)      { type='qb-only';   label=`${myQBs.length}QB — bring back receivers`;                                  cls='stk-qb-only';   }
+    else if (myPC.length && !myQBs.length)      { type='pass-only'; label=`${myPC.length} receiver${myPC.length>1?'s':''} — grab the QB`;               cls='stk-pass-only'; }
+    else if (myRBs.length)                      { type='rb-only';   label=`${myRBs.length}RB — game stack opp`;                                         cls='stk-rb-only';   }
+    else                                        { type='mixed';     label=`${mine.length} players`;                                                      cls='stk-complete';  }
+
+    const hints = {
+      complete:   'Stack active — look for more pass catchers late.',
+      'qb-only':  'Bring back a WR or TE to complete this stack.',
+      'pass-only':'Target this QB — you already own their weapons.',
+      'rb-only':  'Consider stacking the QB + WR from this team.',
+    };
+
+    const avail    = all.filter(p => !state.takenIds.has(p.id));
+    const takenOpp = all.filter(p => state.takenIds.has(p.id) && !myTeamSet.has(p.id));
+    const score    = { complete:100, 'qb-only':85, 'pass-only':80, 'rb-only':50, mixed:60 }[type] || 60;
+
+    return { team, mine, avail, takenOpp, type, label, cls, hint: hints[type]||'', score };
+  }).sort((a, b) => b.score - a.score || b.mine.length - a.mine.length);
+}
+
+function getOppTeams() {
+  const opp = {};
+  for (const p of state.myTeam) {
+    for (const wk of [p.week15, p.week16, p.week17]) {
+      if (wk && wk !== p.team) (opp[p.team] = opp[p.team] || new Set()).add(wk);
+    }
+  }
+  return opp;
+}
+
+function renderStacks() {
+  const el = document.getElementById('stacksContent');
+  if (!PLAYERS.length) { el.innerHTML = '<div class="no-recs">Loading players…</div>'; return; }
+  if (!state.myTeam.length) {
+    el.innerHTML = '<div class="no-recs">No picks on your team yet.<br>Connect to your draft and sync picks.</div>';
+    return;
+  }
+
+  const groups  = computeStackGroups();
+  const oppMap  = getOppTeams();
+  const myNFLTeams = new Set(groups.map(g => g.team));
+
+  const needsWork = groups.filter(g => ['qb-only','pass-only','rb-only'].includes(g.type));
+  const complete  = groups.filter(g => g.type === 'complete');
+
+  // Opponent teams not already in my groups
+  const oppTeams = [...new Set(Object.values(oppMap).flatMap(s => [...s]))].filter(t => !myNFLTeams.has(t));
+
+  let html = '';
+
+  if (needsWork.length) {
+    html += `<div class="stack-section-lbl">⚡ Action Needed</div>${needsWork.map(renderStackCard).join('')}`;
+  }
+  if (complete.length) {
+    html += `<div class="stack-section-lbl">✅ Active Stacks</div>${complete.map(renderStackCard).join('')}`;
+  }
+  if (oppTeams.length) {
+    const cards = oppTeams.map(team => {
+      const targets = PLAYERS.filter(p => p.team === team && ['QB','WR','TE'].includes(p.pos) && !state.takenIds.has(p.id))
+        .sort((a,b) => (a.adp||999)-(b.adp||999)).slice(0,4);
+      if (!targets.length) return '';
+      return `<div class="stack-card">
+        <div class="stack-card-hdr">
+          <span class="stk-team">${team}</span>
+          <span class="stk-badge stk-opp">OPP STACK</span>
+          <span class="stk-hint">Shares a playoff game with your picks</span>
+        </div>
+        <div class="stack-players">${targets.map(renderTargetRow).join('')}</div>
+      </div>`;
+    }).join('');
+    if (cards) html += `<div class="stack-section-lbl">🎯 Opponent Game Stack</div>${cards}`;
+  }
+
+  el.innerHTML = html || '<div class="no-recs">No stack data yet.</div>';
+}
+
+function renderStackCard(g) {
+  const posOrd = { QB:0, WR:1, TE:2, RB:3 };
+  const mineRows   = g.mine.slice().sort((a,b) => posOrd[a.pos]-posOrd[b.pos]).map(renderMineRow);
+  const targetRows = g.avail.filter(p => !g.mine.some(m => m.id === p.id))
+    .sort((a,b) => (a.adp||999)-(b.adp||999)).slice(0,5).map(renderTargetRow);
+  const takenRows  = g.takenOpp.sort((a,b) => posOrd[a.pos]-posOrd[b.pos]).slice(0,3).map(renderTakenRow);
+  return `<div class="stack-card">
+    <div class="stack-card-hdr">
+      <span class="stk-team">${g.team}</span>
+      <span class="stk-badge ${g.cls}">${g.label}</span>
+      <span class="stk-hint">${g.hint}</span>
+    </div>
+    <div class="stack-players">${mineRows.join('')}${targetRows.join('')}${takenRows.join('')}</div>
+  </div>`;
+}
+
+function renderMineRow(p) {
+  return `<div class="spr mine">
+    <span class="spr-pos ${p.pos}">${p.pos}</span>
+    <span class="spr-name">${p.name}</span>
+    ${p.round ? `<span class="spr-rnd">Rd${p.round}</span>` : ''}
+    <span class="spr-mine">Mine</span>
+  </div>`;
+}
+function renderTargetRow(p) {
+  return `<div class="spr target">
+    <span class="spr-pos ${p.pos}">${p.pos}</span>
+    <span class="spr-name">${p.name}</span>
+    <span class="spr-adp">ADP ${Math.round(p.adp||0)}</span>
+  </div>`;
+}
+function renderTakenRow(p) {
+  return `<div class="spr taken">
+    <span class="spr-pos ${p.pos}">${p.pos}</span>
+    <span class="spr-name">${p.name}</span>
+    <span class="spr-taken">Taken</span>
+  </div>`;
+}
+
 // ── Render all ─────────────────────────────────────────────────────────────────
 function renderAll() {
   renderHeader();
@@ -1272,6 +1459,7 @@ function renderAll() {
   if (active === 'picks')  renderPlayerList();
   if (active === 'recs')   renderRecs();
   if (active === 'roster') renderRoster();
+  if (active === 'stacks') renderStacks();
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────────
