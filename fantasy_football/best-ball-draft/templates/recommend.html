@@ -744,47 +744,8 @@ function hideDraftList() {
   document.querySelectorAll('.tab-panel').forEach(el => el.style.display = '');
 }
 
-async function loadDraftList() {
+function renderDraftListCards(drafts) {
   const el = document.getElementById('draftListCards');
-  el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:20px;">Loading…</div>`;
-
-  // How many picks until my turn given overall_pick and my_position in a snake draft
-  function picksUntilMyTurn(overallPick, myPos, numTeams = 12) {
-    if (!myPos || !overallPick) return null;
-    for (let n = overallPick; n <= overallPick + numTeams * 20; n++) {
-      const round = Math.ceil(n / numTeams);
-      const pickInRound = n - (round - 1) * numTeams;
-      const slotPos = round % 2 === 1 ? pickInRound : numTeams - pickInRound + 1;
-      if (slotPos === myPos) return n - overallPick;
-    }
-    return null;
-  }
-
-  // Try DK API (live drafts) first, fall back to local DB
-  let dkDrafts = [];
-  try {
-    const r = await fetch('/api/my-dk-drafts');
-    const d = await r.json();
-    if (d.drafts?.length) dkDrafts = d.drafts.map(dr => ({
-      draft_id: dr.id, label: dr.name, source: 'dk',
-      overall_pick: dr.overall_pick, my_position: dr.my_position,
-      pick_count: dr.pick_count, updated_at: dr.updated_at,
-    }));
-  } catch { /* server may not have auth yet */ }
-
-  let dbDrafts = [];
-  try {
-    const r = await fetch('/api/drafts/list');
-    const d = await r.json();
-    dbDrafts = (d.drafts || []).filter(dr => !dkDrafts.some(dk => dk.draft_id === String(dr.draft_id)));
-  } catch { /* ignore */ }
-
-  const drafts = [...dkDrafts, ...dbDrafts].sort((a, b) => {
-    const ua = picksUntilMyTurn(a.overall_pick, a.my_position) ?? Infinity;
-    const ub = picksUntilMyTurn(b.overall_pick, b.my_position) ?? Infinity;
-    return ua - ub;
-  });
-
   if (!drafts.length) {
     el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:24px 10px;">
       No drafts found.<br>
@@ -792,12 +753,9 @@ async function loadDraftList() {
     </div>`;
     return;
   }
-
   el.innerHTML = drafts.map(d => {
     const isDK = d.source === 'dk';
     const label = d.label ? `<span style="color:#546e7a;font-size:0.78em;"> · ${d.label}</span>` : '';
-
-    // Turn status — show picks until next turn if we have pick data
     let turnBadge = `<span style="color:#81c784;font-size:0.72em;font-weight:700;">LIVE</span>`;
     if (isDK && d.overall_pick && d.my_position) {
       const until = picksUntilMyTurn(d.overall_pick, d.my_position);
@@ -812,12 +770,9 @@ async function loadDraftList() {
         ? `<span style="background:var(--${p});color:#fff;padding:1px 5px;border-radius:3px;font-size:0.7em;font-weight:700">${pos[p]}${p}</span>`
         : '').join('');
     }
-
-    // Age of last pull
     const ageStr = d.updated_at
       ? (() => { const s = Math.round(Date.now()/1000 - d.updated_at); return s < 60 ? `${s}s ago` : `${Math.round(s/60)}m ago`; })()
       : null;
-
     const isMyPick = d.overall_pick && d.my_position && picksUntilMyTurn(d.overall_pick, d.my_position) === 0;
     return `<div onclick="startSync('${d.draft_id}')" class="draft-list-card ${isMyPick ? 'my-pick' : ''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
@@ -830,6 +785,47 @@ async function loadDraftList() {
       </div>
     </div>`;
   }).join('');
+}
+
+async function loadDraftList() {
+  const el = document.getElementById('draftListCards');
+
+  // Show cached list immediately — avoids blank screen while fetching
+  const cached = getCached('draft_list', 20 * 1000);
+  if (cached) {
+    renderDraftListCards(cached);
+  } else {
+    el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:20px;">Loading…</div>`;
+  }
+
+  // Fetch fresh data in parallel; render when both settle
+  const [dkRes, dbRes] = await Promise.allSettled([
+    fetch('/api/my-dk-drafts').then(r => r.json()),
+    fetch('/api/drafts/list').then(r => r.json()),
+  ]);
+
+  let dkDrafts = [];
+  if (dkRes.status === 'fulfilled' && dkRes.value.drafts?.length) {
+    dkDrafts = dkRes.value.drafts.map(dr => ({
+      draft_id: dr.id, label: dr.name, source: 'dk',
+      overall_pick: dr.overall_pick, my_position: dr.my_position,
+      pick_count: dr.pick_count, updated_at: dr.updated_at,
+    }));
+  }
+
+  let dbDrafts = [];
+  if (dbRes.status === 'fulfilled') {
+    dbDrafts = (dbRes.value.drafts || []).filter(dr => !dkDrafts.some(dk => dk.draft_id === String(dr.draft_id)));
+  }
+
+  const drafts = [...dkDrafts, ...dbDrafts].sort((a, b) => {
+    const ua = picksUntilMyTurn(a.overall_pick, a.my_position) ?? Infinity;
+    const ub = picksUntilMyTurn(b.overall_pick, b.my_position) ?? Infinity;
+    return ua - ub;
+  });
+
+  if (drafts.length) setCached('draft_list', drafts);
+  renderDraftListCards(drafts);
 }
 
 async function refreshFromDKSilent() {
