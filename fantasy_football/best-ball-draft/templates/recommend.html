@@ -457,6 +457,24 @@
 
 <script src="/static/recommender.js"></script>
 <script>
+// ── TTL cache (sessionStorage) ────────────────────────────────────────────────
+// Survives draft switching within a session, cleared on tab/window close.
+function getCached(key, ttlMs) {
+  try {
+    const raw = sessionStorage.getItem('bba_c_' + key);
+    if (!raw) return null;
+    const { d, ts } = JSON.parse(raw);
+    if (Date.now() - ts < ttlMs) return d;
+  } catch {}
+  return null;
+}
+function setCached(key, data) {
+  try { sessionStorage.setItem('bba_c_' + key, JSON.stringify({ d: data, ts: Date.now() })); } catch {}
+}
+function bustCache(key) {
+  try { sessionStorage.removeItem('bba_c_' + key); } catch {}
+}
+
 // ── Draft state ────────────────────────────────────────────────────────────────
 let PLAYERS = [];
 let exposure = {};
@@ -828,9 +846,11 @@ async function pullAllDrafts() {
     const d = await r.json();
     const drafts = d.drafts || [];
     if (!drafts.length) return;
-    await Promise.all(drafts.map(dr =>
-      fetch(`/api/dk-draft/pull/${encodeURIComponent(dr.id)}`, { method: 'POST' }).catch(() => {})
-    ));
+    // Only pull drafts whose cached pick state is older than 30 s
+    await Promise.all(drafts.map(dr => {
+      if (getCached(`picks_${dr.id}`, 30 * 1000)) return Promise.resolve();
+      return fetch(`/api/dk-draft/pull/${encodeURIComponent(dr.id)}`, { method: 'POST' }).catch(() => {});
+    }));
     loadDraftList();
   } catch { /* ignore */ }
 }
@@ -882,6 +902,14 @@ async function pullLatest() {
   const btn = document.getElementById('pullBtn');
   btn.disabled = true;
   btn.textContent = 'Pulling…';
+
+  // Serve cached picks immediately so UI isn't blank while fetching
+  const cachedPicks = getCached(`picks_${syncDraftId}`, 45 * 1000);
+  if (cachedPicks && !state.takenIds.size) {
+    applyDKPickState(cachedPicks);
+    updateSyncUI(true, `Draft <b>#${syncDraftId}</b> · ${cachedPicks.picks?.length ?? 0} picks · cached`);
+  }
+
   try {
     const r = await fetch(`/api/dk-draft/pull/${encodeURIComponent(syncDraftId)}`, { method: 'POST' });
     const data = await r.json();
@@ -896,13 +924,14 @@ async function pullLatest() {
     updateDebug({ serverOk: r.ok, serverPicks, matched: state.takenIds.size, myTeam: state.myTeam.length, error: data.error || null });
 
     if (data.picks?.length) {
+      setCached(`picks_${syncDraftId}`, data);
       applyDKPickState(data);
       updateDebug({ serverOk: true, serverPicks, matched: state.takenIds.size, myTeam: state.myTeam.length, error: null });
     } else {
       updateSyncUI(false, data.error || 'No picks yet');
     }
   } catch (e) {
-    updateSyncUI(false, 'Server unreachable');
+    if (!cachedPicks) updateSyncUI(false, 'Server unreachable');
     updateDebug({ serverOk: false, serverPicks: null, matched: state.takenIds.size, myTeam: state.myTeam.length, error: String(e) });
   } finally {
     btn.disabled = false;
@@ -1107,6 +1136,17 @@ document.getElementById('resetDraft').addEventListener('click', () => {
 
 // ── Player loading ─────────────────────────────────────────────────────────────
 async function loadPlayers() {
+  // Players, exposure, and projections don't change mid-session — cache 10 min.
+  const cached = getCached('players_bundle', 10 * 60 * 1000);
+  if (cached) {
+    PLAYERS     = cached.players;
+    exposure    = cached.exposure;
+    PROJECTIONS = cached.projections;
+    buildNameLookup();
+    renderPlayerList();
+    renderRecs();
+    return;
+  }
   try {
     const [pr, er, proj] = await Promise.all([
       fetch('/api/players'),
@@ -1116,6 +1156,7 @@ async function loadPlayers() {
     PLAYERS     = await pr.json();
     exposure    = (await er.json()).players || {};
     PROJECTIONS = await proj.json();
+    setCached('players_bundle', { players: PLAYERS, exposure, projections: PROJECTIONS });
     buildNameLookup();
     renderPlayerList();
     renderRecs();
