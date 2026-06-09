@@ -1725,6 +1725,11 @@ def get_players():
 
 # ── Analysis ──────────────────────────────────────────────────────────────────
 
+@app.route('/draft-mapper')
+def draft_mapper_page():
+    return render_template('draft-mapper.html')
+
+
 @app.route('/analysis')
 def analysis_page():
     return render_template('analysis.html')
