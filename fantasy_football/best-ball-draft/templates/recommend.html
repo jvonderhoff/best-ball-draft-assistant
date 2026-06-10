@@ -761,7 +761,7 @@ function renderDraftListCards(drafts) {
     const label = d.label ? `<span style="color:#546e7a;font-size:0.78em;"> · ${d.label}</span>` : '';
     let turnBadge = `<span style="color:#81c784;font-size:0.72em;font-weight:700;">LIVE</span>`;
     if (isDK && d.overall_pick && d.my_position) {
-      const until = picksUntilMyTurn(d.overall_pick, d.my_position);
+      const until = picksUntilMyTurn(d.overall_pick, d.num_teams || 12, d.my_position);
       if (until === 0) {
         turnBadge = `<span style="background:var(--green);color:#000;padding:2px 7px;border-radius:4px;font-size:0.75em;font-weight:700;">🟢 YOUR PICK</span>`;
       } else if (until !== null) {
@@ -776,7 +776,7 @@ function renderDraftListCards(drafts) {
     const ageStr = d.updated_at
       ? (() => { const s = Math.round(Date.now()/1000 - d.updated_at); return s < 60 ? `${s}s ago` : `${Math.round(s/60)}m ago`; })()
       : null;
-    const isMyPick = d.overall_pick && d.my_position && picksUntilMyTurn(d.overall_pick, d.my_position) === 0;
+    const isMyPick = d.overall_pick && d.my_position && picksUntilMyTurn(d.overall_pick, d.num_teams || 12, d.my_position) === 0;
     return `<div onclick="startSync('${d.draft_id}')" class="draft-list-card ${isMyPick ? 'my-pick' : ''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
         <span class="draft-card-id">#${d.draft_id}${label}</span>
@@ -812,6 +812,7 @@ async function loadDraftList() {
     dkDrafts = dkRes.value.drafts.map(dr => ({
       draft_id: dr.id, label: dr.name, source: 'dk',
       overall_pick: dr.overall_pick, my_position: dr.my_position,
+      num_teams: dr.num_teams || 12,
       pick_count: dr.pick_count, updated_at: dr.updated_at,
     }));
   }
@@ -822,8 +823,8 @@ async function loadDraftList() {
   }
 
   const drafts = [...dkDrafts, ...dbDrafts].sort((a, b) => {
-    const ua = picksUntilMyTurn(a.overall_pick, a.my_position) ?? Infinity;
-    const ub = picksUntilMyTurn(b.overall_pick, b.my_position) ?? Infinity;
+    const ua = picksUntilMyTurn(a.overall_pick, a.num_teams || 12, a.my_position) ?? Infinity;
+    const ub = picksUntilMyTurn(b.overall_pick, b.num_teams || 12, b.my_position) ?? Infinity;
     return ua - ub;
   });
 
