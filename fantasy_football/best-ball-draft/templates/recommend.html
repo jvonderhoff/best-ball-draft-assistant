@@ -318,6 +318,9 @@
     style="font-size:0.72em;padding:3px 8px;border-radius:4px;"
     onclick="toggleRankingMode()">☆ My Ranks</button>
   <button class="sync-btn disconnect" id="disconnectBtn" style="display:none">← Drafts</button>
+  <button class="sync-btn disconnect" id="settingsBtn"
+    style="font-size:0.82em;padding:5px 10px;border-radius:4px;"
+    onclick="toggleSettingsPopover()">⚙</button>
 </div>
 
 <!-- ── Draft list (shown when no draft is connected) ── -->
@@ -356,12 +359,31 @@
   <div>Error: <span id="dbgError" style="color:#ef5350">—</span></div>
 </div>
 
+<!-- ── Settings Popover ── -->
+<div id="settingsPopover" style="display:none;position:fixed;top:88px;right:10px;z-index:200;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;width:260px;box-shadow:0 4px 20px rgba(0,0,0,0.4);">
+  <div style="font-size:0.75em;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Draft Settings</div>
+  <div class="setting-group" style="margin-bottom:10px;">
+    <label>My Draft Position (1–12)</label>
+    <input type="number" id="myPosition" min="1" max="12" value="1">
+    <div class="settings-hint">Auto-detected when connected.</div>
+  </div>
+  <div class="setting-group" style="margin-bottom:10px;">
+    <label>Number of Teams</label>
+    <input type="number" id="numTeams" min="8" max="16" value="12">
+  </div>
+  <div class="setting-group" style="margin-bottom:12px;">
+    <label>DraftKings Username</label>
+    <input type="text" id="dkUsername" placeholder="e.g. jvonderhoff" style="width:100%;padding:9px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.95em;box-sizing:border-box;">
+  </div>
+  <button class="btn-full btn-primary" id="saveSettings">Save</button>
+  <button class="btn-full btn-danger" id="resetDraft" style="margin-top:6px;">Reset Draft</button>
+</div>
+
 <div class="tabs">
   <div class="tab active" data-tab="recs">Recs</div>
   <div class="tab" data-tab="picks">Draft</div>
   <div class="tab" data-tab="roster">Roster</div>
   <div class="tab" data-tab="stacks">Stacks</div>
-  <div class="tab" data-tab="settings">Settings</div>
 </div>
 
 <!-- ── Recs Tab ── -->
@@ -407,55 +429,6 @@
   <div id="stacksContent"><div class="no-recs">Connect to your draft to see stack opportunities.</div></div>
 </div>
 
-<!-- ── Settings Tab ── -->
-<div id="tab-settings" class="tab-panel">
-  <div class="settings-grid">
-    <div class="setting-group">
-      <label>My Draft Position (1–12)</label>
-      <input type="number" id="myPosition" min="1" max="12" value="1">
-      <div class="settings-hint">Required for Roster tab. Set to your pick slot (e.g. 3 = 3rd pick). Auto-detected from extension when connected.</div>
-    </div>
-    <div class="setting-group">
-      <label>Number of Teams</label>
-      <input type="number" id="numTeams" min="8" max="16" value="12">
-    </div>
-    <div class="setting-group">
-      <label>Stack Intensity</label>
-      <select id="stackIntensity">
-        <option value="off">Off — pure ADP/positional value</option>
-        <option value="light">Light — small nudge toward stackmates</option>
-        <option value="medium">Medium — balanced</option>
-        <option value="heavy" selected>Heavy — aggressively stack your QB</option>
-      </select>
-    </div>
-    <div class="setting-group">
-      <label>RB Priority (early rounds)</label>
-      <select id="rbPriority">
-        <option value="off">Off — RBs compete on ADP only</option>
-        <option value="mild">Mild — slight boost (×1.10)</option>
-        <option value="strong" selected>Strong — target 2 RBs in rounds 1–3 (×1.20)</option>
-        <option value="extreme">Extreme — RB heavy (×1.35)</option>
-      </select>
-    </div>
-    <div class="setting-group">
-      <label>Diversification</label>
-      <select id="diversifyStrength">
-        <option value="0">Off — ignore past exposure</option>
-        <option value="0.3">Light</option>
-        <option value="0.5" selected>Medium (recommended)</option>
-        <option value="0.8">Heavy — avoid repeat picks</option>
-      </select>
-    </div>
-    <div class="setting-group">
-      <label>DraftKings Username</label>
-      <input type="text" id="dkUsername" placeholder="e.g. jvonderhoff" style="width:100%;padding:9px 10px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.95em;">
-      <div class="settings-hint">Used to identify your picks in the live draft. Must match exactly.</div>
-    </div>
-
-    <button class="btn-full btn-primary" id="saveSettings">Save Settings</button>
-    <button class="btn-full btn-danger"  id="resetDraft">Reset Draft (clear all picks)</button>
-  </div>
-</div>
 
 <script src="/static/recommender.js"></script>
 <script>
@@ -576,10 +549,16 @@ function saveState() {
 const SETTINGS_KEY = 'bba_settings';
 let settings = loadSettings();
 
+// Hardcoded recommender constants — tweak directly in code
+const STACK_INTENSITY   = 'heavy';
+const RB_PRIORITY       = 'strong';
+const DIVERSIFY_STRENGTH = 0.5;
+
 function defaultSettings() {
-  return { myPosition: 1, numTeams: 12, stackIntensity: 'heavy', rbPriority: 'strong', diversifyStrength: 0, dkUsername: 'jvonderhoff' };
+  return { myPosition: 1, numTeams: 12, dkUsername: 'jvonderhoff' };
 }
 function loadSettings() {
+
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     // Ensure username is never blank — default to jvonderhoff
@@ -591,14 +570,10 @@ function loadSettings() {
   catch { return defaultSettings(); }
 }
 function persistSettings() {
-  settings.myPosition        = parseInt(document.getElementById('myPosition').value) || 1;
-  settings.numTeams          = parseInt(document.getElementById('numTeams').value) || 12;
-  settings.stackIntensity    = document.getElementById('stackIntensity').value;
-  settings.rbPriority        = document.getElementById('rbPriority').value;
-  settings.diversifyStrength = parseFloat(document.getElementById('diversifyStrength').value);
-  settings.dkUsername        = document.getElementById('dkUsername').value.trim().toLowerCase();
+  settings.myPosition = parseInt(document.getElementById('myPosition').value) || 1;
+  settings.numTeams   = parseInt(document.getElementById('numTeams').value) || 12;
+  settings.dkUsername = document.getElementById('dkUsername').value.trim().toLowerCase();
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  // Also save myPosition per-draft so it doesn't bleed across drafts
   if (syncDraftId) localStorage.setItem(`bba_pos_${syncDraftId}`, settings.myPosition);
 }
 
@@ -616,13 +591,28 @@ function saveDraftPosition(draftId, pos) {
   document.getElementById('myPosition').value = pos;
 }
 function populateSettings() {
-  document.getElementById('myPosition').value        = settings.myPosition;
-  document.getElementById('numTeams').value          = settings.numTeams;
-  document.getElementById('stackIntensity').value    = settings.stackIntensity;
-  document.getElementById('rbPriority').value        = settings.rbPriority;
-  document.getElementById('diversifyStrength').value = settings.diversifyStrength;
-  document.getElementById('dkUsername').value        = settings.dkUsername || '';
+  document.getElementById('myPosition').value = settings.myPosition;
+  document.getElementById('numTeams').value   = settings.numTeams;
+  document.getElementById('dkUsername').value = settings.dkUsername || '';
 }
+
+function toggleSettingsPopover() {
+  const el = document.getElementById('settingsPopover');
+  if (el.style.display === 'none') {
+    populateSettings();
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+// Close popover when clicking outside
+document.addEventListener('click', e => {
+  const pop = document.getElementById('settingsPopover');
+  const btn = document.getElementById('settingsBtn');
+  if (pop && pop.style.display !== 'none' && !pop.contains(e.target) && e.target !== btn) {
+    pop.style.display = 'none';
+  }
+});
 
 // ── Live sync ──────────────────────────────────────────────────────────────────
 let syncDraftId   = '';
@@ -1112,11 +1102,10 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
     const t = tab.dataset.tab;
-    if (t === 'recs')     renderRecs();
-    if (t === 'roster')   renderRoster();
-    if (t === 'picks')    renderPlayerList();
-    if (t === 'stacks')   renderStacks();
-    if (t === 'settings') populateSettings();
+    if (t === 'recs')   renderRecs();
+    if (t === 'roster') renderRoster();
+    if (t === 'picks')  renderPlayerList();
+    if (t === 'stacks') renderStacks();
   });
 });
 
@@ -1124,7 +1113,8 @@ document.querySelectorAll('.tab').forEach(tab => {
 document.getElementById('saveSettings').addEventListener('click', () => {
   persistSettings();
   document.getElementById('saveSettings').textContent = '✓ Saved';
-  setTimeout(() => document.getElementById('saveSettings').textContent = 'Save Settings', 1500);
+  document.getElementById('settingsPopover').style.display = 'none';
+  setTimeout(() => document.getElementById('saveSettings').textContent = 'Save', 1500);
   renderAll();
 });
 document.getElementById('resetDraft').addEventListener('click', () => {
@@ -1318,8 +1308,8 @@ function renderRecs() {
   const nextMyPick = nextMyOverallPick(pickForRec + 1, settings.numTeams, settings.myPosition);
   const recs = getTopRecommendations(
     available, state.myTeam, pickForRec,
-    settings.stackIntensity, exposure, settings.diversifyStrength,
-    10, settings.rbPriority, qbsTaken, nextMyPick
+    STACK_INTENSITY, exposure, DIVERSIFY_STRENGTH,
+    10, RB_PRIORITY, qbsTaken, nextMyPick
   );
 
   const el = document.getElementById('recsList');
