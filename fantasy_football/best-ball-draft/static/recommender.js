@@ -65,18 +65,25 @@ function qbTierLabel(qbsTaken, myQBs) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Free agents have no real NFL team — they must not correlate with each other
+// or trigger any same-team stack bonuses.
+function hasRealTeam(player) {
+  return player.team && player.team !== 'FA';
+}
+
 function getTeamCounts(myTeam) {
   const counts = {};
-  myTeam.forEach(p => { counts[p.team] = (counts[p.team] || 0) + 1; });
+  myTeam.forEach(p => { if (hasRealTeam(p)) counts[p.team] = (counts[p.team] || 0) + 1; });
   return counts;
 }
 
 function getMyQBTeams(myTeam) {
-  return new Set(myTeam.filter(p => p.pos === 'QB').map(p => p.team));
+  return new Set(myTeam.filter(p => p.pos === 'QB' && hasRealTeam(p)).map(p => p.team));
 }
 
 // Returns how many WR/TE I already have from a given team
 function passCatcherCount(team, myTeam) {
+  if (!team || team === 'FA') return 0;
   return myTeam.filter(p => ['WR', 'TE'].includes(p.pos) && p.team === team).length;
 }
 
@@ -168,7 +175,7 @@ function playoffStackReason(player, myTeam) {
 function getByeWeekCounts(myTeam, excludeTeam = null) {
   const counts = {};
   for (const p of myTeam) {
-    if (p.bye && p.team !== excludeTeam) counts[p.bye] = (counts[p.bye] || 0) + 1;
+    if (p.bye && hasRealTeam(p) && p.team !== excludeTeam) counts[p.bye] = (counts[p.bye] || 0) + 1;
   }
   return counts;
 }
@@ -370,12 +377,12 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     if (rbTierBoost > 1.001) apply(rbTierBoost, 'RB depletion', `${rbsTaken} RBs taken`);
   }
 
-  // Same-team stacking bonuses
+  // Same-team stacking bonuses — skipped for FA players (no real NFL team)
   const s = STACK_SETTINGS[stackIntensity] || STACK_SETTINGS.medium;
   const existingCatchers = passCatcherCount(player.team, myTeam);
-  if (myTeam && stackIntensity !== 'off') {
+  if (myTeam && stackIntensity !== 'off' && hasRealTeam(player)) {
     const qbTeams = getMyQBTeams(myTeam);
-    const teamMates = myTeam.filter(p => p.team === player.team).length;
+    const teamMates = myTeam.filter(p => hasRealTeam(p) && p.team === player.team).length;
 
     if (['WR', 'TE'].includes(pos)) {
       if (qbTeams.has(player.team)) {
@@ -577,10 +584,11 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
   if (!pool.length) return [];
   const qbAlert = qbTierLabel(qbsTaken, myQBCount);
 
-  // Pre-compute availability maps once — passed into calculateValue per player
+  // Pre-compute availability maps once — passed into calculateValue per player.
+  // FA players (no real NFL team) are excluded so they don't contaminate stack lookups.
   const availQBByTeam = {};
   for (const p of available) {
-    if (p.pos === 'QB') {
+    if (p.pos === 'QB' && hasRealTeam(p)) {
       if (!availQBByTeam[p.team] || (p.adp || 999) < (availQBByTeam[p.team].adp || 999)) {
         availQBByTeam[p.team] = p;
       }
@@ -588,7 +596,7 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
   }
   const availPCByTeam = {};
   for (const p of available) {
-    if (['WR', 'TE'].includes(p.pos)) {
+    if (['WR', 'TE'].includes(p.pos) && hasRealTeam(p)) {
       (availPCByTeam[p.team] = availPCByTeam[p.team] || []).push(p);
     }
   }
