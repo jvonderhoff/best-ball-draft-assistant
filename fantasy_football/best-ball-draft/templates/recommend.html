@@ -1624,11 +1624,15 @@ function renderMineRow(p) {
   </div>`;
 }
 function renderTargetRow(p, urgentThreshold) {
-  const isUrgent = urgentThreshold != null && (p.adp || 999) <= urgentThreshold;
+  const effectiveRank = (useCustomRankings && customRankMap[p.id] != null)
+    ? customRankMap[p.id]
+    : (p.adp || 999);
+  const isUrgent = urgentThreshold != null && effectiveRank <= urgentThreshold;
+  const rankLabel = useCustomRankings && customRankMap[p.id] != null ? 'Rank' : 'ADP';
   return `<div class="spr target${isUrgent ? ' urgent' : ''}">
     <span class="spr-pos ${p.pos}">${p.pos}</span>
     <span class="spr-name">${p.name}</span>
-    <span class="spr-adp">ADP ${Math.round(p.adp||0)}</span>
+    <span class="spr-adp">${rankLabel} ${Math.round(effectiveRank === 999 ? (p.adp||0) : effectiveRank)}</span>
     ${isUrgent ? '<span class="spr-now">Pick now</span>' : ''}
   </div>`;
 }
