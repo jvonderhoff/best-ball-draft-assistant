@@ -12,9 +12,9 @@ const STACK_SETTINGS = {
   //            first   second  qbPull  cluster rbCorrel    stackReady  bringbackWindow
   // bringbackWindow is the CEILING of qbPull when urgency is max (interpolated, not compounded)
   off:    { first: 1.00, second: 1.00, qbPull: 1.00, cluster: 1.00, rbCorrel: 1.00, stackReady: 1.00, bringbackWindow: 1.00 },
-  light:  { first: 1.15, second: 1.05, qbPull: 1.10, cluster: 1.05, rbCorrel: 1.03, stackReady: 1.06, bringbackWindow: 1.15 },
-  medium: { first: 1.25, second: 1.10, qbPull: 1.18, cluster: 1.10, rbCorrel: 1.05, stackReady: 1.10, bringbackWindow: 1.25 },
-  heavy:  { first: 1.40, second: 1.18, qbPull: 1.28, cluster: 1.15, rbCorrel: 1.08, stackReady: 1.15, bringbackWindow: 1.35 },
+  light:  { first: 1.15, second: 1.05, qbPull: 1.15, cluster: 1.05, rbCorrel: 1.03, stackReady: 1.06, bringbackWindow: 1.30 },
+  medium: { first: 1.25, second: 1.10, qbPull: 1.35, cluster: 1.10, rbCorrel: 1.05, stackReady: 1.10, bringbackWindow: 1.55 },
+  heavy:  { first: 1.40, second: 1.18, qbPull: 1.40, cluster: 1.15, rbCorrel: 1.08, stackReady: 1.15, bringbackWindow: 1.70 },
 };
 
 // ── QB tier tracking ──────────────────────────────────────────────────────────
@@ -184,19 +184,31 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const QB_TARGET = (userRound >= 13 && myQBs === 0) ? 3 : 2;
   let mult = 1.0;
 
-  // TE urgency — starts late; you can comfortably grab TE in rounds 10-14.
-  //   Rd 5-9:  no boost — WRs/RBs compete freely
-  //   Rd 11:   weight 0.25 → mild nudge
-  //   Rd 13:   weight 0.75 → meaningful push
-  //   Rd 15+:  weight 1.0  → full urgency
-  const teUrgencyWeight = Math.max(0, Math.min(1, (userRound - 9) / 7));
-
+  // TE urgency — bimodal strategy:
+  //   Elite TEs (ADP ≤ 30, e.g. Bowers/McBride): worth drafting rounds 1-4,
+  //     slight boost so they compete with elite WRs/RBs.
+  //   Mid-tier TEs (ADP 31-115): no-man's-land — avoid spending rounds 4-9 here.
+  //     ADP 31-60: compete on pure ADP, no modifier.
+  //     ADP 61-115: ×0.72 discount — worst outcome in best ball.
+  //   Late darts (ADP 116+): urgency ramps in rounds 11-16 once you need to fill slots.
   if (pos === 'TE') {
-    const teNeeded  = Math.max(0, TE_TARGET - myTEs);
-    const picksLeft = Math.max(1, 20 - totalDrafted);
+    const teNeeded = Math.max(0, TE_TARGET - myTEs);
     if (teNeeded > 0) {
-      const urgency = (teNeeded / picksLeft) * teUrgencyWeight;
-      mult *= (1 + Math.min(urgency * 3.0, 2.0));
+      const adp = player.adp || 999;
+      if (adp <= 30) {
+        // Elite TE — slight boost in rounds 1-4 to compete with WRs/RBs
+        if (userRound <= 4) mult *= 1.20;
+      } else if (adp >= 61 && adp <= 115) {
+        // Mid-tier danger zone — penalise spending real draft capital here
+        mult *= 0.72;
+      } else if (adp > 115) {
+        // Late dart — graduated urgency starting round 11
+        const lateWeight = Math.max(0, Math.min(1, (userRound - 10) / 5));
+        const picksLeft  = Math.max(1, 20 - totalDrafted);
+        const urgency    = (teNeeded / picksLeft) * lateWeight;
+        mult *= (1 + Math.min(urgency * 3.0, 2.0));
+      }
+      // ADP 31-60: no modifier — compete on pure ADP value
     }
   }
 
@@ -383,30 +395,32 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const valueGap  = myPickNumber - (player.adp || myPickNumber);
   // userRound already defined above
   if (valueGap > 0) {
-    // Value steal — player fell past their ADP
+    // Value steal — player fell past their ADP.
+    // QBs are selected for stack fit, not pure value drift — cap their steal bonus
+    // lower so a fallen QB doesn't overwhelm a bring-back target.
     const normalizedValue = valueGap / userRound;
-    mult *= (1 + Math.min(normalizedValue * 0.20, 0.60));
+    const stealCap = pos === 'QB' ? 0.20 : 0.60;
+    mult *= (1 + Math.min(normalizedValue * 0.20, stealCap));
   } else if (valueGap < 0) {
     // Reach penalty — drafting a player ahead of their ADP.
     // Two-stage rate: first 10 picks of reach at a base rate, anything beyond
-    // 10 picks at a steeper rate.  Dividing by userRound makes later rounds
-    // naturally more forgiving — a 12-pick reach in R15 barely matters.
+    // 10 picks at a steeper rate.  Denominator is floored at round 3 so early
+    // reaches aren't cripplingly penalised — a 5-pick reach in R1 to complete
+    // a stack or grab a falling player shouldn't be nearly blocked.
     // Cap at 70% so even extreme reaches stay in the pool at a heavy discount.
     //
     // Examples (reachGap → penalty):
-    //   R1 reach 3  → 3/1 × 0.08 = 0.24 → ×0.76
-    //   R1 reach 5  → 5/1 × 0.08 = 0.40 → ×0.60
-    //   R1 reach 10 → 10/1 × 0.08 = 0.80 → capped 0.70 → ×0.30
-    //   R1 reach 15 → (10×0.08 + 5×0.20)/1 = 1.8 → capped → ×0.30
-    //   R4 reach 10 → 10/4 × 0.08 = 0.20 → ×0.80
-    //   R4 reach 15 → (10×0.08 + 5×0.20)/4 = 0.45 → ×0.55
-    //   R8 reach 15 → (10×0.08 + 5×0.20)/8 = 0.225 → ×0.775
-    //  R15 reach 20 → (10×0.08 + 10×0.20)/15 = 0.187 → ×0.813
-    const reachGap    = -valueGap;
-    const baseReach   = Math.min(reachGap, 10);
-    const excessReach = Math.max(0, reachGap - 10);
-    const penalty     = Math.min(
-      (baseReach * 0.08 + excessReach * 0.20) / userRound,
+    //   R1 reach 3  → 3/3 × 0.08 = 0.08 → ×0.92  (was ×0.76)
+    //   R1 reach 5  → 5/3 × 0.08 = 0.13 → ×0.87  (was ×0.60)
+    //   R1 reach 10 → 10/3 × 0.08 = 0.27 → ×0.73 (was ×0.30)
+    //   R4 reach 10 → 10/4 × 0.08 = 0.20 → ×0.80 (unchanged)
+    //   R8 reach 15 → (10×0.08+5×0.20)/8 = 0.225 → ×0.775 (unchanged)
+    const reachGap      = -valueGap;
+    const effectiveRound = Math.max(userRound, 3);
+    const baseReach     = Math.min(reachGap, 10);
+    const excessReach   = Math.max(0, reachGap - 10);
+    const penalty       = Math.min(
+      (baseReach * 0.08 + excessReach * 0.20) / effectiveRound,
       0.70
     );
     mult *= (1 - penalty);
