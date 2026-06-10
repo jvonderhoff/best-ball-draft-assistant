@@ -1313,10 +1313,11 @@ function renderRecs() {
     : (nextMyOverallPick(state.overallPick, settings.numTeams, settings.myPosition) || state.overallPick);
 
   const qbsTaken = PLAYERS.filter(p => p.pos === 'QB' && state.takenIds.has(p.id)).length;
+  const nextMyPick = nextMyOverallPick(pickForRec + 1, settings.numTeams, settings.myPosition);
   const recs = getTopRecommendations(
     available, state.myTeam, pickForRec,
     settings.stackIntensity, exposure, settings.diversifyStrength,
-    10, settings.rbPriority, qbsTaken
+    10, settings.rbPriority, qbsTaken, nextMyPick
   );
 
   const el = document.getElementById('recsList');

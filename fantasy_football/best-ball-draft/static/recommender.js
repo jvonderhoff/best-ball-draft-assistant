@@ -8,10 +8,12 @@
 // rbCorrel   = RB from a team where you already have other players (correlated scoring)
 
 const STACK_SETTINGS = {
-  off:    { first: 1.00, second: 1.00, qbPull: 1.00, cluster: 1.00, rbCorrel: 1.00 },
-  light:  { first: 1.15, second: 1.05, qbPull: 1.10, cluster: 1.05, rbCorrel: 1.03 },
-  medium: { first: 1.25, second: 1.10, qbPull: 1.18, cluster: 1.10, rbCorrel: 1.05 },
-  heavy:  { first: 1.40, second: 1.18, qbPull: 1.28, cluster: 1.15, rbCorrel: 1.08 },
+  //            existing ──────────────────────────────────  new ──────────────────────────
+  //            first   second  qbPull  cluster rbCorrel    stackReady  bringbackWindow
+  off:    { first: 1.00, second: 1.00, qbPull: 1.00, cluster: 1.00, rbCorrel: 1.00, stackReady: 1.00, bringbackWindow: 1.00 },
+  light:  { first: 1.15, second: 1.05, qbPull: 1.10, cluster: 1.05, rbCorrel: 1.03, stackReady: 1.06, bringbackWindow: 1.12 },
+  medium: { first: 1.25, second: 1.10, qbPull: 1.18, cluster: 1.10, rbCorrel: 1.05, stackReady: 1.10, bringbackWindow: 1.20 },
+  heavy:  { first: 1.40, second: 1.18, qbPull: 1.28, cluster: 1.15, rbCorrel: 1.08, stackReady: 1.15, bringbackWindow: 1.30 },
 };
 
 // ── QB tier tracking ──────────────────────────────────────────────────────────
@@ -162,7 +164,10 @@ function byeWeekWarning(player, myTeam) {
 
 // ── Core value calculation ────────────────────────────────────────────────────
 
-function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', rbPriority = 'strong', qbsTaken = 0) {
+// availQBByTeam: team → best available QB (not yet drafted)
+// availPCByTeam: team → available WR/TE sorted by ADP
+// nextMyPick:    overall pick number of my NEXT turn after this one (for window urgency)
+function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', rbPriority = 'strong', qbsTaken = 0, availQBByTeam = null, availPCByTeam = null, nextMyPick = null) {
   // Use inverse ADP so value is always positive and naturally orders players.
   // adp=1 → 1000, adp=50 → 20, adp=100 → 10, adp=200 → 5, adp=500 → 2
   // This ensures late-round players still have relative ordering rather than
@@ -280,9 +285,9 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
 
   // Same-team stacking bonuses
   const s = STACK_SETTINGS[stackIntensity] || STACK_SETTINGS.medium;
+  const existingCatchers = passCatcherCount(player.team, myTeam);
   if (myTeam && stackIntensity !== 'off') {
     const qbTeams = getMyQBTeams(myTeam);
-    const existingCatchers = passCatcherCount(player.team, myTeam);
     const teamMates = myTeam.filter(p => p.team === player.team).length;
 
     if (['WR', 'TE'].includes(pos)) {
@@ -305,8 +310,48 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
 
     if (pos === 'RB' && teamMates >= 1) {
       // RB from a team I already have players on — correlated game-script value
-      // (smaller than pass-catcher stacking since RB/passing correlation is weaker)
       mult *= s.rbCorrel;
+    }
+
+    // ── Stack co-availability ─────────────────────────────────────────────────
+    // Bonus when the other half of a stack is still on the board, signalling a
+    // complete stack is actually achievable vs. orphaned.
+
+    if (pos === 'QB' && availPCByTeam) {
+      // QB value rises when his top pass-catchers are still available to draft later
+      const avail = (availPCByTeam[player.team] || []).slice(0, 3);
+      if (avail.length >= 2) mult *= s.stackReady;
+      else if (avail.length === 1) mult *= 1 + (s.stackReady - 1) * 0.5;
+    }
+
+    if (['WR', 'TE'].includes(pos) && availQBByTeam) {
+      const qbTeams2 = getMyQBTeams(myTeam);
+      // Only apply when I don't already own this team's QB (existing s.first handles that case)
+      if (!qbTeams2.has(player.team)) {
+        const teamQB = availQBByTeam[player.team];
+        if (teamQB) {
+          // QB still on the board — scale bonus by QB tier quality
+          const qbTier = (teamQB.adp || 999) <= 48  ? 1.0
+                       : (teamQB.adp || 999) <= 96  ? 0.7
+                       : (teamQB.adp || 999) <= 144 ? 0.4
+                       : 0.2;
+          mult *= 1 + (s.stackReady - 1) * qbTier;
+        }
+      }
+    }
+  }
+
+  // ── Bring-back window urgency ─────────────────────────────────────────────────
+  // If I already own pass-catchers for this QB, push him up proportional to how
+  // likely he is to be gone before my next pick. urgency = 1 when his ADP is at
+  // or before the current pick (already a fallback), 0 when his ADP is at my
+  // next-pick boundary (he'll probably survive).
+  if (pos === 'QB' && existingCatchers >= 1 && nextMyPick != null && stackIntensity !== 'off') {
+    const windowSize = Math.max(1, nextMyPick - myPickNumber);
+    const adpGap     = Math.max(0, (player.adp || myPickNumber) - myPickNumber);
+    if (adpGap < windowSize * 1.5) {
+      const urgency = Math.max(0, 1 - adpGap / windowSize);
+      mult *= 1 + urgency * (s.bringbackWindow - 1);
     }
   }
 
@@ -418,7 +463,8 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
 }
 
 // Returns the top N recommendations sorted by value score.
-function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, n = 5, rbPriority = 'strong', qbsTaken = 0) {
+// nextMyPick: overall pick number of my next turn after myPickNumber (for window urgency).
+function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, n = 5, rbPriority = 'strong', qbsTaken = 0, nextMyPick = null) {
   if (!available.length) return [];
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
@@ -427,27 +473,72 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
   if (!pool.length) return [];
   const qbAlert = qbTierLabel(qbsTaken, myQBCount);
 
+  // Pre-compute availability maps once — passed into calculateValue per player
+  const availQBByTeam = {};
+  for (const p of available) {
+    if (p.pos === 'QB') {
+      if (!availQBByTeam[p.team] || (p.adp || 999) < (availQBByTeam[p.team].adp || 999)) {
+        availQBByTeam[p.team] = p;
+      }
+    }
+  }
+  const availPCByTeam = {};
+  for (const p of available) {
+    if (['WR', 'TE'].includes(p.pos)) {
+      (availPCByTeam[p.team] = availPCByTeam[p.team] || []).push(p);
+    }
+  }
+  for (const t in availPCByTeam) availPCByTeam[t].sort((a, b) => (a.adp || 999) - (b.adp || 999));
+
   const scored = pool.map(p => {
-    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, rbPriority, qbsTaken);
+    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, rbPriority, qbsTaken, availQBByTeam, availPCByTeam, nextMyPick);
     if (diversifyStrength > 0 && exposure[p.id]) {
       val *= (1 - exposure[p.id].exposure_rate * diversifyStrength);
     }
 
-    const gap          = myPickNumber - (p.adp || myPickNumber);
-    const pRound       = myTeam.length + 1;
-    const pGapThresh   = Math.max(2, pRound);
-    let reason = gap >= pGapThresh   ? `🔥 ${gap} picks of value`
-               : gap < -pGapThresh   ? `⚠️ reaching ${-gap} picks early`
+    const gap        = myPickNumber - (p.adp || myPickNumber);
+    const pRound     = myTeam.length + 1;
+    const pGapThresh = Math.max(2, pRound);
+    const pcCount    = passCatcherCount(p.team, myTeam);
+
+    let reason = gap >= pGapThresh ? `🔥 ${gap} picks of value`
+               : gap < -pGapThresh ? `⚠️ reaching ${-gap} picks early`
                : '';
+
+    // Stack relationship to current roster
     if (['WR', 'TE'].includes(p.pos) && qbTeams.has(p.team)) {
       reason = reason ? `${reason} · stacks w/ your ${p.team} QB` : `stacks w/ your ${p.team} QB`;
-    } else if (['WR', 'TE'].includes(p.pos) && passCatcherCount(p.team, myTeam) >= 1) {
+    } else if (['WR', 'TE'].includes(p.pos) && pcCount >= 1) {
       reason = reason ? `${reason} · builds ${p.team} receiver room` : `builds ${p.team} receiver room`;
-    } else if (p.pos === 'QB' && passCatcherCount(p.team, myTeam) > 0) {
-      reason = reason ? `${reason} · completes ${p.team} stack` : `completes ${p.team} stack`;
+    } else if (p.pos === 'QB' && pcCount > 0) {
+      const pcNames = myTeam.filter(t => t.team === p.team && ['WR','TE'].includes(t.pos))
+        .map(t => t.name.split(' ').pop()).join(', ');
+      reason = reason ? `${reason} · completes ${p.team} stack (have ${pcNames})` : `completes ${p.team} stack (have ${pcNames})`;
     } else if (p.pos === 'RB' && myTeam.some(t => t.team === p.team)) {
       reason = reason ? `${reason} · ${p.team} game-script correlation` : `${p.team} game-script correlation`;
     }
+
+    // Stack co-availability signals
+    if (p.pos === 'QB' && availPCByTeam[p.team]?.length >= 2) {
+      const topNames = availPCByTeam[p.team].slice(0, 2).map(pc => pc.name.split(' ').pop()).join(', ');
+      reason = reason ? `${reason} · stack ready: ${topNames} avail` : `stack ready: ${topNames} avail`;
+    }
+    if (['WR', 'TE'].includes(p.pos) && !qbTeams.has(p.team) && availQBByTeam[p.team]) {
+      const qb = availQBByTeam[p.team];
+      if ((qb.adp || 999) <= 144) {
+        reason = reason ? `${reason} · ${qb.name.split(' ').pop()} still avail` : `${qb.name.split(' ').pop()} still avail`;
+      }
+    }
+
+    // Bring-back window urgency signal
+    if (p.pos === 'QB' && pcCount > 0 && nextMyPick != null) {
+      const windowSize = Math.max(1, nextMyPick - myPickNumber);
+      const adpGap     = Math.max(0, (p.adp || myPickNumber) - myPickNumber);
+      if (adpGap < windowSize) {
+        reason = reason ? `${reason} · ⚠ grab now — likely gone by next pick` : `⚠ grab now — likely gone by next pick`;
+      }
+    }
+
     const pr = playoffStackReason(p, myTeam);
     if (pr) reason = reason ? `${reason} · ${pr}` : pr;
     if (exposure[p.id]?.exposure_rate > 0) {
