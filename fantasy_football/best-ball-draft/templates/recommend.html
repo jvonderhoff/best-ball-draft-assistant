@@ -1324,10 +1324,13 @@ function renderRecs() {
   const qbsTaken = PLAYERS.filter(p => p.pos === 'QB' && state.takenIds.has(p.id)).length;
   const rbsTaken = PLAYERS.filter(p => p.pos === 'RB' && state.takenIds.has(p.id)).length;
   const nextMyPick = nextMyOverallPick(pickForRec + 1, settings.numTeams, settings.myPosition);
+  // Fetch a wider pool so MC can re-rank within it; final display still shows top 10.
+  const userRound = state.myTeam.length + 1;
+  const MC_POOL   = 20;
   const recs = getTopRecommendations(
     available, state.myTeam, pickForRec,
     STACK_INTENSITY, exposure, DIVERSIFY_STRENGTH,
-    10, RB_PRIORITY, qbsTaken, rbsTaken, nextMyPick
+    MC_POOL, RB_PRIORITY, qbsTaken, rbsTaken, nextMyPick
   );
 
   const el = document.getElementById('recsList');
@@ -1354,28 +1357,78 @@ function renderRecs() {
     return `<div class="qb-run-alert">⚡ ${label}</div>`;
   })();
 
-  // Monte Carlo marginal contributions — memoize base by team state so tab-switches
-  // don't re-run 11 × 300 simulations when the roster hasn't changed.
+  // ── Monte Carlo marginal contributions ────────────────────────────────────────
+  // Memoize base score by team state so tab-switches don't re-run sims unnecessarily.
+  //
+  // MC blend weight ramps with draft round:
+  //   rounds 1-7:  0%  — pure value/stack engine (MC noise too high on shallow rosters)
+  //   rounds 8-12: 10-25% — MC starts influencing re-ranking
+  //   rounds 13+:  30% — roster fit matters most late; MC has the most signal here
+  //
+  // Blending: finalScore = score × (1-w) + score × (mcDelta/medianMcDelta) × w
+  // This keeps scores in the same unit as the multiplier engine — the MC term is
+  // normalised relative to the median candidate so a "typical" MC delta = neutral.
   const hasProjData = Object.keys(PROJECTIONS).length > 0;
+  const mcBlendWeight = !hasProjData ? 0
+    : userRound <= 7  ? 0
+    : userRound <= 12 ? (userRound - 7) / 20        // 0.05 → 0.25
+    : 0.30;
+
   let mcScores;
-  if (hasProjData) {
+  let displayRecs = recs;  // may be re-ordered after MC blend
+
+  if (hasProjData && mcBlendWeight > 0) {
     const teamKey = state.myTeam.map(p => p.id).join(',');
     if (!_mcCache || _mcCache.teamKey !== teamKey) {
       _mcCache = { teamKey, base: simulateSeason(state.myTeam, PROJECTIONS), scores: {} };
     }
     const mcBase = _mcCache.base;
-    mcScores = recs.map(r => {
+
+    // Compute MC for the full candidate pool
+    const mcRaw = recs.map(r => {
       const pid = r.player.id;
       if (_mcCache.scores[pid] === undefined) {
         _mcCache.scores[pid] = simulateSeason([...state.myTeam, r.player], PROJECTIONS) - mcBase;
       }
       return _mcCache.scores[pid];
     });
+
+    // Normalise: divide by median so median candidate = 1.0
+    const sorted = [...mcRaw].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)] || 1;
+    const mcNorm = mcRaw.map(v => (median > 0 ? v / median : 1.0));
+
+    // Blend and re-rank
+    const blended = recs.map((r, i) => ({
+      ...r,
+      blendedScore: r.value * (1 - mcBlendWeight) + r.value * mcNorm[i] * mcBlendWeight,
+      mcDelta: mcRaw[i],
+    }));
+    blended.sort((a, b) => b.blendedScore - a.blendedScore);
+    displayRecs = blended.slice(0, 10);
+    mcScores    = displayRecs.map(r => r.mcDelta);
   } else {
-    mcScores = recs.map(() => null);
+    // No MC blend: just show top 10, compute MC for display badge only
+    displayRecs = recs.slice(0, 10);
+    if (hasProjData) {
+      const teamKey = state.myTeam.map(p => p.id).join(',');
+      if (!_mcCache || _mcCache.teamKey !== teamKey) {
+        _mcCache = { teamKey, base: simulateSeason(state.myTeam, PROJECTIONS), scores: {} };
+      }
+      const mcBase = _mcCache.base;
+      mcScores = displayRecs.map(r => {
+        const pid = r.player.id;
+        if (_mcCache.scores[pid] === undefined) {
+          _mcCache.scores[pid] = simulateSeason([...state.myTeam, r.player], PROJECTIONS) - mcBase;
+        }
+        return _mcCache.scores[pid];
+      });
+    } else {
+      mcScores = displayRecs.map(() => null);
+    }
   }
 
-  el.innerHTML = statusBar + runAlert + recs.map((r, i) => {
+  el.innerHTML = statusBar + runAlert + displayRecs.map((r, i) => {
     const p  = r.player;
     const mc = mcScores[i];
     const mcBadge = mc !== null

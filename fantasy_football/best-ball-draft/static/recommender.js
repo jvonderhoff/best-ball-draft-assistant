@@ -97,8 +97,10 @@ function getTeamNeeds(myTeam) {
 // Bonus for owning players from both teams in the same playoff game.
 // Week 17 gets the highest emphasis since it's the fantasy championship.
 
-const PLAYOFF_BONUS = { week17: 1.15, week16: 1.04, week15: 1.02 };
-const PLAYOFF_BONUS_CAP = 1.40;
+// Base per-game bonuses (single partner).
+// Amplified when 2+ partners share the same game — real game stack, not coincidence.
+const PLAYOFF_BONUS     = { week17: 1.08, week16: 1.02, week15: 1.01 };
+const PLAYOFF_BONUS_CAP = 1.50;
 
 // Returns true if p1 and p2 are in the same game in a given week.
 function samePlayoffGame(p1, p2, week) {
@@ -108,19 +110,40 @@ function samePlayoffGame(p1, p2, week) {
 }
 
 // Returns a multiplier > 1.0 if this player shares playoff games with current team members.
-function getPlayoffBonus(player, myTeam) {
+//
+// userRound: used to fade the bonus in later rounds when standalone game-stack value
+// is low and MC fitness should carry the load instead. Multi-partner stacks stay strong.
+//
+// Single partner:  bonus fades from full → 40% of full between rounds 9 and 16.
+// 2+ partners:     no fade — owning multiple players in the same game is a committed
+//                  stack worth protecting regardless of round.
+function getPlayoffBonus(player, myTeam, userRound = 1) {
   if (!myTeam.length) return 1.0;
   // Only apply when we actually have schedule data
   if (!player.week15 && !player.week16 && !player.week17) return 1.0;
 
+  // Count partners per week; track max to decide fade behaviour
   let mult = 1.0;
-  for (const mine of myTeam) {
-    for (const week of [17, 16, 15]) {
-      if (samePlayoffGame(player, mine, week)) {
-        mult *= PLAYOFF_BONUS[`week${week}`];
-      }
+  let maxPartnersInAnyWeek = 0;
+  for (const week of [17, 16, 15]) {
+    const partners = myTeam.filter(m => samePlayoffGame(player, m, week));
+    if (partners.length) {
+      maxPartnersInAnyWeek = Math.max(maxPartnersInAnyWeek, partners.length);
+      // Multi-partner amplifier: each extra partner beyond the first adds 50% more delta
+      const partnerBoost = 1 + (partners.length - 1) * 0.5;
+      const rawBonus = 1 + (PLAYOFF_BONUS[`week${week}`] - 1) * partnerBoost;
+      mult *= rawBonus;
     }
   }
+  if (mult <= 1.001) return 1.0;
+
+  // Round-based fade for solo-partner game stacks only
+  if (maxPartnersInAnyWeek < 2) {
+    // Full bonus rounds 1-8; fades linearly to 40% by round 16+
+    const fade = Math.max(0.40, 1 - Math.max(0, userRound - 8) / 12);
+    mult = 1 + (mult - 1) * fade;
+  }
+
   return Math.min(mult, PLAYOFF_BONUS_CAP);
 }
 
@@ -433,7 +456,7 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   // only (qbPull bonus above), not from playing against teams you own.
   // Skipped when stack intensity is off so pure ADP/value mode is truly stack-free.
   if (stackIntensity !== 'off' && pos !== 'QB') {
-    const pb = getPlayoffBonus(player, myTeam);
+    const pb = getPlayoffBonus(player, myTeam, userRound);
     if (pb > 1.001) apply(pb, 'Playoff stack', playoffStackReason(player, myTeam) || '');
   }
 
