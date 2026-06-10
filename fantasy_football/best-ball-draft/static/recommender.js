@@ -348,20 +348,43 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
 
     if (pos === 'QB') {
       // Bring-back: I own pass-catchers for this QB.
-      // bringbackWindow is the ceiling, interpolated by how likely the QB is to
-      // survive until my next pick — so it replaces qbPull at high urgency rather
-      // than compounding on top of it.
+      //
+      // Three axes of urgency compound here:
+      //   1. Window urgency  — how likely is this QB to survive until my next pick?
+      //                        Concave curve (^0.6) so pressure rises fast as gap narrows.
+      //   2. PC-count scale  — 2 catchers owned is dramatically more valuable than 1;
+      //                        the ceiling is raised proportionally.
+      //   3. PC-count floor  — even outside the tight window, owning 2+ catchers
+      //                        means the base boost should exceed plain qbPull.
+      //
+      // The final mult replaces qbPull (not stacked on top of it).
       if (existingCatchers >= 1) {
-        let bringbackMult = s.qbPull;
+        // PC-count ceiling: each extra catcher adds 60% of the remaining gap above bringbackWindow.
+        // 1 PC → ceiling = bringbackWindow
+        // 2 PC → ceiling = bringbackWindow + 0.60 × (2.0 - bringbackWindow)
+        // 3 PC → ceiling = bringbackWindow + 0.84 × (2.0 - bringbackWindow)  [compounded]
+        const extraCatchers = Math.min(existingCatchers - 1, 2);
+        const ceilingBoost  = 1 - Math.pow(0.4, extraCatchers);           // 0 / 0.60 / 0.84
+        const ceiling       = s.bringbackWindow + ceilingBoost * (2.0 - s.bringbackWindow);
+
+        // PC-count floor: 2+ catchers guarantee at least 30% of the way to the ceiling
+        // even if the QB's ADP suggests he'll still be available.
+        const floorFraction = extraCatchers >= 1 ? 0.30 : 0;
+        const floor         = s.qbPull + floorFraction * (ceiling - s.qbPull);
+
+        let bringbackMult = floor;
         if (nextMyPick != null) {
           const windowSize = Math.max(1, nextMyPick - myPickNumber);
           const adpGap     = Math.max(0, (player.adp || myPickNumber) - myPickNumber);
-          if (adpGap < windowSize * 1.5) {
-            const urgency = Math.max(0, 1 - adpGap / windowSize);
-            bringbackMult = s.qbPull + urgency * (s.bringbackWindow - s.qbPull);
+          if (adpGap < windowSize * 2.0) {
+            // Concave urgency: rises steeply as adpGap → 0
+            const rawUrgency = Math.max(0, 1 - adpGap / windowSize);
+            const urgency    = Math.pow(rawUrgency, 0.6);
+            bringbackMult = floor + urgency * (ceiling - floor);
           }
         }
-        apply(bringbackMult, 'Stack: bring-back QB', `${existingCatchers} PCs owned, window ${nextMyPick ? nextMyPick - myPickNumber : '?'}`);
+        const note = `${existingCatchers} PC${existingCatchers > 1 ? 's' : ''} owned, window ${nextMyPick ? nextMyPick - myPickNumber : '?'}, ceil ×${ceiling.toFixed(2)}`;
+        apply(bringbackMult, 'Stack: bring-back QB', note);
       }
     }
 
