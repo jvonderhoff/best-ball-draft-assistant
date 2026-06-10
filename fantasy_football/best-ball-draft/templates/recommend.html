@@ -1606,8 +1606,10 @@ function renderStacks() {
 function renderStackCard(g, urgentThreshold) {
   const posOrd = { QB:0, WR:1, TE:2, RB:3 };
   const mineRows   = g.mine.slice().sort((a,b) => posOrd[a.pos]-posOrd[b.pos]).map(renderMineRow);
-  const targetRows = g.avail.filter(p => !g.mine.some(m => m.id === p.id))
-    .sort((a,b) => (a.adp||999)-(b.adp||999)).slice(0,5).map(p => renderTargetRow(p, urgentThreshold));
+  const targets = g.avail.filter(p => !g.mine.some(m => m.id === p.id))
+    .sort((a,b) => (a.adp||999)-(b.adp||999)).slice(0,5);
+  console.log('[stack card]', g.team, '| avail:', g.avail.map(p => p.name+'('+p.adp+')'), '| targets:', targets.map(p => p.name+'('+p.adp+')'+(p.adp<=urgentThreshold?'🔥':'')), '| threshold:', urgentThreshold);
+  const targetRows = targets.map(p => renderTargetRow(p, urgentThreshold));
   const takenRows  = g.takenOpp.sort((a,b) => posOrd[a.pos]-posOrd[b.pos]).slice(0,3).map(renderTakenRow);
   return `<div class="stack-card">
     <div class="stack-card-hdr">
