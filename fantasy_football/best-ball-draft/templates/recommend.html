@@ -1550,6 +1550,7 @@ function getOppTeams() {
 }
 
 function renderStacks() {
+  console.log('[stacks] myTeam:', state.myTeam.length, '| takenIds:', state.takenIds.size, '| overallPick:', state.overallPick, '| numTeams:', settings.numTeams, '| myPos:', settings.myPosition);
   const el = document.getElementById('stacksContent');
   if (!PLAYERS.length) { el.innerHTML = '<div class="no-recs">Loading players…</div>'; return; }
   if (!state.myTeam.length) {
@@ -1566,7 +1567,7 @@ function renderStacks() {
   const currentPick = Math.max(state.overallPick, state.takenIds.size + 1);
   const myNextPick = nextMyOverallPick(currentPick, settings.numTeams, settings.myPosition) || currentPick;
   const urgentThreshold = myNextPick + 10;
-  console.log('[stacks] overallPick:', state.overallPick, '| takenIds:', state.takenIds.size, '| currentPick:', currentPick, '| myNextPick:', myNextPick, '| urgentThreshold:', urgentThreshold);
+  console.log('[stacks] currentPick:', currentPick, '| myNextPick:', myNextPick, '| urgentThreshold:', urgentThreshold);
 
   const needsWork = groups.filter(g => ['qb-only','pass-only','rb-only'].includes(g.type));
   const complete  = groups.filter(g => g.type === 'complete');
