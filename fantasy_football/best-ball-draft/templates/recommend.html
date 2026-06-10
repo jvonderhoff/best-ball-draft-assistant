@@ -477,8 +477,10 @@ function bustCache(key) {
 
 // ── Draft state ────────────────────────────────────────────────────────────────
 let PLAYERS = [];
+let playersById = {};  // id → player object (O(1) lookup)
 let exposure = {};
 let PROJECTIONS = {};  // player_id → { mean, weekly_stddev } from /api/projections
+let _mcCache = null;   // { teamKey, base, scores: {} } — memoize MC per team state
 
 // ── Custom rankings ────────────────────────────────────────────────────────────
 let useCustomRankings = localStorage.getItem('bba_use_custom_ranks') === 'true';
@@ -628,9 +630,10 @@ let syncConnected = false;
 let playerNameLookup = {};
 function buildNameLookup() {
   playerNameLookup = {};
+  playersById = {};
   for (const p of PLAYERS) {
+    playersById[p.id] = p;
     playerNameLookup[p.name.toLowerCase()] = p;
-    // Also index last name + pos for fallback: "robinson_RB"
     const parts = p.name.split(' ');
     const last = parts[parts.length - 1].toLowerCase();
     const lk = `${last}_${p.pos}`;
@@ -945,7 +948,7 @@ function applyDKPickState(data) {
     // Prefer direct player_id (server now stores it); fall back to name lookup
     let player = null;
     if (pk.player_id) {
-      player = PLAYERS.find(p => p.id === pk.player_id);
+      player = playersById[pk.player_id] || null;
     }
     if (!player) {
       player = findPlayerByName(pk.player_name, pk.pos, pk.team);
@@ -1220,7 +1223,7 @@ function renderPlayerList() {
 }
 
 function selectPlayer(id) {
-  const p = PLAYERS.find(p => p.id === id);
+  const p = playersById[id];
   if (!p || state.takenIds.has(id)) return;
   selectedPlayer = selectedPlayer?.id === id ? null : p;
   if (selectedPlayer) showActionBar(selectedPlayer); else hideActionBar();
@@ -1259,8 +1262,11 @@ function switchTab(name) {
   document.getElementById(`tab-${name}`).classList.add('active');
 }
 
+let _searchDebounce = null;
 document.getElementById('searchInput').addEventListener('input', e => {
-  searchQuery = e.target.value.trim(); renderPlayerList();
+  searchQuery = e.target.value.trim();
+  clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(renderPlayerList, 150);
 });
 document.querySelectorAll('.pos-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1336,12 +1342,26 @@ function renderRecs() {
     return `<div class="qb-run-alert">⚡ ${label}</div>`;
   })();
 
-  // Monte Carlo marginal contributions — compute base once, then delta per candidate
+  // Monte Carlo marginal contributions — memoize base by team state so tab-switches
+  // don't re-run 11 × 300 simulations when the roster hasn't changed.
   const hasProjData = Object.keys(PROJECTIONS).length > 0;
-  const mcBase   = hasProjData ? simulateSeason(state.myTeam, PROJECTIONS) : null;
-  const mcScores = hasProjData
-    ? recs.map(r => simulateSeason([...state.myTeam, r.player], PROJECTIONS) - mcBase)
-    : recs.map(() => null);
+  let mcScores;
+  if (hasProjData) {
+    const teamKey = state.myTeam.map(p => p.id).join(',');
+    if (!_mcCache || _mcCache.teamKey !== teamKey) {
+      _mcCache = { teamKey, base: simulateSeason(state.myTeam, PROJECTIONS), scores: {} };
+    }
+    const mcBase = _mcCache.base;
+    mcScores = recs.map(r => {
+      const pid = r.player.id;
+      if (_mcCache.scores[pid] === undefined) {
+        _mcCache.scores[pid] = simulateSeason([...state.myTeam, r.player], PROJECTIONS) - mcBase;
+      }
+      return _mcCache.scores[pid];
+    });
+  } else {
+    mcScores = recs.map(() => null);
+  }
 
   el.innerHTML = statusBar + runAlert + recs.map((r, i) => {
     const p  = r.player;
