@@ -1322,11 +1322,12 @@ function renderRecs() {
     : (nextMyOverallPick(state.overallPick, settings.numTeams, settings.myPosition) || state.overallPick);
 
   const qbsTaken = PLAYERS.filter(p => p.pos === 'QB' && state.takenIds.has(p.id)).length;
+  const rbsTaken = PLAYERS.filter(p => p.pos === 'RB' && state.takenIds.has(p.id)).length;
   const nextMyPick = nextMyOverallPick(pickForRec + 1, settings.numTeams, settings.myPosition);
   const recs = getTopRecommendations(
     available, state.myTeam, pickForRec,
     STACK_INTENSITY, exposure, DIVERSIFY_STRENGTH,
-    10, RB_PRIORITY, qbsTaken, nextMyPick
+    10, RB_PRIORITY, qbsTaken, rbsTaken, nextMyPick
   );
 
   const el = document.getElementById('recsList');
