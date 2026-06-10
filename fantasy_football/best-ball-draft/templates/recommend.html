@@ -228,6 +228,7 @@
     }
     .spr.mine   { background: var(--selected); }
     .spr.target { background: var(--surface); border: 1px solid var(--border-soft); cursor: pointer; }
+    .spr.target.urgent { background: rgba(255,140,0,0.08); border-color: var(--orange); border-left: 3px solid var(--orange); }
     .spr.taken  { opacity: 0.35; }
     .spr-pos { font-size: 0.63em; font-weight: 700; padding: 1px 4px; border-radius: 3px; color: #fff; flex-shrink: 0; }
     .spr-pos.QB { background: var(--QB); } .spr-pos.RB { background: var(--RB); }
@@ -237,6 +238,7 @@
     .spr-mine  { font-size: 0.63em; font-weight: 700; padding: 1px 5px; border-radius: 8px; background: var(--mine-bg); color: var(--accent); flex-shrink: 0; }
     .spr-taken { font-size: 0.63em; color: var(--muted2); flex-shrink: 0; }
     .spr-rnd   { font-size: 0.63em; font-weight: 700; padding: 1px 5px; border-radius: 8px; background: var(--surface); color: var(--muted); border: 1px solid var(--border-soft); flex-shrink: 0; }
+    .spr-now   { font-size: 0.63em; font-weight: 700; padding: 1px 6px; border-radius: 8px; background: var(--orange); color: #000; flex-shrink: 0; }
 
     /* ── Stack windows by round ── */
     .round-window {
@@ -1559,6 +1561,10 @@ function renderStacks() {
   const oppMap  = getOppTeams();
   const myNFLTeams = new Set(groups.map(g => g.team));
 
+  // Urgency threshold: ADP within 10 of next pick means "pick now"
+  const myNextPick = nextMyOverallPick(state.overallPick, settings.numTeams, settings.myPosition) || state.overallPick;
+  const urgentThreshold = myNextPick + 10;
+
   const needsWork = groups.filter(g => ['qb-only','pass-only','rb-only'].includes(g.type));
   const complete  = groups.filter(g => g.type === 'complete');
 
@@ -1568,10 +1574,10 @@ function renderStacks() {
   let html = renderStackWindows();
 
   if (needsWork.length) {
-    html += `<div class="stack-section-lbl">⚡ Action Needed</div>${needsWork.map(renderStackCard).join('')}`;
+    html += `<div class="stack-section-lbl">⚡ Action Needed</div>${needsWork.map(g => renderStackCard(g, urgentThreshold)).join('')}`;
   }
   if (complete.length) {
-    html += `<div class="stack-section-lbl">✅ Active Stacks</div>${complete.map(renderStackCard).join('')}`;
+    html += `<div class="stack-section-lbl">✅ Active Stacks</div>${complete.map(g => renderStackCard(g, urgentThreshold)).join('')}`;
   }
   if (oppTeams.length) {
     const cards = oppTeams.map(team => {
@@ -1584,7 +1590,7 @@ function renderStacks() {
           <span class="stk-badge stk-opp">OPP STACK</span>
           <span class="stk-hint">Shares a playoff game with your picks</span>
         </div>
-        <div class="stack-players">${targets.map(renderTargetRow).join('')}</div>
+        <div class="stack-players">${targets.map(p => renderTargetRow(p, urgentThreshold)).join('')}</div>
       </div>`;
     }).join('');
     if (cards) html += `<div class="stack-section-lbl">🎯 Opponent Game Stack</div>${cards}`;
@@ -1593,11 +1599,11 @@ function renderStacks() {
   el.innerHTML = html || '<div class="no-recs">No stack data yet.</div>';
 }
 
-function renderStackCard(g) {
+function renderStackCard(g, urgentThreshold) {
   const posOrd = { QB:0, WR:1, TE:2, RB:3 };
   const mineRows   = g.mine.slice().sort((a,b) => posOrd[a.pos]-posOrd[b.pos]).map(renderMineRow);
   const targetRows = g.avail.filter(p => !g.mine.some(m => m.id === p.id))
-    .sort((a,b) => (a.adp||999)-(b.adp||999)).slice(0,5).map(renderTargetRow);
+    .sort((a,b) => (a.adp||999)-(b.adp||999)).slice(0,5).map(p => renderTargetRow(p, urgentThreshold));
   const takenRows  = g.takenOpp.sort((a,b) => posOrd[a.pos]-posOrd[b.pos]).slice(0,3).map(renderTakenRow);
   return `<div class="stack-card">
     <div class="stack-card-hdr">
@@ -1617,11 +1623,13 @@ function renderMineRow(p) {
     <span class="spr-mine">Mine</span>
   </div>`;
 }
-function renderTargetRow(p) {
-  return `<div class="spr target">
+function renderTargetRow(p, urgentThreshold) {
+  const isUrgent = urgentThreshold != null && (p.adp || 999) <= urgentThreshold;
+  return `<div class="spr target${isUrgent ? ' urgent' : ''}">
     <span class="spr-pos ${p.pos}">${p.pos}</span>
     <span class="spr-name">${p.name}</span>
     <span class="spr-adp">ADP ${Math.round(p.adp||0)}</span>
+    ${isUrgent ? '<span class="spr-now">Pick now</span>' : ''}
   </div>`;
 }
 function renderTakenRow(p) {
