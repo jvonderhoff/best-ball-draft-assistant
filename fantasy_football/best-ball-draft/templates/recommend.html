@@ -228,7 +228,7 @@
     }
     .spr.mine   { background: var(--selected); }
     .spr.target { background: var(--surface); border: 1px solid var(--border-soft); cursor: pointer; }
-    .spr.target.urgent { background: rgba(255,140,0,0.08); border-color: var(--orange); border-left: 3px solid var(--orange); }
+    .spr.target.urgent { background: rgba(255,140,0,0.18); border: 1px solid var(--orange); border-left: 4px solid var(--orange); }
     .spr.taken  { opacity: 0.35; }
     .spr-pos { font-size: 0.63em; font-weight: 700; padding: 1px 4px; border-radius: 3px; color: #fff; flex-shrink: 0; }
     .spr-pos.QB { background: var(--QB); } .spr-pos.RB { background: var(--RB); }
@@ -1550,7 +1550,7 @@ function getOppTeams() {
 }
 
 function renderStacks() {
-  console.log('[stacks] myTeam:', state.myTeam.length, '| takenIds:', state.takenIds.size, '| overallPick:', state.overallPick, '| numTeams:', settings.numTeams, '| myPos:', settings.myPosition);
+
   const el = document.getElementById('stacksContent');
   if (!PLAYERS.length) { el.innerHTML = '<div class="no-recs">Loading players…</div>'; return; }
   if (!state.myTeam.length) {
@@ -1569,7 +1569,6 @@ function renderStacks() {
   const searchFrom = isMyTurn(currentPick, settings.numTeams, settings.myPosition) ? currentPick + 1 : currentPick;
   const myNextPick = nextMyOverallPick(searchFrom, settings.numTeams, settings.myPosition) || currentPick;
   const urgentThreshold = myNextPick + 10;
-  console.log('[stacks] currentPick:', currentPick, '| myNextPick:', myNextPick, '| urgentThreshold:', urgentThreshold);
 
   const needsWork = groups.filter(g => ['qb-only','pass-only','rb-only'].includes(g.type));
   const complete  = groups.filter(g => g.type === 'complete');
@@ -1610,7 +1609,6 @@ function renderStackCard(g, urgentThreshold) {
   const mineRows   = g.mine.slice().sort((a,b) => posOrd[a.pos]-posOrd[b.pos]).map(renderMineRow);
   const targets = g.avail.filter(p => !g.mine.some(m => m.id === p.id))
     .sort((a,b) => (a.adp||999)-(b.adp||999)).slice(0,5);
-  console.log('[stack card]', g.team, '| avail:', g.avail.map(p => p.name+'('+p.adp+')'), '| targets:', targets.map(p => p.name+'('+p.adp+')'+(p.adp<=urgentThreshold?'🔥':'')), '| threshold:', urgentThreshold);
   const targetRows = targets.map(p => renderTargetRow(p, urgentThreshold));
   const takenRows  = g.takenOpp.sort((a,b) => posOrd[a.pos]-posOrd[b.pos]).slice(0,3).map(renderTakenRow);
   return `<div class="stack-card">
@@ -1636,7 +1634,6 @@ function renderTargetRow(p, urgentThreshold) {
     ? customRankMap[p.id]
     : (p.adp || 999);
   const isUrgent = urgentThreshold != null && effectiveRank <= urgentThreshold;
-  if (p.name === 'Mark Andrews') console.log('[renderTargetRow] Andrews | adp:', p.adp, '| customRank:', customRankMap[p.id], '| useCustom:', useCustomRankings, '| effectiveRank:', effectiveRank, '| threshold:', urgentThreshold, '| isUrgent:', isUrgent);
   const rankLabel = useCustomRankings && customRankMap[p.id] != null ? 'Rank' : 'ADP';
   return `<div class="spr target${isUrgent ? ' urgent' : ''}">
     <span class="spr-pos ${p.pos}">${p.pos}</span>
