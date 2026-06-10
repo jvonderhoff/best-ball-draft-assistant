@@ -277,10 +277,12 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     }
   }
 
-  // Hard discount when a position slot is fully filled
+  // Hard discount when a position slot is fully filled.
+  // ×0.30 cap (was ×0.65) so over-drafted positions genuinely fall off the board —
+  // the old 0.65 still let saturated picks outrank players you actually need.
   if ((needs[pos] || 0) === 0) {
     const before = mult;
-    mult = Math.min(mult, 0.65);
+    mult = Math.min(mult, 0.30);
     if (bd && mult < before - 0.001) bd.push({ label: 'Position full', mult: mult / before, note: `${pos} slots filled` });
   }
 
@@ -303,8 +305,10 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     apply(penalty, 'QB saturation', `3rd QB, earliest in rd ${earliestQBRound}`);
   }
 
-  // Early-round boost (position-agnostic — amplifies stacking/playoff bonuses)
-  if (userRound <= 3) apply(1.1, 'Early round amp', `rd ${userRound}`);
+  // Early-round blanket ×1.10 amplifier removed — it compounded indiscriminately
+  // on top of stacking and playoff bonuses that are already calibrated independently.
+  // Those signals are self-sufficient; layering a round-based multiplier on top
+  // pushed early-round picks too aggressively regardless of actual fit.
 
   // RB priority — boost RBs in early rounds to encourage drafting them before WRs.
   // Tapers off after round 5 since late RBs carry more risk than late WRs.
