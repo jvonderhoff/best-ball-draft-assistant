@@ -211,7 +211,10 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   //     slight boost so they compete with elite WRs/RBs.
   //   Mid-tier TEs (ADP 31-115): no-man's-land — avoid spending rounds 4-9 here.
   //     ADP 31-60: compete on pure ADP, no modifier.
-  //     ADP 61-115: ×0.72 discount — worst outcome in best ball.
+  //     ADP 61-115: penalty — worst outcome in best ball.
+  //       × 1.00  — QB already on your team (stack bonus handles the value, don't double-penalise)
+  //       × 0.90  — QB still available on the board (buildable stack, reduce friction)
+  //       × 0.82  — no stack connection (was ×0.72; softened so penalty doesn't swamp legit picks)
   //   Late darts (ADP 116+): urgency ramps in rounds 11-16 once you need to fill slots.
   if (pos === 'TE') {
     const teNeeded = Math.max(0, TE_TARGET - myTEs);
@@ -220,7 +223,17 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
       if (adp <= 30) {
         if (userRound <= 4) apply(1.20, 'TE elite boost', `ADP ${adp} ≤ 30, rd ${userRound}`);
       } else if (adp >= 61 && adp <= 115) {
-        apply(0.72, 'TE mid-tier penalty', `ADP ${adp} danger zone 61–115`);
+        const teQBOwned  = qbTeams.has(player.team);
+        const teQBAvail  = !teQBOwned && availQBByTeam && availQBByTeam[player.team];
+        const midPenalty = teQBOwned ? 1.00
+                         : teQBAvail ? 0.90
+                         : 0.82;
+        if (midPenalty < 0.999) {
+          const why = teQBAvail
+            ? `ADP ${adp}, QB avail (${availQBByTeam[player.team].name.split(' ').pop()})`
+            : `ADP ${adp} danger zone, no stack`;
+          apply(midPenalty, 'TE mid-tier penalty', why);
+        }
       } else if (adp > 115) {
         const lateWeight = Math.max(0, Math.min(1, (userRound - 10) / 5));
         const picksLeft  = Math.max(1, 20 - totalDrafted);
