@@ -28,18 +28,13 @@ const STACK_SETTINGS = {
 // qbsTaken: total QBs drafted by all teams so far.
 // myQBs:    QBs already on your roster.
 function getQBTierBoost(qbsTaken, myQBs) {
-  if (myQBs >= 2)      return 1.0;   // already stocked
-  if (qbsTaken < 3)    return 1.0;   // Tier 1 still stocked, no urgency
-  if (qbsTaken < 6) {
-    // Tier 1 depleting
-    return myQBs === 0 ? 1.10 : 1.0;
-  }
-  if (qbsTaken < 12) {
-    // Tier 2 territory
-    return myQBs === 0 ? 1.22 : 1.10;
-  }
-  // Tier 3 territory — panic if still empty
-  return myQBs === 0 ? 1.35 : 1.15;
+  if (myQBs >= 2)   return 1.0;
+  if (qbsTaken < 3) return 1.0;
+  // Reduced from prior values — urgency weight already captures much of this
+  // signal; compounding the two pushed QBs too aggressively past better-ADP players.
+  if (qbsTaken < 6)  return myQBs === 0 ? 1.05 : 1.0;
+  if (qbsTaken < 12) return myQBs === 0 ? 1.10 : 1.05;
+  return myQBs === 0 ? 1.15 : 1.08;
 }
 
 // Human-readable alert label, or null if no action needed.
@@ -234,8 +229,18 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     const qbNeeded  = Math.max(0, QB_TARGET - myQBs);
     const picksLeft = Math.max(1, 20 - totalDrafted);
     if (qbNeeded > 0) {
-      const urgency = (qbNeeded / picksLeft) * qbUrgencyWeight;
-      mult *= (1 + Math.min(urgency * 3.0, 2.0));
+      // Gate urgency by QB quality so dart QBs (ADP 100+) don't leapfrog
+      // better-value skill players. Elite QBs (ADP ≤ 40) get full push;
+      // mid-tier partial; late-round darts get 20% of normal urgency.
+      // Formula: 1.5 − adp/80, clamped [0.2, 1.0]
+      //   ADP  24 → 1.20 → capped 1.0  (full urgency)
+      //   ADP  60 → 0.75                (75%)
+      //   ADP  80 → 0.50                (50%)
+      //   ADP 100 → 0.25                (25%)
+      //   ADP 116 → 0.05 → floored 0.2 (20%)
+      const qbQualFactor = Math.max(0.2, Math.min(1.0, 1.5 - player.adp / 80));
+      const urgency = (qbNeeded / picksLeft) * qbUrgencyWeight * qbQualFactor;
+      mult *= (1 + Math.min(urgency * 2.0, 0.8));
     }
   }
 
