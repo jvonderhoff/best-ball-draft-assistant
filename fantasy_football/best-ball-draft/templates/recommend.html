@@ -1562,8 +1562,11 @@ function renderStacks() {
   const myNFLTeams = new Set(groups.map(g => g.team));
 
   // Urgency threshold: ADP within 10 of next pick means "pick now"
-  const myNextPick = nextMyOverallPick(state.overallPick, settings.numTeams, settings.myPosition) || state.overallPick;
+  // Use takenIds.size as a floor — overallPick can lag behind if sync is slow
+  const currentPick = Math.max(state.overallPick, state.takenIds.size + 1);
+  const myNextPick = nextMyOverallPick(currentPick, settings.numTeams, settings.myPosition) || currentPick;
   const urgentThreshold = myNextPick + 10;
+  console.log('[stacks] overallPick:', state.overallPick, '| takenIds:', state.takenIds.size, '| currentPick:', currentPick, '| myNextPick:', myNextPick, '| urgentThreshold:', urgentThreshold);
 
   const needsWork = groups.filter(g => ['qb-only','pass-only','rb-only'].includes(g.type));
   const complete  = groups.filter(g => g.type === 'complete');
