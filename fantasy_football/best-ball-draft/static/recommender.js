@@ -163,13 +163,17 @@ function byeWeekWarning(player, myTeam) {
 // availQBByTeam: team → best available QB (not yet drafted)
 // availPCByTeam: team → available WR/TE sorted by ADP
 // nextMyPick:    overall pick number of my NEXT turn after this one (for window urgency)
-function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', rbPriority = 'strong', qbsTaken = 0, availQBByTeam = null, availPCByTeam = null, nextMyPick = null) {
+// bd (breakdown): optional array — if provided, each applied multiplier is pushed as
+// { label, mult, note } so callers can explain the score to the user.
+function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', rbPriority = 'strong', qbsTaken = 0, availQBByTeam = null, availPCByTeam = null, nextMyPick = null, bd = null) {
   // Use inverse ADP so value is always positive and naturally orders players.
   // adp=1 → 1000, adp=50 → 20, adp=100 → 10, adp=200 → 5, adp=500 → 2
   // This ensures late-round players still have relative ordering rather than
   // all collapsing to 0 when ADP > 100 (which caused random late-round picks).
   const adpValue = 1000 / (player.adp || 1);
   const pos = player.pos;
+  // Helper: apply multiplier and optionally record it
+  const apply = (m, label, note) => { mult *= m; if (bd && Math.abs(m - 1) > 0.001) bd.push({ label, mult: m, note }); };
 
   // ADP is the primary signal. RB and WR compete on pure ADP.
   // QB, TE, and WR get urgency-based adjustments when falling behind pace.
@@ -196,19 +200,16 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     if (teNeeded > 0) {
       const adp = player.adp || 999;
       if (adp <= 30) {
-        // Elite TE — slight boost in rounds 1-4 to compete with WRs/RBs
-        if (userRound <= 4) mult *= 1.20;
+        if (userRound <= 4) apply(1.20, 'TE elite boost', `ADP ${adp} ≤ 30, rd ${userRound}`);
       } else if (adp >= 61 && adp <= 115) {
-        // Mid-tier danger zone — penalise spending real draft capital here
-        mult *= 0.72;
+        apply(0.72, 'TE mid-tier penalty', `ADP ${adp} danger zone 61–115`);
       } else if (adp > 115) {
-        // Late dart — graduated urgency starting round 11
         const lateWeight = Math.max(0, Math.min(1, (userRound - 10) / 5));
         const picksLeft  = Math.max(1, 20 - totalDrafted);
         const urgency    = (teNeeded / picksLeft) * lateWeight;
-        mult *= (1 + Math.min(urgency * 3.0, 2.0));
+        const m = 1 + Math.min(urgency * 3.0, 2.0);
+        if (m > 1.001) apply(m, 'TE late urgency', `rd ${userRound}, ${picksLeft} picks left`);
       }
-      // ADP 31-60: no modifier — compete on pure ADP value
     }
   }
 
@@ -226,7 +227,8 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     const expectedWRs = totalDrafted * 0.40;
     const deficit = Math.max(0, expectedWRs - myWRs - 1.5);
     if (deficit > 0) {
-      mult *= (1 + Math.min(deficit * 0.20 * wrUrgencyWeight, 0.60));
+      const m = 1 + Math.min(deficit * 0.20 * wrUrgencyWeight, 0.60);
+      apply(m, 'WR urgency', `${myWRs} WRs, behind pace by ${deficit.toFixed(1)}`);
     }
   }
 
@@ -252,12 +254,17 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
       //   ADP 116 → 0.05 → floored 0.2 (20%)
       const qbQualFactor = Math.max(0.2, Math.min(1.0, 1.5 - player.adp / 80));
       const urgency = (qbNeeded / picksLeft) * qbUrgencyWeight * qbQualFactor;
-      mult *= (1 + Math.min(urgency * 2.0, 0.8));
+      const m = 1 + Math.min(urgency * 2.0, 0.8);
+      if (m > 1.001) apply(m, 'QB urgency', `${myQBs}/${QB_TARGET} QBs, qual ${qbQualFactor.toFixed(2)}`);
     }
   }
 
   // Hard discount when a position slot is fully filled
-  if ((needs[pos] || 0) === 0) mult = Math.min(mult, 0.65);
+  if ((needs[pos] || 0) === 0) {
+    const before = mult;
+    mult = Math.min(mult, 0.65);
+    if (bd && mult < before - 0.001) bd.push({ label: 'Position full', mult: mult / before, note: `${pos} slots filled` });
+  }
 
   // QB saturation penalty — scales with how early the first QB was drafted.
   // Early QB capital (round 1-5) = you're locked in, 3rd QB almost never right.
@@ -275,11 +282,11 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     else if (earliestQBRound <= 9)  penalty = 0.15;
     else if (earliestQBRound <= 13) penalty = 0.35;
     else                             penalty = 0.60;
-    mult *= penalty;
+    apply(penalty, 'QB saturation', `3rd QB, earliest in rd ${earliestQBRound}`);
   }
 
   // Early-round boost (position-agnostic — amplifies stacking/playoff bonuses)
-  if (userRound <= 3) mult *= 1.1;
+  if (userRound <= 3) apply(1.1, 'Early round amp', `rd ${userRound}`);
 
   // RB priority — boost RBs in early rounds to encourage drafting them before WRs.
   // Tapers off after round 5 since late RBs carry more risk than late WRs.
@@ -298,7 +305,7 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     };
     const table = boosts[rbPriority] || boosts.strong;
     const boost = table[Math.min(userRound, table.length - 1)] || 1.0;
-    mult *= boost;
+    if (boost > 1.001) apply(boost, 'RB priority', `rd ${userRound}, ${rbPriority}`);
   }
 
   // Same-team stacking bonuses
@@ -310,14 +317,10 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
 
     if (['WR', 'TE'].includes(pos)) {
       if (qbTeams.has(player.team)) {
-        // Pass-catcher from one of my QB's teams — full QB-stack bonus
-        if (existingCatchers === 0)      mult *= s.first;
-        else if (existingCatchers === 1) mult *= s.second;
-        // 3+ pass-catchers from same QB's team: no bonus (over-concentrated)
+        if (existingCatchers === 0)      apply(s.first,  'Stack: 1st PC',  `${player.team} QB stack`);
+        else if (existingCatchers === 1) apply(s.second, 'Stack: 2nd PC',  `${player.team} QB stack`);
       } else if (existingCatchers >= 1) {
-        // Already have a pass-catcher from this team but no QB yet —
-        // building a receiver room; smaller bonus since correlation is QB-dependent
-        mult *= s.cluster;
+        apply(s.cluster, 'Stack: receiver room', `${existingCatchers} PCs, no QB yet`);
       }
     }
 
@@ -336,13 +339,12 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
             bringbackMult = s.qbPull + urgency * (s.bringbackWindow - s.qbPull);
           }
         }
-        mult *= bringbackMult;
+        apply(bringbackMult, 'Stack: bring-back QB', `${existingCatchers} PCs owned, window ${nextMyPick ? nextMyPick - myPickNumber : '?'}`);
       }
     }
 
     if (pos === 'RB' && teamMates >= 1) {
-      // RB from a team I already have players on — correlated game-script value
-      mult *= s.rbCorrel;
+      apply(s.rbCorrel, 'Stack: RB correl', `${player.team} game-script`);
     }
 
     // ── Stack co-availability (WR/TE only) ────────────────────────────────────
@@ -357,7 +359,8 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
                        : (teamQB.adp || 999) <= 96  ? 0.7
                        : (teamQB.adp || 999) <= 144 ? 0.4
                        : 0.2;
-          mult *= 1 + (s.stackReady - 1) * qbTier;
+          const m = 1 + (s.stackReady - 1) * qbTier;
+          if (m > 1.001) apply(m, 'Stack: QB avail', `${teamQB.name.split(' ').pop()} ADP ${teamQB.adp}`);
         }
       }
     }
@@ -367,13 +370,18 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   // Not applied to QBs — QB stacking should come from same-team pass-catchers
   // only (qbPull bonus above), not from playing against teams you own.
   // Skipped when stack intensity is off so pure ADP/value mode is truly stack-free.
-  if (stackIntensity !== 'off' && pos !== 'QB') mult *= getPlayoffBonus(player, myTeam);
+  if (stackIntensity !== 'off' && pos !== 'QB') {
+    const pb = getPlayoffBonus(player, myTeam);
+    if (pb > 1.001) apply(pb, 'Playoff stack', playoffStackReason(player, myTeam) || '');
+  }
 
-  // Bye week penalty — discourage stacking too many players on the same bye
-  mult *= getByeWeekPenalty(player, myTeam);
+  const byePen = getByeWeekPenalty(player, myTeam);
+  if (byePen < 0.999) apply(byePen, 'Bye week clash', byeWeekWarning(player, myTeam) || '');
 
-  // QB tier boost — amplify QB urgency based on how many QBs are off the board
-  if (pos === 'QB') mult *= getQBTierBoost(qbsTaken, myQBs);
+  if (pos === 'QB') {
+    const qbTierBoost = getQBTierBoost(qbsTaken, myQBs);
+    if (qbTierBoost > 1.001) apply(qbTierBoost, 'QB tier depletion', `${qbsTaken} QBs taken`);
+  }
 
   // Value-steal boost / reach penalty: compares ADP to current overall pick.
   // myPickNumber is the overall pick; player.adp is also overall — apples to apples.
@@ -400,7 +408,8 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     // lower so a fallen QB doesn't overwhelm a bring-back target.
     const normalizedValue = valueGap / userRound;
     const stealCap = pos === 'QB' ? 0.20 : 0.60;
-    mult *= (1 + Math.min(normalizedValue * 0.20, stealCap));
+    const m = 1 + Math.min(normalizedValue * 0.20, stealCap);
+    apply(m, 'Value steal', `fell ${valueGap} picks (ADP ${player.adp} at pick ${myPickNumber})`);
   } else if (valueGap < 0) {
     // Reach penalty — drafting a player ahead of their ADP.
     // Two-stage rate: first 10 picks of reach at a base rate, anything beyond
@@ -423,7 +432,7 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
       (baseReach * 0.08 + excessReach * 0.20) / effectiveRound,
       0.70
     );
-    mult *= (1 - penalty);
+    apply(1 - penalty, 'Reach penalty', `${reachGap} picks early (ADP ${player.adp} at pick ${myPickNumber})`);
   }
 
   return adpValue * mult;
@@ -501,10 +510,14 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
   for (const t in availPCByTeam) availPCByTeam[t].sort((a, b) => (a.adp || 999) - (b.adp || 999));
 
   const scored = pool.map(p => {
-    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, rbPriority, qbsTaken, availQBByTeam, availPCByTeam, nextMyPick);
+    const bd = [];
+    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, rbPriority, qbsTaken, availQBByTeam, availPCByTeam, nextMyPick, bd);
     if (diversifyStrength > 0 && exposure[p.id]) {
-      val *= (1 - exposure[p.id].exposure_rate * diversifyStrength);
+      const divMult = 1 - exposure[p.id].exposure_rate * diversifyStrength;
+      if (Math.abs(divMult - 1) > 0.001) bd.push({ label: 'Diversify', mult: divMult, note: `${Math.round(exposure[p.id].exposure_rate * 100)}% exposure` });
+      val *= divMult;
     }
+    const baseScore = 1000 / (p.adp || 1);
 
     const gap        = myPickNumber - (p.adp || myPickNumber);
     const pRound     = myTeam.length + 1;
@@ -557,7 +570,7 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
       reason = reason ? `${reason} · ⚡ ${qbAlert}` : `⚡ ${qbAlert}`;
     }
 
-    return { player: p, value: val, reason };
+    return { player: p, value: val, reason, bd, baseScore };
   });
 
   scored.sort((a, b) => b.value - a.value);

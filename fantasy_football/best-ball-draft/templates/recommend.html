@@ -289,6 +289,23 @@
     .qb-run-alert   { background: var(--green-bg); border: 1px solid var(--green); border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.82em; color: var(--green); font-weight: 600; }
     .mc-badge { font-size: 0.65em; font-weight: 700; padding: 1px 5px; border-radius: 3px; background: var(--green-bg); color: var(--green); margin-left: 6px; vertical-align: middle; }
 
+    /* ── Score breakdown ── */
+    .rec-score-badge { font-size: 0.7em; font-weight: 700; color: var(--muted); background: var(--surface); border: 1px solid var(--border-soft); border-radius: 4px; padding: 2px 6px; cursor: pointer; float: right; margin-left: 8px; }
+    .rec-card.expanded .rec-score-badge { color: var(--accent); border-color: var(--accent); }
+    .rec-breakdown { display: none; margin-top: 8px; border-top: 1px solid var(--border-soft); padding-top: 8px; }
+    .rec-card.expanded .rec-breakdown { display: block; }
+    .bd-base { display: flex; justify-content: space-between; font-size: 0.78em; color: var(--muted); margin-bottom: 5px; }
+    .bd-base span:last-child { font-weight: 700; color: var(--text); }
+    .bd-row { display: flex; align-items: baseline; gap: 8px; font-size: 0.76em; padding: 2px 0; border-bottom: 1px solid var(--border-soft); }
+    .bd-row:last-child { border-bottom: none; }
+    .bd-mult { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 46px; }
+    .bd-mult.boost  { color: var(--green); }
+    .bd-mult.penalty { color: var(--red); }
+    .bd-label { color: var(--text); flex-shrink: 0; }
+    .bd-note  { color: var(--muted2); font-size: 0.9em; flex: 1; text-align: right; }
+    .bd-total { display: flex; justify-content: space-between; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--border); font-size: 0.78em; }
+    .bd-total span:last-child { font-weight: 700; color: var(--accent); }
+
     /* ── Manual draft input ── */
     #manualDraftId { flex: 1; padding: 9px 10px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.92em; }
 
@@ -1363,11 +1380,34 @@ function renderRecs() {
     const mcBadge = mc !== null
       ? `<span class="mc-badge" title="Monte Carlo: expected best-ball pts added">+${mc.toFixed(1)}</span>`
       : '';
-    return `<div class="rec-card">
+
+    // Score breakdown panel
+    const bdRows = (r.bd || []).map(b => {
+      const isBoost = b.mult > 1;
+      const multStr = (isBoost ? '×' : '×') + b.mult.toFixed(3);
+      return `<div class="bd-row">
+        <span class="bd-mult ${isBoost ? 'boost' : 'penalty'}">${multStr}</span>
+        <span class="bd-label">${b.label}</span>
+        <span class="bd-note">${b.note || ''}</span>
+      </div>`;
+    }).join('');
+    const scoreVal = r.value.toFixed(2);
+    const baseVal  = (r.baseScore || (1000 / (p.adp || 1))).toFixed(2);
+    const breakdown = `<div class="rec-breakdown">
+      <div class="bd-base"><span>Base (1000 ÷ ADP ${p.adp})</span><span>${baseVal}</span></div>
+      ${bdRows}
+      <div class="bd-total"><span>Final score</span><span>${scoreVal}</span></div>
+    </div>`;
+
+    return `<div class="rec-card" onclick="this.classList.toggle('expanded')">
       <div class="rec-rank">#${i+1}</div>
-      <div><span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span>${mcBadge}</div>
+      <div>
+        <span class="rec-score-badge">${scoreVal}</span>
+        <span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span>${mcBadge}
+      </div>
       <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ${useCustomRankings ? 'Rank' : 'ADP'} ${Math.round(p.adp)}</div>
       ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
+      ${breakdown}
     </div>`;
   }).join('');
 }
