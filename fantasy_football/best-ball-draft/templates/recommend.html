@@ -1451,8 +1451,10 @@ function renderStackWindows() {
       </span>`;
     }).join('');
 
-    // A QB "has stack" if I own them OR I own at least one of their pass catchers
-    const hasStack = isMine || pcs.some(pc => myTeamSet.has(pc.id));
+    // A QB "has stack" if I own them OR I own at least one WR/TE from their team.
+    // RBs are shown in the chips but don't trigger the stack-connection promotion
+    // because the Recs bring-back signal (passCatcherCount) also only counts WR/TE.
+    const hasStack = isMine || pcs.some(pc => myTeamSet.has(pc.id) && ['WR','TE'].includes(pc.pos));
 
     return { html: `<div class="round-window${hasStack ? ' rw-active' : ''}">
       <div class="rw-header">
