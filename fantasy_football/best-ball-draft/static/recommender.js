@@ -8,12 +8,13 @@
 // rbCorrel   = RB from a team where you already have other players (correlated scoring)
 
 const STACK_SETTINGS = {
-  //            existing ──────────────────────────────────  new ──────────────────────────
+  //            existing ──────────────────────────────────  new ──────────────────────
   //            first   second  qbPull  cluster rbCorrel    stackReady  bringbackWindow
+  // bringbackWindow is the CEILING of qbPull when urgency is max (interpolated, not compounded)
   off:    { first: 1.00, second: 1.00, qbPull: 1.00, cluster: 1.00, rbCorrel: 1.00, stackReady: 1.00, bringbackWindow: 1.00 },
-  light:  { first: 1.15, second: 1.05, qbPull: 1.10, cluster: 1.05, rbCorrel: 1.03, stackReady: 1.06, bringbackWindow: 1.12 },
-  medium: { first: 1.25, second: 1.10, qbPull: 1.18, cluster: 1.10, rbCorrel: 1.05, stackReady: 1.10, bringbackWindow: 1.20 },
-  heavy:  { first: 1.40, second: 1.18, qbPull: 1.28, cluster: 1.15, rbCorrel: 1.08, stackReady: 1.15, bringbackWindow: 1.30 },
+  light:  { first: 1.15, second: 1.05, qbPull: 1.10, cluster: 1.05, rbCorrel: 1.03, stackReady: 1.06, bringbackWindow: 1.15 },
+  medium: { first: 1.25, second: 1.10, qbPull: 1.18, cluster: 1.10, rbCorrel: 1.05, stackReady: 1.10, bringbackWindow: 1.25 },
+  heavy:  { first: 1.40, second: 1.18, qbPull: 1.28, cluster: 1.15, rbCorrel: 1.08, stackReady: 1.15, bringbackWindow: 1.35 },
 };
 
 // ── QB tier tracking ──────────────────────────────────────────────────────────
@@ -304,8 +305,22 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     }
 
     if (pos === 'QB') {
-      // QB whose pass-catchers I already own
-      if (existingCatchers >= 1) mult *= s.qbPull;
+      // Bring-back: I own pass-catchers for this QB.
+      // bringbackWindow is the ceiling, interpolated by how likely the QB is to
+      // survive until my next pick — so it replaces qbPull at high urgency rather
+      // than compounding on top of it.
+      if (existingCatchers >= 1) {
+        let bringbackMult = s.qbPull;
+        if (nextMyPick != null) {
+          const windowSize = Math.max(1, nextMyPick - myPickNumber);
+          const adpGap     = Math.max(0, (player.adp || myPickNumber) - myPickNumber);
+          if (adpGap < windowSize * 1.5) {
+            const urgency = Math.max(0, 1 - adpGap / windowSize);
+            bringbackMult = s.qbPull + urgency * (s.bringbackWindow - s.qbPull);
+          }
+        }
+        mult *= bringbackMult;
+      }
     }
 
     if (pos === 'RB' && teamMates >= 1) {
@@ -313,24 +328,14 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
       mult *= s.rbCorrel;
     }
 
-    // ── Stack co-availability ─────────────────────────────────────────────────
-    // Bonus when the other half of a stack is still on the board, signalling a
-    // complete stack is actually achievable vs. orphaned.
-
-    if (pos === 'QB' && availPCByTeam) {
-      // QB value rises when his top pass-catchers are still available to draft later
-      const avail = (availPCByTeam[player.team] || []).slice(0, 3);
-      if (avail.length >= 2) mult *= s.stackReady;
-      else if (avail.length === 1) mult *= 1 + (s.stackReady - 1) * 0.5;
-    }
-
+    // ── Stack co-availability (WR/TE only) ────────────────────────────────────
+    // Bonus when this WR/TE's QB is still on the board and I don't own him yet —
+    // the stack is completable. Scales by QB tier so only matters for real QBs.
     if (['WR', 'TE'].includes(pos) && availQBByTeam) {
       const qbTeams2 = getMyQBTeams(myTeam);
-      // Only apply when I don't already own this team's QB (existing s.first handles that case)
       if (!qbTeams2.has(player.team)) {
         const teamQB = availQBByTeam[player.team];
         if (teamQB) {
-          // QB still on the board — scale bonus by QB tier quality
           const qbTier = (teamQB.adp || 999) <= 48  ? 1.0
                        : (teamQB.adp || 999) <= 96  ? 0.7
                        : (teamQB.adp || 999) <= 144 ? 0.4
@@ -338,20 +343,6 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
           mult *= 1 + (s.stackReady - 1) * qbTier;
         }
       }
-    }
-  }
-
-  // ── Bring-back window urgency ─────────────────────────────────────────────────
-  // If I already own pass-catchers for this QB, push him up proportional to how
-  // likely he is to be gone before my next pick. urgency = 1 when his ADP is at
-  // or before the current pick (already a fallback), 0 when his ADP is at my
-  // next-pick boundary (he'll probably survive).
-  if (pos === 'QB' && existingCatchers >= 1 && nextMyPick != null && stackIntensity !== 'off') {
-    const windowSize = Math.max(1, nextMyPick - myPickNumber);
-    const adpGap     = Math.max(0, (player.adp || myPickNumber) - myPickNumber);
-    if (adpGap < windowSize * 1.5) {
-      const urgency = Math.max(0, 1 - adpGap / windowSize);
-      mult *= 1 + urgency * (s.bringbackWindow - 1);
     }
   }
 
@@ -518,11 +509,7 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
       reason = reason ? `${reason} · ${p.team} game-script correlation` : `${p.team} game-script correlation`;
     }
 
-    // Stack co-availability signals
-    if (p.pos === 'QB' && availPCByTeam[p.team]?.length >= 2) {
-      const topNames = availPCByTeam[p.team].slice(0, 2).map(pc => pc.name.split(' ').pop()).join(', ');
-      reason = reason ? `${reason} · stack ready: ${topNames} avail` : `stack ready: ${topNames} avail`;
-    }
+    // Stack co-availability (WR/TE only — QB stackReady removed to avoid over-pushing QBs)
     if (['WR', 'TE'].includes(p.pos) && !qbTeams.has(p.team) && availQBByTeam[p.team]) {
       const qb = availQBByTeam[p.team];
       if ((qb.adp || 999) <= 144) {
