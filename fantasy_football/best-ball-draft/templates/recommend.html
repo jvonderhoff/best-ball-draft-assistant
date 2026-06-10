@@ -1636,6 +1636,7 @@ function renderTargetRow(p, urgentThreshold) {
     ? customRankMap[p.id]
     : (p.adp || 999);
   const isUrgent = urgentThreshold != null && effectiveRank <= urgentThreshold;
+  if (p.name === 'Mark Andrews') console.log('[renderTargetRow] Andrews | adp:', p.adp, '| customRank:', customRankMap[p.id], '| useCustom:', useCustomRankings, '| effectiveRank:', effectiveRank, '| threshold:', urgentThreshold, '| isUrgent:', isUrgent);
   const rankLabel = useCustomRankings && customRankMap[p.id] != null ? 'Rank' : 'ADP';
   return `<div class="spr target${isUrgent ? ' urgent' : ''}">
     <span class="spr-pos ${p.pos}">${p.pos}</span>
