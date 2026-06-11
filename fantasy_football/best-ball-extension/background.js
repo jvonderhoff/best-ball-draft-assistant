@@ -1,30 +1,37 @@
 const bAPI = typeof browser !== 'undefined' ? browser : chrome;
 
-// ── Native messaging ──────────────────────────────────────────────────────────
-// db_writer.py is launched on-demand by Firefox; no server needs to be running.
+// ── Remote Flask (Render) ─────────────────────────────────────────────────────
+const RENDER_BASE = 'https://best-ball-draft-assistant.onrender.com';
 
-function callNative(msg) {
-  return new Promise((resolve) => {
-    bAPI.runtime.sendNativeMessage('bestball_assistant', msg, response => {
-      if (bAPI.runtime.lastError) {
-        console.error('[BBA background] native messaging error:', bAPI.runtime.lastError.message);
-        resolve({ ok: false, error: bAPI.runtime.lastError.message });
-        return;
-      }
-      console.log('[BBA background] native response:', response);
-      resolve(response || { ok: false, error: 'empty response' });
+async function renderPost(endpoint, body) {
+  try {
+    const r = await fetch(RENDER_BASE + endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
-  });
+    return r.ok ? await r.json() : { ok: false, status: r.status };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
-// ── Message handler ───────────────────────────────────────────────────────────
+async function renderGet(endpoint) {
+  try {
+    const r = await fetch(RENDER_BASE + endpoint);
+    return r.ok ? await r.json() : { ok: false, status: r.status };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
 
-const FLASK_BASE = 'https://192.168.1.161:8000';
+// ── Local Flask proxy (live-draft push) ───────────────────────────────────────
+// Content scripts can't reach the self-signed LAN cert; background.js can.
+const LOCAL_BASE = 'https://192.168.1.161:8000';
 
-// Proxy Flask requests from content scripts (which can't reach the self-signed cert).
 async function flaskPost(endpoint, body) {
   try {
-    const r = await fetch(FLASK_BASE + endpoint, {
+    const r = await fetch(LOCAL_BASE + endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -37,12 +44,28 @@ async function flaskPost(endpoint, body) {
 
 async function flaskGet(endpoint) {
   try {
-    const r = await fetch(FLASK_BASE + endpoint);
+    const r = await fetch(LOCAL_BASE + endpoint);
     return r.ok ? await r.json() : { ok: false, status: r.status };
   } catch (e) {
     return { ok: false, error: e.message };
   }
 }
+
+// ── Save draft to Render ──────────────────────────────────────────────────────
+async function saveDraftToRender(msg) {
+  const body = {
+    dk_draft_id: msg.dk_draft_id,
+    my_position: msg.my_position,
+    picks:       msg.picks,
+    contest:     msg.contest || '',
+  };
+  const result = await renderPost('/api/drafts/import', body);
+  if (result.duplicate) return { ok: true, duplicate: true, draft_id: result.draft_id };
+  if (result.success)   return { ok: true, draft_id: result.draft_id };
+  return { ok: false, error: result.error || 'unknown' };
+}
+
+// ── Message handler ───────────────────────────────────────────────────────────
 
 bAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'openTab') {
@@ -54,7 +77,7 @@ bAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     bAPI.tabs.remove(sender.tab.id);
   }
 
-  // Proxy Flask POST/GET from content scripts (cert not trusted in content script context)
+  // Proxy local Flask POST/GET (live-draft push)
   if (msg.action === 'flaskPost') {
     flaskPost(msg.endpoint, msg.body).then(sendResponse);
     return true;
@@ -65,8 +88,17 @@ bAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  if (['saveDraft', 'getExposure', 'refreshPlayers', 'getRankings'].includes(msg.action)) {
-    callNative(msg).then(sendResponse);
-    return true; // keep channel open for async response
+  // Save completed draft to Render
+  if (msg.action === 'saveDraft') {
+    saveDraftToRender(msg).then(sendResponse);
+    return true;
+  }
+
+  // Rankings — read from Render
+  if (msg.action === 'getRankings') {
+    renderGet('/api/rankings').then(data => {
+      sendResponse(Array.isArray(data) ? { ok: true, data } : { ok: false });
+    });
+    return true;
   }
 });
