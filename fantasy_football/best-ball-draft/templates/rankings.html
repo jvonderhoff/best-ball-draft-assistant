@@ -346,6 +346,7 @@
     </div>
     <div class="toolbar-right">
       <span class="count-label" id="countLabel"></span>
+      <button class="btn btn-reset btn-sm" id="sortRankBtn">Sort by My Rank</button>
       <button class="btn btn-reset btn-sm" id="sortAdpBtn">Sort by DK ADP</button>
     </div>
   </div>
@@ -693,17 +694,27 @@ async function resetToAdp() {
 
 async function reset200ToAdp() {
   const threshold = parseInt(document.getElementById('resetThresholdInput').value, 10) || 200;
-  // Keep ranks below threshold intact.
-  // Take all players ranked >= threshold (or unranked) and re-number them
-  // sequentially starting at `threshold`, ordered by ADP.
-  const keep = allPlayers.filter(p => p.custom_rank != null && p.custom_rank < threshold);
+
+  const keep  = allPlayers.filter(p => p.custom_rank != null && p.custom_rank < threshold);
   const reset = allPlayers.filter(p => p.custom_rank == null || p.custom_rank >= threshold);
+
+  // Sort reset pool by ADP, assign sequential ranks starting at threshold.
+  // Every player gets a unique rank. Lane at ADP 230.7 lands at 200 + (his
+  // position in the ADP-sorted reset pool) — not his ADP value, but in order.
   reset.sort((a, b) => (a.adp || 9999) - (b.adp || 9999));
   reset.forEach((p, i) => { p.custom_rank = threshold + i; });
-  allPlayers = [...keep, ...reset].sort((a, b) => a.custom_rank - b.custom_rank);
+
+  allPlayers = [...keep, ...reset].sort((a, b) => (a.custom_rank || 9999) - (b.custom_rank || 9999));
   renderTable();
   await saveRankings();
   setStatus(`${reset.length} players from rank ${threshold}+ re-ordered by DK ADP`, 'ok');
+}
+
+// ── Sort by My Rank ────────────────────────────────────────────────────────────
+// Sorts display by custom rank (unranked players go to the bottom).
+function sortByCustomRank() {
+  allPlayers.sort((a, b) => (a.custom_rank || 9999) - (b.custom_rank || 9999));
+  renderTable();
 }
 
 // ── Sort by DK ADP ─────────────────────────────────────────────────────────────
@@ -765,6 +776,7 @@ async function refreshAdp() {
 document.getElementById('refreshAdpBtn').addEventListener('click', refreshAdp);
 document.getElementById('saveBtn').addEventListener('click', saveRankings);
 document.getElementById('exportBtn').addEventListener('click', exportToExtension);
+document.getElementById('sortRankBtn').addEventListener('click', sortByCustomRank);
 document.getElementById('sortAdpBtn').addEventListener('click', sortByAdp);
 document.getElementById('resetBtn').addEventListener('click', () => {
   document.getElementById('resetModal').classList.add('open');
@@ -781,7 +793,7 @@ document.getElementById('reset200Btn').addEventListener('click', () => {
   const threshold = parseInt(document.getElementById('resetThresholdInput').value, 10) || 200;
   document.getElementById('reset200ModalTitle').textContent = `Reset Ranks ${threshold}+?`;
   document.getElementById('reset200ModalBody').textContent =
-    `This will set the custom rank of any player you've ranked ${threshold} or higher to their DK ADP value. Your top ${threshold - 1} ranks and all notes are kept.`;
+    `Players ranked ${threshold}+ will be re-ordered by DK ADP and given sequential ranks starting at ${threshold}. Your top ${threshold - 1} ranks and all notes are kept.`;
   document.getElementById('reset200Modal').classList.add('open');
 });
 document.getElementById('reset200CancelBtn').addEventListener('click', () => {

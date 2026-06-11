@@ -146,6 +146,11 @@ def refresh_players(players):
         """, [(p['id'], p['name'], p['pos'], p['team'], p.get('adp'),
                p.get('week15'), p.get('week16'), p.get('week17'))
               for p in players])
+        # Remove rankings for players no longer in the pool
+        conn.execute("""
+            DELETE FROM player_rankings
+            WHERE player_id NOT IN (SELECT player_id FROM players)
+        """)
     return len(players)
 
 
