@@ -161,6 +161,11 @@ def rankings_page():
     return render_template('rankings.html')
 
 
+@app.route('/sandbox')
+def sandbox_page():
+    return render_template('sandbox.html')
+
+
 @app.route('/api/rankings', methods=['GET'])
 def get_rankings_route():
     return jsonify(get_rankings())
