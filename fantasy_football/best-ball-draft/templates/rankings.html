@@ -683,25 +683,27 @@ async function exportToExtension() {
 
 // ── Reset ──────────────────────────────────────────────────────────────────────
 async function resetToAdp() {
-  // Set every custom rank to the player's DK ADP value
-  allPlayers.forEach(p => { p.custom_rank = Math.round(p.adp || 9999); });
+  // Sort all players by ADP and assign sequential ranks 1, 2, 3...
+  allPlayers.sort((a, b) => (a.adp || 9999) - (b.adp || 9999));
+  allPlayers.forEach((p, i) => { p.custom_rank = i + 1; });
   renderTable();
   await saveRankings();
-  setStatus('All ranks set to DK ADP', 'ok');
+  setStatus('All ranks set to DK ADP order', 'ok');
 }
 
 async function reset200ToAdp() {
   const threshold = parseInt(document.getElementById('resetThresholdInput').value, 10) || 200;
-  let count = 0;
-  allPlayers.forEach(p => {
-    if (p.custom_rank != null && p.custom_rank >= threshold) {
-      p.custom_rank = Math.round(p.adp || 9999);
-      count++;
-    }
-  });
+  // Keep ranks below threshold intact.
+  // Take all players ranked >= threshold (or unranked) and re-number them
+  // sequentially starting at `threshold`, ordered by ADP.
+  const keep = allPlayers.filter(p => p.custom_rank != null && p.custom_rank < threshold);
+  const reset = allPlayers.filter(p => p.custom_rank == null || p.custom_rank >= threshold);
+  reset.sort((a, b) => (a.adp || 9999) - (b.adp || 9999));
+  reset.forEach((p, i) => { p.custom_rank = threshold + i; });
+  allPlayers = [...keep, ...reset].sort((a, b) => a.custom_rank - b.custom_rank);
   renderTable();
   await saveRankings();
-  setStatus(`${count} players at rank ${threshold}+ set to their DK ADP`, 'ok');
+  setStatus(`${reset.length} players from rank ${threshold}+ re-ordered by DK ADP`, 'ok');
 }
 
 // ── Sort by DK ADP ─────────────────────────────────────────────────────────────
