@@ -658,10 +658,8 @@ def fetch_players(force_refresh=False):
             'week17': schedule[2],
         })
 
-    # Sort by ADP ascending, then re-number as sequential integers
+    # Sort by ADP ascending — keep real ADP values (do not replace with rank position)
     players.sort(key=lambda p: p['adp'])
-    for i, p in enumerate(players, 1):
-        p['adp'] = i
 
     _save_cache(players, '2026')
     return players
