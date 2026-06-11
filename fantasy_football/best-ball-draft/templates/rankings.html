@@ -670,11 +670,10 @@ async function resetToAdp() {
 }
 
 // ── Sort by DK ADP ─────────────────────────────────────────────────────────────
+// Sorts the display by ADP without assigning or overwriting custom ranks.
 function sortByAdp() {
   allPlayers.sort((a, b) => (a.adp || 9999) - (b.adp || 9999));
-  allPlayers.forEach((p, i) => { p.custom_rank = i + 1; });
   renderTable();
-  markDirty();
 }
 
 // ── Header sort ────────────────────────────────────────────────────────────────

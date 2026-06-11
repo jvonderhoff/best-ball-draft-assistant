@@ -643,7 +643,7 @@ def fetch_players(force_refresh=False):
         team     = dk_p['team']
         schedule = PLAYOFF_SCHEDULE_2026.get(team, (None, None, None))
         player_id = dk_p.get('dk_id') or f'dk_{i}'
-        adp = dk_p.get('adp') or i
+        adp = round(dk_p.get('adp') or i, 1)
 
         players.append({
             'id':     player_id,
