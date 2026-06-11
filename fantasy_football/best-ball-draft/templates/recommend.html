@@ -1430,12 +1430,12 @@ function renderRecs() {
         <span class="bd-note">${b.note || ''}</span>
       </div>`;
     }).join('');
-    const scoreVal = r.value.toFixed(2);
+    const scoreVal = (r.blendedScore ?? r.value).toFixed(2);
     const baseVal  = (r.baseScore || (1000 / (p.adp || 1))).toFixed(2);
     const breakdown = `<div class="rec-breakdown">
       <div class="bd-base"><span>Base (1000 ÷ ADP ${p.adp})</span><span>${baseVal}</span></div>
       ${bdRows}
-      <div class="bd-total"><span>Final score</span><span>${scoreVal}</span></div>
+      <div class="bd-total"><span>Final score</span><span>${r.value.toFixed(2)}${r.blendedScore != null ? ` → ${scoreVal} (MC blend)` : ''}</span></div>
     </div>`;
 
     return `<div class="rec-card" onclick="this.classList.toggle('expanded')">
