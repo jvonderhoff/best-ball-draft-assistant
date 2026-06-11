@@ -1330,9 +1330,13 @@ function renderHeader() {
   document.getElementById('pickNum').textContent  = displayPick;
   document.getElementById('roundNum').textContent = round;
 
-  const myTurn = isMyTurn(pick, settings.numTeams, settings.myPosition);
+  const draftDone = state.myTeam.length >= 20;
+  const myTurn = !draftDone && isMyTurn(pick, settings.numTeams, settings.myPosition);
   const badge  = document.getElementById('turnBadge');
-  if (myTurn) {
+  if (draftDone) {
+    badge.className   = 'not-turn-badge';
+    badge.textContent = 'Draft complete';
+  } else if (myTurn) {
     badge.className   = 'my-turn-badge';
     badge.textContent = 'YOUR PICK';
   } else {
