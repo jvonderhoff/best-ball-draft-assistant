@@ -376,7 +376,7 @@
 <div class="modal-overlay" id="resetModal">
   <div class="modal">
     <h3>Reset Rankings?</h3>
-    <p>This will clear all your custom ranks and revert to DK ADP order. Notes will be kept. This cannot be undone.</p>
+    <p>This will set every custom rank to match the player's DK ADP value. Notes will be kept. This cannot be undone.</p>
     <div class="modal-actions">
       <button class="btn btn-reset" id="resetCancelBtn">Cancel</button>
       <button class="btn btn-primary" id="resetConfirmBtn">Reset</button>
@@ -683,11 +683,11 @@ async function exportToExtension() {
 
 // ── Reset ──────────────────────────────────────────────────────────────────────
 async function resetToAdp() {
-  // Clear all custom ranks, keep notes
-  allPlayers.forEach(p => { p.custom_rank = null; });
+  // Set every custom rank to the player's DK ADP value
+  allPlayers.forEach(p => { p.custom_rank = Math.round(p.adp || 9999); });
   renderTable();
   await saveRankings();
-  setStatus('Rankings reset to DK ADP order', 'ok');
+  setStatus('All ranks set to DK ADP', 'ok');
 }
 
 async function reset200ToAdp() {
@@ -695,13 +695,13 @@ async function reset200ToAdp() {
   let count = 0;
   allPlayers.forEach(p => {
     if (p.custom_rank != null && p.custom_rank >= threshold) {
-      p.custom_rank = null;
+      p.custom_rank = Math.round(p.adp || 9999);
       count++;
     }
   });
   renderTable();
   await saveRankings();
-  setStatus(`${count} players at rank ${threshold}+ reset to DK ADP`, 'ok');
+  setStatus(`${count} players at rank ${threshold}+ set to their DK ADP`, 'ok');
 }
 
 // ── Sort by DK ADP ─────────────────────────────────────────────────────────────
@@ -779,7 +779,7 @@ document.getElementById('reset200Btn').addEventListener('click', () => {
   const threshold = parseInt(document.getElementById('resetThresholdInput').value, 10) || 200;
   document.getElementById('reset200ModalTitle').textContent = `Reset Ranks ${threshold}+?`;
   document.getElementById('reset200ModalBody').textContent =
-    `This will clear custom ranks for any player you've ranked ${threshold} or higher, reverting them to DK ADP. Your top ${threshold - 1} ranks and all notes are kept.`;
+    `This will set the custom rank of any player you've ranked ${threshold} or higher to their DK ADP value. Your top ${threshold - 1} ranks and all notes are kept.`;
   document.getElementById('reset200Modal').classList.add('open');
 });
 document.getElementById('reset200CancelBtn').addEventListener('click', () => {
