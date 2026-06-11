@@ -37,23 +37,6 @@ function getQBTierBoost(qbsTaken, myQBs) {
   return myQBs === 0 ? 1.15 : 1.08;
 }
 
-// ── RB tier tracking ──────────────────────────────────────────────────────────
-// Boosts RB value based on how many RBs have been taken from the board overall,
-// signaling tier depletion rather than just round number.
-//
-// Tier 1 (~top 12 RBs):  first 12 RBs off the board
-// Tier 2 (~RBs 13-24):   RBs 13-24 off the board
-// Tier 3 (RBs 25+):      25+ RBs taken — late scarcity
-//
-// rbsTaken: total RBs drafted by all teams so far.
-// myRBs:    RBs already on your roster.
-function getRBTierBoost(rbsTaken, myRBs) {
-  if (myRBs >= 4)    return 1.0;  // already RB-heavy, no urgency boost
-  if (rbsTaken < 6)  return 1.0;  // board still deep, no tier pressure yet
-  if (rbsTaken < 12) return myRBs === 0 ? 1.08 : 1.04;
-  if (rbsTaken < 24) return myRBs <= 1  ? 1.12 : myRBs === 2 ? 1.06 : 1.0;
-  return               myRBs <= 1  ? 1.18 : myRBs === 2 ? 1.10 : myRBs === 3 ? 1.04 : 1.0;
-}
 
 // Human-readable alert label, or null if no action needed.
 function qbTierLabel(qbsTaken, myQBs) {
@@ -213,7 +196,7 @@ function byeWeekWarning(player, myTeam) {
 // nextMyPick:    overall pick number of my NEXT turn after this one (for window urgency)
 // bd (breakdown): optional array — if provided, each applied multiplier is pushed as
 // { label, mult, note } so callers can explain the score to the user.
-function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', rbPriority = 'strong', qbsTaken = 0, rbsTaken = 0, availQBByTeam = null, availPCByTeam = null, nextMyPick = null, bd = null) {
+function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', qbsTaken = 0, availQBByTeam = null, availPCByTeam = null, nextMyPick = null, bd = null) {
   // Use inverse ADP so value is always positive and naturally orders players.
   // adp=1 → 1000, adp=50 → 20, adp=100 → 10, adp=200 → 5, adp=500 → 2
   // This ensures late-round players still have relative ordering rather than
@@ -353,29 +336,7 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   // Those signals are self-sufficient; layering a round-based multiplier on top
   // pushed early-round picks too aggressively regardless of actual fit.
 
-  // RB priority — boost RBs in early rounds to encourage drafting them before WRs.
-  // Tapers off after round 5 since late RBs carry more risk than late WRs.
-  //   mild:    rounds 1-3 ×1.10, rounds 4-5 ×1.05
-  //   strong:  rounds 1-3 ×1.20, rounds 4-5 ×1.10
-  //   extreme: rounds 1-3 ×1.35, rounds 4-5 ×1.18, rounds 6-7 ×1.08
-  // Guard: suppress boost when already RB-heavy relative to WR count.
-  // Having ≥2 more RBs than WRs means the roster is imbalanced enough that
-  // the urgency signal has already been acted on — don't keep piling on.
   const myRBs = myTeam.filter(p => p.pos === 'RB').length;
-  if (pos === 'RB' && rbPriority !== 'off' && myRBs < myWRs + 2) {
-    const boosts = {
-      mild:    [0, 1.10, 1.10, 1.10, 1.05, 1.05, 1.0],
-      strong:  [0, 1.20, 1.20, 1.20, 1.10, 1.10, 1.0],
-      extreme: [0, 1.35, 1.35, 1.35, 1.18, 1.18, 1.08, 1.08],
-    };
-    const table = boosts[rbPriority] || boosts.strong;
-    const boost = table[Math.min(userRound, table.length - 1)] || 1.0;
-    if (boost > 1.001) apply(boost, 'RB priority', `rd ${userRound}, ${rbPriority}`);
-
-    // Board depletion — layer on urgency based on how many RBs are already gone
-    const rbTierBoost = getRBTierBoost(rbsTaken, myRBs);
-    if (rbTierBoost > 1.001) apply(rbTierBoost, 'RB depletion', `${rbsTaken} RBs taken`);
-  }
 
   // Same-team stacking bonuses — skipped for FA players (no real NFL team)
   const s = STACK_SETTINGS[stackIntensity] || STACK_SETTINGS.medium;
@@ -532,7 +493,7 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
 
 // ── Recommendation ────────────────────────────────────────────────────────────
 
-function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, rbPriority = 'strong') {
+function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5) {
   if (!available.length) return null;
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
@@ -542,7 +503,7 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
 
   let best = null, bestVal = -1;
   for (const p of pool) {
-    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, rbPriority);
+    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity);
     // Diversification penalty
     if (diversifyStrength > 0 && exposure[p.id]) {
       val *= (1 - exposure[p.id].exposure_rate * diversifyStrength);
@@ -575,7 +536,7 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
 
 // Returns the top N recommendations sorted by value score.
 // nextMyPick: overall pick number of my next turn after myPickNumber (for window urgency).
-function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, n = 5, rbPriority = 'strong', qbsTaken = 0, rbsTaken = 0, nextMyPick = null) {
+function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity = 'medium', exposure = {}, diversifyStrength = 0.5, n = 5, qbsTaken = 0, nextMyPick = null) {
   if (!available.length) return [];
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
@@ -604,7 +565,7 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
 
   const scored = pool.map(p => {
     const bd = [];
-    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, rbPriority, qbsTaken, rbsTaken, availQBByTeam, availPCByTeam, nextMyPick, bd);
+    let val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, qbsTaken, availQBByTeam, availPCByTeam, nextMyPick, bd);
     if (diversifyStrength > 0 && exposure[p.id]) {
       const divMult = 1 - exposure[p.id].exposure_rate * diversifyStrength;
       if (Math.abs(divMult - 1) > 0.001) bd.push({ label: 'Diversify', mult: divMult, note: `${Math.round(exposure[p.id].exposure_rate * 100)}% exposure` });

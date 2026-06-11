@@ -567,8 +567,7 @@ const SETTINGS_KEY = 'bba_settings';
 let settings = loadSettings();
 
 // Hardcoded recommender constants — tweak directly in code
-const STACK_INTENSITY   = 'heavy';
-const RB_PRIORITY       = 'strong';
+const STACK_INTENSITY    = 'heavy';
 const DIVERSIFY_STRENGTH = 0.1;
 
 function defaultSettings() {
@@ -1322,7 +1321,6 @@ function renderRecs() {
     : (nextMyOverallPick(state.overallPick, settings.numTeams, settings.myPosition) || state.overallPick);
 
   const qbsTaken = PLAYERS.filter(p => p.pos === 'QB' && state.takenIds.has(p.id)).length;
-  const rbsTaken = PLAYERS.filter(p => p.pos === 'RB' && state.takenIds.has(p.id)).length;
   const nextMyPick = nextMyOverallPick(pickForRec + 1, settings.numTeams, settings.myPosition);
   // Fetch a wider pool so MC can re-rank within it; final display still shows top 10.
   const userRound = state.myTeam.length + 1;
@@ -1330,7 +1328,7 @@ function renderRecs() {
   const recs = getTopRecommendations(
     available, state.myTeam, pickForRec,
     STACK_INTENSITY, exposure, DIVERSIFY_STRENGTH,
-    MC_POOL, RB_PRIORITY, qbsTaken, rbsTaken, nextMyPick
+    MC_POOL, qbsTaken, nextMyPick
   );
 
   const el = document.getElementById('recsList');
