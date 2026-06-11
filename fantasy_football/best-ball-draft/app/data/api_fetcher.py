@@ -614,16 +614,28 @@ def fetch_dk_players(ranking_id: str = DK_RANKINGS_ID) -> list:
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
+def _normalize_name(name: str) -> str:
+    """Lowercase, strip suffixes and punctuation for cross-source name matching."""
+    import re
+    name = name.lower()
+    name = re.sub(r"\b(jr\.?|sr\.?|ii|iii|iv)\b", '', name)
+    name = re.sub(r"[^a-z ]", '', name)
+    return ' '.join(name.split())
+
+
 def fetch_players(force_refresh=False):
     """
     Return player list.  Uses cache unless force_refresh=True or no cache exists.
 
     Data pipeline:
-      1. Direct API calls to api.draftkings.com (playerpool + draftables)
-         response — gives real DK best ball ADP directly from the source.
-      2. Falls back to DK lineup CSV (salary rank as ADP proxy) on failure.
-      3. Sort by ADP ascending, assign sequential integer ADP (1 = best).
-      4. Enrich with bye week + playoff schedule from static 2026 tables.
+      1. Direct API calls to api.draftkings.com — real DK best ball ADP.
+      2. Falls back to DK lineup CSV on failure.
+      3. Fetch FantasyPros ECR (best ball PPR, 43+ experts, 471 players).
+      4. Blend ECR into ADP for deep players where DK data gets thin:
+           DK rank 1-150:   pure DK ADP
+           DK rank 150-300: linear ramp to 50% ECR
+           DK rank 300+:    50% ECR
+      5. Sort by blended ADP, enrich with bye week + playoff schedule.
     """
     cached = _load_cache()
     if cached and not force_refresh:
@@ -638,29 +650,51 @@ def fetch_players(force_refresh=False):
 
     print(f'  ✓ {len(dk_players)} players fetched')
 
+    # Fetch ECR — non-fatal if unavailable
+    try:
+        from app.data.fantasypros_ecr_fetcher import fetch_ecr
+        ecr_map = fetch_ecr()
+    except Exception as e:
+        print(f'  [FP ECR] skipped: {e}')
+        ecr_map = {}
+
     players = []
     for i, dk_p in enumerate(dk_players, 1):
-        team     = dk_p['team']
-        schedule = PLAYOFF_SCHEDULE_2026.get(team, (None, None, None))
+        team      = dk_p['team']
+        schedule  = PLAYOFF_SCHEDULE_2026.get(team, (None, None, None))
         player_id = dk_p.get('dk_id') or f'dk_{i}'
-        adp = round(dk_p.get('adp') or i, 1)
+        dk_adp    = round(dk_p.get('adp') or i, 1)
+
+        # Blend ECR for deep players
+        ecr_data = ecr_map.get(_normalize_name(dk_p['name']))
+        ecr_rank = ecr_data['ecr_rank'] if ecr_data else None
+        if ecr_rank is not None and dk_adp > 150:
+            t     = min(1.0, (dk_adp - 150) / 150)   # 0 at rank 150, 1 at rank 300+
+            blend = t * 0.50                           # up to 50% ECR weight
+            adp   = round(dk_adp * (1 - blend) + ecr_rank * blend, 1)
+        else:
+            adp = dk_adp
 
         players.append({
-            'id':     player_id,
-            'name':   dk_p['name'],
-            'pos':    dk_p['pos'],
-            'team':   team,
-            'bye':    BYE_WEEKS_2026.get(team, 0),
-            'adp':    adp,
-            'season': '2026',
-            'week15': schedule[0],
-            'week16': schedule[1],
-            'week17': schedule[2],
+            'id':       player_id,
+            'name':     dk_p['name'],
+            'pos':      dk_p['pos'],
+            'team':     team,
+            'bye':      BYE_WEEKS_2026.get(team, 0),
+            'adp':      adp,
+            'ecr_rank': ecr_rank,
+            'season':   '2026',
+            'week15':   schedule[0],
+            'week16':   schedule[1],
+            'week17':   schedule[2],
         })
 
-    # Sort by ADP ascending, exclude players with no real draft position data.
+    # Sort by blended ADP, drop players with no real draft position data.
     players.sort(key=lambda p: p['adp'])
     players = [p for p in players if p['adp'] < 9999]
+
+    ecr_matched = sum(1 for p in players if p['ecr_rank'] is not None)
+    print(f'  ✓ {len(players)} players, {ecr_matched} with ECR blended')
 
     _save_cache(players, '2026')
     return players
