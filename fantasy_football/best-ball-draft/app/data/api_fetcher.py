@@ -630,9 +630,7 @@ def fetch_players(force_refresh=False):
     Data pipeline:
       1. Direct API calls to api.draftkings.com — real DK best ball ADP.
       2. Falls back to DK lineup CSV on failure.
-      3. Fetch FantasyPros ECR (best ball PPR, 43+ experts) and attach as
-         ecr_rank field — does NOT modify adp, which stays pure DK.
-      4. Sort by ADP ascending, enrich with bye week + playoff schedule.
+      3. Sort by ADP ascending, enrich with bye week + playoff schedule.
     """
     cached = _load_cache()
     if cached and not force_refresh:
@@ -647,42 +645,29 @@ def fetch_players(force_refresh=False):
 
     print(f'  ✓ {len(dk_players)} players fetched')
 
-    # Fetch ECR — non-fatal if unavailable
-    try:
-        from app.data.fantasypros_ecr_fetcher import fetch_ecr
-        ecr_map = fetch_ecr()
-    except Exception as e:
-        print(f'  [FP ECR] skipped: {e}')
-        ecr_map = {}
-
     players = []
     for i, dk_p in enumerate(dk_players, 1):
         team      = dk_p['team']
         schedule  = PLAYOFF_SCHEDULE_2026.get(team, (None, None, None))
         player_id = dk_p.get('dk_id') or f'dk_{i}'
         adp       = round(dk_p.get('adp') or i, 1)
-        ecr_data  = ecr_map.get(_normalize_name(dk_p['name']))
-        ecr_rank  = ecr_data['ecr_rank'] if ecr_data else None
 
         players.append({
-            'id':       player_id,
-            'name':     dk_p['name'],
-            'pos':      dk_p['pos'],
-            'team':     team,
-            'bye':      BYE_WEEKS_2026.get(team, 0),
-            'adp':      adp,
-            'ecr_rank': ecr_rank,
-            'season':   '2026',
-            'week15':   schedule[0],
-            'week16':   schedule[1],
-            'week17':   schedule[2],
+            'id':     player_id,
+            'name':   dk_p['name'],
+            'pos':    dk_p['pos'],
+            'team':   team,
+            'bye':    BYE_WEEKS_2026.get(team, 0),
+            'adp':    adp,
+            'season': '2026',
+            'week15': schedule[0],
+            'week16': schedule[1],
+            'week17': schedule[2],
         })
 
     players.sort(key=lambda p: p['adp'])
     players = [p for p in players if p['adp'] < 9999]
 
-    ecr_matched = sum(1 for p in players if p['ecr_rank'] is not None)
-    print(f'  ✓ {len(players)} players, {ecr_matched} with ECR rank attached')
-
+    print(f'  ✓ {len(players)} players')
     _save_cache(players, '2026')
     return players

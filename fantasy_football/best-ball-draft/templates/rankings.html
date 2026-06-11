@@ -115,19 +115,19 @@
     #statusBar.ok    { background: #1b3a22; color: #a5d6a7; display: block; }
     #statusBar.error { background: #3a1515; color: #ef9a9a; display: block; }
 
-    /* ── ECR preview modal ── */
-    #ecrModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; align-items:center; justify-content:center; }
-    #ecrModal.open { display:flex; }
-    #ecrModalBox { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; max-width:560px; width:90%; max-height:80vh; display:flex; flex-direction:column; gap:12px; }
-    #ecrModalBox h3 { margin:0; font-size:1em; color:var(--text); }
-    #ecrModalBox .ecr-sub { font-size:0.78em; color:var(--muted2); }
-    #ecrPreviewTable { overflow-y:auto; flex:1; }
-    #ecrPreviewTable table { width:100%; border-collapse:collapse; font-size:0.8em; }
-    #ecrPreviewTable th { position:sticky; top:0; background:var(--surface); color:var(--muted2); text-align:left; padding:4px 6px; border-bottom:1px solid var(--border); }
-    #ecrPreviewTable td { padding:4px 6px; border-bottom:1px solid var(--border2,#2a2a2a); }
-    #ecrPreviewTable .pos-tag { font-size:0.75em; font-weight:700; padding:1px 4px; border-radius:3px; }
-    .ecr-modal-actions { display:flex; gap:8px; justify-content:flex-end; }
-    .ecr-already-ranked { color:var(--muted2); font-style:italic; font-size:0.78em; }
+    /* ── CSV import modal ── */
+    #csvModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; align-items:center; justify-content:center; }
+    #csvModal.open { display:flex; }
+    #csvModalBox { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; max-width:600px; width:92%; max-height:82vh; display:flex; flex-direction:column; gap:12px; }
+    #csvModalBox h3 { margin:0; font-size:1em; color:var(--text); }
+    #csvModalBox .csv-sub { font-size:0.78em; color:var(--muted2); }
+    #csvPreviewTable { overflow-y:auto; flex:1; }
+    #csvPreviewTable table { width:100%; border-collapse:collapse; font-size:0.8em; }
+    #csvPreviewTable th { position:sticky; top:0; background:var(--surface); color:var(--muted2); text-align:left; padding:4px 6px; border-bottom:1px solid var(--border); }
+    #csvPreviewTable td { padding:4px 6px; border-bottom:1px solid var(--border2,#2a2a2a); }
+    #csvPreviewTable .pos-tag { font-size:0.75em; font-weight:700; padding:1px 4px; border-radius:3px; }
+    .csv-modal-actions { display:flex; gap:8px; justify-content:flex-end; }
+    .csv-no-match { color:var(--muted2); font-style:italic; }
 
     /* ── Table ── */
     .table-wrap {
@@ -339,7 +339,8 @@
     </div>
     <div class="header-actions">
       <button class="btn btn-reset" id="refreshAdpBtn" title="Pull latest ADP from DraftKings (keeps your custom ranks &amp; notes)">↻ Refresh ADP</button>
-      <button class="btn btn-reset" id="seedEcrBtn" title="Set custom rank = ECR for all unranked players">Seed from ECR</button>
+      <button class="btn btn-reset" id="importCsvBtn" title="Import custom rankings from a CSV file">Import CSV</button>
+      <input type="file" id="csvFileInput" accept=".csv" style="display:none">
       <button class="btn btn-export" id="exportBtn">Export to Extension</button>
       <button class="btn btn-success" id="saveBtn">
         Save Rankings
@@ -350,15 +351,15 @@
 
   <div id="statusBar"></div>
 
-  <!-- ECR seed preview modal -->
-  <div id="ecrModal">
-    <div id="ecrModalBox">
-      <h3>Seed from ECR — Preview</h3>
-      <div class="ecr-sub" id="ecrModalSub"></div>
-      <div id="ecrPreviewTable"></div>
-      <div class="ecr-modal-actions">
-        <button class="btn btn-reset" onclick="closeEcrModal()">Cancel</button>
-        <button class="btn btn-success" onclick="applyEcrSeed()">Apply Seed</button>
+  <!-- CSV import preview modal -->
+  <div id="csvModal">
+    <div id="csvModalBox">
+      <h3>Import Rankings from CSV — Preview</h3>
+      <div class="csv-sub" id="csvModalSub"></div>
+      <div id="csvPreviewTable"></div>
+      <div class="csv-modal-actions">
+        <button class="btn btn-reset" onclick="closeCsvModal()">Cancel</button>
+        <button class="btn btn-success" onclick="applyCsvImport()">Apply Import</button>
       </div>
     </div>
   </div>
@@ -761,56 +762,112 @@ async function exportToExtension() {
   }
 }
 
-// ── Seed from ECR ─────────────────────────────────────────────────────────────
+// ── CSV Import ────────────────────────────────────────────────────────────────
+// Accepts any CSV with at least a rank column and a name column.
+// Detects headers automatically; tries common names like Rank, Overall, Name, Player.
+// Matches by normalized name (lowercase, strip suffixes/punctuation).
+// Only updates players that exist in allPlayers; unmatched rows are shown but skipped.
 
-let _ecrPending = [];  // players staged for seeding, populated by seedFromEcr
+let _csvPending = [];  // { player, csvRank } pairs staged for apply
 
-function seedFromEcr() {
-  _ecrPending = allPlayers.filter(p => p.custom_rank == null && p.ecr_rank != null);
-  const alreadyRanked = allPlayers.filter(p => p.custom_rank != null && p.ecr_rank != null).length;
+function _normName(s) {
+  return (s || '').toLowerCase()
+    .replace(/\b(jr\.?|sr\.?|ii|iii|iv)\b/g, '')
+    .replace(/[^a-z ]/g, '')
+    .replace(/\s+/g, ' ').trim();
+}
 
-  if (!_ecrPending.length) {
-    setStatus('No unranked players with ECR data — nothing to seed.', 'info');
-    return;
+function parseCsvImport(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return null;
+
+  // Parse header
+  const sep = lines[0].includes('\t') ? '\t' : ',';
+  const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+
+  // Find rank column: 'rank', 'overall', 'overall rank', 'rk'
+  const rankCol = headers.findIndex(h => /^(rank|overall|overall rank|rk)$/.test(h));
+  // Find name column: 'player', 'name', 'player name'
+  const nameCol = headers.findIndex(h => /^(player|name|player name)$/.test(h));
+
+  if (rankCol === -1 || nameCol === -1) return { error: `Could not find rank/name columns. Headers found: ${headers.join(', ')}` };
+
+  // Build name → player map from allPlayers
+  const nameMap = {};
+  allPlayers.forEach(p => { nameMap[_normName(p.name)] = p; });
+
+  const matched = [], unmatched = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(sep).map(c => c.trim().replace(/^"|"$/g, ''));
+    const csvRank = parseInt(cols[rankCol]);
+    const csvName = cols[nameCol];
+    if (!csvName || isNaN(csvRank)) continue;
+    const player = nameMap[_normName(csvName)];
+    if (player) matched.push({ player, csvRank, csvName });
+    else unmatched.push({ csvRank, csvName });
   }
+  return { matched, unmatched };
+}
 
-  // Sort pending by ECR rank so preview reads top→bottom
-  _ecrPending.sort((a, b) => a.ecr_rank - b.ecr_rank);
+function openCsvImport(text) {
+  const result = parseCsvImport(text);
+  if (!result) { setStatus('CSV appears empty.', 'error'); return; }
+  if (result.error) { setStatus(result.error, 'error'); return; }
 
-  const posColor = { QB: 'var(--qb)', RB: 'var(--rb)', WR: 'var(--wr)', TE: 'var(--te)' };
-  const rows = _ecrPending.map(p => `
-    <tr>
-      <td>${p.ecr_rank}</td>
-      <td><span class="pos-tag" style="color:${posColor[p.pos]||'var(--muted)'}">${p.pos}</span> ${p.name}</td>
+  const { matched, unmatched } = result;
+  _csvPending = matched;
+
+  const posColor = { QB: 'var(--QB)', RB: 'var(--RB)', WR: 'var(--WR)', TE: 'var(--TE)' };
+  const rows = matched.map(({ player: p, csvRank }) => {
+    const was = p.custom_rank != null ? `was ${p.custom_rank}` : 'unranked';
+    return `<tr>
+      <td>${csvRank}</td>
+      <td><span class="pos-tag" style="background:${posColor[p.pos]||'#555'};color:#fff;padding:1px 4px;border-radius:3px;font-size:0.75em">${p.pos}</span> ${p.name}</td>
       <td>${p.team}</td>
       <td style="color:var(--muted2)">${p.adp}</td>
-      <td style="color:var(--accent)">${p.ecr_rank - p.adp > 0 ? '▼' : '▲'} ${Math.abs(Math.round(p.ecr_rank - p.adp))}</td>
-    </tr>`).join('');
+      <td style="color:var(--muted2);font-style:italic">${was}</td>
+    </tr>`;
+  }).join('');
 
-  document.getElementById('ecrModalSub').textContent =
-    `${_ecrPending.length} unranked players will get custom_rank = ECR rank. ` +
-    `${alreadyRanked} already-ranked players are untouched.`;
-  document.getElementById('ecrPreviewTable').innerHTML = `
+  const unmatchedNote = unmatched.length
+    ? `<div style="margin-top:8px;font-size:0.75em;color:var(--muted2)">${unmatched.length} rows not matched: ${unmatched.slice(0,5).map(u => u.csvName).join(', ')}${unmatched.length > 5 ? '…' : ''}</div>`
+    : '';
+
+  document.getElementById('csvModalSub').innerHTML =
+    `${matched.length} players will have their custom rank updated.` + unmatchedNote;
+  document.getElementById('csvPreviewTable').innerHTML = `
     <table>
-      <thead><tr><th>ECR</th><th>Player</th><th>Team</th><th>DK ADP</th><th>vs ADP</th></tr></thead>
+      <thead><tr><th>CSV Rank</th><th>Player</th><th>Team</th><th>DK ADP</th><th>Previous</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
-  document.getElementById('ecrModal').classList.add('open');
+  document.getElementById('csvModal').classList.add('open');
 }
 
-function closeEcrModal() {
-  document.getElementById('ecrModal').classList.remove('open');
-  _ecrPending = [];
+function closeCsvModal() {
+  document.getElementById('csvModal').classList.remove('open');
+  _csvPending = [];
 }
 
-function applyEcrSeed() {
-  _ecrPending.forEach(p => { p.custom_rank = p.ecr_rank; });
+function applyCsvImport() {
+  _csvPending.forEach(({ player, csvRank }) => { player.custom_rank = csvRank; });
   markDirty();
   renderTable();
-  closeEcrModal();
-  setStatus(`Seeded ${_ecrPending.length} players from ECR — review and save when ready.`, 'ok');
-  _ecrPending = [];
+  const n = _csvPending.length;
+  closeCsvModal();
+  setStatus(`Imported ${n} rankings from CSV — review and save when ready.`, 'ok');
 }
+
+document.getElementById('importCsvBtn').addEventListener('click', () => {
+  document.getElementById('csvFileInput').click();
+});
+document.getElementById('csvFileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => openCsvImport(ev.target.result);
+  reader.readAsText(file);
+  e.target.value = '';  // reset so same file can be re-imported
+});
 
 // ── Reset ──────────────────────────────────────────────────────────────────────
 
@@ -880,7 +937,6 @@ async function refreshAdp() {
 // ── Wire up controls ───────────────────────────────────────────────────────────
 document.getElementById('refreshAdpBtn').addEventListener('click', refreshAdp);
 document.getElementById('saveBtn').addEventListener('click', saveRankings);
-document.getElementById('seedEcrBtn').addEventListener('click', seedFromEcr);
 document.getElementById('exportBtn').addEventListener('click', exportToExtension);
 document.getElementById('sortRankBtn').addEventListener('click', sortByCustomRank);
 document.getElementById('sortAdpBtn').addEventListener('click', sortByAdp);
