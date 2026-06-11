@@ -153,7 +153,6 @@
     tbody tr:hover { background: var(--hover); }
     tbody tr.dragging { opacity: 0.4; cursor: grabbing; }
     tbody tr.drag-over { border-top: 2px solid var(--accent); }
-    tbody tr.moving { background: #1a2f4d; outline: 1px solid #4fc3f7; }
 
     td { padding: 8px 12px; font-size: 0.85em; vertical-align: middle; }
 
@@ -506,13 +505,6 @@ function movePlayer(pid, delta) {
   allPlayers.sort((a, b) => (a.custom_rank || 9999) - (b.custom_rank || 9999));
   renderTable();
   markDirty();
-  // Highlight the moved row and scroll it into view.
-  // (btn.focus() doesn't persist on mobile after DOM redraw.)
-  const row = document.querySelector(`tr[data-id="${pid}"]`);
-  if (row) {
-    row.classList.add('moving');
-    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }
 }
 
 // ── Insert player at a new rank, shifting others to make room ─────────────────
@@ -826,13 +818,6 @@ document.querySelectorAll('.pos-tab').forEach(tab => {
 document.getElementById('searchInput').addEventListener('input', e => {
   searchQ = e.target.value.trim();
   renderTable();
-});
-
-// Clear moving highlight when tapping outside an arrow button
-document.addEventListener('pointerdown', e => {
-  if (!e.target.closest('.btn-rank-arrow')) {
-    document.querySelectorAll('tr.moving').forEach(r => r.classList.remove('moving'));
-  }
 });
 
 // Warn on exit if unsaved
