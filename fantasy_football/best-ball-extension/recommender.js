@@ -188,8 +188,18 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     apply(1.20, 'TE elite boost', `ADP ${player.adp} ≤ 30, rd ${userRound}`);
   }
 
-  // WR urgency removed — ADP/custom rankings drive WR value directly,
-  // same reasoning as RB priority removal.
+  // Draft capital urgency — fires only when you're genuinely behind schedule:
+  // need more players at this position than rounds remain.
+  // Silent when you still have time to wait for value; escalates when you must act.
+  // ×1.08 per round behind, capped at ×1.35 so it can't override huge value gaps.
+  const TOTAL_ROUNDS = 20;
+  const roundsLeft  = Math.max(1, TOTAL_ROUNDS - userRound);
+  const posNeed     = needs[pos] || 0;
+  const posBehind   = Math.max(0, posNeed - roundsLeft);
+  if (posBehind > 0) {
+    const urgencyBoost = 1 + Math.min(0.35, posBehind * 0.08);
+    apply(urgencyBoost, `${pos} urgency`, `need ${posNeed} more, ${roundsLeft} rds left`);
+  }
 
   // Hard discount when a position slot is fully filled.
   // ×0.30 cap (was ×0.65) so over-drafted positions genuinely fall off the board —
