@@ -277,7 +277,7 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
       }
     }
 
-    if (pos === 'RB' && teamMates >= 1) {
+    if (pos === 'RB' && myTeam.some(t => t.team === player.team && t.pos !== 'RB')) {
       apply(s.rbCorrel, 'Stack: RB correl', `${player.team} game-script`);
     }
 
