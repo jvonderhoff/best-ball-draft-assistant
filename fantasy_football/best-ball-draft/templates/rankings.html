@@ -786,7 +786,7 @@ function parseCsvImport(text) {
   const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
 
   // Find rank column: explicit rank headers, or fall back to row order (null = use row index)
-  const rankCol = headers.findIndex(h => /^(rank|overall|overall rank|rk|adp)$/.test(h));
+  const rankCol = headers.findIndex(h => /^(rank|overall|overall rank|rk)$/.test(h));
   const useRowOrder = rankCol === -1;  // no rank column → row position = rank
 
   // Find name column: 'player', 'name', 'player name'
