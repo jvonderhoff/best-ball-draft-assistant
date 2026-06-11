@@ -326,7 +326,6 @@
     </div>
     <div class="header-actions">
       <button class="btn btn-reset" id="refreshAdpBtn" title="Pull latest ADP from DraftKings (keeps your custom ranks &amp; notes)">↻ Refresh ADP</button>
-      <button class="btn btn-reset" id="resetBtn">Reset All to DK ADP</button>
       <button class="btn btn-export" id="exportBtn">Export to Extension</button>
       <button class="btn btn-success" id="saveBtn">
         Save Rankings
@@ -378,17 +377,6 @@
   </div>
 </div>
 
-<!-- Confirm reset all modal -->
-<div class="modal-overlay" id="resetModal">
-  <div class="modal">
-    <h3>Reset Rankings?</h3>
-    <p>This will set every custom rank to match the player's DK ADP value. Notes will be kept. This cannot be undone.</p>
-    <div class="modal-actions">
-      <button class="btn btn-reset" id="resetCancelBtn">Cancel</button>
-      <button class="btn btn-primary" id="resetConfirmBtn">Reset</button>
-    </div>
-  </div>
-</div>
 
 
 <script>
@@ -422,9 +410,9 @@ function posBadge(pos) {
 
 function deltaHtml(customRank, adp) {
   if (customRank == null || adp == null) return '<span class="delta-flat">—</span>';
-  const d = adp - customRank;
-  if (d > 0)  return `<span class="delta-up">+${d} ▲</span>`;
-  if (d < 0)  return `<span class="delta-down">${d} ▼</span>`;
+  const d = Math.round((adp - customRank) * 10) / 10;
+  if (d > 0)  return `<span class="delta-up">+${d.toFixed(1)} ▲</span>`;
+  if (d < 0)  return `<span class="delta-down">${d.toFixed(1)} ▼</span>`;
   return `<span class="delta-flat">—</span>`;
 }
 
@@ -754,14 +742,6 @@ async function exportToExtension() {
 }
 
 // ── Reset ──────────────────────────────────────────────────────────────────────
-async function resetToAdp() {
-  // Sort all players by ADP and assign sequential ranks 1, 2, 3...
-  allPlayers.sort((a, b) => (a.adp || 9999) - (b.adp || 9999));
-  allPlayers.forEach((p, i) => { p.custom_rank = i + 1; });
-  renderTable();
-  await saveRankings();
-  setStatus('All ranks set to DK ADP order', 'ok');
-}
 
 
 // ── Sort by My Rank ────────────────────────────────────────────────────────────
@@ -832,16 +812,6 @@ document.getElementById('saveBtn').addEventListener('click', saveRankings);
 document.getElementById('exportBtn').addEventListener('click', exportToExtension);
 document.getElementById('sortRankBtn').addEventListener('click', sortByCustomRank);
 document.getElementById('sortAdpBtn').addEventListener('click', sortByAdp);
-document.getElementById('resetBtn').addEventListener('click', () => {
-  document.getElementById('resetModal').classList.add('open');
-});
-document.getElementById('resetCancelBtn').addEventListener('click', () => {
-  document.getElementById('resetModal').classList.remove('open');
-});
-document.getElementById('resetConfirmBtn').addEventListener('click', () => {
-  document.getElementById('resetModal').classList.remove('open');
-  resetToAdp();
-});
 
 
 document.querySelectorAll('.pos-tab').forEach(tab => {
