@@ -194,6 +194,10 @@
     }
     .rank-input:focus { border-color: #4fc3f7; background: #1a2f4d; }
     .rank-input.unranked { color: #37474f; border-color: #1e2d3a; }
+    /* Hide native browser spinner arrows — we use our own ▲▼ buttons */
+    .rank-input::-webkit-outer-spin-button,
+    .rank-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .rank-input[type=number] { -moz-appearance: textfield; }
 
     /* Notes input */
     .notes-input {
