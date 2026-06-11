@@ -325,6 +325,7 @@
     </div>
     <div class="header-actions">
       <button class="btn btn-reset" id="refreshAdpBtn" title="Pull latest ADP from DraftKings (keeps your custom ranks &amp; notes)">↻ Refresh ADP</button>
+      <button class="btn btn-reset" id="seedEcrBtn" title="Set custom rank = ECR for all unranked players">Seed from ECR</button>
       <button class="btn btn-export" id="exportBtn">Export to Extension</button>
       <button class="btn btn-success" id="saveBtn">
         Save Rankings
@@ -733,6 +734,21 @@ async function exportToExtension() {
   }
 }
 
+// ── Seed from ECR ─────────────────────────────────────────────────────────────
+// Sets custom_rank = ecr_rank for every unranked player that has ECR data.
+// Already-ranked players are left untouched.
+function seedFromEcr() {
+  const unranked = allPlayers.filter(p => p.custom_rank == null && p.ecr_rank != null);
+  if (!unranked.length) {
+    setStatus('No unranked players with ECR data to seed.', 'info');
+    return;
+  }
+  unranked.forEach(p => { p.custom_rank = p.ecr_rank; });
+  markDirty();
+  renderTable();
+  setStatus(`Seeded ${unranked.length} unranked players from ECR — review and save when ready.`, 'ok');
+}
+
 // ── Reset ──────────────────────────────────────────────────────────────────────
 
 
@@ -801,6 +817,7 @@ async function refreshAdp() {
 // ── Wire up controls ───────────────────────────────────────────────────────────
 document.getElementById('refreshAdpBtn').addEventListener('click', refreshAdp);
 document.getElementById('saveBtn').addEventListener('click', saveRankings);
+document.getElementById('seedEcrBtn').addEventListener('click', seedFromEcr);
 document.getElementById('exportBtn').addEventListener('click', exportToExtension);
 document.getElementById('sortRankBtn').addEventListener('click', sortByCustomRank);
 document.getElementById('sortAdpBtn').addEventListener('click', sortByAdp);

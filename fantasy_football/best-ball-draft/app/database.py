@@ -90,6 +90,7 @@ def init_db():
                 pos        TEXT,
                 team       TEXT,
                 adp        REAL,
+                ecr_rank   INTEGER,
                 week15     TEXT,
                 week16     TEXT,
                 week17     TEXT,
@@ -104,6 +105,9 @@ def init_db():
         if 'drafted_at' not in cols:
             conn.execute("ALTER TABLE drafts ADD COLUMN drafted_at TEXT")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_dk_draft_id ON drafts(dk_draft_id) WHERE dk_draft_id IS NOT NULL")
+        player_cols = [r[1] for r in conn.execute("PRAGMA table_info(players)").fetchall()]
+        if 'ecr_rank' not in player_cols:
+            conn.execute("ALTER TABLE players ADD COLUMN ecr_rank INTEGER")
         pick_cols = [r[1] for r in conn.execute("PRAGMA table_info(draft_picks)").fetchall()]
         for col in ('week15', 'week16', 'week17'):
             if col not in pick_cols:
@@ -141,9 +145,9 @@ def refresh_players(players):
     with get_db() as conn:
         conn.execute("DELETE FROM players")
         conn.executemany("""
-            INSERT INTO players (player_id, name, pos, team, adp, week15, week16, week17, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """, [(p['id'], p['name'], p['pos'], p['team'], p.get('adp'),
+            INSERT INTO players (player_id, name, pos, team, adp, ecr_rank, week15, week16, week17, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, [(p['id'], p['name'], p['pos'], p['team'], p.get('adp'), p.get('ecr_rank'),
                p.get('week15'), p.get('week16'), p.get('week17'))
               for p in players])
         # Remove rankings for players no longer in the pool
@@ -350,7 +354,7 @@ def get_rankings():
     """
     with get_db() as conn:
         rows = conn.execute("""
-            SELECT p.player_id, p.name, p.pos, p.team, p.adp,
+            SELECT p.player_id, p.name, p.pos, p.team, p.adp, p.ecr_rank,
                    p.week15, p.week16, p.week17,
                    r.custom_rank, COALESCE(r.notes, '') AS notes
             FROM players p
