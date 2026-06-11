@@ -470,7 +470,6 @@ function bustCache(key) {
 // ── Draft state ────────────────────────────────────────────────────────────────
 let PLAYERS = [];
 let playersById = {};  // id → player object (O(1) lookup)
-let exposure = {};
 let PROJECTIONS = {};  // player_id → { mean, weekly_stddev } from /api/projections
 let _mcCache = null;   // { teamKey, base, scores: {} } — memoize MC per team state
 
@@ -567,8 +566,7 @@ const SETTINGS_KEY = 'bba_settings';
 let settings = loadSettings();
 
 // Hardcoded recommender constants — tweak directly in code
-const STACK_INTENSITY    = 'heavy';
-const DIVERSIFY_STRENGTH = 0.1;
+const STACK_INTENSITY = 'heavy';
 
 function defaultSettings() {
   return { myPosition: 1, numTeams: 12, dkUsername: 'jvonderhoff' };
@@ -1144,11 +1142,10 @@ document.getElementById('resetDraft').addEventListener('click', () => {
 
 // ── Player loading ─────────────────────────────────────────────────────────────
 async function loadPlayers() {
-  // Players, exposure, and projections don't change mid-session — cache 10 min.
+  // Players and projections don't change mid-session — cache 10 min.
   const cached = getCached('players_bundle', 10 * 60 * 1000);
   if (cached) {
     PLAYERS     = cached.players;
-    exposure    = cached.exposure;
     PROJECTIONS = cached.projections;
     buildNameLookup();
     renderPlayerList();
@@ -1156,15 +1153,13 @@ async function loadPlayers() {
     return;
   }
   try {
-    const [pr, er, proj] = await Promise.all([
+    const [pr, proj] = await Promise.all([
       fetch('/api/players'),
-      fetch('/api/drafts/exposure'),
       fetch('/api/projections'),
     ]);
     PLAYERS     = await pr.json();
-    exposure    = (await er.json()).players || {};
     PROJECTIONS = await proj.json();
-    setCached('players_bundle', { players: PLAYERS, exposure, projections: PROJECTIONS });
+    setCached('players_bundle', { players: PLAYERS, projections: PROJECTIONS });
     buildNameLookup();
     renderPlayerList();
     renderRecs();
@@ -1216,7 +1211,6 @@ function renderPlayerList() {
       (p.pos === 'QB' && state.myTeam.some(t => ['WR','TE'].includes(t.pos) && t.team === p.team))
     );
 
-    const expPct   = Math.round((exposure[p.id]?.exposure_rate ?? 0) * 100);
     const byeStr   = p.bye ? ` · bye ${p.bye}` : '';
     const wk17col  = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'var(--muted)';
     const wk17str  = p.week17 ? `<span style="color:${wk17col}">wk 17 ${p.week17}</span>` : '—';
@@ -1225,7 +1219,7 @@ function renderPlayerList() {
       <div class="adp-badge">${p.adp}</div>
       <span class="p-pos ${p.pos}">${p.pos}</span>
       <div class="p-body">${p.name}${isQBStack ? ' ⚡' : ''} <span class="p-sub">· ${p.team}${byeStr}</span></div>
-      <div class="p-right">${wk17str}<br>${expPct}%</div>
+      <div class="p-right">${wk17str}</div>
       ${badge}
     </div>`;
   }).join('');
@@ -1320,15 +1314,13 @@ function renderRecs() {
     ? state.overallPick
     : (nextMyOverallPick(state.overallPick, settings.numTeams, settings.myPosition) || state.overallPick);
 
-  const qbsTaken = PLAYERS.filter(p => p.pos === 'QB' && state.takenIds.has(p.id)).length;
   const nextMyPick = nextMyOverallPick(pickForRec + 1, settings.numTeams, settings.myPosition);
   // Fetch a wider pool so MC can re-rank within it; final display still shows top 10.
   const userRound = state.myTeam.length + 1;
   const MC_POOL   = 20;
   const recs = getTopRecommendations(
     available, state.myTeam, pickForRec,
-    STACK_INTENSITY, exposure, DIVERSIFY_STRENGTH,
-    MC_POOL, qbsTaken, nextMyPick
+    STACK_INTENSITY, MC_POOL, nextMyPick
   );
 
   const el = document.getElementById('recsList');
@@ -1348,12 +1340,7 @@ function renderRecs() {
     return;
   }
 
-  const runAlert = (() => {
-    const myQBCount = state.myTeam.filter(p => p.pos === 'QB').length;
-    const label = qbTierLabel(qbsTaken, myQBCount);
-    if (!label) return '';
-    return `<div class="qb-run-alert">⚡ ${label}</div>`;
-  })();
+  const runAlert = '';
 
   // ── Monte Carlo marginal contributions ────────────────────────────────────────
   // Memoize base score by team state so tab-switches don't re-run sims unnecessarily.
