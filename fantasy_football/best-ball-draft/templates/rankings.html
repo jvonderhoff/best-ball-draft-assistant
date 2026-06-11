@@ -161,7 +161,7 @@
 
     .col-handle { width: 24px; color: var(--border); font-size: 1em; cursor: grab; padding-right: 4px; touch-action: none; user-select: none; -webkit-user-select: none; }
     @media (max-width: 600px) { .col-handle { font-size: 1.3em; padding: 6px 8px; } }
-    .col-rank   { width: 80px; }
+    .col-rank   { width: 110px; }
     .col-name   { min-width: 160px; }
     .col-pos    { width: 60px; }
     .col-team   { width: 60px; color: var(--muted); }
@@ -170,9 +170,18 @@
     .col-notes  { min-width: 160px; }
     .col-action { width: 60px; text-align: center; }
 
+    /* Rank cell — input + arrow buttons side by side */
+    .rank-cell { display: flex; align-items: center; gap: 5px; }
+    .rank-arrows { display: flex; flex-direction: column; gap: 1px; }
+    .btn-rank-arrow {
+      background: none; border: none; color: #37474f; cursor: pointer;
+      font-size: 0.6em; padding: 1px 3px; line-height: 1; border-radius: 2px;
+    }
+    .btn-rank-arrow:hover { color: #4fc3f7; background: #1a2f4d; }
+
     /* Rank input */
     .rank-input {
-      width: 54px;
+      width: 50px;
       background: var(--input-bg);
       border: 1px solid var(--border);
       border-radius: 4px;
@@ -473,12 +482,18 @@ function renderTable() {
     <tr draggable="true" data-id="${p.player_id}" data-idx="${i}">
       <td class="col-handle" title="Drag to reorder">⠿</td>
       <td class="col-rank">
-        <input class="rank-input ${p.custom_rank == null ? 'unranked' : ''}"
-               type="number" min="1" max="9999"
-               value="${p.custom_rank ?? ''}"
-               placeholder="—"
-               data-id="${p.player_id}"
-               data-orig="${p.custom_rank ?? ''}">
+        <div class="rank-cell">
+          <input class="rank-input ${p.custom_rank == null ? 'unranked' : ''}"
+                 type="number" min="1" max="9999"
+                 value="${p.custom_rank ?? ''}"
+                 placeholder="—"
+                 data-id="${p.player_id}"
+                 data-orig="${p.custom_rank ?? ''}">
+          <div class="rank-arrows">
+            <button class="btn-rank-arrow btn-rank-up" data-id="${p.player_id}" title="Move up">▲</button>
+            <button class="btn-rank-arrow btn-rank-dn" data-id="${p.player_id}" title="Move down">▼</button>
+          </div>
+        </div>
       </td>
       <td class="col-name">${p.name}</td>
       <td class="col-pos">${posBadge(p.pos)}</td>
@@ -505,24 +520,88 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── Move player by rank delta (swap with neighbour) ───────────────────────────
+function movePlayer(pid, delta) {
+  const p = allPlayers.find(p => p.player_id === pid);
+  if (!p || p.custom_rank == null) return;
+  const targetRank = p.custom_rank + delta;
+  if (targetRank < 1) return;
+  // Swap with whoever holds the target rank
+  const other = allPlayers.find(o => o.player_id !== pid && o.custom_rank === targetRank);
+  if (other) other.custom_rank = p.custom_rank;
+  p.custom_rank = targetRank;
+  allPlayers.sort((a, b) => (a.custom_rank || 9999) - (b.custom_rank || 9999));
+  renderTable();
+  markDirty();
+}
+
+// ── Insert player at a new rank, shifting others to make room ─────────────────
+function insertAtRank(pid, newRank) {
+  const p = allPlayers.find(p => p.player_id === pid);
+  if (!p || isNaN(newRank) || newRank < 1) return;
+  const oldRank = p.custom_rank;
+  if (newRank === oldRank) return;
+
+  if (oldRank == null) {
+    // Unranked player being given a rank — shift everyone at newRank+ down
+    allPlayers.forEach(o => {
+      if (o.player_id !== pid && o.custom_rank != null && o.custom_rank >= newRank) {
+        o.custom_rank++;
+      }
+    });
+  } else if (newRank < oldRank) {
+    // Moving up — shift players in [newRank, oldRank-1] down by 1
+    allPlayers.forEach(o => {
+      if (o.player_id !== pid && o.custom_rank != null &&
+          o.custom_rank >= newRank && o.custom_rank < oldRank) {
+        o.custom_rank++;
+      }
+    });
+  } else {
+    // Moving down — shift players in [oldRank+1, newRank] up by 1
+    allPlayers.forEach(o => {
+      if (o.player_id !== pid && o.custom_rank != null &&
+          o.custom_rank > oldRank && o.custom_rank <= newRank) {
+        o.custom_rank--;
+      }
+    });
+  }
+  p.custom_rank = newRank;
+  allPlayers.sort((a, b) => (a.custom_rank || 9999) - (b.custom_rank || 9999));
+}
+
 // ── Row events ─────────────────────────────────────────────────────────────────
 function bindRowEvents(tbody) {
-  // Rank input changes
+  // Rank input — auto-shift others when a rank is entered
   tbody.querySelectorAll('.rank-input').forEach(inp => {
     inp.addEventListener('change', () => {
-      const pid  = inp.dataset.id;
-      const val  = inp.value.trim() === '' ? null : parseInt(inp.value, 10);
-      updatePlayerField(pid, 'custom_rank', val);
-      inp.classList.toggle('unranked', val == null);
-      // Update delta cell
-      const p = allPlayers.find(p => p.player_id === pid);
-      if (p) {
-        p.custom_rank = val;
-        const deltaCell = tbody.querySelector(`[data-id="${pid}-delta"]`);
-        if (deltaCell) deltaCell.innerHTML = deltaHtml(val, p.adp);
+      const pid = inp.dataset.id;
+      const val = inp.value.trim() === '' ? null : parseInt(inp.value, 10);
+      if (val === null) {
+        updatePlayerField(pid, 'custom_rank', null);
+        inp.classList.add('unranked');
+        markDirty();
+        return;
       }
+      insertAtRank(pid, val);
+      renderTable();
       markDirty();
     });
+    // Arrow keys nudge rank by 1
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        movePlayer(inp.dataset.id, e.key === 'ArrowUp' ? -1 : 1);
+      }
+    });
+  });
+
+  // ▲▼ buttons
+  tbody.querySelectorAll('.btn-rank-up').forEach(btn => {
+    btn.addEventListener('click', () => { movePlayer(btn.dataset.id, -1); });
+  });
+  tbody.querySelectorAll('.btn-rank-dn').forEach(btn => {
+    btn.addEventListener('click', () => { movePlayer(btn.dataset.id, +1); });
   });
 
   // Notes input changes
