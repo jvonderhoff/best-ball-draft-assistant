@@ -785,28 +785,34 @@ function parseCsvImport(text) {
   const sep = lines[0].includes('\t') ? '\t' : ',';
   const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
 
-  // Find rank column: 'rank', 'overall', 'overall rank', 'rk'
-  const rankCol = headers.findIndex(h => /^(rank|overall|overall rank|rk)$/.test(h));
+  // Find rank column: explicit rank headers, or fall back to row order (null = use row index)
+  const rankCol = headers.findIndex(h => /^(rank|overall|overall rank|rk|adp)$/.test(h));
+  const useRowOrder = rankCol === -1;  // no rank column → row position = rank
+
   // Find name column: 'player', 'name', 'player name'
   const nameCol = headers.findIndex(h => /^(player|name|player name)$/.test(h));
 
-  if (rankCol === -1 || nameCol === -1) return { error: `Could not find rank/name columns. Headers found: ${headers.join(', ')}` };
+  if (nameCol === -1) return { error: `Could not find a name column. Headers found: ${headers.join(', ')}` };
 
   // Build name → player map from allPlayers
   const nameMap = {};
   allPlayers.forEach(p => { nameMap[_normName(p.name)] = p; });
 
   const matched = [], unmatched = [];
+  let rowRank = 0;
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i].split(sep).map(c => c.trim().replace(/^"|"$/g, ''));
-    const csvRank = parseInt(cols[rankCol]);
     const csvName = cols[nameCol];
-    if (!csvName || isNaN(csvRank)) continue;
+    if (!csvName) continue;
+    rowRank++;
+    const csvRank = useRowOrder ? rowRank : parseInt(cols[rankCol]);
+    if (!useRowOrder && isNaN(csvRank)) continue;
     const player = nameMap[_normName(csvName)];
     if (player) matched.push({ player, csvRank, csvName });
     else unmatched.push({ csvRank, csvName });
   }
-  return { matched, unmatched };
+  const rankSource = useRowOrder ? 'row order' : headers[rankCol];
+  return { matched, unmatched, rankSource };
 }
 
 function openCsvImport(text) {
@@ -834,7 +840,7 @@ function openCsvImport(text) {
     : '';
 
   document.getElementById('csvModalSub').innerHTML =
-    `${matched.length} players will have their custom rank updated.` + unmatchedNote;
+    `${matched.length} players will have their custom rank updated (rank source: ${result.rankSource}).` + unmatchedNote;
   document.getElementById('csvPreviewTable').innerHTML = `
     <table>
       <thead><tr><th>CSV Rank</th><th>Player</th><th>Team</th><th>DK ADP</th><th>Previous</th></tr></thead>
