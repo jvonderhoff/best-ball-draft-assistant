@@ -51,6 +51,9 @@
     .btn-export  { background: #6a1b9a; color: #ce93d8; }
     .btn-reset   { background: #263238; color: #78909c; }
     .btn-sm { padding: 4px 10px; font-size: 0.78em; }
+    .reset-threshold-wrap { display: flex; align-items: center; gap: 5px; }
+    .reset-threshold-label { font-size: 0.82em; color: #78909c; white-space: nowrap; }
+    .reset-threshold-input { width: 54px; background: #263238; border: 1px solid #37474f; border-radius: 4px; color: #cfd8dc; font-size: 0.85em; padding: 4px 6px; text-align: center; }
 
     /* ── Toolbar ── */
     .toolbar {
@@ -312,7 +315,12 @@
     </div>
     <div class="header-actions">
       <button class="btn btn-reset" id="refreshAdpBtn" title="Pull latest ADP from DraftKings (keeps your custom ranks &amp; notes)">↻ Refresh ADP</button>
-      <button class="btn btn-reset" id="reset200Btn">Reset 200+ to DK ADP</button>
+      <span class="reset-threshold-wrap">
+        <span class="reset-threshold-label">Reset rank</span>
+        <input type="number" id="resetThresholdInput" class="reset-threshold-input" value="200" min="1" max="9999">
+        <span class="reset-threshold-label">+ to DK ADP</span>
+        <button class="btn btn-reset" id="reset200Btn">Reset</button>
+      </span>
       <button class="btn btn-reset" id="resetBtn">Reset All to DK ADP</button>
       <button class="btn btn-export" id="exportBtn">Export to Extension</button>
       <button class="btn btn-success" id="saveBtn">
@@ -376,14 +384,14 @@
   </div>
 </div>
 
-<!-- Confirm reset 200+ modal -->
+<!-- Confirm reset threshold+ modal -->
 <div class="modal-overlay" id="reset200Modal">
   <div class="modal">
-    <h3>Reset Ranks 200+?</h3>
-    <p>This will clear custom ranks for any player you've ranked 200 or higher, reverting them to DK ADP. Your top 199 ranks and all notes are kept.</p>
+    <h3 id="reset200ModalTitle">Reset Ranks 200+?</h3>
+    <p id="reset200ModalBody">This will clear custom ranks for any player you've ranked 200 or higher, reverting them to DK ADP. Your top ranks and all notes are kept.</p>
     <div class="modal-actions">
       <button class="btn btn-reset" id="reset200CancelBtn">Cancel</button>
-      <button class="btn btn-primary" id="reset200ConfirmBtn">Reset 200+</button>
+      <button class="btn btn-primary" id="reset200ConfirmBtn">Reset</button>
     </div>
   </div>
 </div>
@@ -683,17 +691,17 @@ async function resetToAdp() {
 }
 
 async function reset200ToAdp() {
-  // Clear custom ranks ≥ 200, keep everything below and all notes
+  const threshold = parseInt(document.getElementById('resetThresholdInput').value, 10) || 200;
   let count = 0;
   allPlayers.forEach(p => {
-    if (p.custom_rank != null && p.custom_rank >= 200) {
+    if (p.custom_rank != null && p.custom_rank >= threshold) {
       p.custom_rank = null;
       count++;
     }
   });
   renderTable();
   await saveRankings();
-  setStatus(`${count} players at rank 200+ reset to DK ADP`, 'ok');
+  setStatus(`${count} players at rank ${threshold}+ reset to DK ADP`, 'ok');
 }
 
 // ── Sort by DK ADP ─────────────────────────────────────────────────────────────
@@ -768,6 +776,10 @@ document.getElementById('resetConfirmBtn').addEventListener('click', () => {
 });
 
 document.getElementById('reset200Btn').addEventListener('click', () => {
+  const threshold = parseInt(document.getElementById('resetThresholdInput').value, 10) || 200;
+  document.getElementById('reset200ModalTitle').textContent = `Reset Ranks ${threshold}+?`;
+  document.getElementById('reset200ModalBody').textContent =
+    `This will clear custom ranks for any player you've ranked ${threshold} or higher, reverting them to DK ADP. Your top ${threshold - 1} ranks and all notes are kept.`;
   document.getElementById('reset200Modal').classList.add('open');
 });
 document.getElementById('reset200CancelBtn').addEventListener('click', () => {
