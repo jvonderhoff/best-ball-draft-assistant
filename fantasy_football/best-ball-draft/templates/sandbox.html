@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Recommender Sandbox</title>
+  <script src="/static/theme.js"></script>
+  <link rel="stylesheet" href="/static/theme.css?v=3">
+  <style>
+    body { padding: 12px; max-width: 900px; margin: 0 auto; font-family: system-ui, sans-serif; }
+    h1 { font-size: 1.1em; color: var(--text); margin: 0 0 4px; }
+    .page-sub { font-size: 0.78em; color: var(--muted); margin-bottom: 16px; }
+
+    /* ── Layout ── */
+    .sandbox-layout { display: grid; grid-template-columns: 280px 1fr; gap: 14px; }
+    @media (max-width: 640px) { .sandbox-layout { grid-template-columns: 1fr; } }
+
+    /* ── Panels ── */
+    .panel { background: var(--card); border-radius: 10px; padding: 14px; }
+    .panel-title { font-size: 0.75em; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+
+    /* ── Settings ── */
+    .setting-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 0.83em; }
+    .setting-row label { color: var(--muted2); }
+    .setting-row input[type=number], .setting-row select {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      border-radius: 5px; padding: 4px 8px; font-size: 0.9em; width: 80px; text-align: center;
+    }
+    .setting-row select { width: 110px; }
+
+    /* ── Roster builder ── */
+    .roster-section { margin-bottom: 14px; }
+    .roster-section-title { font-size: 0.72em; color: var(--muted2); font-weight: 600; margin-bottom: 6px; text-transform: uppercase; }
+    .roster-chips { display: flex; flex-wrap: wrap; gap: 5px; min-height: 30px; }
+    .roster-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; padding: 3px 9px 3px 7px; font-size: 0.75em; cursor: pointer;
+    }
+    .roster-chip:active { opacity: 0.7; }
+    .chip-pos { font-weight: 700; font-size: 0.85em; }
+    .chip-pos.QB { color: var(--QB); } .chip-pos.RB { color: var(--RB); }
+    .chip-pos.WR { color: var(--WR); } .chip-pos.TE { color: var(--TE); }
+    .chip-remove { color: var(--muted); font-size: 1.1em; line-height: 1; }
+    .roster-empty { font-size: 0.75em; color: var(--muted2); font-style: italic; }
+
+    /* ── Player search ── */
+    .player-search-wrap { position: relative; margin-bottom: 8px; }
+    .player-search-wrap input {
+      width: 100%; box-sizing: border-box; background: var(--surface);
+      border: 1px solid var(--border); color: var(--text); border-radius: 6px;
+      padding: 7px 10px; font-size: 0.83em;
+    }
+    .player-dropdown {
+      position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 100;
+      background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+      max-height: 200px; overflow-y: auto; display: none;
+    }
+    .player-dropdown.open { display: block; }
+    .drop-item {
+      padding: 7px 10px; font-size: 0.82em; cursor: pointer;
+      display: flex; align-items: center; gap: 7px; border-bottom: 1px solid var(--border2, #1e1e1e);
+    }
+    .drop-item:last-child { border-bottom: none; }
+    .drop-item:active { background: var(--selected); }
+    .drop-pos { font-size: 0.75em; font-weight: 700; padding: 1px 4px; border-radius: 3px; color: #fff; flex-shrink: 0; }
+    .drop-pos.QB { background: var(--QB); } .drop-pos.RB { background: var(--RB); }
+    .drop-pos.WR { background: var(--WR); } .drop-pos.TE { background: var(--TE); }
+    .drop-adp { margin-left: auto; color: var(--muted2); font-size: 0.85em; flex-shrink: 0; }
+
+    /* ── Taken pool ── */
+    .taken-note { font-size: 0.72em; color: var(--muted2); margin-bottom: 6px; }
+    #takenCount { color: var(--text); font-weight: 700; }
+
+    /* ── Run button ── */
+    .run-btn {
+      width: 100%; padding: 11px; border-radius: 8px; border: none;
+      background: var(--accent); color: #fff; font-size: 0.9em; font-weight: 700;
+      cursor: pointer; margin-top: 6px;
+    }
+    .run-btn:active { opacity: 0.8; }
+    .run-btn:disabled { opacity: 0.5; }
+
+    /* ── Results ── */
+    .rec-card {
+      background: var(--surface); border: 1px solid var(--border-soft); border-radius: 8px;
+      padding: 11px 12px; margin-bottom: 8px; cursor: pointer;
+    }
+    .rec-card.expanded .rec-breakdown { display: block; }
+    .rec-card-top { display: flex; align-items: center; gap: 8px; }
+    .rec-rank { font-size: 0.72em; color: var(--muted); font-weight: 700; min-width: 22px; }
+    .rec-score { font-size: 0.7em; font-weight: 700; background: var(--card); border: 1px solid var(--border-soft); border-radius: 4px; padding: 2px 6px; color: var(--muted); float: right; }
+    .rec-pos { font-size: 0.68em; font-weight: 700; padding: 1px 5px; border-radius: 3px; color: #fff; }
+    .rec-pos.QB { background: var(--QB); } .rec-pos.RB { background: var(--RB); }
+    .rec-pos.WR { background: var(--WR); } .rec-pos.TE { background: var(--TE); }
+    .rec-name { font-size: 0.88em; font-weight: 600; }
+    .rec-meta { font-size: 0.72em; color: var(--muted); margin-top: 2px; padding-left: 22px; }
+    .rec-reason { font-size: 0.72em; color: var(--accent); margin-top: 2px; padding-left: 22px; }
+    .rec-breakdown { display: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 0.75em; }
+    .bd-base { display: flex; justify-content: space-between; color: var(--muted2); padding: 2px 0; }
+    .bd-row  { display: flex; gap: 8px; padding: 2px 0; align-items: baseline; }
+    .bd-mult { font-weight: 700; min-width: 52px; }
+    .bd-mult.boost   { color: var(--green); }
+    .bd-mult.penalty { color: var(--orange); }
+    .bd-label { flex: 1; color: var(--muted2); }
+    .bd-note  { color: var(--muted2); font-style: italic; font-size: 0.9em; }
+    .bd-total { display: flex; justify-content: space-between; font-weight: 700; color: var(--text); margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+    .no-recs { color: var(--muted2); font-size: 0.83em; padding: 14px 0; text-align: center; }
+    .results-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .results-hdr-title { font-size: 0.75em; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .scenario-label { font-size: 0.72em; color: var(--muted2); }
+
+    /* ── Needs summary ── */
+    .needs-strip { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+    .need-pill { font-size: 0.7em; padding: 2px 8px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); color: var(--muted2); }
+    .need-pill.urgent { border-color: var(--orange); color: var(--orange); }
+
+    .status-bar { background: var(--surface); border-radius: 6px; padding: 7px 12px; font-size: 0.78em; color: var(--muted); margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+<h1>Recommender Sandbox</h1>
+<p class="page-sub">Build a scenario and see what the recommender suggests. Tap a rec card to expand the score breakdown.</p>
+
+<div class="sandbox-layout">
+
+  <!-- ── Left column: settings + roster ── -->
+  <div>
+    <!-- Settings -->
+    <div class="panel" style="margin-bottom:12px">
+      <div class="panel-title">Draft Settings</div>
+      <div class="setting-row">
+        <label>My pick #</label>
+        <input type="number" id="pickNum" value="61" min="1" max="240">
+      </div>
+      <div class="setting-row">
+        <label>Num teams</label>
+        <input type="number" id="numTeams" value="12" min="6" max="20">
+      </div>
+      <div class="setting-row">
+        <label>My position</label>
+        <input type="number" id="myPosition" value="1" min="1" max="20">
+      </div>
+      <div class="setting-row">
+        <label>Stack intensity</label>
+        <select id="stackIntensity">
+          <option value="off">Off</option>
+          <option value="light">Light</option>
+          <option value="medium" selected>Medium</option>
+          <option value="heavy">Heavy</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>Results shown</label>
+        <input type="number" id="numResults" value="10" min="1" max="20">
+      </div>
+    </div>
+
+    <!-- My Roster -->
+    <div class="panel" style="margin-bottom:12px">
+      <div class="panel-title">My Roster</div>
+      <div class="player-search-wrap">
+        <input type="text" id="rosterSearch" placeholder="Add player to roster…" autocomplete="off">
+        <div class="player-dropdown" id="rosterDropdown"></div>
+      </div>
+      <div id="rosterChips" class="roster-chips"><span class="roster-empty">No players added yet</span></div>
+    </div>
+
+    <!-- Taken Pool -->
+    <div class="panel" style="margin-bottom:12px">
+      <div class="panel-title">Also Taken (opponents)</div>
+      <div class="taken-note">Simulate players drafted by others. <span id="takenCount">0</span> marked taken.</div>
+      <div class="player-search-wrap">
+        <input type="text" id="takenSearch" placeholder="Mark player as taken…" autocomplete="off">
+        <div class="player-dropdown" id="takenDropdown"></div>
+      </div>
+      <div style="font-size:0.72em;color:var(--muted2);margin-top:4px">
+        <a href="#" id="autoTakenLink" style="color:var(--accent)">Auto-fill top players by ADP above pick #</a>
+      </div>
+    </div>
+
+    <button class="run-btn" id="runBtn">Run Recommendations</button>
+  </div>
+
+  <!-- ── Right column: results ── -->
+  <div class="panel">
+    <div class="results-hdr">
+      <div class="results-hdr-title">Recommendations</div>
+      <div class="scenario-label" id="scenarioLabel"></div>
+    </div>
+    <div id="needsStrip" class="needs-strip"></div>
+    <div id="results"><div class="no-recs">Configure a scenario and hit Run.</div></div>
+  </div>
+
+</div>
+
+<script src="/static/recommender.js"></script>
+<script>
+let PLAYERS = [];
+let customRankMap = {};
+let myRoster = [];   // player objects
+let takenIds = new Set();
+
+// ── Load players ──────────────────────────────────────────────────────────────
+async function loadPlayers() {
+  try {
+    const [pr, rr] = await Promise.all([fetch('/api/players'), fetch('/api/rankings')]);
+    PLAYERS = await pr.json();
+    const rankings = await rr.json();
+    customRankMap = {};
+    rankings.forEach(r => { if (r.custom_rank != null) customRankMap[r.player_id] = r.custom_rank; });
+    document.getElementById('runBtn').disabled = false;
+    document.getElementById('runBtn').textContent = 'Run Recommendations';
+  } catch (e) {
+    document.getElementById('runBtn').textContent = 'Failed to load players';
+  }
+}
+
+// ── Player search dropdown ────────────────────────────────────────────────────
+function makeDropdown(inputId, dropdownId, onSelect) {
+  const input = document.getElementById(inputId);
+  const drop  = document.getElementById(dropdownId);
+
+  input.addEventListener('input', () => {
+    const q = input.value.toLowerCase().trim();
+    if (!q || q.length < 2) { drop.classList.remove('open'); return; }
+    const results = PLAYERS
+      .filter(p => p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q))
+      .filter(p => !myRoster.some(r => r.id === p.id))
+      .slice(0, 12);
+    if (!results.length) { drop.classList.remove('open'); return; }
+    drop.innerHTML = results.map(p =>
+      `<div class="drop-item" data-id="${p.id}">
+        <span class="drop-pos ${p.pos}">${p.pos}</span>
+        <span>${p.name} <span style="color:var(--muted2);font-size:0.85em">· ${p.team}</span></span>
+        <span class="drop-adp">${p.adp}</span>
+      </div>`
+    ).join('');
+    drop.classList.add('open');
+    drop.querySelectorAll('.drop-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const p = PLAYERS.find(x => x.id === el.dataset.id);
+        if (p) onSelect(p);
+        input.value = '';
+        drop.classList.remove('open');
+      });
+    });
+  });
+
+  document.addEventListener('click', e => {
+    if (!input.contains(e.target) && !drop.contains(e.target)) drop.classList.remove('open');
+  });
+}
+
+// ── Roster chips ──────────────────────────────────────────────────────────────
+function renderRosterChips() {
+  const el = document.getElementById('rosterChips');
+  if (!myRoster.length) {
+    el.innerHTML = '<span class="roster-empty">No players added yet</span>';
+    return;
+  }
+  const posOrder = { QB: 0, RB: 1, WR: 2, TE: 3 };
+  const sorted = [...myRoster].sort((a, b) => (posOrder[a.pos] ?? 9) - (posOrder[b.pos] ?? 9));
+  el.innerHTML = sorted.map(p =>
+    `<span class="roster-chip" data-id="${p.id}" title="Click to remove">
+      <span class="chip-pos ${p.pos}">${p.pos}</span>
+      <span>${p.name.split(' ').slice(-1)[0]}</span>
+      <span class="chip-remove">×</span>
+    </span>`
+  ).join('');
+  el.querySelectorAll('.roster-chip').forEach(el => {
+    el.addEventListener('click', () => {
+      myRoster = myRoster.filter(p => p.id !== el.dataset.id);
+      renderRosterChips();
+    });
+  });
+}
+
+// ── Auto-fill taken ───────────────────────────────────────────────────────────
+document.getElementById('autoTakenLink').addEventListener('click', e => {
+  e.preventDefault();
+  const pick = parseInt(document.getElementById('pickNum').value) || 1;
+  takenIds = new Set(
+    PLAYERS.filter(p => (p.adp || 999) < pick && !myRoster.some(r => r.id === p.id))
+           .map(p => p.id)
+  );
+  document.getElementById('takenCount').textContent = takenIds.size;
+});
+
+// ── Needs strip ───────────────────────────────────────────────────────────────
+function renderNeeds(roster) {
+  const targets = { QB: 2, RB: 6, WR: 8, TE: 2 };
+  const counts  = {};
+  roster.forEach(p => { counts[p.pos] = (counts[p.pos] || 0) + 1; });
+  const el = document.getElementById('needsStrip');
+  const totalRounds  = 20;
+  const userRound    = roster.length + 1;
+  const roundsLeft   = Math.max(1, totalRounds - userRound);
+  el.innerHTML = Object.entries(targets).map(([pos, tgt]) => {
+    const have   = counts[pos] || 0;
+    const need   = Math.max(0, tgt - have);
+    const urgent = need > roundsLeft;
+    return `<span class="need-pill${urgent ? ' urgent' : ''}">${pos}: ${have}/${tgt}</span>`;
+  }).join('');
+}
+
+// ── Apply custom rankings ─────────────────────────────────────────────────────
+function applyRanks(players) {
+  return players.map(p => {
+    const cr = customRankMap[p.id];
+    return cr != null ? { ...p, adp: cr } : p;
+  });
+}
+
+// ── Run ───────────────────────────────────────────────────────────────────────
+document.getElementById('runBtn').addEventListener('click', run);
+
+function run() {
+  const pickNum   = parseInt(document.getElementById('pickNum').value) || 1;
+  const numTeams  = parseInt(document.getElementById('numTeams').value) || 12;
+  const myPos     = parseInt(document.getElementById('myPosition').value) || 1;
+  const intensity = document.getElementById('stackIntensity').value;
+  const n         = parseInt(document.getElementById('numResults').value) || 10;
+
+  const useCustom = Object.keys(customRankMap).length > 0;
+  const available = PLAYERS
+    .filter(p => !takenIds.has(p.id) && !myRoster.some(r => r.id === p.id))
+    .map(p => {
+      const cr = customRankMap[p.id];
+      return cr != null ? { ...p, adp: cr } : p;
+    });
+
+  const myTeamWithRounds = myRoster.map((p, i) => ({
+    ...p,
+    round: i + 1,
+    pick_number: (i + 1),
+  }));
+
+  const nextMyPick = nextMyOverallPick(pickNum + 1, numTeams, myPos);
+  const recs = getTopRecommendations(available, myTeamWithRounds, pickNum, intensity, n, nextMyPick);
+
+  renderNeeds(myTeamWithRounds);
+
+  const round = Math.floor((pickNum - 1) / numTeams) + 1;
+  document.getElementById('scenarioLabel').textContent =
+    `Pick ${pickNum} · Rd ${round} · ${myRoster.length} on roster`;
+
+  if (!recs.length) {
+    document.getElementById('results').innerHTML = '<div class="no-recs">No players available.</div>';
+    return;
+  }
+
+  document.getElementById('results').innerHTML = recs.map((r, i) => {
+    const p = r.player;
+    const cr = customRankMap[p.id];
+    const adpLabel = cr != null ? `Rank #${cr}` : `ADP ${p.adp}`;
+    const bdRows = (r.bd || []).map(b => {
+      const isBoost = b.mult > 1;
+      return `<div class="bd-row">
+        <span class="bd-mult ${isBoost ? 'boost' : 'penalty'}">×${b.mult.toFixed(3)}</span>
+        <span class="bd-label">${b.label}</span>
+        <span class="bd-note">${b.note || ''}</span>
+      </div>`;
+    }).join('');
+    const baseVal = (r.baseScore || (1000 / (p.adp || 1))).toFixed(2);
+    return `<div class="rec-card" onclick="this.classList.toggle('expanded')">
+      <div class="rec-card-top">
+        <span class="rec-rank">#${i+1}</span>
+        <span class="rec-score">${r.value.toFixed(2)}</span>
+        <span class="rec-pos ${p.pos}">${p.pos}</span>
+        <span class="rec-name">${p.name}</span>
+      </div>
+      <div class="rec-meta">${p.team}${p.bye ? ' · bye '+p.bye : ''} · ${adpLabel}</div>
+      ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
+      <div class="rec-breakdown">
+        <div class="bd-base"><span>Base (1000 ÷ ${p.adp})</span><span>${baseVal}</span></div>
+        ${bdRows}
+        <div class="bd-total"><span>Final score</span><span>${r.value.toFixed(2)}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Wire up dropdowns ─────────────────────────────────────────────────────────
+makeDropdown('rosterSearch', 'rosterDropdown', p => {
+  if (!myRoster.some(r => r.id === p.id)) {
+    myRoster.push(p);
+    renderRosterChips();
+  }
+});
+
+makeDropdown('takenSearch', 'takenDropdown', p => {
+  takenIds.add(p.id);
+  document.getElementById('takenCount').textContent = takenIds.size;
+});
+
+// Re-run on Enter in pick field
+document.getElementById('pickNum').addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
+
+document.getElementById('runBtn').disabled = true;
+document.getElementById('runBtn').textContent = 'Loading players…';
+loadPlayers();
+</script>
+</body>
+</html>
