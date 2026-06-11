@@ -152,6 +152,9 @@
     .player-row[data-pos="WR"] { border-left-color: var(--WR); }
     .player-row[data-pos="TE"] { border-left-color: var(--TE); }
     .player-row.taken[data-pos] { border-left-color: transparent; }
+    .list-sort-bar { display: flex; gap: 6px; margin-bottom: 6px; }
+    .sort-btn { flex: 1; padding: 5px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 0.72em; font-weight: 600; cursor: pointer; }
+    .sort-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .adp-badge { min-width: 26px; text-align: center; font-size: 0.7em; color: var(--muted); font-weight: 700; flex-shrink: 0; }
     .p-pos { font-size: 0.65em; font-weight: 700; padding: 1px 4px; border-radius: 3px; color: #fff; flex-shrink: 0; }
     .p-pos.QB { background: var(--QB); } .p-pos.RB { background: var(--RB); }
@@ -445,6 +448,10 @@
     <button class="btn-opp"  id="btnOppPick">→ Opponent</button>
     <button class="btn-undo" id="btnCancel" title="Cancel">✕</button>
   </div>
+  <div class="list-sort-bar">
+    <button class="sort-btn active" id="sortAdpBtn">Sort: ADP</button>
+    <button class="sort-btn" id="sortRankBtn">Sort: My Rank</button>
+  </div>
   <div class="player-list" id="playerList"><div class="spinner">Loading players…</div></div>
 </div>
 
@@ -488,6 +495,7 @@ let playersById = {};  // id → player object (O(1) lookup)
 // ── Custom rankings ────────────────────────────────────────────────────────────
 let useCustomRankings = localStorage.getItem('bba_use_custom_ranks') === 'true';
 let customRankMap = {};  // player_id → custom_rank
+let listSortMode = 'adp';  // 'adp' | 'rank'
 
 async function loadCustomRankings() {
   try {
@@ -1193,6 +1201,13 @@ function getVisiblePlayers() {
     const q = searchQuery.toLowerCase();
     list = list.filter(p => p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q));
   }
+  if (listSortMode === 'rank') {
+    list = [...list].sort((a, b) => {
+      const ra = customRankMap[a.id] ?? 9999;
+      const rb = customRankMap[b.id] ?? 9999;
+      return ra !== rb ? ra - rb : (a.adp || 999) - (b.adp || 999);
+    });
+  }
   const avail = list.filter(p => !state.takenIds.has(p.id));
   const taken = list.filter(p =>  state.takenIds.has(p.id));
   return [...avail, ...taken].slice(0, 80);
@@ -1221,9 +1236,14 @@ function renderPlayerList() {
     const byeStr   = p.bye ? ` · bye ${p.bye}` : '';
     const wk17col  = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'var(--muted)';
     const wk17str  = p.week17 ? `<span style="color:${wk17col}">wk 17 ${p.week17}</span>` : '—';
+    const cr       = customRankMap[p.id];
+    const rankBadge = cr != null
+      ? `<div class="adp-badge" style="color:var(--accent)" title="My rank">#${cr}</div>`
+      : `<div class="adp-badge" style="color:var(--muted2)">—</div>`;
     return `<div class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
          data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
       <div class="adp-badge">${p.adp}</div>
+      ${rankBadge}
       <span class="p-pos ${p.pos}">${p.pos}</span>
       <div class="p-body">${p.name}${isQBStack ? ' ⚡' : ''} <span class="p-sub">· ${p.team}${byeStr}</span></div>
       <div class="p-right">${wk17str}</div>
@@ -1249,6 +1269,19 @@ function hideActionBar() {
 
 document.getElementById('btnOppPick').addEventListener('click', () => { if (selectedPlayer) addPick(selectedPlayer, false); });
 document.getElementById('btnCancel').addEventListener('click', hideActionBar);
+
+document.getElementById('sortAdpBtn').addEventListener('click', () => {
+  listSortMode = 'adp';
+  document.getElementById('sortAdpBtn').classList.add('active');
+  document.getElementById('sortRankBtn').classList.remove('active');
+  renderPlayerList();
+});
+document.getElementById('sortRankBtn').addEventListener('click', () => {
+  listSortMode = 'rank';
+  document.getElementById('sortRankBtn').classList.add('active');
+  document.getElementById('sortAdpBtn').classList.remove('active');
+  renderPlayerList();
+});
 
 function addPick(player, isMine) {
   const pickNum = state.overallPick;
