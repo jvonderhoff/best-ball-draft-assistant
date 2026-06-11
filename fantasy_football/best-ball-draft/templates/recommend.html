@@ -289,6 +289,20 @@
     .qb-run-alert   { background: var(--green-bg); border: 1px solid var(--green); border-radius: 6px; padding: 7px 12px; margin-bottom: 10px; font-size: 0.82em; color: var(--green); font-weight: 600; }
     .mc-badge { font-size: 0.65em; font-weight: 700; padding: 1px 5px; border-radius: 3px; background: var(--green-bg); color: var(--green); margin-left: 6px; vertical-align: middle; }
 
+    /* ── Position wave panel ── */
+    .pos-wave { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .pos-wave-col { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 6px; padding: 7px 9px; }
+    .pos-wave-col.urgent { border-color: var(--orange); }
+    .pos-wave-hdr { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+    .pos-wave-hdr .pos-tag { font-size: 0.68em; font-weight: 700; padding: 1px 5px; border-radius: 3px; color: #fff; }
+    .pos-wave-hdr .pos-tag.QB { background: var(--QB); } .pos-wave-hdr .pos-tag.RB { background: var(--RB); }
+    .pos-wave-hdr .pos-tag.WR { background: var(--WR); } .pos-wave-hdr .pos-tag.TE { background: var(--TE); }
+    .pos-wave-hdr .need-count { font-size: 0.68em; color: var(--muted2); margin-left: auto; }
+    .pos-wave-hdr .urgent-flag { font-size: 0.65em; color: var(--orange); font-weight: 700; margin-left: 2px; }
+    .pos-wave-player { font-size: 0.72em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; justify-content: space-between; gap: 4px; padding: 1px 0; }
+    .pos-wave-player .adp-val { color: var(--muted2); flex-shrink: 0; }
+    .pos-wave-player .adp-val.hot { color: var(--orange); font-weight: 700; }
+
     /* ── Score breakdown ── */
     .rec-score-badge { font-size: 0.7em; font-weight: 700; color: var(--muted); background: var(--surface); border: 1px solid var(--border-soft); border-radius: 4px; padding: 2px 6px; cursor: pointer; float: right; margin-left: 8px; }
     .rec-card.expanded .rec-score-badge { color: var(--accent); border-color: var(--accent); }
@@ -1331,11 +1345,49 @@ function renderRecs() {
     return;
   }
 
-  const runAlert = '';
+  // ── Position wave panel ────────────────────────────────────────────────────
+  // For each position still needed, show the next 3 available players by ADP.
+  // Flags players whose ADP is at or below the current pick (going soon).
+  const TOTAL_ROUNDS = 20;
+  const roundsLeft  = Math.max(1, TOTAL_ROUNDS - userRound);
+  const posTargets  = { QB: 2, RB: 6, WR: 8, TE: 2 };
+  const needs       = getTeamNeeds(state.myTeam);
+  const otherNeedsMap = pos => Object.entries(needs).reduce((s, [p, n]) => p !== pos ? s + n : s, 0);
+
+  const waveHTML = ['WR', 'RB', 'QB', 'TE']
+    .filter(pos => (needs[pos] || 0) > 0)
+    .map(pos => {
+      const posNeed     = needs[pos];
+      const otherNeeds  = otherNeedsMap(pos);
+      const effectiveRds = Math.max(0, roundsLeft - otherNeeds);
+      const behind      = Math.max(0, posNeed - effectiveRds);
+      const nextPlayers = available
+        .filter(p => p.pos === pos)
+        .sort((a, b) => (a.adp || 999) - (b.adp || 999))
+        .slice(0, 3);
+      const rows = nextPlayers.map(p => {
+        const adp   = Math.round(p.adp || 999);
+        const isHot = adp <= pickForRec + 10;  // going in next ~10 picks
+        return `<div class="pos-wave-player">
+          <span>${p.name.split(' ').slice(-1)[0]}, ${p.team}</span>
+          <span class="adp-val${isHot ? ' hot' : ''}">${adp}${isHot ? ' ⚡' : ''}</span>
+        </div>`;
+      }).join('');
+      return `<div class="pos-wave-col${behind > 0 ? ' urgent' : ''}">
+        <div class="pos-wave-hdr">
+          <span class="pos-tag ${pos}">${pos}</span>
+          <span style="font-size:0.7em;color:var(--muted2)">${posNeed} left</span>
+          ${behind > 0 ? `<span class="urgent-flag">⚠ ${behind} behind</span>` : ''}
+        </div>
+        ${rows || '<div style="font-size:0.7em;color:var(--muted2)">none left</div>'}
+      </div>`;
+    }).join('');
+
+  const wavePanel = waveHTML ? `<div class="pos-wave">${waveHTML}</div>` : '';
 
   const displayRecs = recs;
 
-  el.innerHTML = statusBar + runAlert + displayRecs.map((r, i) => {
+  el.innerHTML = statusBar + wavePanel + displayRecs.map((r, i) => {
     const p = r.player;
 
     // Score breakdown panel

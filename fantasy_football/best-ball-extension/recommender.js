@@ -188,17 +188,20 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     apply(1.20, 'TE elite boost', `ADP ${player.adp} ≤ 30, rd ${userRound}`);
   }
 
-  // Draft capital urgency — fires only when you're genuinely behind schedule:
-  // need more players at this position than rounds remain.
-  // Silent when you still have time to wait for value; escalates when you must act.
-  // ×1.08 per round behind, capped at ×1.35 so it can't override huge value gaps.
+  // Draft capital urgency — fires when remaining picks for this position run short.
+  // "Effective rounds" for a position = total rounds left minus picks earmarked for
+  // other positions that still need filling. So if QB and TE are already done,
+  // those picks free up and WR/RB urgency kicks in earlier.
+  // ×1.08 per round behind, capped at ×1.35 so it can't override large value gaps.
   const TOTAL_ROUNDS = 20;
   const roundsLeft  = Math.max(1, TOTAL_ROUNDS - userRound);
   const posNeed     = needs[pos] || 0;
-  const posBehind   = Math.max(0, posNeed - roundsLeft);
+  const otherNeeds  = Object.entries(needs).reduce((s, [p, n]) => p !== pos ? s + n : s, 0);
+  const effectiveRoundsForPos = Math.max(0, roundsLeft - otherNeeds);
+  const posBehind   = Math.max(0, posNeed - effectiveRoundsForPos);
   if (posBehind > 0) {
     const urgencyBoost = 1 + Math.min(0.35, posBehind * 0.08);
-    apply(urgencyBoost, `${pos} urgency`, `need ${posNeed} more, ${roundsLeft} rds left`);
+    apply(urgencyBoost, `${pos} urgency`, `need ${posNeed}, ~${effectiveRoundsForPos} rds avail`);
   }
 
   // Hard discount when a position slot is fully filled.
