@@ -51,9 +51,6 @@
     .btn-export  { background: #6a1b9a; color: #ce93d8; }
     .btn-reset   { background: #263238; color: #78909c; }
     .btn-sm { padding: 4px 10px; font-size: 0.78em; }
-    .reset-threshold-wrap { display: flex; align-items: center; gap: 5px; }
-    .reset-threshold-label { font-size: 0.82em; color: #78909c; white-space: nowrap; }
-    .reset-threshold-input { width: 54px; background: #263238; border: 1px solid #37474f; border-radius: 4px; color: #cfd8dc; font-size: 0.85em; padding: 4px 6px; text-align: center; }
 
     /* ── Toolbar ── */
     .toolbar {
@@ -156,6 +153,7 @@
     tbody tr:hover { background: var(--hover); }
     tbody tr.dragging { opacity: 0.4; cursor: grabbing; }
     tbody tr.drag-over { border-top: 2px solid var(--accent); }
+    tbody tr.moving { background: #1a2f4d; outline: 1px solid #4fc3f7; }
 
     td { padding: 8px 12px; font-size: 0.85em; vertical-align: middle; }
 
@@ -192,7 +190,7 @@
       text-align: center;
       outline: none;
     }
-    .rank-input:focus { border-color: #4fc3f7; background: #1a2f4d; }
+    .rank-input:focus { border-color: #4fc3f7; background: #1a2f4d; color: #e0e0e0; }
     .rank-input.unranked { color: #37474f; border-color: #1e2d3a; }
     /* Hide native browser spinner arrows — we use our own ▲▼ buttons */
     .rank-input::-webkit-outer-spin-button,
@@ -328,12 +326,6 @@
     </div>
     <div class="header-actions">
       <button class="btn btn-reset" id="refreshAdpBtn" title="Pull latest ADP from DraftKings (keeps your custom ranks &amp; notes)">↻ Refresh ADP</button>
-      <span class="reset-threshold-wrap">
-        <span class="reset-threshold-label">Reset rank</span>
-        <input type="number" id="resetThresholdInput" class="reset-threshold-input" value="200" min="1" max="9999">
-        <span class="reset-threshold-label">+ to DK ADP</span>
-        <button class="btn btn-reset" id="reset200Btn">Reset</button>
-      </span>
       <button class="btn btn-reset" id="resetBtn">Reset All to DK ADP</button>
       <button class="btn btn-export" id="exportBtn">Export to Extension</button>
       <button class="btn btn-success" id="saveBtn">
@@ -398,17 +390,6 @@
   </div>
 </div>
 
-<!-- Confirm reset threshold+ modal -->
-<div class="modal-overlay" id="reset200Modal">
-  <div class="modal">
-    <h3 id="reset200ModalTitle">Reset Ranks 200+?</h3>
-    <p id="reset200ModalBody">This will clear custom ranks for any player you've ranked 200 or higher, reverting them to DK ADP. Your top ranks and all notes are kept.</p>
-    <div class="modal-actions">
-      <button class="btn btn-reset" id="reset200CancelBtn">Cancel</button>
-      <button class="btn btn-primary" id="reset200ConfirmBtn">Reset</button>
-    </div>
-  </div>
-</div>
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────────
@@ -502,7 +483,7 @@ function renderTable() {
       <td class="col-name">${p.name}</td>
       <td class="col-pos">${posBadge(p.pos)}</td>
       <td class="col-team">${p.team}</td>
-      <td class="col-adp">${p.adp ?? '—'}</td>
+      <td class="col-adp">${p.adp != null ? Number(p.adp).toFixed(1) : '—'}</td>
       <td class="col-delta" data-id="${p.player_id}-delta">${deltaHtml(p.custom_rank, p.adp)}</td>
       <td class="col-notes">
         <input class="notes-input" type="text"
@@ -537,6 +518,13 @@ function movePlayer(pid, delta) {
   allPlayers.sort((a, b) => (a.custom_rank || 9999) - (b.custom_rank || 9999));
   renderTable();
   markDirty();
+  // Highlight the moved row and scroll it into view.
+  // (btn.focus() doesn't persist on mobile after DOM redraw.)
+  const row = document.querySelector(`tr[data-id="${pid}"]`);
+  if (row) {
+    row.classList.add('moving');
+    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
 }
 
 // ── Insert player at a new rank, shifting others to make room ─────────────────
@@ -775,23 +763,6 @@ async function resetToAdp() {
   setStatus('All ranks set to DK ADP order', 'ok');
 }
 
-async function reset200ToAdp() {
-  const threshold = parseInt(document.getElementById('resetThresholdInput').value, 10) || 200;
-
-  const keep  = allPlayers.filter(p => p.custom_rank != null && p.custom_rank < threshold);
-  const reset = allPlayers.filter(p => p.custom_rank == null || p.custom_rank >= threshold);
-
-  // Sort reset pool by ADP, assign sequential ranks starting at threshold.
-  // Every player gets a unique rank. Lane at ADP 230.7 lands at 200 + (his
-  // position in the ADP-sorted reset pool) — not his ADP value, but in order.
-  reset.sort((a, b) => (a.adp || 9999) - (b.adp || 9999));
-  reset.forEach((p, i) => { p.custom_rank = threshold + i; });
-
-  allPlayers = [...keep, ...reset].sort((a, b) => (a.custom_rank || 9999) - (b.custom_rank || 9999));
-  renderTable();
-  await saveRankings();
-  setStatus(`${reset.length} players from rank ${threshold}+ re-ordered by DK ADP`, 'ok');
-}
 
 // ── Sort by My Rank ────────────────────────────────────────────────────────────
 // Sorts display by custom rank (unranked players go to the bottom).
@@ -872,20 +843,6 @@ document.getElementById('resetConfirmBtn').addEventListener('click', () => {
   resetToAdp();
 });
 
-document.getElementById('reset200Btn').addEventListener('click', () => {
-  const threshold = parseInt(document.getElementById('resetThresholdInput').value, 10) || 200;
-  document.getElementById('reset200ModalTitle').textContent = `Reset Ranks ${threshold}+?`;
-  document.getElementById('reset200ModalBody').textContent =
-    `Players ranked ${threshold}+ will be re-ordered by DK ADP and given sequential ranks starting at ${threshold}. Your top ${threshold - 1} ranks and all notes are kept.`;
-  document.getElementById('reset200Modal').classList.add('open');
-});
-document.getElementById('reset200CancelBtn').addEventListener('click', () => {
-  document.getElementById('reset200Modal').classList.remove('open');
-});
-document.getElementById('reset200ConfirmBtn').addEventListener('click', () => {
-  document.getElementById('reset200Modal').classList.remove('open');
-  reset200ToAdp();
-});
 
 document.querySelectorAll('.pos-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -899,6 +856,13 @@ document.querySelectorAll('.pos-tab').forEach(tab => {
 document.getElementById('searchInput').addEventListener('input', e => {
   searchQ = e.target.value.trim();
   renderTable();
+});
+
+// Clear moving highlight when tapping outside an arrow button
+document.addEventListener('pointerdown', e => {
+  if (!e.target.closest('.btn-rank-arrow')) {
+    document.querySelectorAll('tr.moving').forEach(r => r.classList.remove('moving'));
+  }
 });
 
 // Warn on exit if unsaved
