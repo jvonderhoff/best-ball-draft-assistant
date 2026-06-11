@@ -312,7 +312,8 @@
     </div>
     <div class="header-actions">
       <button class="btn btn-reset" id="refreshAdpBtn" title="Pull latest ADP from DraftKings (keeps your custom ranks &amp; notes)">↻ Refresh ADP</button>
-      <button class="btn btn-reset" id="resetBtn">Reset to DK ADP</button>
+      <button class="btn btn-reset" id="reset200Btn">Reset 200+ to DK ADP</button>
+      <button class="btn btn-reset" id="resetBtn">Reset All to DK ADP</button>
       <button class="btn btn-export" id="exportBtn">Export to Extension</button>
       <button class="btn btn-success" id="saveBtn">
         Save Rankings
@@ -363,7 +364,7 @@
   </div>
 </div>
 
-<!-- Confirm reset modal -->
+<!-- Confirm reset all modal -->
 <div class="modal-overlay" id="resetModal">
   <div class="modal">
     <h3>Reset Rankings?</h3>
@@ -371,6 +372,18 @@
     <div class="modal-actions">
       <button class="btn btn-reset" id="resetCancelBtn">Cancel</button>
       <button class="btn btn-primary" id="resetConfirmBtn">Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm reset 200+ modal -->
+<div class="modal-overlay" id="reset200Modal">
+  <div class="modal">
+    <h3>Reset Ranks 200+?</h3>
+    <p>This will clear custom ranks for any player you've ranked 200 or higher, reverting them to DK ADP. Your top 199 ranks and all notes are kept.</p>
+    <div class="modal-actions">
+      <button class="btn btn-reset" id="reset200CancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="reset200ConfirmBtn">Reset 200+</button>
     </div>
   </div>
 </div>
@@ -669,6 +682,20 @@ async function resetToAdp() {
   setStatus('Rankings reset to DK ADP order', 'ok');
 }
 
+async function reset200ToAdp() {
+  // Clear custom ranks ≥ 200, keep everything below and all notes
+  let count = 0;
+  allPlayers.forEach(p => {
+    if (p.custom_rank != null && p.custom_rank >= 200) {
+      p.custom_rank = null;
+      count++;
+    }
+  });
+  renderTable();
+  await saveRankings();
+  setStatus(`${count} players at rank 200+ reset to DK ADP`, 'ok');
+}
+
 // ── Sort by DK ADP ─────────────────────────────────────────────────────────────
 // Sorts the display by ADP without assigning or overwriting custom ranks.
 function sortByAdp() {
@@ -738,6 +765,17 @@ document.getElementById('resetCancelBtn').addEventListener('click', () => {
 document.getElementById('resetConfirmBtn').addEventListener('click', () => {
   document.getElementById('resetModal').classList.remove('open');
   resetToAdp();
+});
+
+document.getElementById('reset200Btn').addEventListener('click', () => {
+  document.getElementById('reset200Modal').classList.add('open');
+});
+document.getElementById('reset200CancelBtn').addEventListener('click', () => {
+  document.getElementById('reset200Modal').classList.remove('open');
+});
+document.getElementById('reset200ConfirmBtn').addEventListener('click', () => {
+  document.getElementById('reset200Modal').classList.remove('open');
+  reset200ToAdp();
 });
 
 document.querySelectorAll('.pos-tab').forEach(tab => {
