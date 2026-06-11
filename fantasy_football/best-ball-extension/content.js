@@ -1446,7 +1446,8 @@ function renderSuggestion() {
   const box = document.getElementById('bba-suggestion');
   if (!state.isSetup || !state.available.length) { box.style.display = 'none'; return; }
 
-  const recs = getTopRecommendations(state.available, state.myTeam, state.overallPick, state.stackIntensity, exposure, state.diversifyStrength, 10, state.rbPriority);
+  const nextMyPick = nextMyOverallPick(state.overallPick + 1, state.numTeams, state.myPosition);
+  const recs = getTopRecommendations(state.available, state.myTeam, state.overallPick, state.stackIntensity, 10, nextMyPick);
   if (!recs.length) { box.style.display = 'none'; return; }
 
   const myTurn = isMyTurn(state.overallPick, state.numTeams, state.myPosition);
