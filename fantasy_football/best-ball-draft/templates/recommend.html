@@ -470,8 +470,6 @@ function bustCache(key) {
 // ── Draft state ────────────────────────────────────────────────────────────────
 let PLAYERS = [];
 let playersById = {};  // id → player object (O(1) lookup)
-let PROJECTIONS = {};  // player_id → { mean, weekly_stddev } from /api/projections
-let _mcCache = null;   // { teamKey, base, scores: {} } — memoize MC per team state
 
 // ── Custom rankings ────────────────────────────────────────────────────────────
 let useCustomRankings = localStorage.getItem('bba_use_custom_ranks') === 'true';
@@ -1142,24 +1140,19 @@ document.getElementById('resetDraft').addEventListener('click', () => {
 
 // ── Player loading ─────────────────────────────────────────────────────────────
 async function loadPlayers() {
-  // Players and projections don't change mid-session — cache 10 min.
+  // Players don't change mid-session — cache 10 min.
   const cached = getCached('players_bundle', 10 * 60 * 1000);
   if (cached) {
-    PLAYERS     = cached.players;
-    PROJECTIONS = cached.projections;
+    PLAYERS = cached.players;
     buildNameLookup();
     renderPlayerList();
     renderRecs();
     return;
   }
   try {
-    const [pr, proj] = await Promise.all([
-      fetch('/api/players'),
-      fetch('/api/projections'),
-    ]);
-    PLAYERS     = await pr.json();
-    PROJECTIONS = await proj.json();
-    setCached('players_bundle', { players: PLAYERS, projections: PROJECTIONS });
+    const pr = await fetch('/api/players');
+    PLAYERS   = await pr.json();
+    setCached('players_bundle', { players: PLAYERS });
     buildNameLookup();
     renderPlayerList();
     renderRecs();
@@ -1315,12 +1308,10 @@ function renderRecs() {
     : (nextMyOverallPick(state.overallPick, settings.numTeams, settings.myPosition) || state.overallPick);
 
   const nextMyPick = nextMyOverallPick(pickForRec + 1, settings.numTeams, settings.myPosition);
-  // Fetch a wider pool so MC can re-rank within it; final display still shows top 10.
   const userRound = state.myTeam.length + 1;
-  const MC_POOL   = 20;
   const recs = getTopRecommendations(
     available, state.myTeam, pickForRec,
-    STACK_INTENSITY, MC_POOL, nextMyPick
+    STACK_INTENSITY, 10, nextMyPick
   );
 
   const el = document.getElementById('recsList');
@@ -1342,83 +1333,10 @@ function renderRecs() {
 
   const runAlert = '';
 
-  // ── Monte Carlo marginal contributions ────────────────────────────────────────
-  // Memoize base score by team state so tab-switches don't re-run sims unnecessarily.
-  //
-  // MC blend weight ramps with draft round:
-  //   rounds 1-7:  0%  — pure value/stack engine (MC noise too high on shallow rosters)
-  //   rounds 8-12: 10-25% — MC starts influencing re-ranking
-  //   rounds 13+:  30% — roster fit matters most late; MC has the most signal here
-  //
-  // Blending: finalScore = score × (1-w) + score × (mcDelta/medianMcDelta) × w
-  // This keeps scores in the same unit as the multiplier engine — the MC term is
-  // normalised relative to the median candidate so a "typical" MC delta = neutral.
-  const hasProjData = Object.keys(PROJECTIONS).length > 0;
-  const mcBlendWeight = !hasProjData ? 0
-    : userRound <= 7  ? 0
-    : userRound <= 12 ? (userRound - 7) / 20        // 0.05 → 0.25
-    : 0.30;
-
-  let mcScores;
-  let displayRecs = recs;  // may be re-ordered after MC blend
-
-  if (hasProjData && mcBlendWeight > 0) {
-    const teamKey = state.myTeam.map(p => p.id).join(',');
-    if (!_mcCache || _mcCache.teamKey !== teamKey) {
-      _mcCache = { teamKey, base: simulateSeason(state.myTeam, PROJECTIONS), scores: {} };
-    }
-    const mcBase = _mcCache.base;
-
-    // Compute MC for the full candidate pool
-    const mcRaw = recs.map(r => {
-      const pid = r.player.id;
-      if (_mcCache.scores[pid] === undefined) {
-        _mcCache.scores[pid] = simulateSeason([...state.myTeam, r.player], PROJECTIONS) - mcBase;
-      }
-      return _mcCache.scores[pid];
-    });
-
-    // Normalise: divide by median so median candidate = 1.0
-    const sorted = [...mcRaw].sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)] || 1;
-    const mcNorm = mcRaw.map(v => (median > 0 ? v / median : 1.0));
-
-    // Blend and re-rank
-    const blended = recs.map((r, i) => ({
-      ...r,
-      blendedScore: r.value * (1 - mcBlendWeight) + r.value * mcNorm[i] * mcBlendWeight,
-      mcDelta: mcRaw[i],
-    }));
-    blended.sort((a, b) => b.blendedScore - a.blendedScore);
-    displayRecs = blended.slice(0, 10);
-    mcScores    = displayRecs.map(r => r.mcDelta);
-  } else {
-    // No MC blend: just show top 10, compute MC for display badge only
-    displayRecs = recs.slice(0, 10);
-    if (hasProjData) {
-      const teamKey = state.myTeam.map(p => p.id).join(',');
-      if (!_mcCache || _mcCache.teamKey !== teamKey) {
-        _mcCache = { teamKey, base: simulateSeason(state.myTeam, PROJECTIONS), scores: {} };
-      }
-      const mcBase = _mcCache.base;
-      mcScores = displayRecs.map(r => {
-        const pid = r.player.id;
-        if (_mcCache.scores[pid] === undefined) {
-          _mcCache.scores[pid] = simulateSeason([...state.myTeam, r.player], PROJECTIONS) - mcBase;
-        }
-        return _mcCache.scores[pid];
-      });
-    } else {
-      mcScores = displayRecs.map(() => null);
-    }
-  }
+  const displayRecs = recs;
 
   el.innerHTML = statusBar + runAlert + displayRecs.map((r, i) => {
-    const p  = r.player;
-    const mc = mcScores[i];
-    const mcBadge = mc !== null
-      ? `<span class="mc-badge" title="Monte Carlo: expected best-ball pts added">+${mc.toFixed(1)}</span>`
-      : '';
+    const p = r.player;
 
     // Score breakdown panel
     const bdRows = (r.bd || []).map(b => {
@@ -1430,19 +1348,19 @@ function renderRecs() {
         <span class="bd-note">${b.note || ''}</span>
       </div>`;
     }).join('');
-    const scoreVal = (r.blendedScore ?? r.value).toFixed(2);
+    const scoreVal = r.value.toFixed(2);
     const baseVal  = (r.baseScore || (1000 / (p.adp || 1))).toFixed(2);
     const breakdown = `<div class="rec-breakdown">
       <div class="bd-base"><span>Base (1000 ÷ ADP ${p.adp})</span><span>${baseVal}</span></div>
       ${bdRows}
-      <div class="bd-total"><span>Final score</span><span>${r.value.toFixed(2)}${r.blendedScore != null ? ` → ${scoreVal} (MC blend)` : ''}</span></div>
+      <div class="bd-total"><span>Final score</span><span>${scoreVal}</span></div>
     </div>`;
 
     return `<div class="rec-card" onclick="this.classList.toggle('expanded')">
       <div class="rec-rank">#${i+1}</div>
       <div>
         <span class="rec-score-badge">${scoreVal}</span>
-        <span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span>${mcBadge}
+        <span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span>
       </div>
       <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ${useCustomRankings ? 'Rank' : 'ADP'} ${Math.round(p.adp)}</div>
       ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}

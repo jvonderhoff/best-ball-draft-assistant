@@ -71,7 +71,7 @@ function samePlayoffGame(p1, p2, week) {
 // Returns a multiplier > 1.0 if this player shares playoff games with current team members.
 //
 // userRound: used to fade the bonus in later rounds when standalone game-stack value
-// is low and MC fitness should carry the load instead. Multi-partner stacks stay strong.
+// is lower. Multi-partner stacks stay strong.
 //
 // Single partner:  bonus fades from full → 40% of full between rounds 9 and 16.
 // 2+ partners:     no fade — owning multiple players in the same game is a committed
@@ -409,83 +409,6 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
 
   scored.sort((a, b) => b.value - a.value);
   return scored.slice(0, n);
-}
-
-// ── Monte Carlo best-ball simulation ─────────────────────────────────────────
-// Simulates N full seasons to estimate expected best-ball score for a roster.
-// Uses player prop projections when available; falls back to ADP-derived estimates.
-//
-// Best-ball lineup each week: 1 QB · 2 RB · 3 WR · 1 TE · 1 FLEX (RB/WR/TE)
-// Weekly scores modelled as Normal(mean/17, stddev) floored at 0.
-// Position CVs (σ / μ): QB 0.35 · RB 0.55 · WR 0.75 · TE 0.65
-
-const MC_POS_CV = { QB: 0.35, RB: 0.55, WR: 0.75, TE: 0.65 };
-const MC_WEEKS  = 17;
-const MC_N      = 300;
-
-// Box-Muller: standard normal sample
-function randn() {
-  let u, v;
-  do { u = Math.random(); } while (u === 0);
-  do { v = Math.random(); } while (v === 0);
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-}
-
-// ADP → rough season projection for players with no prop data.
-// Calibrated so ADP 1 ≈ 280 pts, ADP 50 ≈ 68 pts, ADP 100 ≈ 50 pts.
-function adpToProjection(adp) {
-  return Math.max(8, 280 * Math.pow(Math.max(adp, 1), -0.4));
-}
-
-// Pick the best possible lineup from a set of weekly scores.
-function bestBallWeekScore(weeklyScores) {
-  const by = { QB: [], RB: [], WR: [], TE: [] };
-  for (const { pos, score } of weeklyScores) {
-    if (by[pos]) by[pos].push(score);
-  }
-  for (const arr of Object.values(by)) arr.sort((a, b) => b - a);
-
-  const score = (by.QB[0] || 0)
-    + (by.RB[0] || 0) + (by.RB[1] || 0)
-    + (by.WR[0] || 0) + (by.WR[1] || 0) + (by.WR[2] || 0)
-    + (by.TE[0] || 0)
-    + Math.max(by.RB[2] || 0, by.WR[3] || 0, by.TE[1] || 0);  // FLEX
-  return score;
-}
-
-// Simulate N seasons and return the expected best-ball season score.
-function simulateSeason(roster, projections, N = MC_N) {
-  if (!roster.length) return 0;
-
-  const stats = roster.map(p => {
-    const proj = projections[p.id];
-    const seasonMean   = proj ? proj.mean          : adpToProjection(p.adp);
-    const weeklyMean   = seasonMean / MC_WEEKS;
-    const weeklyStddev = proj ? proj.weekly_stddev : weeklyMean * (MC_POS_CV[p.pos] || 0.5);
-    return { pos: p.pos, weeklyMean, weeklyStddev };
-  });
-
-  let total = 0;
-  for (let i = 0; i < N; i++) {
-    let season = 0;
-    for (let w = 0; w < MC_WEEKS; w++) {
-      const scores = stats.map(s => ({
-        pos:   s.pos,
-        score: Math.max(0, s.weeklyMean + s.weeklyStddev * randn()),
-      }));
-      season += bestBallWeekScore(scores);
-    }
-    total += season;
-  }
-  return total / N;
-}
-
-// Marginal contribution: expected season-score gain from adding one player.
-// Runs two simulations (base roster, then roster + candidate) and returns the delta.
-function mcMarginalContribution(player, currentRoster, projections, N = MC_N) {
-  const base = simulateSeason(currentRoster, projections, N);
-  const with_ = simulateSeason([...currentRoster, player], projections, N);
-  return with_ - base;
 }
 
 // ── Stack summary (for overlay display) ──────────────────────────────────────
