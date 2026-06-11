@@ -206,17 +206,13 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   // Helper: apply multiplier and optionally record it
   const apply = (m, label, note) => { mult *= m; if (bd && Math.abs(m - 1) > 0.001) bd.push({ label, mult: m, note }); };
 
-  // ADP is the primary signal. RB and WR compete on pure ADP.
-  // QB, TE, and WR get urgency-based adjustments when falling behind pace.
   const totalDrafted = myTeam.length;
   const myTEs  = myTeam.filter(p => p.pos === 'TE').length;
   const myQBs  = myTeam.filter(p => p.pos === 'QB').length;
   const myWRs  = myTeam.filter(p => p.pos === 'WR').length;
   const userRound = totalDrafted + 1;
-  // Late-round zero: if you hit round 13+ with none drafted you'll need 3
-  // to maintain adequate position quality across the remaining picks.
-  const TE_TARGET = (userRound >= 13 && myTEs === 0) ? 3 : 2;
-  const QB_TARGET = (userRound >= 13 && myQBs === 0) ? 3 : 2;
+  const TE_TARGET = 2;
+  const QB_TARGET = 2;
   let mult = 1.0;
 
   // TE urgency — bimodal strategy:
@@ -257,51 +253,8 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     }
   }
 
-  // WR urgency — activates mid-draft when WR count is behind pace.
-  // Uses pace deficit rather than absolute need since WR depth runs much deeper.
-  // Expected pace: 8 WRs in 20 picks = 0.40 per pick drafted.
-  // A 1.5-pick grace margin prevents boosting when only slightly behind.
-  //   Rd 1-6:  no boost — plenty of WR depth available
-  //   Rd 8:    weight 0.33 → mild nudge if behind
-  //   Rd 10:   weight 0.67 → meaningful push if behind
-  //   Rd 12+:  weight 1.0  → full urgency if behind
-  const wrUrgencyWeight = Math.max(0, Math.min(1, (userRound - 6) / 6));
-
-  if (pos === 'WR' && wrUrgencyWeight > 0) {
-    const expectedWRs = totalDrafted * 0.40;
-    const deficit = Math.max(0, expectedWRs - myWRs - 1.5);
-    if (deficit > 0) {
-      const m = 1 + Math.min(deficit * 0.20 * wrUrgencyWeight, 0.60);
-      apply(m, 'WR urgency', `${myWRs} WRs, behind pace by ${deficit.toFixed(1)}`);
-    }
-  }
-
-  // QB urgency — starts early; good QBs dry up fast and you can't pivot late.
-  //   Rd 1-3:  no boost
-  //   Rd 5:    weight 0.20 → gentle push
-  //   Rd 7:    weight 0.60 → solid push
-  //   Rd 9+:   weight 1.0  → full urgency
-  const qbUrgencyWeight = Math.max(0, Math.min(1, (userRound - 3) / 6));
-
-  if (pos === 'QB') {
-    const qbNeeded  = Math.max(0, QB_TARGET - myQBs);
-    const picksLeft = Math.max(1, 20 - totalDrafted);
-    if (qbNeeded > 0) {
-      // Gate urgency by QB quality so dart QBs (ADP 100+) don't leapfrog
-      // better-value skill players. Elite QBs (ADP ≤ 40) get full push;
-      // mid-tier partial; late-round darts get 20% of normal urgency.
-      // Formula: 1.5 − adp/80, clamped [0.2, 1.0]
-      //   ADP  24 → 1.20 → capped 1.0  (full urgency)
-      //   ADP  60 → 0.75                (75%)
-      //   ADP  80 → 0.50                (50%)
-      //   ADP 100 → 0.25                (25%)
-      //   ADP 116 → 0.05 → floored 0.2 (20%)
-      const qbQualFactor = Math.max(0.2, Math.min(1.0, 1.5 - player.adp / 80));
-      const urgency = (qbNeeded / picksLeft) * qbUrgencyWeight * qbQualFactor;
-      const m = 1 + Math.min(urgency * 2.0, 0.8);
-      if (m > 1.001) apply(m, 'QB urgency', `${myQBs}/${QB_TARGET} QBs, qual ${qbQualFactor.toFixed(2)}`);
-    }
-  }
+  // WR urgency removed — ADP/custom rankings drive WR value directly,
+  // same reasoning as RB priority removal.
 
   // Hard discount when a position slot is fully filled.
   // ×0.30 cap (was ×0.65) so over-drafted positions genuinely fall off the board —
@@ -312,22 +265,13 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     if (bd && mult < before - 0.001) bd.push({ label: 'Position full', mult: mult / before, note: `${pos} slots filled` });
   }
 
-  // QB saturation penalty — scales with how early the first QB was drafted.
-  // Early QB capital (round 1-5) = you're locked in, 3rd QB almost never right.
-  // Late QB darts (round 14+) = cheap commitment, 3rd is more viable.
-  //
-  //   Earliest QB round 1-5:   ×0.05 — elite QB, 3rd essentially blocked
-  //   Earliest QB round 6-9:   ×0.15 — solid QB, very unlikely
-  //   Earliest QB round 10-13: ×0.35 — late QB, 3rd viable on good value
-  //   Earliest QB round 14+:   ×0.60 — dart throws, happy to add another
+  // QB saturation — 3rd QB penalty simplified to two tiers:
+  //   Early QB (round ≤ 9): invested real capital, 3rd essentially blocked (×0.08)
+  //   Late QB  (round 10+): dart stack, 3rd viable at a discount (×0.50)
   if (pos === 'QB' && myQBs >= QB_TARGET) {
     const myQBsList = myTeam.filter(p => p.pos === 'QB');
     const earliestQBRound = Math.min(...myQBsList.map(p => p.round || 20));
-    let penalty;
-    if (earliestQBRound <= 5)       penalty = 0.05;
-    else if (earliestQBRound <= 9)  penalty = 0.15;
-    else if (earliestQBRound <= 13) penalty = 0.35;
-    else                             penalty = 0.60;
+    const penalty = earliestQBRound <= 9 ? 0.08 : 0.50;
     apply(penalty, 'QB saturation', `3rd QB, earliest in rd ${earliestQBRound}`);
   }
 
@@ -437,55 +381,23 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   }
 
   // Value-steal boost / reach penalty: compares ADP to current overall pick.
-  // myPickNumber is the overall pick; player.adp is also overall — apples to apples.
-  // Normalised by the user's current round so early gaps carry more weight.
+  // Normalised by round (floored at 3) so early gaps carry more weight.
   //
-  // BOOST (ADP < pick — player fell):
-  //   normalizedValue = valueGap / userRound
-  //   boost = normalizedValue × 0.20, capped at +60%
-  //   R1 pick 6,  ADP 3  → gap=3,  round=1 → ×1.60 (cap)
-  //   R4 pick 45, ADP 35 → gap=10, round=4 → ×1.50
-  //   R8 pick 90, ADP 80 → gap=10, round=8 → ×1.25
+  // BOOST: player fell past ADP  →  ×(1 + gap/round × 0.20), capped +60%
+  //   R1 gap=3  → ×1.20  |  R4 gap=10 → ×1.50  |  R8 gap=10 → ×1.25
+  //   QBs capped at +20% — stack fit matters more than value drift for QBs.
   //
-  // PENALTY (ADP > pick — reaching):
-  //   reachGap = adp - pick (how many picks ahead you'd be drafting)
-  //   penalty  = (reachGap / userRound) × 0.15, capped at -40%
-  //   R1 pick 6,  ADP 9  → gap=3,  round=1 → ×0.70
-  //   R4 pick 45, ADP 55 → gap=10, round=4 → ×0.63 (≈ cap)
-  //   R8 pick 90, ADP 97 → gap=7,  round=8 → ×0.87
-  const valueGap  = myPickNumber - (player.adp || myPickNumber);
-  // userRound already defined above
+  // PENALTY: reaching ahead of ADP  →  ×(1 − gap/round × 0.10), capped at ×0.30
+  //   R1 reach=3  → ×0.90  |  R4 reach=10 → ×0.75  |  R8 reach=15 → ×0.81
+  const valueGap = myPickNumber - (player.adp || myPickNumber);
+  const effectiveRound = Math.max(userRound, 3);
   if (valueGap > 0) {
-    // Value steal — player fell past their ADP.
-    // QBs are selected for stack fit, not pure value drift — cap their steal bonus
-    // lower so a fallen QB doesn't overwhelm a bring-back target.
-    const normalizedValue = valueGap / userRound;
     const stealCap = pos === 'QB' ? 0.20 : 0.60;
-    const m = 1 + Math.min(normalizedValue * 0.20, stealCap);
+    const m = 1 + Math.min((valueGap / effectiveRound) * 0.20, stealCap);
     apply(m, 'Value steal', `fell ${valueGap} picks (ADP ${player.adp} at pick ${myPickNumber})`);
   } else if (valueGap < 0) {
-    // Reach penalty — drafting a player ahead of their ADP.
-    // Two-stage rate: first 10 picks of reach at a base rate, anything beyond
-    // 10 picks at a steeper rate.  Denominator is floored at round 3 so early
-    // reaches aren't cripplingly penalised — a 5-pick reach in R1 to complete
-    // a stack or grab a falling player shouldn't be nearly blocked.
-    // Cap at 70% so even extreme reaches stay in the pool at a heavy discount.
-    //
-    // Examples (reachGap → penalty):
-    //   R1 reach 3  → 3/3 × 0.08 = 0.08 → ×0.92  (was ×0.76)
-    //   R1 reach 5  → 5/3 × 0.08 = 0.13 → ×0.87  (was ×0.60)
-    //   R1 reach 10 → 10/3 × 0.08 = 0.27 → ×0.73 (was ×0.30)
-    //   R4 reach 10 → 10/4 × 0.08 = 0.20 → ×0.80 (unchanged)
-    //   R8 reach 15 → (10×0.08+5×0.20)/8 = 0.225 → ×0.775 (unchanged)
-    const reachGap      = -valueGap;
-    const effectiveRound = Math.max(userRound, 3);
-    const baseReach     = Math.min(reachGap, 10);
-    const excessReach   = Math.max(0, reachGap - 10);
-    const penalty       = Math.min(
-      (baseReach * 0.08 + excessReach * 0.20) / effectiveRound,
-      0.70
-    );
-    apply(1 - penalty, 'Reach penalty', `${reachGap} picks early (ADP ${player.adp} at pick ${myPickNumber})`);
+    const penalty = Math.min(((-valueGap) / effectiveRound) * 0.10, 0.70);
+    apply(1 - penalty, 'Reach penalty', `${-valueGap} picks early (ADP ${player.adp} at pick ${myPickNumber})`);
   }
 
   return adpValue * mult;
