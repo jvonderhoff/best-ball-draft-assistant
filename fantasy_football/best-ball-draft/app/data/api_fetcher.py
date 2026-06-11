@@ -658,8 +658,10 @@ def fetch_players(force_refresh=False):
             'week17': schedule[2],
         })
 
-    # Sort by ADP ascending — keep real ADP values (do not replace with rank position)
+    # Sort by ADP ascending, keep top 400 with real ADP data.
+    # Players assigned the 9999 fallback have no draft position data and are excluded.
     players.sort(key=lambda p: p['adp'])
+    players = [p for p in players if p['adp'] < 9999][:400]
 
     _save_cache(players, '2026')
     return players
