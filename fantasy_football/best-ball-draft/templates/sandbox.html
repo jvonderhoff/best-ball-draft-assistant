@@ -314,13 +314,14 @@ document.getElementById('loadDraftBtn').addEventListener('click', () => {
   const lastOverallPick = throughRound * numTeams;
   const myPickNumbers = new Set(myPicks.map(p => p.pick_number));
 
-  // Build taken set: everyone drafted up to lastOverallPick who isn't my pick
-  takenIds = new Set();
-  (draft.picks || []).forEach(p => {
-    if ((p.pick_number || 0) <= lastOverallPick && !myPickNumbers.has(p.pick_number)) {
-      if (p.player_id) takenIds.add(p.player_id);
-    }
-  });
+  // Opponent picks aren't stored — simulate by marking top players by ADP as taken,
+  // excluding my own picks. This mirrors best-available ADP drafting for all other slots.
+  const myRosterIds = new Set(myPicks.map(p => p.player_id));
+  takenIds = new Set(
+    PLAYERS
+      .filter(p => (p.adp || 999) <= lastOverallPick && !myRosterIds.has(p.id))
+      .map(p => p.id)
+  );
 
   // Map picks to PLAYERS objects (for full player data including adp)
   myRoster = myPicks.map(p => {
