@@ -460,10 +460,14 @@ function readDraftBoard() {
     const kids = [...col.children];
     if (kids.length < 2) continue;
     const headerText = kids[0].textContent.toLowerCase();
-    const isMe = state.dkUsername && headerText.startsWith(state.dkUsername.toLowerCase().slice(0, 8));
+    const usernameMatch = state.dkUsername && headerText.startsWith(state.dkUsername.toLowerCase().slice(0, 8));
+    // Fall back to configured draft position when username match fails (e.g. completed drafts
+    // where DK no longer renders is-active-user or username in column headers).
+    const positionMatch = !usernameMatch && state.myPosition > 0 && (colIdx + 1) === state.myPosition;
+    const isMe = usernameMatch || positionMatch;
 
     // Derive draft position from column index — DK renders columns left-to-right, pick 1 to N
-    if (isMe && !state.myPosition) {
+    if (usernameMatch && !state.myPosition) {
       state.myPosition = colIdx + 1;
       autoPositionDetected = true;
     }
@@ -650,12 +654,15 @@ function domScan(draftId, username) {
     // Auto-detect user's column via DK's is-active-user class, or username text fallback
     const myUser = (username || '').toLowerCase();
     const myActiveEl = document.querySelector('[class*="is-active-user"]');
-    const myColIdx = myActiveEl
+    let myColIdx = myActiveEl
       ? columns.findIndex(col => col.contains(myActiveEl))
       : columns.findIndex(col => {
           const card = col.querySelector('[class*="summary-card"]');
           return card && myUser && card.textContent.toLowerCase().startsWith(myUser);
         });
+    // Fall back to configured draft position for completed drafts where DK no longer
+    // renders the active-user marker or username in column headers.
+    if (myColIdx === -1 && state.myPosition > 0) myColIdx = state.myPosition - 1;
 
     console.log(`[BBA] domScan myColIdx=${myColIdx} user=${myUser}`);
 
