@@ -121,31 +121,6 @@ function playoffStackReason(player, myTeam) {
 
 // ── Bye week helpers ──────────────────────────────────────────────────────────
 
-// Returns a map of bye_week -> count of players on that week,
-// excluding teammates of `player` (stacking the same team on the same bye is
-// an accepted cost of stacking, not something to penalize).
-function getByeWeekCounts(myTeam, excludeTeam = null) {
-  const counts = {};
-  for (const p of myTeam) {
-    if (p.bye && hasRealTeam(p) && p.team !== excludeTeam) counts[p.bye] = (counts[p.bye] || 0) + 1;
-  }
-  return counts;
-}
-
-// Penalty multiplier when adding a player whose bye week is already crowded.
-// Teammates sharing the same bye are not counted — stacking is intentional.
-// 0-2 non-teammate players on same bye: no penalty
-// 3: mild penalty (0.90) | 4: moderate (0.80) | 5+: heavy (0.70)
-function getByeWeekPenalty(player, myTeam) {
-  if (!player.bye) return 1.0;
-  const counts = getByeWeekCounts(myTeam, player.team);
-  const existing = counts[player.bye] || 0;
-  if (existing <= 2) return 1.0;
-  if (existing === 3) return 0.90;
-  if (existing === 4) return 0.80;
-  return 0.70;
-}
-
 // Returns a warning string if drafting this player would create a bye week crunch, else null.
 // `existing` = non-teammate players already on that bye week (not counting the candidate).
 // After drafting, total would be existing + 1. Only warn when that total hits 3+.
@@ -163,7 +138,7 @@ function byeWeekWarning(player, myTeam) {
 // nextMyPick: overall pick number of my NEXT turn after this one (for window urgency)
 // bd (breakdown): optional array — if provided, each applied multiplier is pushed as
 // { label, mult, note } so callers can explain the score to the user.
-function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'medium', nextMyPick = null, bd = null) {
+function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium', nextMyPick = null, bd = null) {
   // Use inverse ADP so value is always positive and naturally orders players.
   // adp=1 → 1000, adp=50 → 20, adp=100 → 10, adp=200 → 5, adp=500 → 2
   // This ensures late-round players still have relative ordering rather than
@@ -295,51 +270,17 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
 
 // ── Recommendation ────────────────────────────────────────────────────────────
 
-function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'medium') {
-  if (!available.length) return null;
-  const needs = getTeamNeeds(myTeam);
-  const qbTeams = getMyQBTeams(myTeam);
-  const pool = available;
-  if (!pool.length) return null;
-
-  let best = null, bestVal = -1;
-  for (const p of pool) {
-    const val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity);
-    if (val > bestVal) { bestVal = val; best = p; }
-  }
-  if (!best) return null;
-
-  const bestGap      = myPickNumber - (best.adp || myPickNumber);
-  const bestRound    = myTeam.length + 1;
-  const gapThreshold = Math.max(2, bestRound);
-  let reason = `Best ${best.pos} available — ADP ${best.adp}`;
-  if (bestGap >= gapThreshold)  reason += ` · 🔥 ${bestGap} picks of value`;
-  if (bestGap < -gapThreshold)  reason += ` · ⚠️ reaching ${-bestGap} picks early`;
-  if (['WR', 'TE'].includes(best.pos) && qbTeams.has(best.team)) {
-    reason += ` · stacks with your ${best.team} QB`;
-  } else if (best.pos === 'QB' && passCatcherCount(best.team, myTeam) > 0) {
-    reason += ` · completes your ${best.team} stack`;
-  }
-  const playoffReason = playoffStackReason(best, myTeam);
-  if (playoffReason) reason += ` · ${playoffReason}`;
-  const byeWarn = byeWeekWarning(best, myTeam);
-  if (byeWarn) reason += ` · ⚠ ${byeWarn}`;
-
-  return { player: best, reason };
-}
-
 // Returns the top N recommendations sorted by value score.
 // nextMyPick: overall pick number of my next turn after myPickNumber (for window urgency).
 function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity = 'medium', n = 5, nextMyPick = null) {
   if (!available.length) return [];
-  const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
   const pool = available;
   if (!pool.length) return [];
 
   const scored = pool.map(p => {
     const bd = [];
-    const val = calculateValue(p, needs, myPickNumber, myTeam, stackIntensity, nextMyPick, bd);
+    const val = calculateValue(p, myPickNumber, myTeam, stackIntensity, nextMyPick, bd);
     const baseScore = 1000 / (p.adp || 1);
 
     const gap        = myPickNumber - (p.adp || myPickNumber);

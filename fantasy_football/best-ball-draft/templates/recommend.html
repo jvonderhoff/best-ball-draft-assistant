@@ -183,6 +183,24 @@
     .pos-header { font-size: 0.7em; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
     .stack-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--selected); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; margin: 3px 3px 0 0; font-size: 0.78em; }
 
+    /* ── Draft capital bar ── */
+    .capital-section { margin: 12px 0 10px; }
+    .capital-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--card); gap: 1px; }
+    .capital-bar-seg { height: 100%; transition: width 0.4s ease; }
+    .capital-labels { display: flex; margin-top: 6px; }
+    .capital-label {
+      display: flex; flex-direction: column; align-items: center;
+      font-size: 0.68em; gap: 1px; overflow: hidden;
+    }
+    .capital-label .cap-pos { font-weight: 700; letter-spacing: 0.05em; }
+    .capital-label .cap-pct { color: var(--muted); }
+    .capital-label .cap-tiers { display: flex; gap: 2px; margin-top: 3px; }
+    .capital-tier-pip {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--muted2); flex-shrink: 0;
+    }
+    .capital-tier-pip.filled { background: currentColor; }
+
     /* ── Settings ── */
     .settings-grid { display: flex; flex-direction: column; gap: 14px; }
     .setting-group label { display: block; font-size: 0.75em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
@@ -459,6 +477,7 @@
 <!-- ── Roster Tab ── -->
 <div id="tab-roster" class="tab-panel">
   <div class="needs-row" id="needsRow"></div>
+  <div id="capitalBar"></div>
   <div id="stackSummary"></div>
   <div id="rosterDisplay" style="margin-top:12px;"></div>
 </div>
@@ -1211,7 +1230,7 @@ function getVisiblePlayers() {
   }
   const avail = list.filter(p => !state.takenIds.has(p.id));
   const taken = list.filter(p =>  state.takenIds.has(p.id));
-  return [...avail, ...taken].slice(0, 80);
+  return [...avail.slice(0, 80), ...taken];
 }
 
 function renderPlayerList() {
@@ -1240,7 +1259,7 @@ function renderPlayerList() {
     const cr       = customRankMap[p.id];
     const rankBadge = cr != null
       ? `<div class="adp-badge" style="color:var(--accent)" title="My rank">#${cr}</div>`
-      : `<div class="adp-badge" style="color:var(--muted2)">—</div>`;
+      : `<div class="adp-badge" style="color:var(--muted2)">${Math.round(p.adp) || '—'}</div>`;
     return `<div class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
          data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
       <div class="adp-badge">${p.adp}</div>
@@ -1461,6 +1480,62 @@ function renderRecs() {
 }
 
 // ── Roster ─────────────────────────────────────────────────────────────────────
+function renderCapitalBar() {
+  const el = document.getElementById('capitalBar');
+  if (!state.myTeam.length) { el.innerHTML = ''; return; }
+
+  const POSITIONS = ['QB', 'RB', 'WR', 'TE'];
+  const POS_COLOR = { QB: 'var(--QB)', RB: 'var(--RB)', WR: 'var(--WR)', TE: 'var(--TE)' };
+
+  // Pick value = 1000/adp (same scale as recommender)
+  const cap = { QB: 0, RB: 0, WR: 0, TE: 0 };
+  const tiers = { QB: [0,0,0], RB: [0,0,0], WR: [0,0,0], TE: [0,0,0] }; // [early, mid, late]
+  let total = 0;
+  for (const p of state.myTeam) {
+    if (!cap[p.pos] && cap[p.pos] !== 0) continue;
+    const v = 1000 / (p.adp || 999);
+    cap[p.pos] += v;
+    total += v;
+    const rd = p.round || Math.ceil((state.myTeam.indexOf(p) + 1) / (settings.numTeams || 12));
+    tiers[p.pos][rd <= 4 ? 0 : rd <= 9 ? 1 : 2]++;
+  }
+
+  const pct = pos => total > 0 ? Math.round(cap[pos] / total * 100) : 0;
+
+  const segments = POSITIONS.map(pos => {
+    const w = pct(pos);
+    return w > 0
+      ? `<div class="capital-bar-seg" style="width:${w}%;background:${POS_COLOR[pos]}"></div>`
+      : '';
+  }).join('');
+
+  const labels = POSITIONS.map(pos => {
+    const w = pct(pos);
+    if (w === 0) return '';
+    const [early, mid, late] = tiers[pos];
+    const pips = [
+      { count: early, opacity: 1.0 },
+      { count: mid,   opacity: 0.55 },
+      { count: late,  opacity: 0.25 },
+    ].flatMap(({ count, opacity }) =>
+      Array.from({ length: count }).map(
+        () => `<div class="capital-tier-pip filled" style="background:${POS_COLOR[pos]};opacity:${opacity}"></div>`
+      )
+    ).join('');
+    return `<div class="capital-label" style="width:${w}%;color:${POS_COLOR[pos]}">
+      <span class="cap-pos">${pos}</span>
+      <span class="cap-pct" style="color:var(--muted)">${w}%</span>
+      <div class="cap-tiers">${pips}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="capital-section">
+    <div class="pos-header">Draft Capital</div>
+    <div class="capital-bar">${segments}</div>
+    <div class="capital-labels">${labels}</div>
+  </div>`;
+}
+
 function renderRoster() {
   const byPos = { QB: [], RB: [], WR: [], TE: [] };
   state.myTeam.forEach(p => { if (byPos[p.pos]) byPos[p.pos].push(p); });
@@ -1474,6 +1549,8 @@ function renderRoster() {
       <div class="need-val" style="color:${color}">${have}<span style="color:var(--muted);font-size:0.7em">/${targets[pos]}</span></div>
     </div>`;
   }).join('');
+
+  renderCapitalBar();
 
   const stacks = getStackSummary(state.myTeam);
   document.getElementById('stackSummary').innerHTML = stacks.length
