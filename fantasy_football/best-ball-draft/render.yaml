@@ -10,9 +10,3 @@ services:
         generateValue: true
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: BBA_DB_PATH
-        value: /var/data/drafts.db
-    disk:
-      name: best-ball-data
-      mountPath: /var/data
-      sizeGB: 1
