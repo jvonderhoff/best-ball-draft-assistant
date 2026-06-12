@@ -208,24 +208,6 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     if (bd && mult < before - 0.001) bd.push({ label: 'Position full', mult: mult / before, note: `${pos} slots filled` });
   }
 
-  // QB saturation
-  //   3rd QB: fine unless you spent elite capital early
-  //     Elite QB rd 1-3 → ×0.40, mid rd 4-9 → ×0.70, late rd 10+ → ×0.85
-  //   4th QB: very heavy penalty — only surface on extreme value
-  //     ×0.20 regardless of when your QBs were taken
-  if (pos === 'QB' && myQBs >= QB_TARGET) {
-    const myQBsList = myTeam.filter(p => p.pos === 'QB');
-    const earliestQBRound = Math.min(...myQBsList.map(p => p.round || 20));
-    if (myQBs >= 3) {
-      apply(0.20, 'QB saturation', `4th QB`);
-    } else {
-      const penalty = earliestQBRound <= 3 ? 0.40
-                    : earliestQBRound <= 9 ? 0.70
-                    : 0.85;
-      apply(penalty, 'QB saturation', `3rd QB, earliest in rd ${earliestQBRound}`);
-    }
-  }
-
   // Early-round blanket ×1.10 amplifier removed — it compounded indiscriminately
   // on top of stacking and playoff bonuses that are already calibrated independently.
   // Those signals are self-sufficient; layering a round-based multiplier on top
@@ -335,8 +317,7 @@ function getRecommendation(available, myTeam, myPickNumber, stackIntensity = 'me
   if (!available.length) return null;
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
-  const myQBCount = myTeam.filter(p => p.pos === 'QB').length;
-  const pool = myQBCount >= 5 ? available.filter(p => p.pos !== 'QB') : available;
+  const pool = available;
   if (!pool.length) return null;
 
   let best = null, bestVal = -1;
@@ -371,8 +352,7 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
   if (!available.length) return [];
   const needs = getTeamNeeds(myTeam);
   const qbTeams = getMyQBTeams(myTeam);
-  const myQBCount = myTeam.filter(p => p.pos === 'QB').length;
-  const pool = myQBCount >= 5 ? available.filter(p => p.pos !== 'QB') : available;
+  const pool = available;
   if (!pool.length) return [];
 
   const scored = pool.map(p => {
