@@ -243,13 +243,13 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
       //
       // The final mult replaces qbPull (not stacked on top of it).
       if (existingCatchers >= 1) {
-        // PC-count ceiling: each extra catcher adds 60% of the remaining gap above bringbackWindow.
-        // 1 PC → ceiling = bringbackWindow
-        // 2 PC → ceiling = bringbackWindow + 0.60 × (2.0 - bringbackWindow)
-        // 3 PC → ceiling = bringbackWindow + 0.84 × (2.0 - bringbackWindow)  [compounded]
+        // PC-count ceiling: each extra catcher adds 60% of the remaining gap above qbPull.
+        // 1 PC → ceiling = qbPull
+        // 2 PC → ceiling = qbPull + 0.60 × (2.0 - qbPull)
+        // 3 PC → ceiling = qbPull + 0.84 × (2.0 - qbPull)  [compounded]
         const extraCatchers = Math.min(existingCatchers - 1, 2);
         const ceilingBoost  = 1 - Math.pow(0.4, extraCatchers);           // 0 / 0.60 / 0.84
-        const ceiling       = s.bringbackWindow + ceilingBoost * (2.0 - s.bringbackWindow);
+        const ceiling       = s.qbPull + ceilingBoost * (2.0 - s.qbPull);
 
         // PC-count floor: 2+ catchers guarantee at least 30% of the way to the ceiling
         // even if the QB's ADP suggests he'll still be available.
