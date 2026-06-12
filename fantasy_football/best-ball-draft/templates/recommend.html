@@ -1566,7 +1566,7 @@ function renderRoster() {
 }
 
 // ── Stack map ──────────────────────────────────────────────────────────────────
-function renderStackWindows() {
+function renderStackWindows(urgentThreshold = null) {
   const NUM_TEAMS = settings.numTeams || 12;
   const myTeamSet = new Set(state.myTeam.map(p => p.id));
   const myTeams   = new Set(state.myTeam.map(p => p.team));
@@ -1609,6 +1609,10 @@ function renderStackWindows() {
     // RBs are shown in the chips but don't trigger the stack-connection promotion
     // because the Recs bring-back signal (passCatcherCount) also only counts WR/TE.
     const hasStack = isMine || pcs.some(pc => myTeamSet.has(pc.id) && ['WR','TE'].includes(pc.pos));
+    const needsQB  = hasStack && !isMine;
+    const effectiveQBRank = (useCustomRankings && customRankMap[qb.id] != null)
+      ? customRankMap[qb.id] : (qb.adp || 999);
+    const isUrgent = needsQB && urgentThreshold != null && effectiveQBRank <= urgentThreshold;
 
     return { html: `<div class="round-window${hasStack ? ' rw-active' : ''}">
       <div class="rw-header">
@@ -1617,6 +1621,8 @@ function renderStackWindows() {
         <span style="font-size:0.62em;font-weight:700;padding:1px 4px;border-radius:3px;background:var(--QB);color:#fff;flex-shrink:0">QB</span>
         <span class="rw-qb-adp">ADP ${Math.round(qb.adp||0)}</span>
         ${isMine ? '<span class="rw-mine-tag">Mine</span>' : ''}
+        ${needsQB ? '<span class="spr-taken" style="background:rgba(233,30,99,0.15);color:var(--QB);border:1px solid rgba(233,30,99,0.3)">Need QB</span>' : ''}
+        ${isUrgent ? '<span class="spr-now">Pick now</span>' : ''}
       </div>
       <div class="rw-pass-catchers">${pcChips}</div>
     </div>`, hasStack };
@@ -1710,7 +1716,7 @@ function renderStacks() {
 
   // All QB-related stacks — always actionable since you can keep adding pass catchers
   const qbStacks = groups.filter(g => ['qb-only', 'pass-only', 'complete'].includes(g.type));
-  const { stackCards, roundCards } = renderStackWindows();
+  const { stackCards, roundCards } = renderStackWindows(urgentThreshold);
 
   let html = '';
 
