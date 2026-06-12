@@ -185,22 +185,21 @@
 
     /* ── Draft capital bar ── */
     .capital-section { margin: 12px 0 10px; }
-    .capital-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .capital-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
     .capital-row-pos {
       font-size: 0.68em; font-weight: 700; letter-spacing: 0.05em;
       width: 22px; text-align: right; flex-shrink: 0;
     }
-    .capital-row-track {
-      flex: 1; height: 10px; background: var(--card); border-radius: 5px; overflow: hidden;
+    .cap-slots { display: flex; gap: 3px; flex: 1; align-items: center; flex-wrap: wrap; }
+    .cap-slot {
+      width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0;
+      transition: opacity 0.3s;
     }
-    .capital-row-fill { height: 100%; border-radius: 5px; transition: width 0.4s ease; }
-    .capital-row-meta {
-      display: flex; align-items: center; gap: 5px;
-      font-size: 0.68em; color: var(--muted); flex-shrink: 0; min-width: 60px;
-    }
-    .capital-row-pct { font-weight: 700; min-width: 28px; text-align: right; }
-    .capital-tier-pip {
-      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    .cap-slot-empty { background: var(--card); border: 1px solid rgba(255,255,255,0.1); }
+    .cap-slot-over { background: #e57373; opacity: 0.85; }
+    .cap-count {
+      font-size: 0.7em; font-weight: 700; min-width: 28px;
+      text-align: right; flex-shrink: 0;
     }
 
     /* ── Settings ── */
@@ -1488,50 +1487,48 @@ function renderCapitalBar() {
 
   const POSITIONS = ['QB', 'RB', 'WR', 'TE'];
   const POS_COLOR = { QB: 'var(--QB)', RB: 'var(--RB)', WR: 'var(--WR)', TE: 'var(--TE)' };
+  // Target pick counts for 20-round DK best ball (QB+RB+WR+TE = 20)
+  const TARGET = { QB: 2, RB: 6, WR: 9, TE: 3 };
 
-  // Pick value = 1000/pick_number — actual draft position, not market ADP.
-  // Fallback to ADP if pick number isn't recorded.
-  const cap = { QB: 0, RB: 0, WR: 0, TE: 0 };
-  const tiers = { QB: [0,0,0], RB: [0,0,0], WR: [0,0,0], TE: [0,0,0] }; // [early, mid, late]
-  let total = 0;
+  const tiers = { QB: [0,0,0], RB: [0,0,0], WR: [0,0,0], TE: [0,0,0] }; // [early rd1-4, mid rd5-9, late rd10+]
   for (const p of state.myTeam) {
-    if (!cap[p.pos] && cap[p.pos] !== 0) continue;
+    if (!tiers[p.pos]) continue;
     const pickNum = p.pick || p.adp || 999;
-    const v = 1000 / pickNum;
-    cap[p.pos] += v;
-    total += v;
     const rd = p.round || Math.ceil(pickNum / (settings.numTeams || 12));
     tiers[p.pos][rd <= 4 ? 0 : rd <= 9 ? 1 : 2]++;
   }
 
-  const pct = pos => total > 0 ? Math.round(cap[pos] / total * 100) : 0;
-
   const rows = POSITIONS.map(pos => {
-    const w = pct(pos);
     const [early, mid, late] = tiers[pos];
-    const pips = [
-      { count: early, opacity: 1.0 },
-      { count: mid,   opacity: 0.55 },
-      { count: late,  opacity: 0.25 },
-    ].flatMap(({ count, opacity }) =>
-      Array.from({ length: count }).map(
-        () => `<div class="capital-tier-pip" style="background:${POS_COLOR[pos]};opacity:${opacity}"></div>`
-      )
-    ).join('');
+    const actual = early + mid + late;
+    const target = TARGET[pos];
+    const over = Math.max(0, actual - target);
+
+    // Build slots: filled (tiered opacity) then empty then over-target
+    const filled = [
+      ...Array(early).fill({ cls: 'cap-slot', opacity: 1.0 }),
+      ...Array(mid).fill(  { cls: 'cap-slot', opacity: 0.55 }),
+      ...Array(late).fill( { cls: 'cap-slot', opacity: 0.28 }),
+    ];
+    const slotHTML = [
+      ...filled.slice(0, target).map(s =>
+        `<div class="cap-slot" style="background:${POS_COLOR[pos]};opacity:${s.opacity}"></div>`),
+      ...Array(Math.max(0, target - actual)).fill(
+        `<div class="cap-slot cap-slot-empty"></div>`),
+      ...Array(over).fill(
+        `<div class="cap-slot cap-slot-over"></div>`),
+    ].join('');
+
+    const countColor = over > 0 ? '#e57373' : actual === target ? POS_COLOR[pos] : 'var(--muted)';
     return `<div class="capital-row">
       <span class="capital-row-pos" style="color:${POS_COLOR[pos]}">${pos}</span>
-      <div class="capital-row-track">
-        <div class="capital-row-fill" style="width:${w}%;background:${POS_COLOR[pos]}"></div>
-      </div>
-      <div class="capital-row-meta">
-        <span class="capital-row-pct" style="color:${POS_COLOR[pos]}">${w}%</span>
-        ${pips}
-      </div>
+      <div class="cap-slots">${slotHTML}</div>
+      <span class="cap-count" style="color:${countColor}">${actual}/${target}</span>
     </div>`;
   }).join('');
 
   el.innerHTML = `<div class="capital-section">
-    <div class="pos-header">Draft Capital</div>
+    <div class="pos-header">Draft Allocation</div>
     ${rows}
   </div>`;
 }
