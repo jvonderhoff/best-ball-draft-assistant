@@ -171,6 +171,49 @@ def get_rankings_route():
     return jsonify(get_rankings())
 
 
+def _push_rankings_seed():
+    """Write rankings_seed.json and push to GitHub. Runs in a background thread."""
+    import subprocess
+    token = os.environ.get('GITHUB_TOKEN', '').strip()
+    if not token:
+        return
+    try:
+        from app.database import RANKINGS_SEED_PATH
+        players = get_rankings()
+        seed = [
+            {'player_id': p['player_id'], 'custom_rank': p['custom_rank'], 'notes': p.get('notes', '')}
+            for p in players if p['custom_rank'] is not None
+        ]
+        with open(RANKINGS_SEED_PATH, 'w') as f:
+            json.dump(seed, f, indent=2)
+
+        repo_root = subprocess.check_output(
+            ['git', '-C', os.path.dirname(RANKINGS_SEED_PATH), 'rev-parse', '--show-toplevel'],
+            text=True
+        ).strip()
+        rel_path = os.path.relpath(RANKINGS_SEED_PATH, repo_root)
+
+        # Only commit if the file actually changed
+        if subprocess.run(['git', '-C', repo_root, 'diff', '--quiet', rel_path]).returncode == 0:
+            return
+
+        subprocess.run(['git', '-C', repo_root, 'add', rel_path], check=True)
+        subprocess.run([
+            'git', '-C', repo_root,
+            '-c', 'user.email=bba-bot@render', '-c', 'user.name=BBA Bot',
+            'commit', '-m', 'auto: update rankings seed'
+        ], check=True)
+
+        remote_url = subprocess.check_output(
+            ['git', '-C', repo_root, 'remote', 'get-url', 'origin'], text=True
+        ).strip()
+        auth_url = remote_url.replace('https://', f'https://x-access-token:{token}@')
+        subprocess.run(['git', '-C', repo_root, 'push', auth_url, 'HEAD:master'],
+                       check=True, capture_output=True)
+    except Exception as e:
+        app.logger.warning(f'rankings seed push failed: {e}')
+
+
 @app.route('/api/rankings/save', methods=['POST'])
 def save_rankings_route():
     data = request.get_json()
@@ -178,6 +221,7 @@ def save_rankings_route():
     if not isinstance(rankings, list):
         return jsonify({'error': 'rankings must be a list'}), 400
     count = save_rankings(rankings)
+    threading.Thread(target=_push_rankings_seed, daemon=True).start()
     return jsonify({'ok': True, 'saved': count})
 
 
