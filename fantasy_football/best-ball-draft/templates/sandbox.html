@@ -124,6 +124,23 @@
     .load-row input[type=number] { width: 52px; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 4px 6px; font-size: 0.83em; text-align: center; }
     .load-btn { flex: 1; padding: 6px 0; border-radius: 6px; border: none; background: var(--surface); border: 1px solid var(--accent); color: var(--accent); font-size: 0.82em; font-weight: 700; cursor: pointer; }
     .load-btn:active { opacity: 0.7; }
+
+    /* ── Right column layout ── */
+    .right-col { display: flex; flex-direction: column; gap: 12px; }
+
+    /* ── Roster view ── */
+    .roster-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .roster-pos-group { }
+    .roster-pos-label { font-size: 0.68em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted2); margin-bottom: 4px; }
+    .roster-player-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; background: var(--surface); border-radius: 5px; margin-bottom: 3px; font-size: 0.78em; cursor: pointer; }
+    .roster-player-row:hover { opacity: 0.7; }
+    .rpr-pos { font-size: 0.68em; font-weight: 700; padding: 1px 4px; border-radius: 3px; color: #fff; flex-shrink: 0; }
+    .rpr-pos.QB { background: var(--QB); } .rpr-pos.RB { background: var(--RB); }
+    .rpr-pos.WR { background: var(--WR); } .rpr-pos.TE { background: var(--TE); }
+    .rpr-name { flex: 1; font-weight: 600; }
+    .rpr-team { color: var(--muted2); font-size: 0.85em; }
+    .rpr-adp  { color: var(--muted2); font-size: 0.82em; margin-left: auto; }
+    .rpr-remove { color: var(--muted); font-size: 1em; margin-left: 4px; }
   </style>
 </head>
 <body>
@@ -209,14 +226,25 @@
     <button class="run-btn" id="runBtn">Run Recommendations</button>
   </div>
 
-  <!-- ── Right column: results ── -->
-  <div class="panel">
-    <div class="results-hdr">
-      <div class="results-hdr-title">Recommendations</div>
-      <div class="scenario-label" id="scenarioLabel"></div>
+  <!-- ── Right column ── -->
+  <div class="right-col">
+
+    <!-- Roster view -->
+    <div class="panel">
+      <div class="results-hdr">
+        <div class="results-hdr-title">My Roster</div>
+        <div class="scenario-label" id="scenarioLabel"></div>
+      </div>
+      <div id="needsStrip" class="needs-strip"></div>
+      <div id="rosterView"><div class="no-recs">No roster yet — run a simulation or load a draft.</div></div>
     </div>
-    <div id="needsStrip" class="needs-strip"></div>
-    <div id="results"><div class="no-recs">Configure a scenario and hit Run.</div></div>
+
+    <!-- Recommendations -->
+    <div class="panel">
+      <div class="results-hdr-title" style="font-size:0.75em;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Recommendations</div>
+      <div id="results"><div class="no-recs">Configure a scenario and hit Run.</div></div>
+    </div>
+
   </div>
 
 </div>
@@ -392,6 +420,48 @@ document.getElementById('autoTakenLink').addEventListener('click', e => {
   document.getElementById('takenCount').textContent = takenIds.size;
 });
 
+// ── Roster view ──────────────────────────────────────────────────────────────
+function renderRosterView() {
+  const el = document.getElementById('rosterView');
+  if (!myRoster.length) {
+    el.innerHTML = '<div class="no-recs">No roster yet.</div>';
+    return;
+  }
+  const posOrder = { QB: 0, RB: 1, WR: 2, TE: 3 };
+  const groups = { QB: [], RB: [], WR: [], TE: [] };
+  myRoster.forEach(p => { if (groups[p.pos]) groups[p.pos].push(p); });
+
+  const cols = [['QB','RB'], ['WR','TE']];
+  el.innerHTML = `<div class="roster-grid">${cols.map(positions =>
+    `<div>${positions.map(pos => {
+      const players = groups[pos];
+      if (!players.length) return '';
+      const rows = players.map(p => {
+        const adpLabel = customRankMap[p.id] != null ? `#${customRankMap[p.id]}` : `${Math.round(p.adp||0)}`;
+        return `<div class="roster-player-row" data-id="${p.id}" title="Click to remove">
+          <span class="rpr-pos ${p.pos}">${p.pos}</span>
+          <span class="rpr-name">${p.name}</span>
+          <span class="rpr-team">${p.team}</span>
+          <span class="rpr-adp">${adpLabel}</span>
+          <span class="rpr-remove">×</span>
+        </div>`;
+      }).join('');
+      return `<div class="roster-pos-group">
+        <div class="roster-pos-label">${pos} · ${players.length}</div>
+        ${rows}
+      </div>`;
+    }).join('')}</div>`
+  ).join('')}</div>`;
+
+  el.querySelectorAll('.roster-player-row').forEach(row => {
+    row.addEventListener('click', () => {
+      myRoster = myRoster.filter(p => p.id !== row.dataset.id);
+      renderRosterChips();
+      renderRosterView();
+    });
+  });
+}
+
 // ── Needs strip ───────────────────────────────────────────────────────────────
 function renderNeeds(roster) {
   const targets = { QB: 2, RB: 6, WR: 8, TE: 2 };
@@ -445,6 +515,7 @@ function run() {
   const recs = getTopRecommendations(available, myTeamWithRounds, pickNum, intensity, n, nextMyPick);
 
   renderNeeds(myTeamWithRounds);
+  renderRosterView();
 
   const round = Math.floor((pickNum - 1) / numTeams) + 1;
   document.getElementById('scenarioLabel').textContent =
