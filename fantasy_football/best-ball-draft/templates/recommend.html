@@ -98,8 +98,9 @@
       position: relative;
     }
     .rec-card:first-child { border-left-color: var(--green); }
-    .rec-rank { position: absolute; top: 8px; right: 10px; font-size: 0.72em; color: var(--muted); font-weight: 700; }
-    .rec-name { font-weight: 700; font-size: 1em; margin-bottom: 3px; }
+    .rec-card-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+    .rec-rank { font-size: 0.72em; color: var(--muted); font-weight: 700; flex-shrink: 0; }
+    .rec-name { font-weight: 700; font-size: 1em; flex: 1; }
     .rec-pos  { display: inline-block; font-size: 0.72em; font-weight: 700; padding: 1px 6px; border-radius: 3px; color: #fff; margin-right: 4px; }
     .rec-pos.QB { background: var(--QB); } .rec-pos.RB { background: var(--RB); }
     .rec-pos.WR { background: var(--WR); } .rec-pos.TE { background: var(--TE); }
@@ -1446,10 +1447,11 @@ function renderRecs() {
     </div>`;
 
     return `<div class="rec-card" onclick="this.classList.toggle('expanded')">
-      <div class="rec-rank">#${i+1}</div>
-      <div>
+      <div class="rec-card-hdr">
+        <span class="rec-rank">#${i+1}</span>
+        <span class="rec-pos ${p.pos}">${p.pos}</span>
+        <span class="rec-name">${p.name}</span>
         <span class="rec-score-badge">${scoreVal}</span>
-        <span class="rec-pos ${p.pos}">${p.pos}</span><span class="rec-name" style="display:inline">${p.name}</span>
       </div>
       <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ${useCustomRankings ? 'Rank' : 'ADP'} ${Math.round(p.adp)}</div>
       ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
