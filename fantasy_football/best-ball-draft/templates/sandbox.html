@@ -156,16 +156,20 @@
     <div class="panel" style="margin-bottom:12px">
       <div class="panel-title">Draft Settings</div>
       <div class="setting-row">
-        <label>My pick #</label>
-        <input type="number" id="pickNum" value="61" min="1" max="240">
-      </div>
-      <div class="setting-row">
         <label>Num teams</label>
         <input type="number" id="numTeams" value="12" min="6" max="20">
       </div>
       <div class="setting-row">
         <label>My position</label>
         <input type="number" id="myPosition" value="1" min="1" max="20">
+      </div>
+      <div class="setting-row">
+        <label>Simulate from round</label>
+        <input type="number" id="simRound" value="6" min="1" max="20">
+      </div>
+      <div class="setting-row" style="font-size:0.78em;color:var(--muted2)">
+        <span>Overall pick</span>
+        <span id="pickNumDisplay" style="color:var(--text);font-weight:700">—</span>
       </div>
       <div class="setting-row">
         <label>Rankings</label>
@@ -334,11 +338,32 @@ document.getElementById('loadDraftBtn').addEventListener('click', () => {
   // Update settings
   document.getElementById('myPosition').value = myPos;
   document.getElementById('numTeams').value = numTeams;
-  if (nextPick) document.getElementById('pickNum').value = nextPick;
+  if (nextPick) {
+    const nextRound = Math.ceil(nextPick / numTeams);
+    document.getElementById('simRound').value = nextRound;
+    updatePickDisplay();
+  }
   document.getElementById('takenCount').textContent = takenIds.size;
 
   renderRosterChips();
   run();
+});
+
+// ── Pick number computation ───────────────────────────────────────────────────
+function computePickNum() {
+  const numTeams = parseInt(document.getElementById('numTeams').value) || 12;
+  const myPos    = parseInt(document.getElementById('myPosition').value) || 1;
+  const round    = parseInt(document.getElementById('simRound').value) || 1;
+  const slot     = round % 2 === 0 ? (numTeams - myPos + 1) : myPos;
+  return (round - 1) * numTeams + slot;
+}
+
+function updatePickDisplay() {
+  document.getElementById('pickNumDisplay').textContent = computePickNum();
+}
+
+['numTeams', 'myPosition', 'simRound'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updatePickDisplay);
 });
 
 // ── Load players ──────────────────────────────────────────────────────────────
@@ -419,7 +444,7 @@ function renderRosterChips() {
 // ── Auto-fill taken ───────────────────────────────────────────────────────────
 document.getElementById('autoTakenLink').addEventListener('click', e => {
   e.preventDefault();
-  const pick = parseInt(document.getElementById('pickNum').value) || 1;
+  const pick = computePickNum();
   takenIds = new Set(
     PLAYERS.filter(p => (p.adp || 999) < pick && !myRoster.some(r => r.id === p.id))
            .map(p => p.id)
@@ -498,7 +523,7 @@ function applyRanks(players) {
 document.getElementById('runBtn').addEventListener('click', run);
 
 function run() {
-  const pickNum   = parseInt(document.getElementById('pickNum').value) || 1;
+  const pickNum   = computePickNum();
   const numTeams  = parseInt(document.getElementById('numTeams').value) || 12;
   const myPos     = parseInt(document.getElementById('myPosition').value) || 1;
   const intensity = document.getElementById('stackIntensity').value;
@@ -566,7 +591,7 @@ function run() {
 
 // ── Quick simulate ────────────────────────────────────────────────────────────
 document.getElementById('quickSimBtn').addEventListener('click', () => {
-  const pickNum  = parseInt(document.getElementById('pickNum').value) || 1;
+  const pickNum  = computePickNum();
   const numTeams = parseInt(document.getElementById('numTeams').value) || 12;
   const myPos    = parseInt(document.getElementById('myPosition').value) || 1;
 
@@ -612,11 +637,13 @@ makeDropdown('takenSearch', 'takenDropdown', p => {
   document.getElementById('takenCount').textContent = takenIds.size;
 });
 
-// Re-run on Enter in pick field
-document.getElementById('pickNum').addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
+['simRound', 'myPosition', 'numTeams'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
+});
 
 document.getElementById('runBtn').disabled = true;
 document.getElementById('runBtn').textContent = 'Loading players…';
+updatePickDisplay();
 loadPlayers();
 loadDraftList();
 </script>
