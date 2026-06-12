@@ -1589,32 +1589,35 @@ function computeStackGroups() {
   const myNFLTeams = [...new Set(state.myTeam.map(p => p.team))];
 
   return myNFLTeams.map(team => {
-    const all       = teamMap[team] || [];
-    const mine      = state.myTeam.filter(p => p.team === team);
-    const myQBs     = mine.filter(p => p.pos === 'QB');
-    const myPC      = mine.filter(p => ['WR','TE'].includes(p.pos));
-    const myRBs     = mine.filter(p => p.pos === 'RB');
+    const all          = teamMap[team] || [];
+    const mine         = state.myTeam.filter(p => p.team === team);
+    const myQBs        = mine.filter(p => p.pos === 'QB');
+    const mySkill      = mine.filter(p => ['RB','WR','TE'].includes(p.pos));
 
     const availableQBs = all.filter(p => p.pos === 'QB' && !state.takenIds.has(p.id));
 
+    const skillLabel = (players) => {
+      const counts = {};
+      players.forEach(p => { counts[p.pos] = (counts[p.pos] || 0) + 1; });
+      return Object.entries(counts).map(([pos, n]) => `${n}${pos}`).join(' + ');
+    };
+
     let type, label, cls;
-    if (myQBs.length && myPC.length)                       { type='complete';  label=`${myQBs.length}QB + ${myPC.length} pass catcher${myPC.length>1?'s':''}`;   cls='stk-complete';  }
-    else if (myQBs.length && !myPC.length)                 { type='qb-only';   label=`${myQBs.length}QB — bring back receivers`;                                  cls='stk-qb-only';   }
-    else if (myPC.length && !myQBs.length && availableQBs.length) { type='pass-only'; label=`${myPC.length} receiver${myPC.length>1?'s':''} — grab the QB`;      cls='stk-pass-only'; }
-    else if (myPC.length && !myQBs.length)                 { type='no-qb';     label=`${myPC.length} receiver${myPC.length>1?'s':''} — QB gone`;                  cls='stk-rb-only';   }
-    else if (myRBs.length)                                 { type='rb-only';   label=`${myRBs.length}RB — game stack opp`;                                        cls='stk-rb-only';   }
-    else                                                   { type='mixed';     label=`${mine.length} players`;                                                     cls='stk-complete';  }
+    if (myQBs.length && mySkill.length)                          { type='complete';  label=`${myQBs.length}QB + ${skillLabel(mySkill)}`;          cls='stk-complete';  }
+    else if (myQBs.length && !mySkill.length)                    { type='qb-only';   label=`${myQBs.length}QB — stack a skill player`;             cls='stk-qb-only';   }
+    else if (mySkill.length && !myQBs.length && availableQBs.length) { type='pass-only'; label=`${skillLabel(mySkill)} — grab the QB`;             cls='stk-pass-only'; }
+    else if (mySkill.length && !myQBs.length)                    { type='no-qb';     label=`${skillLabel(mySkill)} — QB gone`;                     cls='stk-rb-only';   }
+    else                                                         { type='mixed';     label=`${mine.length} players`;                               cls='stk-complete';  }
 
     const hints = {
-      complete:   'Stack active — look for more pass catchers late.',
-      'qb-only':  'Bring back a WR or TE to complete this stack.',
+      complete:   'Stack active — keep adding skill players from this team.',
+      'qb-only':  'Bring back an RB, WR, or TE to complete this stack.',
       'pass-only':'Target this QB — you already own their weapons.',
-      'rb-only':  'Consider stacking the QB + WR from this team.',
     };
 
     const avail    = all.filter(p => !state.takenIds.has(p.id));
     const takenOpp = all.filter(p => state.takenIds.has(p.id) && !myTeamSet.has(p.id));
-    const score    = { complete:100, 'qb-only':85, 'pass-only':80, 'rb-only':50, mixed:60 }[type] || 60;
+    const score    = { complete:100, 'qb-only':85, 'pass-only':80, mixed:60 }[type] || 60;
 
     return { team, mine, avail, takenOpp, type, label, cls, hint: hints[type]||'', score };
   }).sort((a, b) => b.score - a.score || b.mine.length - a.mine.length);
