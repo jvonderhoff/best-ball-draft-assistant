@@ -181,6 +181,22 @@ def save_rankings_route():
     return jsonify({'ok': True, 'saved': count})
 
 
+@app.route('/api/rankings/download-seed', methods=['GET'])
+def download_rankings_seed():
+    """Download current ranked players as rankings_seed.json for committing to the repo."""
+    players = get_rankings()
+    seed = [
+        {'player_id': p['player_id'], 'custom_rank': p['custom_rank'], 'notes': p.get('notes', '')}
+        for p in players if p['custom_rank'] is not None
+    ]
+    from flask import Response
+    return Response(
+        json.dumps(seed, indent=2),
+        mimetype='application/json',
+        headers={'Content-Disposition': 'attachment; filename="rankings_seed.json"'}
+    )
+
+
 @app.route('/api/rankings/export', methods=['POST'])
 def export_rankings_to_extension():
     """

@@ -1,8 +1,11 @@
 from __future__ import annotations
 import sqlite3
+import json
 import os
 
-DB_PATH = os.environ.get('BBA_DB_PATH', os.path.join(os.path.dirname(os.path.dirname(__file__)), 'drafts.db'))
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'drafts.db')
+_DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+RANKINGS_SEED_PATH = os.path.join(_DATA_DIR, 'rankings_seed.json')
 
 
 def get_db():
@@ -112,6 +115,23 @@ def init_db():
         for col in ('week15', 'week16', 'week17'):
             if col not in pick_cols:
                 conn.execute(f"ALTER TABLE draft_picks ADD COLUMN {col} TEXT")
+        _seed_rankings_if_empty(conn)
+
+
+def _seed_rankings_if_empty(conn):
+    """Load rankings_seed.json into player_rankings if the table is empty."""
+    if not os.path.exists(RANKINGS_SEED_PATH):
+        return
+    count = conn.execute("SELECT COUNT(*) FROM player_rankings").fetchone()[0]
+    if count > 0:
+        return
+    with open(RANKINGS_SEED_PATH) as f:
+        seed = json.load(f)
+    conn.executemany(
+        "INSERT OR IGNORE INTO player_rankings (player_id, custom_rank, notes, updated_at) "
+        "VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+        [(r['player_id'], r['custom_rank'], r.get('notes', '')) for r in seed]
+    )
 
 
 def save_draft(num_teams, my_position, picks, contest='', dk_draft_id=None, entry_fee=None, drafted_at=None):
