@@ -1489,16 +1489,18 @@ function renderCapitalBar() {
   const POSITIONS = ['QB', 'RB', 'WR', 'TE'];
   const POS_COLOR = { QB: 'var(--QB)', RB: 'var(--RB)', WR: 'var(--WR)', TE: 'var(--TE)' };
 
-  // Pick value = 1000/adp (same scale as recommender)
+  // Pick value = 1000/pick_number — actual draft position, not market ADP.
+  // Fallback to ADP if pick number isn't recorded.
   const cap = { QB: 0, RB: 0, WR: 0, TE: 0 };
   const tiers = { QB: [0,0,0], RB: [0,0,0], WR: [0,0,0], TE: [0,0,0] }; // [early, mid, late]
   let total = 0;
   for (const p of state.myTeam) {
     if (!cap[p.pos] && cap[p.pos] !== 0) continue;
-    const v = 1000 / (p.adp || 999);
+    const pickNum = p.pick || p.adp || 999;
+    const v = 1000 / pickNum;
     cap[p.pos] += v;
     total += v;
-    const rd = p.round || Math.ceil((state.myTeam.indexOf(p) + 1) / (settings.numTeams || 12));
+    const rd = p.round || Math.ceil(pickNum / (settings.numTeams || 12));
     tiers[p.pos][rd <= 4 ? 0 : rd <= 9 ? 1 : 2]++;
   }
 
