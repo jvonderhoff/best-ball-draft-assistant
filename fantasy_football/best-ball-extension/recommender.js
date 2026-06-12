@@ -183,6 +183,13 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const qbTeams = getMyQBTeams(myTeam);
   let mult = 1.0;
 
+  // Zero QB emergency — having no QB past round 8 is a critical situation.
+  // Scales from ×1.30 at round 9 up to ×2.00 at round 16+, overriding the normal urgency math.
+  if (pos === 'QB' && myQBs === 0 && userRound >= 9) {
+    const emergencyBoost = 1 + Math.min(1.0, (userRound - 8) * 0.10);
+    apply(emergencyBoost, 'QB emergency', `0 QBs in round ${userRound}`);
+  }
+
   // Draft capital urgency — fires when remaining picks for this position run short.
   // "Effective rounds" for a position = total rounds left minus picks earmarked for
   // other positions that still need filling. So if QB and TE are already done,
