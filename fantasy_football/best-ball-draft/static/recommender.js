@@ -305,8 +305,6 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     if (pb > 1.001) apply(pb, 'Playoff stack', playoffStackReason(player, myTeam) || '');
   }
 
-  const byePen = getByeWeekPenalty(player, myTeam);
-  if (byePen < 0.999) apply(byePen, 'Bye week clash', byeWeekWarning(player, myTeam) || '');
 
   // Value-steal boost / reach penalty: compares ADP to current overall pick.
   // Normalised by round (floored at 3) so early gaps carry more weight.
