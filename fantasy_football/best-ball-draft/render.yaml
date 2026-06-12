@@ -5,6 +5,9 @@ services:
     rootDir: fantasy_football/best-ball-draft
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -w 1 --timeout 120 -b 0.0.0.0:$PORT "app.app:app"
+    buildFilter:
+      ignoredPaths:
+        - fantasy_football/best-ball-draft/app/data/rankings_seed.json
     envVars:
       - key: BBA_API_KEY
         generateValue: true
