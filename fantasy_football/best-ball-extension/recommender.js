@@ -206,15 +206,6 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     apply(urgencyBoost, `${pos} urgency`, `need ${posNeed}, ~${effectiveRoundsForPos} rds avail`);
   }
 
-  // Hard discount when a position slot is fully filled.
-  // ×0.30 cap (was ×0.65) so over-drafted positions genuinely fall off the board —
-  // the old 0.65 still let saturated picks outrank players you actually need.
-  if ((needs[pos] || 0) === 0) {
-    const before = mult;
-    mult = Math.min(mult, 0.30);
-    if (bd && mult < before - 0.001) bd.push({ label: 'Position full', mult: mult / before, note: `${pos} slots filled` });
-  }
-
   // Early-round blanket ×1.10 amplifier removed — it compounded indiscriminately
   // on top of stacking and playoff bonuses that are already calibrated independently.
   // Those signals are self-sufficient; layering a round-based multiplier on top
