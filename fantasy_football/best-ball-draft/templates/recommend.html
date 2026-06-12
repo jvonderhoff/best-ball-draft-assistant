@@ -1638,17 +1638,7 @@ function renderStackWindows() {
     else               roundCards.push(card.html);
   }
 
-  if (!stackCards.length && !roundCards.length) return '';
-
-  let html = '';
-  if (stackCards.length) {
-    html += `<div class="stack-section-lbl">⚡ Your Stack Connections</div>${stackCards.join('')}`;
-  }
-  if (roundCards.length) {
-    const lbl = stackCards.length ? 'Other Available Stacks by Round' : 'Stack Windows — Available by Round';
-    html += `<div class="stack-section-lbl">📋 ${lbl}</div>${roundCards.join('')}`;
-  }
-  return html;
+  return { stackCards, roundCards };
 }
 
 function computeStackGroups() {
@@ -1720,14 +1710,20 @@ function renderStacks() {
 
   // All QB-related stacks — always actionable since you can keep adding pass catchers
   const qbStacks = groups.filter(g => ['qb-only', 'pass-only', 'complete'].includes(g.type));
+  const { stackCards, roundCards } = renderStackWindows();
 
   let html = '';
 
+  if (stackCards.length) {
+    html += `<div class="stack-section-lbl">⚡ Your Stack Connections</div>${stackCards.join('')}`;
+  }
   if (qbStacks.length) {
     html += `<div class="stack-section-lbl">⚡ QB Stacks</div>${qbStacks.map(g => renderStackCard(g, urgentThreshold)).join('')}`;
   }
-
-  html += renderStackWindows();
+  if (roundCards.length) {
+    const lbl = stackCards.length ? 'Other Available Stacks by Round' : 'Stack Windows — Available by Round';
+    html += `<div class="stack-section-lbl">📋 ${lbl}</div>${roundCards.join('')}`;
+  }
 
   el.innerHTML = html || '<div class="no-recs">No stack data yet.</div>';
 }
