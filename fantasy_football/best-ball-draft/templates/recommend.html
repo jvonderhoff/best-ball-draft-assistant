@@ -1615,18 +1615,8 @@ function computeStackGroups() {
   }).sort((a, b) => b.score - a.score || b.mine.length - a.mine.length);
 }
 
-function getOppTeams() {
-  const opp = {};
-  for (const p of state.myTeam) {
-    for (const wk of [p.week15, p.week16, p.week17]) {
-      if (wk && wk !== p.team) (opp[p.team] = opp[p.team] || new Set()).add(wk);
-    }
-  }
-  return opp;
-}
 
 function renderStacks() {
-
   const el = document.getElementById('stacksContent');
   if (!PLAYERS.length) { el.innerHTML = '<div class="no-recs">Loading players…</div>'; return; }
   if (!state.myTeam.length) {
@@ -1634,47 +1624,28 @@ function renderStacks() {
     return;
   }
 
-  const groups  = computeStackGroups();
-  const oppMap  = getOppTeams();
-  const myNFLTeams = new Set(groups.map(g => g.team));
+  const groups = computeStackGroups();
 
   // Urgency threshold: ADP within 10 of next pick means "pick now"
-  // Use takenIds.size as a floor — overallPick can lag behind if sync is slow
   const currentPick = Math.max(state.overallPick, state.takenIds.size + 1);
-  // If it's currently my turn, search from currentPick+1 so we get the pick AFTER this one
   const searchFrom = isMyTurn(currentPick, settings.numTeams, settings.myPosition) ? currentPick + 1 : currentPick;
   const myNextPick = nextMyOverallPick(searchFrom, settings.numTeams, settings.myPosition) || currentPick;
   const urgentThreshold = myNextPick + 10;
 
-  const needsWork = groups.filter(g => ['qb-only','pass-only','rb-only'].includes(g.type));
-  const complete  = groups.filter(g => g.type === 'complete');
+  // QB-focused actions: I have a QB and need pass catchers, or I have pass catchers and need the QB
+  const actions  = groups.filter(g => ['qb-only', 'pass-only'].includes(g.type));
+  const complete = groups.filter(g => g.type === 'complete');
 
-  // Opponent teams not already in my groups
-  const oppTeams = [...new Set(Object.values(oppMap).flatMap(s => [...s]))].filter(t => !myNFLTeams.has(t));
+  let html = '';
 
-  let html = renderStackWindows();
-
-  if (needsWork.length) {
-    html += `<div class="stack-section-lbl">⚡ Action Needed</div>${needsWork.map(g => renderStackCard(g, urgentThreshold)).join('')}`;
+  if (actions.length) {
+    html += `<div class="stack-section-lbl">⚡ Action Needed</div>${actions.map(g => renderStackCard(g, urgentThreshold)).join('')}`;
   }
+
+  html += renderStackWindows();
+
   if (complete.length) {
     html += `<div class="stack-section-lbl">✅ Active Stacks</div>${complete.map(g => renderStackCard(g, urgentThreshold)).join('')}`;
-  }
-  if (oppTeams.length) {
-    const cards = oppTeams.map(team => {
-      const targets = PLAYERS.filter(p => p.team === team && ['QB','WR','TE'].includes(p.pos) && !state.takenIds.has(p.id))
-        .sort((a,b) => (a.adp||999)-(b.adp||999)).slice(0,4);
-      if (!targets.length) return '';
-      return `<div class="stack-card">
-        <div class="stack-card-hdr">
-          <span class="stk-team">${team}</span>
-          <span class="stk-badge stk-opp">OPP STACK</span>
-          <span class="stk-hint">Shares a playoff game with your picks</span>
-        </div>
-        <div class="stack-players">${targets.map(p => renderTargetRow(p, urgentThreshold)).join('')}</div>
-      </div>`;
-    }).join('');
-    if (cards) html += `<div class="stack-section-lbl">🎯 Opponent Game Stack</div>${cards}`;
   }
 
   el.innerHTML = html || '<div class="no-recs">No stack data yet.</div>';
