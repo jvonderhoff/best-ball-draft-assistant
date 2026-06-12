@@ -165,6 +165,13 @@
       </div>
     </div>
 
+    <!-- Quick Simulate -->
+    <div class="panel" style="margin-bottom:12px">
+      <div class="panel-title">Quick Simulate</div>
+      <div style="font-size:0.78em;color:var(--muted2);margin-bottom:8px">Auto-fill a realistic roster using best-available ADP drafting for your position and pick #.</div>
+      <button class="load-btn" id="quickSimBtn" style="width:100%">Generate Roster</button>
+    </div>
+
     <!-- Load Past Draft -->
     <div class="panel" style="margin-bottom:12px">
       <div class="panel-title">Load Past Draft</div>
@@ -478,6 +485,41 @@ function run() {
     </div>`;
   }).join('');
 }
+
+// ── Quick simulate ────────────────────────────────────────────────────────────
+document.getElementById('quickSimBtn').addEventListener('click', () => {
+  const pickNum  = parseInt(document.getElementById('pickNum').value) || 1;
+  const numTeams = parseInt(document.getElementById('numTeams').value) || 12;
+  const myPos    = parseInt(document.getElementById('myPosition').value) || 1;
+
+  // Determine which pick slot belongs to which draft position in a snake draft
+  function draftPosForPick(overall) {
+    const round = Math.ceil(overall / numTeams);
+    const slot  = ((overall - 1) % numTeams) + 1;
+    return round % 2 === 0 ? (numTeams - slot + 1) : slot;
+  }
+
+  // Simulate best-available ADP draft up to pickNum
+  const sorted = [...PLAYERS].sort((a, b) => (a.adp || 999) - (b.adp || 999));
+  const taken = new Set();
+  myRoster = [];
+  takenIds = new Set();
+
+  for (let overall = 1; overall < pickNum; overall++) {
+    const next = sorted.find(p => !taken.has(p.id));
+    if (!next) break;
+    taken.add(next.id);
+    if (draftPosForPick(overall) === myPos) {
+      myRoster.push(next);
+    } else {
+      takenIds.add(next.id);
+    }
+  }
+
+  document.getElementById('takenCount').textContent = takenIds.size;
+  renderRosterChips();
+  run();
+});
 
 // ── Wire up dropdowns ─────────────────────────────────────────────────────────
 makeDropdown('rosterSearch', 'rosterDropdown', p => {
