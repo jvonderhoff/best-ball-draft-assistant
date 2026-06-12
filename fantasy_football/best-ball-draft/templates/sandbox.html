@@ -116,6 +116,14 @@
     .need-pill.urgent { border-color: var(--orange); color: var(--orange); }
 
     .status-bar { background: var(--surface); border-radius: 6px; padding: 7px 12px; font-size: 0.78em; color: var(--muted); margin-bottom: 10px; }
+
+    /* ── Draft loader ── */
+    .draft-select { width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 7px 10px; font-size: 0.83em; margin-bottom: 8px; }
+    .load-row { display: flex; gap: 8px; align-items: center; }
+    .load-row label { font-size: 0.78em; color: var(--muted2); white-space: nowrap; }
+    .load-row input[type=number] { width: 52px; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 4px 6px; font-size: 0.83em; text-align: center; }
+    .load-btn { flex: 1; padding: 6px 0; border-radius: 6px; border: none; background: var(--surface); border: 1px solid var(--accent); color: var(--accent); font-size: 0.82em; font-weight: 700; cursor: pointer; }
+    .load-btn:active { opacity: 0.7; }
   </style>
 </head>
 <body>
@@ -154,6 +162,17 @@
       <div class="setting-row">
         <label>Results shown</label>
         <input type="number" id="numResults" value="10" min="1" max="20">
+      </div>
+    </div>
+
+    <!-- Load Past Draft -->
+    <div class="panel" style="margin-bottom:12px">
+      <div class="panel-title">Load Past Draft</div>
+      <select class="draft-select" id="draftSelect"><option value="">Loading drafts…</option></select>
+      <div class="load-row">
+        <label>Simulate through round</label>
+        <input type="number" id="loadRound" value="20" min="1" max="20">
+        <button class="load-btn" id="loadDraftBtn">Load</button>
       </div>
     </div>
 
@@ -201,6 +220,84 @@ let PLAYERS = [];
 let customRankMap = {};
 let myRoster = [];   // player objects
 let takenIds = new Set();
+let allDrafts = [];  // cached from /api/drafts
+
+// ── Load past drafts into dropdown ───────────────────────────────────────────
+async function loadDraftList() {
+  try {
+    const r = await fetch('/api/drafts');
+    allDrafts = await r.json();
+    const sel = document.getElementById('draftSelect');
+    if (!allDrafts.length) {
+      sel.innerHTML = '<option value="">No saved drafts</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">— select a draft —</option>' +
+      allDrafts.map(d => {
+        const date = (d.drafted_at || d.created_at || '').slice(0, 10);
+        const contest = d.contest ? ` · ${d.contest.slice(0, 30)}` : '';
+        const picks = (d.picks || []).length;
+        return `<option value="${d.id}">Rd${Math.ceil(picks/12)} · Pos ${d.my_position} · ${date}${contest}</option>`;
+      }).join('');
+  } catch (e) {
+    document.getElementById('draftSelect').innerHTML = '<option value="">Failed to load drafts</option>';
+  }
+}
+
+document.getElementById('loadDraftBtn').addEventListener('click', () => {
+  const draftId = parseInt(document.getElementById('draftSelect').value);
+  const throughRound = parseInt(document.getElementById('loadRound').value) || 20;
+  if (!draftId) return;
+
+  const draft = allDrafts.find(d => d.id === draftId);
+  if (!draft) return;
+
+  const numTeams = 12;
+  const myPos = draft.my_position || 1;
+
+  // My picks up to the chosen round
+  const myPicks = (draft.picks || [])
+    .filter(p => (p.round || 99) <= throughRound)
+    .sort((a, b) => (a.round || 0) - (b.round || 0));
+
+  // All picks up to the last pick in that round (overall pick = round * numTeams)
+  const lastOverallPick = throughRound * numTeams;
+  const myPickNumbers = new Set(myPicks.map(p => p.pick_number));
+
+  // Build taken set: everyone drafted up to lastOverallPick who isn't my pick
+  takenIds = new Set();
+  (draft.picks || []).forEach(p => {
+    if ((p.pick_number || 0) <= lastOverallPick && !myPickNumbers.has(p.pick_number)) {
+      if (p.player_id) takenIds.add(p.player_id);
+    }
+  });
+
+  // Map picks to PLAYERS objects (for full player data including adp)
+  myRoster = myPicks.map(p => {
+    const live = PLAYERS.find(lp => lp.id === p.player_id);
+    return live || { id: p.player_id, name: p.player_name, pos: p.pos, team: p.team, adp: p.adp || 999 };
+  });
+
+  // Derive the next pick number after the loaded round
+  const myPicksInRound = myPicks.length;
+  let nextPick = 0;
+  for (let overall = lastOverallPick + 1; overall <= 240; overall++) {
+    const slot = ((overall - 1) % numTeams) + 1;
+    const round = Math.ceil(overall / numTeams);
+    const isSnakeReversed = round % 2 === 0;
+    const draftPos = isSnakeReversed ? (numTeams - slot + 1) : slot;
+    if (draftPos === myPos) { nextPick = overall; break; }
+  }
+
+  // Update settings
+  document.getElementById('myPosition').value = myPos;
+  document.getElementById('numTeams').value = numTeams;
+  if (nextPick) document.getElementById('pickNum').value = nextPick;
+  document.getElementById('takenCount').textContent = takenIds.size;
+
+  renderRosterChips();
+  run();
+});
 
 // ── Load players ──────────────────────────────────────────────────────────────
 async function loadPlayers() {
@@ -401,6 +498,7 @@ document.getElementById('pickNum').addEventListener('keydown', e => { if (e.key 
 document.getElementById('runBtn').disabled = true;
 document.getElementById('runBtn').textContent = 'Loading players…';
 loadPlayers();
+loadDraftList();
 </script>
 </body>
 </html>
