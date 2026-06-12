@@ -58,6 +58,8 @@ async function saveDraftToRender(msg) {
     my_position: msg.my_position,
     picks:       msg.picks,
     contest:     msg.contest || '',
+    entry_fee:   msg.entry_fee ?? null,
+    drafted_at:  msg.drafted_at || null,
   };
   const result = await renderPost('/api/drafts/import', body);
   if (result.duplicate) return { ok: true, duplicate: true, draft_id: result.draft_id };

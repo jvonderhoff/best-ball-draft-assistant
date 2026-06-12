@@ -114,7 +114,7 @@ def init_db():
                 conn.execute(f"ALTER TABLE draft_picks ADD COLUMN {col} TEXT")
 
 
-def save_draft(num_teams, my_position, picks, contest='', dk_draft_id=None):
+def save_draft(num_teams, my_position, picks, contest='', dk_draft_id=None, entry_fee=None, drafted_at=None):
     """
     Save a completed draft. picks = list of player dicts.
     If dk_draft_id is provided and already exists, the save is skipped (returns None).
@@ -122,8 +122,8 @@ def save_draft(num_teams, my_position, picks, contest='', dk_draft_id=None):
     with get_db() as conn:
         try:
             cur = conn.execute(
-                "INSERT INTO drafts (num_teams, my_position, contest, dk_draft_id) VALUES (?,?,?,?)",
-                (num_teams, my_position, contest, dk_draft_id)
+                "INSERT INTO drafts (num_teams, my_position, contest, dk_draft_id, entry_fee, drafted_at) VALUES (?,?,?,?,?,?)",
+                (num_teams, my_position, contest, dk_draft_id, entry_fee, drafted_at)
             )
         except sqlite3.IntegrityError:
             return None

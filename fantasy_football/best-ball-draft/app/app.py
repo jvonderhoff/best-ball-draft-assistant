@@ -114,6 +114,8 @@ def import_draft():
             picks       = picks,
             contest     = data.get('contest', ''),
             dk_draft_id = data.get('dk_draft_id'),
+            entry_fee   = data.get('entry_fee'),
+            drafted_at  = data.get('drafted_at'),
         )
         if draft_id is None:
             return jsonify({'success': True, 'draft_id': None, 'duplicate': True})
