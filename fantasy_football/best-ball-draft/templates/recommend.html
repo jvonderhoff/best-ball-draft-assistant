@@ -1595,12 +1595,15 @@ function computeStackGroups() {
     const myPC      = mine.filter(p => ['WR','TE'].includes(p.pos));
     const myRBs     = mine.filter(p => p.pos === 'RB');
 
+    const availableQBs = all.filter(p => p.pos === 'QB' && !state.takenIds.has(p.id));
+
     let type, label, cls;
-    if (myQBs.length && myPC.length)            { type='complete';  label=`${myQBs.length}QB + ${myPC.length} pass catcher${myPC.length>1?'s':''}`;   cls='stk-complete';  }
-    else if (myQBs.length && !myPC.length)      { type='qb-only';   label=`${myQBs.length}QB — bring back receivers`;                                  cls='stk-qb-only';   }
-    else if (myPC.length && !myQBs.length)      { type='pass-only'; label=`${myPC.length} receiver${myPC.length>1?'s':''} — grab the QB`;               cls='stk-pass-only'; }
-    else if (myRBs.length)                      { type='rb-only';   label=`${myRBs.length}RB — game stack opp`;                                         cls='stk-rb-only';   }
-    else                                        { type='mixed';     label=`${mine.length} players`;                                                      cls='stk-complete';  }
+    if (myQBs.length && myPC.length)                       { type='complete';  label=`${myQBs.length}QB + ${myPC.length} pass catcher${myPC.length>1?'s':''}`;   cls='stk-complete';  }
+    else if (myQBs.length && !myPC.length)                 { type='qb-only';   label=`${myQBs.length}QB — bring back receivers`;                                  cls='stk-qb-only';   }
+    else if (myPC.length && !myQBs.length && availableQBs.length) { type='pass-only'; label=`${myPC.length} receiver${myPC.length>1?'s':''} — grab the QB`;      cls='stk-pass-only'; }
+    else if (myPC.length && !myQBs.length)                 { type='no-qb';     label=`${myPC.length} receiver${myPC.length>1?'s':''} — QB gone`;                  cls='stk-rb-only';   }
+    else if (myRBs.length)                                 { type='rb-only';   label=`${myRBs.length}RB — game stack opp`;                                        cls='stk-rb-only';   }
+    else                                                   { type='mixed';     label=`${mine.length} players`;                                                     cls='stk-complete';  }
 
     const hints = {
       complete:   'Stack active — look for more pass catchers late.',
