@@ -116,6 +116,27 @@ def init_db():
             if col not in pick_cols:
                 conn.execute(f"ALTER TABLE draft_picks ADD COLUMN {col} TEXT")
         _seed_rankings_if_empty(conn)
+        _seed_players_if_empty(conn)
+
+
+def _seed_players_if_empty(conn):
+    """Load player_cache.json into players table if empty."""
+    player_cache = os.path.join(_DATA_DIR, 'player_cache.json')
+    if not os.path.exists(player_cache):
+        return
+    count = conn.execute("SELECT COUNT(*) FROM players").fetchone()[0]
+    if count > 0:
+        return
+    with open(player_cache) as f:
+        data = json.load(f)
+    players = data.get('players', data) if isinstance(data, dict) else data
+    conn.executemany("""
+        INSERT OR IGNORE INTO players
+            (player_id, name, pos, team, adp, ecr_rank, week15, week16, week17, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, [(p['id'], p['name'], p['pos'], p['team'], p.get('adp'),
+           p.get('ecr_rank'), p.get('week15'), p.get('week16'), p.get('week17'))
+          for p in players])
 
 
 def _seed_rankings_if_empty(conn):
