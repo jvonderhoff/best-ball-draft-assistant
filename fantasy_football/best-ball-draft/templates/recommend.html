@@ -1637,21 +1637,16 @@ function renderStacks() {
   const myNextPick = nextMyOverallPick(searchFrom, settings.numTeams, settings.myPosition) || currentPick;
   const urgentThreshold = myNextPick + 10;
 
-  // QB-focused actions: I have a QB and need pass catchers, or I have pass catchers and need the QB
-  const actions  = groups.filter(g => ['qb-only', 'pass-only'].includes(g.type));
-  const complete = groups.filter(g => g.type === 'complete');
+  // All QB-related stacks — always actionable since you can keep adding pass catchers
+  const qbStacks = groups.filter(g => ['qb-only', 'pass-only', 'complete'].includes(g.type));
 
   let html = '';
 
-  if (actions.length) {
-    html += `<div class="stack-section-lbl">⚡ Action Needed</div>${actions.map(g => renderStackCard(g, urgentThreshold)).join('')}`;
+  if (qbStacks.length) {
+    html += `<div class="stack-section-lbl">⚡ QB Stacks</div>${qbStacks.map(g => renderStackCard(g, urgentThreshold)).join('')}`;
   }
 
   html += renderStackWindows();
-
-  if (complete.length) {
-    html += `<div class="stack-section-lbl">✅ Active Stacks</div>${complete.map(g => renderStackCard(g, urgentThreshold)).join('')}`;
-  }
 
   el.innerHTML = html || '<div class="no-recs">No stack data yet.</div>';
 }
