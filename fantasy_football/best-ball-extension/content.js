@@ -80,19 +80,18 @@ async function loadCustomRankings() {
 }
 
 // Apply or remove custom ranking ADPs from state.available.
-// When active, players with a custom rank get that rank as their adp;
-// players without one are pushed to the back (high adp number).
+// Matches Flask applyCustomRanks: ranked players get custom_rank as adp,
+// unranked players keep their original DK ADP unchanged.
 function applyRankingMode() {
+  const adpLookup = {};
+  if (typeof PLAYERS !== 'undefined') PLAYERS.forEach(p => { adpLookup[p.id] = p.adp; });
+
   if (state.useCustomRankings && Object.keys(customRankMap).length) {
-    const maxRank = Math.max(...Object.values(customRankMap));
     state.available = state.available.map(p => ({
       ...p,
-      adp: customRankMap[p.id] ?? (maxRank + (p.adp || 999)),
+      adp: customRankMap[p.id] ?? (adpLookup[p.id] ?? p.adp),
     }));
   } else {
-    // Restore original ADPs from PLAYERS
-    const adpLookup = {};
-    if (typeof PLAYERS !== 'undefined') PLAYERS.forEach(p => { adpLookup[p.id] = p.adp; });
     state.available = state.available.map(p => ({
       ...p,
       adp: adpLookup[p.id] ?? p.adp,
@@ -188,14 +187,28 @@ async function saveDraftToFlask({ contest = '', silent = false } = {}) {
 }
 
 let playerNameMap = {};
+// Live player list — starts as the static players.js array, overwritten by Render fetch.
+let livePlayers = (typeof PLAYERS !== 'undefined') ? [...PLAYERS] : [];
 
 function initPlayers() {
-  if (typeof PLAYERS === 'undefined' || !PLAYERS.length) return;
-  state.available = [...PLAYERS];
+  if (!livePlayers.length) return;
+  state.available = [...livePlayers];
   playerNameMap = {};
-  PLAYERS.forEach(p => {
-    playerNameMap[p.name.toLowerCase()] = p;
-  });
+  livePlayers.forEach(p => { playerNameMap[p.name.toLowerCase()] = p; });
+}
+
+async function fetchPlayersFromRender() {
+  try {
+    const result = await nativeCall({ action: 'getPlayers' });
+    if (!result.ok || !Array.isArray(result.data) || !result.data.length) return;
+    livePlayers = result.data;
+    // Re-init with fresh data and re-render if already running
+    initPlayers();
+    if (state.isSetup) render();
+    console.log(`[BBA] Players refreshed from Render: ${livePlayers.length}`);
+  } catch (e) {
+    console.log('[BBA] fetchPlayersFromRender failed, using static players.js:', e);
+  }
 }
 
 const NUM_TEAMS = 12; // DraftKings best ball is always 12 teams
@@ -1775,10 +1788,8 @@ function init() {
   initPlayers();
 
   loadSettings(() => {
-    // loadExposure is needed for the overlay (exposure rates); refreshPlayersInDB is
-    // a background sync and must not block the overlay from appearing.
-    refreshPlayersInDB();  // fire-and-forget
-    fetchDraftMeta();      // fire-and-forget — populates draftedAt + entryFee
+    fetchPlayersFromRender();  // fire-and-forget — updates livePlayers from Render
+    fetchDraftMeta();          // fire-and-forget — populates draftedAt + entryFee
     loadExposure().then(() => {
       createOverlay();
       render();

@@ -101,4 +101,12 @@ bAPI.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
+
+  // Players — read from Render (fresh ADP)
+  if (msg.action === 'getPlayers') {
+    renderGet('/api/players').then(data => {
+      sendResponse(Array.isArray(data) ? { ok: true, data } : { ok: false });
+    });
+    return true;
+  }
 });
