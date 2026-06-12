@@ -185,21 +185,23 @@
 
     /* ── Draft capital bar ── */
     .capital-section { margin: 12px 0 10px; }
-    .capital-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--card); gap: 1px; }
-    .capital-bar-seg { height: 100%; transition: width 0.4s ease; }
-    .capital-labels { display: flex; margin-top: 6px; }
-    .capital-label {
-      display: flex; flex-direction: column; align-items: center;
-      font-size: 0.68em; gap: 1px; overflow: hidden;
+    .capital-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .capital-row-pos {
+      font-size: 0.68em; font-weight: 700; letter-spacing: 0.05em;
+      width: 22px; text-align: right; flex-shrink: 0;
     }
-    .capital-label .cap-pos { font-weight: 700; letter-spacing: 0.05em; }
-    .capital-label .cap-pct { color: var(--muted); }
-    .capital-label .cap-tiers { display: flex; gap: 2px; margin-top: 3px; }
+    .capital-row-track {
+      flex: 1; height: 10px; background: var(--card); border-radius: 5px; overflow: hidden;
+    }
+    .capital-row-fill { height: 100%; border-radius: 5px; transition: width 0.4s ease; }
+    .capital-row-meta {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 0.68em; color: var(--muted); flex-shrink: 0; min-width: 60px;
+    }
+    .capital-row-pct { font-weight: 700; min-width: 28px; text-align: right; }
     .capital-tier-pip {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: var(--muted2); flex-shrink: 0;
+      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
     }
-    .capital-tier-pip.filled { background: currentColor; }
 
     /* ── Settings ── */
     .settings-grid { display: flex; flex-direction: column; gap: 14px; }
@@ -1502,16 +1504,8 @@ function renderCapitalBar() {
 
   const pct = pos => total > 0 ? Math.round(cap[pos] / total * 100) : 0;
 
-  const segments = POSITIONS.map(pos => {
+  const rows = POSITIONS.map(pos => {
     const w = pct(pos);
-    return w > 0
-      ? `<div class="capital-bar-seg" style="width:${w}%;background:${POS_COLOR[pos]}"></div>`
-      : '';
-  }).join('');
-
-  const labels = POSITIONS.map(pos => {
-    const w = pct(pos);
-    if (w === 0) return '';
     const [early, mid, late] = tiers[pos];
     const pips = [
       { count: early, opacity: 1.0 },
@@ -1519,20 +1513,24 @@ function renderCapitalBar() {
       { count: late,  opacity: 0.25 },
     ].flatMap(({ count, opacity }) =>
       Array.from({ length: count }).map(
-        () => `<div class="capital-tier-pip filled" style="background:${POS_COLOR[pos]};opacity:${opacity}"></div>`
+        () => `<div class="capital-tier-pip" style="background:${POS_COLOR[pos]};opacity:${opacity}"></div>`
       )
     ).join('');
-    return `<div class="capital-label" style="width:${w}%;color:${POS_COLOR[pos]}">
-      <span class="cap-pos">${pos}</span>
-      <span class="cap-pct" style="color:var(--muted)">${w}%</span>
-      <div class="cap-tiers">${pips}</div>
+    return `<div class="capital-row">
+      <span class="capital-row-pos" style="color:${POS_COLOR[pos]}">${pos}</span>
+      <div class="capital-row-track">
+        <div class="capital-row-fill" style="width:${w}%;background:${POS_COLOR[pos]}"></div>
+      </div>
+      <div class="capital-row-meta">
+        <span class="capital-row-pct" style="color:${POS_COLOR[pos]}">${w}%</span>
+        ${pips}
+      </div>
     </div>`;
   }).join('');
 
   el.innerHTML = `<div class="capital-section">
     <div class="pos-header">Draft Capital</div>
-    <div class="capital-bar">${segments}</div>
-    <div class="capital-labels">${labels}</div>
+    ${rows}
   </div>`;
 }
 
