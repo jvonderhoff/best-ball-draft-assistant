@@ -171,6 +171,10 @@
         <span>Overall pick</span>
         <span id="pickNumDisplay" style="color:var(--text);font-weight:700">—</span>
       </div>
+      <div class="setting-row" style="font-size:0.78em;color:var(--muted2)">
+        <span>Next pick</span>
+        <span id="nextPickDisplay" style="color:var(--text);font-weight:700">—</span>
+      </div>
       <div class="setting-row">
         <label>Rankings</label>
         <select id="rankingMode">
@@ -359,7 +363,12 @@ function computePickNum() {
 }
 
 function updatePickDisplay() {
-  document.getElementById('pickNumDisplay').textContent = computePickNum();
+  const pick     = computePickNum();
+  const numTeams = parseInt(document.getElementById('numTeams').value) || 12;
+  const myPos    = parseInt(document.getElementById('myPosition').value) || 1;
+  const next     = nextMyOverallPick(pick + 1, numTeams, myPos);
+  document.getElementById('pickNumDisplay').textContent = pick;
+  document.getElementById('nextPickDisplay').textContent = next ? `#${next} (Rd ${Math.ceil(next / numTeams)})` : '—';
 }
 
 ['numTeams', 'myPosition', 'simRound'].forEach(id => {
