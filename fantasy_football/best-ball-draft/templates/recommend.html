@@ -1671,7 +1671,11 @@ function computeStackGroups() {
     const myQBs        = mine.filter(p => p.pos === 'QB');
     const mySkill      = mine.filter(p => ['RB','WR','TE'].includes(p.pos));
 
-    const availableQBs = all.filter(p => p.pos === 'QB' && !state.takenIds.has(p.id));
+    // Only the primary QB (best ADP) counts for "grab the QB" — if they're taken,
+    // backups aren't meaningful stack targets even if technically available.
+    const teamQBs      = all.filter(p => p.pos === 'QB').sort((a, b) => (a.adp||999) - (b.adp||999));
+    const primaryQB    = teamQBs[0];
+    const primaryAvail = primaryQB && !state.takenIds.has(primaryQB.id);
 
     const skillLabel = (players) => {
       const counts = {};
@@ -1680,11 +1684,11 @@ function computeStackGroups() {
     };
 
     let type, label, cls;
-    if (myQBs.length && mySkill.length)                          { type='complete';  label=`${myQBs.length}QB + ${skillLabel(mySkill)}`;          cls='stk-complete';  }
-    else if (myQBs.length && !mySkill.length)                    { type='qb-only';   label=`${myQBs.length}QB — stack a skill player`;             cls='stk-qb-only';   }
-    else if (mySkill.length && !myQBs.length && availableQBs.length) { type='pass-only'; label=`${skillLabel(mySkill)} — grab the QB`;             cls='stk-pass-only'; }
-    else if (mySkill.length && !myQBs.length)                    { type='no-qb';     label=`${skillLabel(mySkill)} — QB gone`;                     cls='stk-rb-only';   }
-    else                                                         { type='mixed';     label=`${mine.length} players`;                               cls='stk-complete';  }
+    if (myQBs.length && mySkill.length)                        { type='complete';  label=`${myQBs.length}QB + ${skillLabel(mySkill)}`;        cls='stk-complete';  }
+    else if (myQBs.length && !mySkill.length)                  { type='qb-only';   label=`${myQBs.length}QB — stack a skill player`;           cls='stk-qb-only';   }
+    else if (mySkill.length && !myQBs.length && primaryAvail)  { type='pass-only'; label=`${skillLabel(mySkill)} — grab the QB`;               cls='stk-pass-only'; }
+    else if (mySkill.length && !myQBs.length)                  { type='no-qb';     label=`${skillLabel(mySkill)} — QB gone`;                   cls='stk-rb-only';   }
+    else                                                       { type='mixed';     label=`${mine.length} players`;                             cls='stk-complete';  }
 
     const hints = {
       complete:   'Stack active — keep adding skill players from this team.',
