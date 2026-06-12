@@ -190,22 +190,6 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
     apply(emergencyBoost, 'QB emergency', `0 QBs in round ${userRound}`);
   }
 
-  // Draft capital urgency — fires when remaining picks for this position run short.
-  // "Effective rounds" for a position = total rounds left minus picks earmarked for
-  // other positions that still need filling. So if QB and TE are already done,
-  // those picks free up and WR/RB urgency kicks in earlier.
-  // ×1.08 per round behind, capped at ×1.35 so it can't override large value gaps.
-  const TOTAL_ROUNDS = 20;
-  const roundsLeft  = Math.max(1, TOTAL_ROUNDS - userRound);
-  const posNeed     = needs[pos] || 0;
-  const otherNeeds  = Object.entries(needs).reduce((s, [p, n]) => p !== pos ? s + n : s, 0);
-  const effectiveRoundsForPos = Math.max(0, roundsLeft - otherNeeds);
-  const posBehind   = Math.max(0, posNeed - effectiveRoundsForPos);
-  if (posBehind > 0) {
-    const urgencyBoost = 1 + Math.min(0.35, posBehind * 0.08);
-    apply(urgencyBoost, `${pos} urgency`, `need ${posNeed}, ~${effectiveRoundsForPos} rds avail`);
-  }
-
   // Early-round blanket ×1.10 amplifier removed — it compounded indiscriminately
   // on top of stacking and playoff bonuses that are already calibrated independently.
   // Those signals are self-sufficient; layering a round-based multiplier on top
