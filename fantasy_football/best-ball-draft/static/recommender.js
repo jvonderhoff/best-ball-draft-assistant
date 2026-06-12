@@ -183,11 +183,6 @@ function calculateValue(player, needs, myPickNumber, myTeam, stackIntensity = 'm
   const qbTeams = getMyQBTeams(myTeam);
   let mult = 1.0;
 
-  // TE elite boost — only for top-tier TEs worth a real early pick.
-  if (pos === 'TE' && (player.adp || 999) <= 30 && userRound <= 4) {
-    apply(1.20, 'TE elite boost', `ADP ${player.adp} ≤ 30, rd ${userRound}`);
-  }
-
   // Draft capital urgency — fires when remaining picks for this position run short.
   // "Effective rounds" for a position = total rounds left minus picks earmarked for
   // other positions that still need filling. So if QB and TE are already done,
