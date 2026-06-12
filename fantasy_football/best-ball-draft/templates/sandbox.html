@@ -168,6 +168,13 @@
         <input type="number" id="myPosition" value="1" min="1" max="20">
       </div>
       <div class="setting-row">
+        <label>Rankings</label>
+        <select id="rankingMode">
+          <option value="adp">ADP</option>
+          <option value="rank">My Rank</option>
+        </select>
+      </div>
+      <div class="setting-row">
         <label>Stack intensity</label>
         <select id="stackIntensity">
           <option value="off">Off</option>
@@ -497,12 +504,12 @@ function run() {
   const intensity = document.getElementById('stackIntensity').value;
   const n         = parseInt(document.getElementById('numResults').value) || 10;
 
-  const useCustom = Object.keys(customRankMap).length > 0;
+  const useRank = document.getElementById('rankingMode').value === 'rank';
   const available = PLAYERS
     .filter(p => !takenIds.has(p.id) && !myRoster.some(r => r.id === p.id))
     .map(p => {
       const cr = customRankMap[p.id];
-      return cr != null ? { ...p, adp: cr } : p;
+      return (useRank && cr != null) ? { ...p, adp: cr } : p;
     });
 
   const myTeamWithRounds = myRoster.map((p, i) => ({
