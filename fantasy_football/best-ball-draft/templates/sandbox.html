@@ -489,7 +489,7 @@ function renderRosterView() {
     row.addEventListener('click', () => {
       myRoster = myRoster.filter(p => p.id !== row.dataset.id);
       renderRosterChips();
-      renderRosterView();
+      run();
     });
   });
 }
@@ -629,6 +629,7 @@ makeDropdown('rosterSearch', 'rosterDropdown', p => {
   if (!myRoster.some(r => r.id === p.id)) {
     myRoster.push(p);
     renderRosterChips();
+    run();
   }
 });
 
