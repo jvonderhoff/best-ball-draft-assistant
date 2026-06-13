@@ -119,6 +119,53 @@ function playoffStackReason(player, myTeam) {
   return null;
 }
 
+// ── Draft capital allocation ──────────────────────────────────────────────────
+// How many of each position a complete roster should have.
+const POSITION_TARGETS = { QB: 2, RB: 6, WR: 8, TE: 2 };
+
+// ADP gap between the last "needed" player at a position and the next one after.
+// A large gap means the position gets dramatically worse if you wait — high scarcity.
+function positionalAdpCliff(pos, available, stillNeed) {
+  if (stillNeed <= 0) return 0;
+  const atPos = available
+    .filter(p => p.pos === pos && p.adp)
+    .sort((a, b) => a.adp - b.adp);
+  if (atPos.length < stillNeed) return 150; // almost none left — critical
+  const lastNeeded = atPos[stillNeed - 1];
+  const firstAfter = atPos[stillNeed];
+  if (!firstAfter) return 80;
+  return firstAfter.adp - lastNeeded.adp;
+}
+
+// Returns a capital-allocation multiplier for this player given current roster and pool.
+//   > 1.0  scarce position: the next viable option is far down the board, grab now
+//   < 1.0  over-allocated: already at/above target while other positions need help
+function capitalAllocationMult(player, myTeam, available) {
+  if (!available || !available.length) return 1.0;
+  const pos    = player.pos;
+  const target = POSITION_TARGETS[pos] || 4;
+  const have   = myTeam.filter(p => p.pos === pos).length;
+  const need   = target - have;
+
+  if (need > 0) {
+    // Still need this position — boost proportional to how steep the ADP cliff is.
+    // A 40-pick cliff = full scarcity (×1.20); smaller cliff = smaller boost.
+    const cliff    = positionalAdpCliff(pos, available, need);
+    const scarcity = Math.min(1.0, cliff / 40);
+    return 1 + scarcity * 0.20;
+  }
+
+  // At or beyond target — penalty scales with total deficits at other positions.
+  // The more urgent needs you're ignoring, the steeper the penalty (capped at ×0.80).
+  const totalDeficit = Object.entries(POSITION_TARGETS).reduce((sum, [p, t]) => {
+    if (p === pos) return sum;
+    return sum + Math.max(0, t - myTeam.filter(m => m.pos === p).length);
+  }, 0);
+  const maxDeficit = Object.values(POSITION_TARGETS).reduce((a, b) => a + b, 0);
+  const penaltyStrength = (totalDeficit / maxDeficit) * 0.20;
+  return 1 - penaltyStrength;
+}
+
 // ── Bye week helpers ──────────────────────────────────────────────────────────
 
 // Returns a warning string if drafting this player would create a bye week crunch, else null.
@@ -138,7 +185,7 @@ function byeWeekWarning(player, myTeam) {
 // nextMyPick: overall pick number of my NEXT turn after this one (for window urgency)
 // bd (breakdown): optional array — if provided, each applied multiplier is pushed as
 // { label, mult, note } so callers can explain the score to the user.
-function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium', nextMyPick = null, bd = null) {
+function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium', nextMyPick = null, available = [], bd = null) {
   // Use inverse ADP so value is always positive and naturally orders players.
   // adp=1 → 1000, adp=50 → 20, adp=100 → 10, adp=200 → 5, adp=500 → 2
   // This ensures late-round players still have relative ordering rather than
@@ -163,6 +210,15 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
   if (pos === 'QB' && myQBs === 0 && userRound >= 9) {
     const emergencyBoost = 1 + Math.min(1.0, (userRound - 8) * 0.10);
     apply(emergencyBoost, 'QB emergency', `0 QBs in round ${userRound}`);
+  }
+
+  // Bye week penalty for 2nd/3rd QB sharing a bye with an existing QB.
+  // With only 2-3 QBs rostered, a shared bye means zero QB coverage that week.
+  if (pos === 'QB' && myQBs >= 1 && player.bye) {
+    const qbByeClash = myTeam.find(p => p.pos === 'QB' && p.bye === player.bye && hasRealTeam(p));
+    if (qbByeClash) {
+      apply(0.70, 'QB bye clash', `same bye wk${player.bye} as ${qbByeClash.name.split(' ').pop()}`);
+    }
   }
 
   // Early-round blanket ×1.10 amplifier removed — it compounded indiscriminately
@@ -245,6 +301,26 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
   }
 
 
+  // Draft capital allocation: scarcity bonus or over-allocation penalty.
+  // Skipped in stack-off mode to keep that mode a pure ADP/value signal.
+  if (stackIntensity !== 'off') {
+    const capMult = capitalAllocationMult(player, myTeam, available);
+    const target  = POSITION_TARGETS[pos] || 4;
+    const have    = myTeam.filter(p => p.pos === pos).length;
+    const need    = target - have;
+    if (capMult > 1.001) {
+      const cliff = positionalAdpCliff(pos, available, need);
+      apply(capMult, 'Capital: scarce', `need ${need} more ${pos}, next tier +${Math.round(cliff)} ADP picks away`);
+    }
+    if (capMult < 0.999) {
+      const totalDeficit = Object.entries(POSITION_TARGETS).reduce((sum, [p, t]) => {
+        if (p === pos) return sum;
+        return sum + Math.max(0, t - myTeam.filter(m => m.pos === p).length);
+      }, 0);
+      apply(capMult, 'Capital: over-alloc', `${pos} at ${have}/${target}, ${totalDeficit} spots still needed elsewhere`);
+    }
+  }
+
   // Value-steal boost / reach penalty: compares ADP to current overall pick.
   // Normalised by round (floored at 3) so early gaps carry more weight.
   //
@@ -280,7 +356,7 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
 
   const scored = pool.map(p => {
     const bd = [];
-    const val = calculateValue(p, myPickNumber, myTeam, stackIntensity, nextMyPick, bd);
+    const val = calculateValue(p, myPickNumber, myTeam, stackIntensity, nextMyPick, pool, bd);
     const baseScore = 1000 / (p.adp || 1);
 
     const gap        = myPickNumber - (p.adp || myPickNumber);
@@ -316,6 +392,14 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
 
     const pr = playoffStackReason(p, myTeam);
     if (pr) reason = reason ? `${reason} · ${pr}` : pr;
+    // QB-specific bye clash warning (2 QBs on same bye = zero QB coverage that week)
+    if (p.pos === 'QB' && p.bye) {
+      const qbByeClash = myTeam.find(t => t.pos === 'QB' && t.bye === p.bye && hasRealTeam(t));
+      if (qbByeClash) {
+        const clashName = qbByeClash.name.split(' ').pop();
+        reason = reason ? `${reason} · ⚠ QB bye clash wk${p.bye} w/ ${clashName}` : `⚠ QB bye clash wk${p.bye} w/ ${clashName}`;
+      }
+    }
     const byeWarn = byeWeekWarning(p, myTeam);
     if (byeWarn) reason = reason ? `${reason} · ⚠ ${byeWarn}` : `⚠ ${byeWarn}`;
     return { player: p, value: val, reason, bd, baseScore };
