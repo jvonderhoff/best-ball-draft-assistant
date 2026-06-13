@@ -13,8 +13,10 @@ services:
         generateValue: true
       - key: PYTHON_VERSION
         value: 3.11.0
-      # Fine-grained PAT with Contents: Read and write on this repo. Set the value
-      # in the Render dashboard (sync:false keeps the secret out of the repo).
-      # Without it, live ranking edits won't persist across deploys.
-      - key: GITHUB_TOKEN
+      # Durable Postgres connection string (Neon / Supabase / Render PG / …).
+      # Custom rankings live here so they survive ephemeral-filesystem resets
+      # (deploys AND free-tier spin-downs). Set the value in the Render dashboard
+      # (sync:false keeps the secret out of the repo). Without it, rankings fall
+      # back to the ephemeral local SQLite DB and won't persist.
+      - key: DATABASE_URL
         sync: false

@@ -1,3 +1,7 @@
 ssl.key
 ssl.crt
 .dk_session.json
+# Ephemeral runtime DB — shipping it in git shadowed the rankings seed/external
+# store and reverted live edits on every deploy. Rankings now persist in the
+# external DB (DATABASE_URL); this file is rebuilt locally on first run.
+drafts.db

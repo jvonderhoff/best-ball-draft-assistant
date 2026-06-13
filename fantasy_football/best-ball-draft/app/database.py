@@ -117,6 +117,7 @@ def init_db():
                 conn.execute(f"ALTER TABLE draft_picks ADD COLUMN {col} TEXT")
         _seed_rankings_if_empty(conn)
         _seed_players_if_empty(conn)
+        _hydrate_external_rankings(conn)
 
 
 def _seed_players_if_empty(conn):
@@ -140,7 +141,11 @@ def _seed_players_if_empty(conn):
 
 
 def _seed_rankings_if_empty(conn):
-    """Load rankings_seed.json into player_rankings if the table is empty."""
+    """Load rankings_seed.json into player_rankings if the table is empty.
+
+    This is only the bootstrap for the very first run / local dev. When an
+    external store is configured, _hydrate_external_rankings overrides this.
+    """
     if not os.path.exists(RANKINGS_SEED_PATH):
         return
     count = conn.execute("SELECT COUNT(*) FROM player_rankings").fetchone()[0]
@@ -153,6 +158,47 @@ def _seed_rankings_if_empty(conn):
         "VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
         [(r['player_id'], r['custom_rank'], r.get('notes', '')) for r in seed]
     )
+
+
+def _hydrate_external_rankings(conn):
+    """Make the durable external store the source of truth for rankings.
+
+    On boot: pull rankings from the external DB and replace the local cache so
+    ephemeral-filesystem resets (deploy or spin-down) never lose edits. If the
+    external store is empty (first run), seed it from whatever is local — the
+    seed-file bootstrap that _seed_rankings_if_empty just loaded.
+    """
+    from app import rankings_store
+    if not rankings_store.external_enabled():
+        return
+    try:
+        rankings_store.init_external()
+        ext = rankings_store.load_rankings()
+        if ext is None:
+            return  # store unreachable — keep local cache, don't wipe it
+        if not ext:
+            # First run: external is empty. Seed it from the local bootstrap so
+            # we don't lose the committed rankings_seed.json set.
+            local = conn.execute(
+                "SELECT player_id, custom_rank, notes FROM player_rankings"
+            ).fetchall()
+            seed = [
+                {'player_id': r['player_id'], 'custom_rank': r['custom_rank'], 'notes': r['notes'] or ''}
+                for r in local
+            ]
+            if seed:
+                rankings_store.save_rankings(seed)
+            return
+        # External has data — it wins. Replace the local cache wholesale.
+        conn.execute("DELETE FROM player_rankings")
+        conn.executemany(
+            "INSERT OR IGNORE INTO player_rankings (player_id, custom_rank, notes, updated_at) "
+            "VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+            [(r['player_id'], r['custom_rank'], r.get('notes', '')) for r in ext]
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger('app').warning(f'[rankings-store] hydrate failed: {e!r}')
 
 
 def save_draft(num_teams, my_position, picks, contest='', dk_draft_id=None, entry_fee=None, drafted_at=None):
@@ -428,4 +474,13 @@ def save_rankings(rankings):
                         notes       = excluded.notes,
                         updated_at  = CURRENT_TIMESTAMP
                 """, (pid, int(rank), notes))
+    # Write through to the durable external store so the edit survives the next
+    # ephemeral-filesystem reset. No-op when DATABASE_URL is unset.
+    try:
+        from app import rankings_store
+        if rankings_store.external_enabled():
+            rankings_store.save_rankings(rankings)
+    except Exception as e:
+        import logging
+        logging.getLogger('app').warning(f'[rankings-store] write-through failed: {e!r}')
     return len(rankings)

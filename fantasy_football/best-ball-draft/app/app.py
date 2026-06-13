@@ -178,117 +178,18 @@ def get_rankings_route():
     return jsonify(get_rankings())
 
 
-# Repo that holds rankings_seed.json. Render's checkout has no 'origin' remote,
-# so we default to the known slug and only consult git as a last resort. Override
-# with the GITHUB_REPO env var if the repo is ever renamed/forked.
-_DEFAULT_REPO_SLUG = 'jvonderhoff/best-ball-draft-assistant'
-
-def _seed_repo_slug():
-    """Resolve 'owner/repo' for the rankings seed: env var > known default > git remote."""
-    slug = os.environ.get('GITHUB_REPO', '').strip()
-    if slug:
-        return slug
-    if _DEFAULT_REPO_SLUG:
-        return _DEFAULT_REPO_SLUG
-    try:
-        import subprocess
-        root = subprocess.check_output(
-            ['git', 'rev-parse', '--show-toplevel'], text=True,
-            cwd=os.path.dirname(os.path.abspath(__file__))
-        ).strip()
-        url = subprocess.check_output(['git', '-C', root, 'remote', 'get-url', 'origin'], text=True).strip()
-        # https://github.com/owner/repo.git  or  git@github.com:owner/repo.git
-        m = re.search(r'github\.com[:/]+([^/]+/[^/]+?)(?:\.git)?$', url)
-        return m.group(1) if m else None
-    except Exception:
-        return None
-
-
-def _push_rankings_seed():
-    """Persist current rankings to rankings_seed.json on GitHub master.
-
-    Uses the GitHub Contents API (not git CLI) so it writes directly to the
-    remote default branch regardless of how far behind the running deploy's
-    checkout is — avoids the non-fast-forward failures a `git push` would hit.
-    Runs in a background thread. The seed file is in render.yaml's buildFilter
-    ignoredPaths, so this commit does not trigger a redeploy.
-    """
-    import base64
-    token = os.environ.get('GITHUB_TOKEN', '').strip()
-    if not token:
-        app.logger.warning('[seed-push] skipped: GITHUB_TOKEN not set')
-        return
-    slug = _seed_repo_slug()
-    if not slug:
-        app.logger.warning('[seed-push] skipped: could not resolve GitHub repo slug')
-        return
-    app.logger.info(f'[seed-push] starting: repo={slug} token=***{token[-4:]}')
-    try:
-        from app.database import RANKINGS_SEED_PATH
-        players = get_rankings()
-        seed = [
-            {'player_id': p['player_id'], 'custom_rank': p['custom_rank'], 'notes': p.get('notes', '')}
-            for p in players if p['custom_rank'] is not None
-        ]
-        app.logger.info(f'[seed-push] {len(seed)} ranked players to persist')
-        # Write a local copy too, so a fresh boot before the next deploy still seeds.
-        with open(RANKINGS_SEED_PATH, 'w') as f:
-            json.dump(seed, f, indent=2)
-        body = json.dumps(seed, indent=2) + '\n'
-        new_b64 = base64.b64encode(body.encode()).decode()
-
-        branch = os.environ.get('GITHUB_BRANCH', 'master').strip()
-        path = 'fantasy_football/best-ball-draft/app/data/rankings_seed.json'
-        api = f'https://api.github.com/repos/{slug}/contents/{path}'
-        headers = {
-            'Authorization': f'Bearer {token}',
-            'Accept': 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
-        }
-
-        # Fetch current SHA (required to update an existing file) and skip no-op writes.
-        cur = req_lib.get(api, headers=headers, params={'ref': branch}, timeout=15)
-        app.logger.info(f'[seed-push] GET current file -> {cur.status_code}')
-        sha = None
-        if cur.status_code == 200:
-            j = cur.json()
-            sha = j.get('sha')
-            if j.get('content') and j['content'].replace('\n', '') == new_b64:
-                app.logger.info('[seed-push] no change vs remote — nothing to commit')
-                return  # identical — nothing to commit
-        elif cur.status_code == 401:
-            app.logger.warning('[seed-push] GET 401 unauthorized — token invalid or expired')
-            return
-        elif cur.status_code == 404:
-            app.logger.info('[seed-push] file not found on remote — will create it')
-        else:
-            app.logger.warning(f'[seed-push] GET failed: {cur.status_code} {cur.text[:200]}')
-            return
-
-        payload = {'message': 'auto: update rankings seed', 'content': new_b64, 'branch': branch}
-        if sha:
-            payload['sha'] = sha
-        put = req_lib.put(api, headers=headers, json=payload, timeout=15)
-        if put.status_code in (200, 201):
-            commit_sha = (put.json().get('commit') or {}).get('sha', '')[:7]
-            app.logger.info(f'[seed-push] ✓ committed {len(seed)} rankings as {commit_sha}')
-        elif put.status_code == 403:
-            app.logger.warning('[seed-push] PUT 403 — token lacks Contents:write on this repo')
-        else:
-            app.logger.warning(f'[seed-push] PUT failed: {put.status_code} {put.text[:200]}')
-    except Exception as e:
-        app.logger.warning(f'[seed-push] error: {e!r}')
-
-
 @app.route('/api/rankings/save', methods=['POST'])
 def save_rankings_route():
     data = request.get_json()
     rankings = data.get('rankings', [])
     if not isinstance(rankings, list):
         return jsonify({'error': 'rankings must be a list'}), 400
+    # save_rankings writes the local cache AND write-throughs to the durable
+    # external store (DATABASE_URL), which is what survives spin-downs/deploys.
+    from app import rankings_store
     count = save_rankings(rankings)
-    app.logger.info(f'[rankings/save] saved {count} rankings to DB; launching seed push')
-    threading.Thread(target=_push_rankings_seed, daemon=True).start()
+    where = 'DB + external store' if rankings_store.external_enabled() else 'local DB only (no DATABASE_URL)'
+    app.logger.info(f'[rankings/save] saved {count} rankings -> {where}')
     return jsonify({'ok': True, 'saved': count})
 
 
