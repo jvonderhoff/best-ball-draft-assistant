@@ -17,6 +17,13 @@ app = Flask(__name__,
 app.secret_key = 'best-ball-secret-key-2024'
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+# Make app.logger.info() visible under gunicorn on Render (default would hide INFO).
+import logging
+_gunicorn_logger = logging.getLogger('gunicorn.error')
+if _gunicorn_logger.handlers:
+    app.logger.handlers = _gunicorn_logger.handlers
+app.logger.setLevel(logging.INFO)
+
 @app.after_request
 def add_pna_header(response):
     """Chrome Private Network Access — allow requests from public sites to this LAN server."""
@@ -202,12 +209,13 @@ def _push_rankings_seed():
     import base64
     token = os.environ.get('GITHUB_TOKEN', '').strip()
     if not token:
-        app.logger.warning('rankings seed push skipped: GITHUB_TOKEN not set')
+        app.logger.warning('[seed-push] skipped: GITHUB_TOKEN not set')
         return
     slug = _seed_repo_slug()
     if not slug:
-        app.logger.warning('rankings seed push skipped: could not resolve GitHub repo')
+        app.logger.warning('[seed-push] skipped: could not resolve GitHub repo slug')
         return
+    app.logger.info(f'[seed-push] starting: repo={slug} token=***{token[-4:]}')
     try:
         from app.database import RANKINGS_SEED_PATH
         players = get_rankings()
@@ -215,6 +223,7 @@ def _push_rankings_seed():
             {'player_id': p['player_id'], 'custom_rank': p['custom_rank'], 'notes': p.get('notes', '')}
             for p in players if p['custom_rank'] is not None
         ]
+        app.logger.info(f'[seed-push] {len(seed)} ranked players to persist')
         # Write a local copy too, so a fresh boot before the next deploy still seeds.
         with open(RANKINGS_SEED_PATH, 'w') as f:
             json.dump(seed, f, indent=2)
@@ -232,24 +241,36 @@ def _push_rankings_seed():
 
         # Fetch current SHA (required to update an existing file) and skip no-op writes.
         cur = req_lib.get(api, headers=headers, params={'ref': branch}, timeout=15)
+        app.logger.info(f'[seed-push] GET current file -> {cur.status_code}')
         sha = None
         if cur.status_code == 200:
             j = cur.json()
             sha = j.get('sha')
             if j.get('content') and j['content'].replace('\n', '') == new_b64:
+                app.logger.info('[seed-push] no change vs remote — nothing to commit')
                 return  # identical — nothing to commit
-        elif cur.status_code != 404:
-            app.logger.warning(f'rankings seed GET failed: {cur.status_code} {cur.text[:200]}')
+        elif cur.status_code == 401:
+            app.logger.warning('[seed-push] GET 401 unauthorized — token invalid or expired')
+            return
+        elif cur.status_code == 404:
+            app.logger.info('[seed-push] file not found on remote — will create it')
+        else:
+            app.logger.warning(f'[seed-push] GET failed: {cur.status_code} {cur.text[:200]}')
             return
 
         payload = {'message': 'auto: update rankings seed', 'content': new_b64, 'branch': branch}
         if sha:
             payload['sha'] = sha
         put = req_lib.put(api, headers=headers, json=payload, timeout=15)
-        if put.status_code not in (200, 201):
-            app.logger.warning(f'rankings seed PUT failed: {put.status_code} {put.text[:200]}')
+        if put.status_code in (200, 201):
+            commit_sha = (put.json().get('commit') or {}).get('sha', '')[:7]
+            app.logger.info(f'[seed-push] ✓ committed {len(seed)} rankings as {commit_sha}')
+        elif put.status_code == 403:
+            app.logger.warning('[seed-push] PUT 403 — token lacks Contents:write on this repo')
+        else:
+            app.logger.warning(f'[seed-push] PUT failed: {put.status_code} {put.text[:200]}')
     except Exception as e:
-        app.logger.warning(f'rankings seed push failed: {e}')
+        app.logger.warning(f'[seed-push] error: {e!r}')
 
 
 @app.route('/api/rankings/save', methods=['POST'])
@@ -259,6 +280,7 @@ def save_rankings_route():
     if not isinstance(rankings, list):
         return jsonify({'error': 'rankings must be a list'}), 400
     count = save_rankings(rankings)
+    app.logger.info(f'[rankings/save] saved {count} rankings to DB; launching seed push')
     threading.Thread(target=_push_rankings_seed, daemon=True).start()
     return jsonify({'ok': True, 'saved': count})
 
