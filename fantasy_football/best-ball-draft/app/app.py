@@ -178,18 +178,25 @@ def get_rankings_route():
     return jsonify(get_rankings())
 
 
+# Repo that holds rankings_seed.json. Render's checkout has no 'origin' remote,
+# so we default to the known slug and only consult git as a last resort. Override
+# with the GITHUB_REPO env var if the repo is ever renamed/forked.
+_DEFAULT_REPO_SLUG = 'jvonderhoff/best-ball-draft-assistant'
+
 def _seed_repo_slug():
-    """Derive 'owner/repo' for the rankings seed from env or the origin remote."""
+    """Resolve 'owner/repo' for the rankings seed: env var > known default > git remote."""
     slug = os.environ.get('GITHUB_REPO', '').strip()
     if slug:
         return slug
+    if _DEFAULT_REPO_SLUG:
+        return _DEFAULT_REPO_SLUG
     try:
         import subprocess
-        url = subprocess.check_output(
+        root = subprocess.check_output(
             ['git', 'rev-parse', '--show-toplevel'], text=True,
             cwd=os.path.dirname(os.path.abspath(__file__))
         ).strip()
-        url = subprocess.check_output(['git', '-C', url, 'remote', 'get-url', 'origin'], text=True).strip()
+        url = subprocess.check_output(['git', '-C', root, 'remote', 'get-url', 'origin'], text=True).strip()
         # https://github.com/owner/repo.git  or  git@github.com:owner/repo.git
         m = re.search(r'github\.com[:/]+([^/]+/[^/]+?)(?:\.git)?$', url)
         return m.group(1) if m else None
