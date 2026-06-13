@@ -197,6 +197,27 @@ function byeWeekWarning(player, myTeam) {
   return `bye wk${player.bye} clash: ${names}`;
 }
 
+// ── Draft window / wait-ability ───────────────────────────────────────────────
+// "Can I wait on this guy?" If a player's ADP projects him to survive past my NEXT
+// pick, there's no rush to spend THIS pick on him — better to take a player who
+// won't survive and circle back to this one next time.
+//
+// buffer = adp - nextMyPick  (how many picks of cushion beyond my next turn)
+// Normalised by the window size (picks until my next turn) so a 10-pick cushion
+// means a lot in a short window and little in a long one. Concave so even a
+// half-window cushion gives a real nudge. Caps the discount at ×0.82.
+const WAIT_MAX_DISCOUNT = 0.18;
+
+function waitabilityInfo(player, myPickNumber, nextMyPick) {
+  if (nextMyPick == null || !player.adp) return { mult: 1.0, buffer: 0, safe: false };
+  const windowSize = Math.max(4, nextMyPick - myPickNumber);
+  const buffer     = player.adp - nextMyPick;
+  if (buffer <= 0) return { mult: 1.0, buffer, safe: false };   // at risk — could be gone, no discount
+  const ratio      = Math.min(1, buffer / windowSize);
+  const confidence = Math.pow(ratio, 0.7);
+  return { mult: 1 - WAIT_MAX_DISCOUNT * confidence, buffer, safe: confidence > 0.33 };
+}
+
 // ── Core value calculation ────────────────────────────────────────────────────
 
 // nextMyPick: overall pick number of my NEXT turn after this one (for window urgency)
@@ -332,6 +353,17 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
     }
   }
 
+  // Draft window discount: if this player projects to survive past my NEXT pick,
+  // soften his value now so an equally-needed player who WON'T survive gets taken
+  // first. Lets me grab the safe-to-wait guy on the next turn instead.
+  // Skipped in stack-off mode to keep it a pure ADP/value signal.
+  if (stackIntensity !== 'off') {
+    const { mult: waitMult, buffer } = waitabilityInfo(player, myPickNumber, nextMyPick);
+    if (waitMult < 0.999) {
+      apply(waitMult, 'Draft window', `likely avail next pick (ADP ${player.adp} vs next pick ${nextMyPick}, +${Math.round(buffer)} cushion)`);
+    }
+  }
+
   // Value-steal boost / reach penalty: compares ADP to current overall pick.
   // Normalised by round (floored at 3) so early gaps carry more weight.
   //
@@ -413,6 +445,12 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
     }
     const byeWarn = byeWeekWarning(p, myTeam);
     if (byeWarn) reason = reason ? `${reason} · ⚠ ${byeWarn}` : `⚠ ${byeWarn}`;
+    // Safe-to-wait hint: projects to survive to my next pick, so I can grab a
+    // riskier need this pick and circle back to this player next turn.
+    if (stackIntensity !== 'off') {
+      const wi = waitabilityInfo(p, myPickNumber, nextMyPick);
+      if (wi.safe) reason = reason ? `${reason} · ⏳ can wait til pick ${nextMyPick}` : `⏳ can wait til pick ${nextMyPick}`;
+    }
     return { player: p, value: val, reason, bd, baseScore };
   });
 
