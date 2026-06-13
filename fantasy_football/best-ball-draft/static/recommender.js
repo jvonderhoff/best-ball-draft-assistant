@@ -120,8 +120,9 @@ function playoffStackReason(player, myTeam) {
 }
 
 // ── Draft capital allocation ──────────────────────────────────────────────────
-// How many of each position a complete roster should have.
-const POSITION_TARGETS = { QB: 2, RB: 6, WR: 8, TE: 2 };
+// Base roster targets for an 18-round best-ball draft.
+const BASE_TARGETS  = { QB: 2, RB: 6, WR: 8, TE: 2 };
+const DRAFT_ROUNDS  = 18;
 
 // ADP gap between the last "needed" player at a position and the next one after.
 // A large gap means the position gets dramatically worse if you wait — high scarcity.
@@ -137,33 +138,49 @@ function positionalAdpCliff(pos, available, stillNeed) {
   return firstAfter.adp - lastNeeded.adp;
 }
 
-// Returns a capital-allocation multiplier for this player given current roster and pool.
-//   > 1.0  scarce position: the next viable option is far down the board, grab now
-//   < 1.0  over-allocated: already at/above target while other positions need help
-function capitalAllocationMult(player, myTeam, available) {
-  if (!available || !available.length) return 1.0;
+// Dynamic target: expands when you're behind pace so catch-up drafting isn't
+// penalized. If you skipped TE early, target grows so taking a 3rd or 4th TE
+// late registers as filling a need rather than over-spending.
+//
+// expectedSoFar: linear pace of base target through the current round.
+// catchup: how many behind pace you are (capped at base so it can't double).
+function dynamicTarget(pos, myTeam) {
+  const base   = BASE_TARGETS[pos] || 4;
+  const have   = myTeam.filter(p => p.pos === pos).length;
+  const round  = myTeam.length + 1;
+  const expectedSoFar = base * (round / DRAFT_ROUNDS);
+  const catchup = Math.min(base, Math.max(0, Math.round(expectedSoFar) - have));
+  return base + catchup;
+}
+
+// Returns { mult, target, need, cliff, totalDeficit } for use in calculateValue.
+//   mult > 1.0  scarce position: next viable option is far down the board, grab now
+//   mult < 1.0  over-allocated: at/above dynamic target while other positions need help
+//               penalty fades in late rounds where cheap depth has low opportunity cost
+function capitalAllocationInfo(player, myTeam, available) {
+  if (!available || !available.length) return { mult: 1.0, target: 0, need: 0, cliff: 0, totalDeficit: 0 };
   const pos    = player.pos;
-  const target = POSITION_TARGETS[pos] || 4;
+  const target = dynamicTarget(pos, myTeam);
   const have   = myTeam.filter(p => p.pos === pos).length;
   const need   = target - have;
+  const round  = myTeam.length + 1;
 
   if (need > 0) {
-    // Still need this position — boost proportional to how steep the ADP cliff is.
-    // A 40-pick cliff = full scarcity (×1.20); smaller cliff = smaller boost.
     const cliff    = positionalAdpCliff(pos, available, need);
     const scarcity = Math.min(1.0, cliff / 40);
-    return 1 + scarcity * 0.20;
+    return { mult: 1 + scarcity * 0.20, target, need, cliff, totalDeficit: 0 };
   }
 
-  // At or beyond target — penalty scales with total deficits at other positions.
-  // The more urgent needs you're ignoring, the steeper the penalty (capped at ×0.80).
-  const totalDeficit = Object.entries(POSITION_TARGETS).reduce((sum, [p, t]) => {
+  // Over dynamic target — penalty scales with how many other positions need help,
+  // but fades in late rounds (13+) where cheap depth picks have low opportunity cost.
+  const totalDeficit = Object.entries(BASE_TARGETS).reduce((sum, [p, t]) => {
     if (p === pos) return sum;
     return sum + Math.max(0, t - myTeam.filter(m => m.pos === p).length);
   }, 0);
-  const maxDeficit = Object.values(POSITION_TARGETS).reduce((a, b) => a + b, 0);
-  const penaltyStrength = (totalDeficit / maxDeficit) * 0.20;
-  return 1 - penaltyStrength;
+  const maxDeficit      = Object.values(BASE_TARGETS).reduce((a, b) => a + b, 0);
+  const lateFade        = Math.max(0, Math.min(1, (DRAFT_ROUNDS - round) / 5));
+  const penaltyStrength = (totalDeficit / maxDeficit) * 0.20 * lateFade;
+  return { mult: 1 - penaltyStrength, target, need, cliff: 0, totalDeficit };
 }
 
 // ── Bye week helpers ──────────────────────────────────────────────────────────
@@ -302,22 +319,16 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
 
 
   // Draft capital allocation: scarcity bonus or over-allocation penalty.
+  // Target is dynamic — expands when behind pace so catch-up drafting isn't penalized.
   // Skipped in stack-off mode to keep that mode a pure ADP/value signal.
   if (stackIntensity !== 'off') {
-    const capMult = capitalAllocationMult(player, myTeam, available);
-    const target  = POSITION_TARGETS[pos] || 4;
-    const have    = myTeam.filter(p => p.pos === pos).length;
-    const need    = target - have;
+    const { mult: capMult, target: capTarget, need: capNeed, cliff: capCliff, totalDeficit } = capitalAllocationInfo(player, myTeam, available);
+    const have = myTeam.filter(p => p.pos === pos).length;
     if (capMult > 1.001) {
-      const cliff = positionalAdpCliff(pos, available, need);
-      apply(capMult, 'Capital: scarce', `need ${need} more ${pos}, next tier +${Math.round(cliff)} ADP picks away`);
+      apply(capMult, 'Capital: scarce', `need ${capNeed} more ${pos} (target ${capTarget}), next tier +${Math.round(capCliff)} picks away`);
     }
     if (capMult < 0.999) {
-      const totalDeficit = Object.entries(POSITION_TARGETS).reduce((sum, [p, t]) => {
-        if (p === pos) return sum;
-        return sum + Math.max(0, t - myTeam.filter(m => m.pos === p).length);
-      }, 0);
-      apply(capMult, 'Capital: over-alloc', `${pos} at ${have}/${target}, ${totalDeficit} spots still needed elsewhere`);
+      apply(capMult, 'Capital: over-alloc', `${pos} at ${have}/${capTarget}, ${totalDeficit} spots needed elsewhere`);
     }
   }
 
