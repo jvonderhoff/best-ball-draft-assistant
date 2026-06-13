@@ -171,11 +171,42 @@ def get_rankings_route():
     return jsonify(get_rankings())
 
 
+def _seed_repo_slug():
+    """Derive 'owner/repo' for the rankings seed from env or the origin remote."""
+    slug = os.environ.get('GITHUB_REPO', '').strip()
+    if slug:
+        return slug
+    try:
+        import subprocess
+        url = subprocess.check_output(
+            ['git', 'rev-parse', '--show-toplevel'], text=True,
+            cwd=os.path.dirname(os.path.abspath(__file__))
+        ).strip()
+        url = subprocess.check_output(['git', '-C', url, 'remote', 'get-url', 'origin'], text=True).strip()
+        # https://github.com/owner/repo.git  or  git@github.com:owner/repo.git
+        m = re.search(r'github\.com[:/]+([^/]+/[^/]+?)(?:\.git)?$', url)
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
+
 def _push_rankings_seed():
-    """Write rankings_seed.json and push to GitHub. Runs in a background thread."""
-    import subprocess
+    """Persist current rankings to rankings_seed.json on GitHub master.
+
+    Uses the GitHub Contents API (not git CLI) so it writes directly to the
+    remote default branch regardless of how far behind the running deploy's
+    checkout is — avoids the non-fast-forward failures a `git push` would hit.
+    Runs in a background thread. The seed file is in render.yaml's buildFilter
+    ignoredPaths, so this commit does not trigger a redeploy.
+    """
+    import base64
     token = os.environ.get('GITHUB_TOKEN', '').strip()
     if not token:
+        app.logger.warning('rankings seed push skipped: GITHUB_TOKEN not set')
+        return
+    slug = _seed_repo_slug()
+    if not slug:
+        app.logger.warning('rankings seed push skipped: could not resolve GitHub repo')
         return
     try:
         from app.database import RANKINGS_SEED_PATH
@@ -184,32 +215,39 @@ def _push_rankings_seed():
             {'player_id': p['player_id'], 'custom_rank': p['custom_rank'], 'notes': p.get('notes', '')}
             for p in players if p['custom_rank'] is not None
         ]
+        # Write a local copy too, so a fresh boot before the next deploy still seeds.
         with open(RANKINGS_SEED_PATH, 'w') as f:
             json.dump(seed, f, indent=2)
+        body = json.dumps(seed, indent=2) + '\n'
+        new_b64 = base64.b64encode(body.encode()).decode()
 
-        repo_root = subprocess.check_output(
-            ['git', '-C', os.path.dirname(RANKINGS_SEED_PATH), 'rev-parse', '--show-toplevel'],
-            text=True
-        ).strip()
-        rel_path = os.path.relpath(RANKINGS_SEED_PATH, repo_root)
+        branch = os.environ.get('GITHUB_BRANCH', 'master').strip()
+        path = 'fantasy_football/best-ball-draft/app/data/rankings_seed.json'
+        api = f'https://api.github.com/repos/{slug}/contents/{path}'
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+        }
 
-        # Only commit if the file actually changed
-        if subprocess.run(['git', '-C', repo_root, 'diff', '--quiet', rel_path]).returncode == 0:
+        # Fetch current SHA (required to update an existing file) and skip no-op writes.
+        cur = req_lib.get(api, headers=headers, params={'ref': branch}, timeout=15)
+        sha = None
+        if cur.status_code == 200:
+            j = cur.json()
+            sha = j.get('sha')
+            if j.get('content') and j['content'].replace('\n', '') == new_b64:
+                return  # identical — nothing to commit
+        elif cur.status_code != 404:
+            app.logger.warning(f'rankings seed GET failed: {cur.status_code} {cur.text[:200]}')
             return
 
-        subprocess.run(['git', '-C', repo_root, 'add', rel_path], check=True)
-        subprocess.run([
-            'git', '-C', repo_root,
-            '-c', 'user.email=bba-bot@render', '-c', 'user.name=BBA Bot',
-            'commit', '-m', 'auto: update rankings seed'
-        ], check=True)
-
-        remote_url = subprocess.check_output(
-            ['git', '-C', repo_root, 'remote', 'get-url', 'origin'], text=True
-        ).strip()
-        auth_url = remote_url.replace('https://', f'https://x-access-token:{token}@')
-        subprocess.run(['git', '-C', repo_root, 'push', auth_url, 'HEAD:master'],
-                       check=True, capture_output=True)
+        payload = {'message': 'auto: update rankings seed', 'content': new_b64, 'branch': branch}
+        if sha:
+            payload['sha'] = sha
+        put = req_lib.put(api, headers=headers, json=payload, timeout=15)
+        if put.status_code not in (200, 201):
+            app.logger.warning(f'rankings seed PUT failed: {put.status_code} {put.text[:200]}')
     except Exception as e:
         app.logger.warning(f'rankings seed push failed: {e}')
 

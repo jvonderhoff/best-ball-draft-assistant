@@ -13,3 +13,8 @@ services:
         generateValue: true
       - key: PYTHON_VERSION
         value: 3.11.0
+      # Fine-grained PAT with Contents: Read and write on this repo. Set the value
+      # in the Render dashboard (sync:false keeps the secret out of the repo).
+      # Without it, live ranking edits won't persist across deploys.
+      - key: GITHUB_TOKEN
+        sync: false
