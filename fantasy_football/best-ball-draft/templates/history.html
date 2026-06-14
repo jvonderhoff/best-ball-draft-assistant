@@ -307,7 +307,6 @@
                             <span class="dr-date">${ymd(d.drafted_at || d.created_at)}</span>
                             <span class="dr-pick">Pick ${d.my_position}${fee}</span>
                             <span class="dr-build">${buildType(picks)}</span>
-                            <button class="delete-btn" onclick="event.stopPropagation(); deleteDraft(${d.id})">Delete</button>
                         </div>
                         <div class="draft-roster" id="roster-${d.id}">
                             <div class="draft-picks-grid">${roster}</div>
@@ -381,11 +380,6 @@
             }
         }
 
-        async function deleteDraft(id) {
-            if (!confirm('Delete this draft?')) return;
-            await fetch(`/api/drafts/${id}`, { method: 'DELETE' });
-            load(); // refresh board + list
-        }
 
         load();
     </script>
