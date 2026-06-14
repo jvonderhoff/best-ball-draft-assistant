@@ -136,6 +136,41 @@ def list_drafts():
     return jsonify(get_all_drafts())
 
 
+@app.route('/api/drafts/sync-from-dk', methods=['POST'])
+def sync_drafts_from_dk():
+    """Pull completed drafts straight from DK into history (persists to Neon).
+
+    Body (all optional):
+      { "draft_id": "191061875" }   one draft, or
+      { "ids": ["...", "..."] }     several, or
+      {}                            all known saved draft IDs
+      { "min_picks": 18 }           completeness threshold
+    Works for past drafts AND a freshly-finished one — same path either way.
+    Requires DK cookies + a cached user GUID on this instance.
+    """
+    from app.dk_import import import_many, DEFAULT_MIN_PICKS
+    data = request.get_json(silent=True) or {}
+    min_picks = int(data.get('min_picks', DEFAULT_MIN_PICKS))
+
+    if data.get('draft_id'):
+        ids = [str(data['draft_id'])]
+    elif data.get('ids'):
+        ids = [str(i) for i in data['ids']]
+    else:
+        ids = list(_saved_draft_ids.keys())
+
+    if not ids:
+        return jsonify({'error': 'No draft IDs to sync (none provided and none saved)'}), 400
+
+    items = [{'id': i,
+              'entry_id': (_saved_draft_ids.get(i) or {}).get('entry_id'),
+              'name': (_saved_draft_ids.get(i) or {}).get('name')} for i in ids]
+    results = import_many(items, min_picks=min_picks)
+    imported = sum(1 for r in results if r['status'] == 'imported')
+    app.logger.info(f'[sync-from-dk] {imported}/{len(results)} imported')
+    return jsonify({'ok': True, 'imported': imported, 'results': results})
+
+
 @app.route('/api/drafts/exposure', methods=['GET'])
 def exposure():
     return jsonify(get_exposure())
