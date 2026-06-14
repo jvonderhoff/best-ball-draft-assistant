@@ -101,6 +101,11 @@
         .empty-history { color: var(--muted); text-align: center; padding: 40px; font-style: italic; }
         .section-title { font-size: 0.75em; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px; }
 
+        .exposure-toggle { cursor: pointer; user-select: none; }
+        .exposure-toggle:hover h2 { color: var(--accent); }
+        .exp-chev { display: inline-block; font-size: 0.8em; color: var(--muted); transition: transform 0.15s; }
+        .exposure-section.open .exp-chev { transform: rotate(90deg); }
+
         /* Exposure board — your ranked players grouped by round */
         .board-round { margin-bottom: 14px; }
         .board-round-head { font-size: 0.7em; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 6px; }
@@ -160,13 +165,13 @@
         </div>
         <div id="syncResults" class="sync-results" style="display:none;"></div>
 
-        <!-- Exposure section -->
+        <!-- Exposure section (collapsed; click to view) -->
         <div class="exposure-section panel" style="margin-bottom: 20px;">
-            <div class="panel-header">
-                <h2>Player Exposure</h2>
+            <div class="panel-header exposure-toggle" id="exposureHeader" onclick="toggleExposure()">
+                <h2><span class="exp-chev">▶</span> Player Exposure</h2>
                 <span id="exposureSubtitle" style="font-size:0.8em;color:var(--muted);"></span>
             </div>
-            <div style="padding: 14px;">
+            <div id="exposureBody" style="padding: 14px; display: none;">
                 <div class="section-title">Your board by round — exposure across drafts (◎ = untargeted)</div>
                 <div id="exposureBoard">
                     <p class="empty-history">No rankings or drafts yet</p>
@@ -186,17 +191,41 @@
     </div>
 
     <script>
+        let _bd = { rankings: [], exposure: {}, drafts: [] };
+        let _boardBuilt = false;
+
         async function load() {
             const [draftsResp, expResp, rankResp] = await Promise.all([
                 fetch('/api/drafts'),
                 fetch('/api/drafts/exposure'),
                 fetch('/api/rankings'),
             ]);
-            const drafts = await draftsResp.json();
-            const exposure = await expResp.json();
-            const rankings = await rankResp.json();
-            renderExposureBoard(rankings, exposure, drafts);
-            renderDrafts(drafts);
+            _bd.drafts = await draftsResp.json();
+            _bd.exposure = await expResp.json();
+            _bd.rankings = await rankResp.json();
+
+            const total = _bd.exposure.total_drafts || 0;
+            document.getElementById('totalDrafts').textContent = `${total} draft${total === 1 ? '' : 's'} saved`;
+            document.getElementById('exposureSubtitle').textContent = total ? `across ${total} drafts · click to view` : 'click to view';
+
+            renderDrafts(_bd.drafts);
+
+            // Rebuild the board only if the panel is currently open; otherwise defer until clicked.
+            _boardBuilt = false;
+            if (document.querySelector('.exposure-section')?.classList.contains('open')) buildBoard();
+        }
+
+        function toggleExposure() {
+            const sec = document.querySelector('.exposure-section');
+            const body = document.getElementById('exposureBody');
+            const open = sec.classList.toggle('open');
+            body.style.display = open ? 'block' : 'none';
+            if (open && !_boardBuilt) buildBoard();
+        }
+
+        function buildBoard() {
+            _boardBuilt = true;
+            renderExposureBoard(_bd.rankings, _bd.exposure, _bd.drafts);
         }
 
         // ISO/date string -> YYYY-MM-DD (no timezone shift, no time)
@@ -211,9 +240,6 @@
 
         function renderExposureBoard(rankings, exposure, drafts) {
             const total = exposure.total_drafts || 0;
-            document.getElementById('totalDrafts').textContent = `${total} draft${total === 1 ? '' : 's'} saved`;
-            document.getElementById('exposureSubtitle').textContent = total ? `across ${total} drafts` : '';
-
             const board = document.getElementById('exposureBoard');
             const expMap = exposure.players || {};
             const teams = (drafts[0] && drafts[0].num_teams) || 12;
