@@ -107,19 +107,20 @@
         .exposure-section.open .exp-chev { transform: rotate(90deg); }
 
         /* Exposure board — your ranked players grouped by round */
-        .board-round { margin-bottom: 14px; }
-        .board-round-head { font-size: 0.7em; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 6px; }
-        .board-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 6px; }
-        .board-player { position: relative; border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px 8px; font-size: 0.78em; overflow: hidden; }
-        .board-player .bp-top { display: flex; justify-content: space-between; align-items: baseline; }
-        .board-player .bp-name { color: var(--text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .board-player .bp-rank { color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 5px; }
-        .board-player .bp-exp { font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
-        .board-player .bp-meta { color: var(--muted); font-size: 0.9em; margin-top: 1px; }
+        #exposureBoard { overflow-x: auto; padding-bottom: 6px; }
+        .board-round { display: flex; align-items: stretch; gap: 8px; margin-bottom: 6px; width: max-content; }
+        .board-round-head { min-width: 40px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; color: var(--muted); position: sticky; left: 0; background: var(--bg, var(--card)); z-index: 1; }
+        .board-grid { display: grid; gap: 5px; }   /* columns set inline = one row per round */
+        /* Square tiles, DraftKings-board style */
+        .board-player { position: relative; height: 84px; border: 1px solid var(--border); border-left-width: 4px; border-radius: 5px; padding: 6px 7px; overflow: hidden; display: flex; flex-direction: column; }
+        .board-player .bp-rank { position: absolute; top: 4px; right: 6px; font-size: 0.6rem; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+        .board-player .bp-name { color: var(--text); font-weight: 700; font-size: 0.72rem; line-height: 1.12; padding-right: 18px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .board-player .bp-bottom { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; gap: 4px; }
+        .board-player .bp-meta { color: var(--muted); font-size: 0.58rem; white-space: nowrap; }
+        .board-player .bp-exp { font-weight: 800; font-size: 0.82rem; line-height: 1; font-variant-numeric: tabular-nums; }
         .board-player .bp-fill { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--green); }
-        .board-player.target { border-style: dashed; border-color: var(--accent); }
+        .board-player.target { border-style: dashed; }
         .board-player.target .bp-exp { color: var(--accent); }
-        .board-player.target .bp-name::after { content: ' ◎'; color: var(--accent); }
 
         /* Collapsed saved-draft rows (click to expand roster) */
         .draft-row { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
@@ -172,7 +173,7 @@
                 <span id="exposureSubtitle" style="font-size:0.8em;color:var(--muted);"></span>
             </div>
             <div id="exposureBody" style="padding: 14px; display: none;">
-                <div class="section-title">Your board by round — exposure across drafts (◎ = untargeted)</div>
+                <div class="section-title">Your board by round — % = exposure across drafts · dashed tile = not yet drafted</div>
                 <div id="exposureBoard">
                     <p class="empty-history">No rankings or drafts yet</p>
                 </div>
@@ -268,18 +269,19 @@
                     const pct = total ? Math.round((times / total) * 100) : 0;
                     const cls = pct === 0 ? 'target' : '';
                     return `
-                        <div class="board-player pos-${p.pos} ${cls}">
-                            <div class="bp-top">
-                                <span class="bp-name"><span class="bp-rank">${p.custom_rank}</span>${p.name}</span>
+                        <div class="board-player pos-${p.pos} ${cls}" title="${p.name} — ${pct}% (${times}/${total})">
+                            <span class="bp-rank">${p.custom_rank}</span>
+                            <div class="bp-name">${p.name}</div>
+                            <div class="bp-bottom">
+                                <span class="bp-meta">${p.pos}·${p.team || 'FA'}</span>
                                 <span class="bp-exp">${pct}%</span>
                             </div>
-                            <div class="bp-meta">${p.pos} · ${p.team || 'FA'} · ${times}/${total}</div>
                             <div class="bp-fill" style="width:${pct}%"></div>
                         </div>`;
                 }).join('');
                 return `<div class="board-round">
-                            <div class="board-round-head">Round ${rd}</div>
-                            <div class="board-grid">${cells}</div>
+                            <div class="board-round-head">R${rd}</div>
+                            <div class="board-grid" style="grid-template-columns: repeat(${teams}, 88px)">${cells}</div>
                         </div>`;
             }).join('');
         }
