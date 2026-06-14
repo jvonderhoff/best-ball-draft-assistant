@@ -118,6 +118,7 @@ def init_db():
         _seed_rankings_if_empty(conn)
         _seed_players_if_empty(conn)
         _hydrate_external_rankings(conn)
+        _hydrate_external_drafts(conn)
 
 
 def _seed_players_if_empty(conn):
@@ -201,6 +202,65 @@ def _hydrate_external_rankings(conn):
         logging.getLogger('app').warning(f'[rankings-store] hydrate failed: {e!r}')
 
 
+def _hydrate_external_drafts(conn):
+    """Make the durable external store the source of truth for draft history.
+
+    On boot: rebuild the local drafts/draft_picks tables from the external DB so
+    history survives ephemeral-filesystem resets. If the external store is empty
+    (first run), seed it from whatever local drafts already exist.
+    """
+    from app import drafts_store
+    if not drafts_store.external_enabled():
+        return
+    try:
+        drafts_store.init_external()
+        ext = drafts_store.load_drafts()
+        if ext is None:
+            return  # store unreachable — keep local cache, don't wipe it
+        if not ext:
+            # First run: seed external from any local drafts that have a dk_draft_id.
+            rows = conn.execute(
+                "SELECT id, num_teams, my_position, contest, dk_draft_id, entry_fee, drafted_at "
+                "FROM drafts WHERE dk_draft_id IS NOT NULL"
+            ).fetchall()
+            for d in rows:
+                picks = conn.execute(
+                    "SELECT player_id, player_name, pos, team, adp, pick_number, week15, week16, week17 "
+                    "FROM draft_picks WHERE draft_id=? ORDER BY pick_number", (d['id'],)
+                ).fetchall()
+                drafts_store.save_draft(
+                    d['dk_draft_id'], d['num_teams'], d['my_position'], d['contest'],
+                    d['entry_fee'], d['drafted_at'],
+                    [{'id': p['player_id'], 'name': p['player_name'], 'pos': p['pos'],
+                      'team': p['team'], 'adp': p['adp'], 'pick_number': p['pick_number'],
+                      'week15': p['week15'], 'week16': p['week16'], 'week17': p['week17']}
+                     for p in picks]
+                )
+            return
+        # External has data — it wins. Rebuild local tables from it.
+        conn.execute("DELETE FROM draft_picks")
+        conn.execute("DELETE FROM drafts")
+        for d in ext:
+            cur = conn.execute(
+                "INSERT INTO drafts (num_teams, my_position, contest, dk_draft_id, entry_fee, drafted_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (d.get('num_teams'), d.get('my_position'), d.get('contest'),
+                 d.get('dk_draft_id'), d.get('entry_fee'), d.get('drafted_at'))
+            )
+            local_id = cur.lastrowid
+            conn.executemany(
+                "INSERT INTO draft_picks (draft_id, player_id, player_name, pos, team, adp, pick_number, round, week15, week16, week17) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                [(local_id, p.get('player_id'), p.get('player_name'), p.get('pos'), p.get('team'),
+                  p.get('adp'), p.get('pick_number'), idx + 1,
+                  p.get('week15'), p.get('week16'), p.get('week17'))
+                 for idx, p in enumerate(d.get('picks', []))]
+            )
+    except Exception as e:
+        import logging
+        logging.getLogger('app').warning(f'[drafts-store] hydrate failed: {e!r}')
+
+
 def save_draft(num_teams, my_position, picks, contest='', dk_draft_id=None, entry_fee=None, drafted_at=None):
     """
     Save a completed draft. picks = list of player dicts.
@@ -224,7 +284,19 @@ def save_draft(num_teams, my_position, picks, contest='', dk_draft_id=None, entr
                 for i, p in enumerate(picks)
             ]
         )
-        return draft_id
+    # Write through to the durable external store so history survives the next
+    # ephemeral-filesystem reset. Keyed by dk_draft_id; no-op without one or
+    # without DATABASE_URL.
+    if dk_draft_id:
+        try:
+            from app import drafts_store
+            if drafts_store.external_enabled():
+                drafts_store.save_draft(dk_draft_id, num_teams, my_position, contest,
+                                        entry_fee, drafted_at, picks)
+        except Exception as e:
+            import logging
+            logging.getLogger('app').warning(f'[drafts-store] write-through failed: {e!r}')
+    return draft_id
 
 
 def refresh_players(players):
@@ -289,7 +361,18 @@ def get_exposure():
 
 def delete_draft(draft_id):
     with get_db() as conn:
+        row = conn.execute("SELECT dk_draft_id FROM drafts WHERE id=?", (draft_id,)).fetchone()
+        dk_draft_id = row['dk_draft_id'] if row else None
         conn.execute("DELETE FROM drafts WHERE id=?", (draft_id,))
+    # Mirror the delete to the durable store.
+    if dk_draft_id:
+        try:
+            from app import drafts_store
+            if drafts_store.external_enabled():
+                drafts_store.delete_draft(dk_draft_id)
+        except Exception as e:
+            import logging
+            logging.getLogger('app').warning(f'[drafts-store] delete write-through failed: {e!r}')
 
 
 # ── Player props ─────────────────────────────────────────────────────────────
