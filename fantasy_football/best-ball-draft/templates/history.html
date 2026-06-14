@@ -51,6 +51,13 @@
             border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 0.78em;
         }
         .delete-btn:hover { background: var(--border); color: var(--text); }
+        .sync-btn {
+            background: var(--accent); border: none; color: #fff;
+            border-radius: 6px; padding: 8px 16px; cursor: pointer;
+            font-size: 0.85em; font-weight: 600; white-space: nowrap;
+        }
+        .sync-btn:hover { filter: brightness(1.1); }
+        .sync-btn:disabled { opacity: 0.6; cursor: default; filter: none; }
         .draft-picks-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -92,11 +99,15 @@
   <button class="theme-toggle" onclick="toggleTheme()"><!-- label via CSS ::after --></button>
 </nav>
     <div class="history-container" style="padding: 24px;">
-        <div style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
             <div>
                 <h1 style="color:var(--text);">Draft History</h1>
             </div>
-            <div id="totalDrafts" style="color:var(--muted);font-size:0.9em;"></div>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <span id="syncStatus" style="font-size:0.85em;color:var(--muted);"></span>
+                <span id="totalDrafts" style="color:var(--muted);font-size:0.9em;"></span>
+                <button id="syncBtn" class="sync-btn" onclick="syncFromDK()">Sync from DK</button>
+            </div>
         </div>
 
         <!-- Exposure section -->
@@ -197,6 +208,42 @@
                         <div class="draft-picks-grid">${picks}</div>
                     </div>`;
             }).join('');
+        }
+
+        async function syncFromDK() {
+            const btn = document.getElementById('syncBtn');
+            const status = document.getElementById('syncStatus');
+            btn.disabled = true;
+            btn.textContent = 'Syncing…';
+            status.style.color = 'var(--muted)';
+            status.textContent = 'Pulling drafts from DraftKings…';
+            try {
+                const resp = await fetch('/api/drafts/sync-from-dk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    status.style.color = 'var(--red, #c0392b)';
+                    status.textContent = data.error || 'Sync failed';
+                    return;
+                }
+                const r = data.results || [];
+                const tally = r.reduce((m, x) => (m[x.status] = (m[x.status] || 0) + 1, m), {});
+                const parts = Object.entries(tally).map(([k, v]) => `${v} ${k}`);
+                status.style.color = data.imported ? 'var(--green)' : 'var(--muted)';
+                status.textContent = data.imported
+                    ? `✓ Imported ${data.imported} — ${parts.join(', ')}`
+                    : `No new drafts — ${parts.join(', ') || 'nothing to sync'}`;
+                await load();
+            } catch (e) {
+                status.style.color = 'var(--red, #c0392b)';
+                status.textContent = 'Sync failed: ' + e.message;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Sync from DK';
+            }
         }
 
         async function deleteDraft(id) {
