@@ -58,6 +58,26 @@
         }
         .sync-btn:hover { filter: brightness(1.1); }
         .sync-btn:disabled { opacity: 0.6; cursor: default; filter: none; }
+        .sync-input {
+            background: var(--card, #1a1a1a); border: 1px solid var(--border);
+            color: var(--text); border-radius: 6px; padding: 7px 10px;
+            font-size: 0.82em; width: 230px; max-width: 50vw;
+        }
+        .sync-results {
+            margin: 0 0 20px; border: 1px solid var(--border); border-radius: 8px;
+            padding: 10px 14px; font-size: 0.82em;
+        }
+        .sync-results .sr-row {
+            display: flex; gap: 10px; align-items: baseline;
+            padding: 3px 0; border-bottom: 1px solid var(--border-soft, rgba(128,128,128,0.15));
+        }
+        .sync-results .sr-row:last-child { border-bottom: none; }
+        .sync-results .sr-status { font-weight: 700; min-width: 88px; }
+        .sr-imported { color: var(--green); }
+        .sr-duplicate { color: var(--muted); }
+        .sr-incomplete, .sr-no_picks, .sr-error { color: var(--red, #c0392b); }
+        .sync-results .sr-id { font-variant-numeric: tabular-nums; color: var(--text); min-width: 92px; }
+        .sync-results .sr-reason { color: var(--muted); flex: 1; }
         .draft-picks-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -103,12 +123,15 @@
             <div>
                 <h1 style="color:var(--text);">Draft History</h1>
             </div>
-            <div style="display:flex; align-items:center; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
                 <span id="syncStatus" style="font-size:0.85em;color:var(--muted);"></span>
                 <span id="totalDrafts" style="color:var(--muted);font-size:0.9em;"></span>
+                <input id="syncIds" class="sync-input" placeholder="paste draft ID(s) or URL — optional"
+                       title="Sync specific drafts by ID/URL (comma or space separated). Leave blank to sync all saved drafts." />
                 <button id="syncBtn" class="sync-btn" onclick="syncFromDK()">Sync from DK</button>
             </div>
         </div>
+        <div id="syncResults" class="sync-results" style="display:none;"></div>
 
         <!-- Exposure section -->
         <div class="exposure-section panel" style="margin-bottom: 20px;">
@@ -210,18 +233,40 @@
             }).join('');
         }
 
+        // Extract 6+ digit DK draft/contest IDs from a paste (raw IDs or full URLs).
+        function parseDraftIds(text) {
+            return [...new Set((text.match(/\d{6,}/g) || []))];
+        }
+
+        function renderSyncResults(results) {
+            const box = document.getElementById('syncResults');
+            if (!results.length) { box.style.display = 'none'; return; }
+            const order = { imported: 0, incomplete: 1, no_picks: 2, error: 3, duplicate: 4 };
+            const sorted = [...results].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+            box.innerHTML = sorted.map(r => `
+                <div class="sr-row">
+                    <span class="sr-status sr-${r.status}">${r.status}</span>
+                    <span class="sr-id">${r.contest_id}</span>
+                    <span class="sr-reason">${r.reason || (r.my_picks ? r.my_picks + ' picks' : '')}</span>
+                </div>`).join('');
+            box.style.display = 'block';
+        }
+
         async function syncFromDK() {
             const btn = document.getElementById('syncBtn');
             const status = document.getElementById('syncStatus');
+            const ids = parseDraftIds(document.getElementById('syncIds').value);
             btn.disabled = true;
             btn.textContent = 'Syncing…';
             status.style.color = 'var(--muted)';
-            status.textContent = 'Pulling drafts from DraftKings…';
+            status.textContent = ids.length
+                ? `Pulling ${ids.length} draft(s) from DraftKings…`
+                : 'Pulling all saved drafts from DraftKings…';
             try {
                 const resp = await fetch('/api/drafts/sync-from-dk', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({}),
+                    body: JSON.stringify(ids.length ? { ids } : {}),
                 });
                 const data = await resp.json();
                 if (!resp.ok) {
@@ -230,6 +275,7 @@
                     return;
                 }
                 const r = data.results || [];
+                renderSyncResults(r);
                 const tally = r.reduce((m, x) => (m[x.status] = (m[x.status] || 0) + 1, m), {});
                 const parts = Object.entries(tally).map(([k, v]) => `${v} ${k}`);
                 status.style.color = data.imported ? 'var(--green)' : 'var(--muted)';
