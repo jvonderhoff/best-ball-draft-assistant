@@ -93,7 +93,7 @@ def import_one_draft(contest_id, entry_id=None, name=None, entry_fee=None,
                     'reason': f'{len(my_picks)} of your picks (< {min_picks}); draft not complete'}
 
         from app.database import save_draft
-        saved_id = save_draft(
+        saved_id, created = save_draft(
             num_teams=12,
             my_position=result.get('my_position') or 0,
             picks=my_picks,
@@ -102,9 +102,9 @@ def import_one_draft(contest_id, entry_id=None, name=None, entry_fee=None,
             entry_fee=entry_fee,
             drafted_at=(result.get('drafted_at') or '')[:10] or None,  # YYYY-MM-DD, drop time
         )
-        if saved_id is None:
-            return {'contest_id': contest_id, 'status': 'duplicate', 'my_picks': len(my_picks),
-                    'reason': 'already in history'}
+        if not created:
+            return {'contest_id': contest_id, 'status': 'updated', 'my_picks': len(my_picks),
+                    'reason': 'refreshed fee/date/picks'}
         return {'contest_id': contest_id, 'status': 'imported', 'my_picks': len(my_picks),
                 'draft_id': saved_id}
     except Exception as e:

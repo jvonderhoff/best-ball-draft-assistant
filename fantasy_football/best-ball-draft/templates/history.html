@@ -74,6 +74,7 @@
         .sync-results .sr-row:last-child { border-bottom: none; }
         .sync-results .sr-status { font-weight: 700; min-width: 88px; }
         .sr-imported { color: var(--green); }
+        .sr-updated { color: var(--accent); }
         .sr-duplicate { color: var(--muted); }
         .sr-incomplete, .sr-no_picks, .sr-error { color: var(--red, #c0392b); }
         .sync-results .sr-id { font-variant-numeric: tabular-nums; color: var(--text); min-width: 92px; }
@@ -300,7 +301,7 @@
         function renderSyncResults(results) {
             const box = document.getElementById('syncResults');
             if (!results.length) { box.style.display = 'none'; return; }
-            const order = { imported: 0, incomplete: 1, no_picks: 2, error: 3, duplicate: 4 };
+            const order = { imported: 0, updated: 1, incomplete: 2, no_picks: 3, error: 4, duplicate: 5 };
             const sorted = [...results].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
             box.innerHTML = sorted.map(r => `
                 <div class="sr-row">
@@ -337,10 +338,11 @@
                 renderSyncResults(r);
                 const tally = r.reduce((m, x) => (m[x.status] = (m[x.status] || 0) + 1, m), {});
                 const parts = Object.entries(tally).map(([k, v]) => `${v} ${k}`);
-                status.style.color = data.imported ? 'var(--green)' : 'var(--muted)';
-                status.textContent = data.imported
-                    ? `✓ Imported ${data.imported} — ${parts.join(', ')}`
-                    : `No new drafts — ${parts.join(', ') || 'nothing to sync'}`;
+                const changed = (tally.imported || 0) + (tally.updated || 0);
+                status.style.color = changed ? 'var(--green)' : 'var(--muted)';
+                status.textContent = changed
+                    ? `✓ ${tally.imported || 0} imported, ${tally.updated || 0} updated — ${parts.join(', ')}`
+                    : `No changes — ${parts.join(', ') || 'nothing to sync'}`;
                 await load();
             } catch (e) {
                 status.style.color = 'var(--red, #c0392b)';

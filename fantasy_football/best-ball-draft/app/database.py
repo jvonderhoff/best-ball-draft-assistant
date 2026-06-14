@@ -261,32 +261,54 @@ def _hydrate_external_drafts(conn):
         logging.getLogger('app').warning(f'[drafts-store] hydrate failed: {e!r}')
 
 
+def _insert_picks(conn, draft_id, picks):
+    conn.executemany(
+        "INSERT INTO draft_picks (draft_id, player_id, player_name, pos, team, adp, pick_number, round, week15, week16, week17) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            (draft_id, p['id'], p['name'], p['pos'], p['team'], p.get('adp', 0), p.get('pick_number'), i + 1,
+             p.get('week15'), p.get('week16'), p.get('week17'))
+            for i, p in enumerate(picks)
+        ]
+    )
+
+
 def save_draft(num_teams, my_position, picks, contest='', dk_draft_id=None, entry_fee=None, drafted_at=None):
     """
-    Save a completed draft. picks = list of player dicts.
-    If dk_draft_id is provided and already exists, the save is skipped (returns None).
+    Save (or update) a completed draft. picks = list of player dicts.
+
+    If dk_draft_id already exists, the row is UPDATED in place — metadata is
+    backfilled/refreshed (existing values kept when the incoming one is null/0/
+    empty) and the roster is replaced. This lets a re-sync fill in entry_fee /
+    drafted_at and fix pick numbers on drafts imported before those existed.
+
+    Returns (draft_id, created) where created is False for an update.
     """
+    created = True
     with get_db() as conn:
         try:
             cur = conn.execute(
                 "INSERT INTO drafts (num_teams, my_position, contest, dk_draft_id, entry_fee, drafted_at) VALUES (?,?,?,?,?,?)",
                 (num_teams, my_position, contest, dk_draft_id, entry_fee, drafted_at)
             )
+            draft_id = cur.lastrowid
         except sqlite3.IntegrityError:
-            return None
-        draft_id = cur.lastrowid
-        conn.executemany(
-            "INSERT INTO draft_picks (draft_id, player_id, player_name, pos, team, adp, pick_number, round, week15, week16, week17) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            [
-                (draft_id, p['id'], p['name'], p['pos'], p['team'], p.get('adp', 0), p.get('pick_number'), i + 1,
-                 p.get('week15'), p.get('week16'), p.get('week17'))
-                for i, p in enumerate(picks)
-            ]
-        )
-    # Write through to the durable external store so history survives the next
-    # ephemeral-filesystem reset. Keyed by dk_draft_id; no-op without one or
-    # without DATABASE_URL.
+            created = False
+            row = conn.execute("SELECT id FROM drafts WHERE dk_draft_id=?", (dk_draft_id,)).fetchone()
+            draft_id = row['id']
+            # Keep existing values when the incoming one is missing (NULL / 0 / '').
+            conn.execute("""
+                UPDATE drafts SET
+                    num_teams   = COALESCE(?, num_teams),
+                    my_position = COALESCE(NULLIF(?, 0), my_position),
+                    contest     = COALESCE(NULLIF(?, ''), contest),
+                    entry_fee   = COALESCE(?, entry_fee),
+                    drafted_at  = COALESCE(?, drafted_at)
+                WHERE id=?
+            """, (num_teams, my_position, contest, entry_fee, drafted_at, draft_id))
+            conn.execute("DELETE FROM draft_picks WHERE draft_id=?", (draft_id,))
+        _insert_picks(conn, draft_id, picks)
+    # Write through to the durable external store (upserts by dk_draft_id).
     if dk_draft_id:
         try:
             from app import drafts_store
@@ -296,7 +318,7 @@ def save_draft(num_teams, my_position, picks, contest='', dk_draft_id=None, entr
         except Exception as e:
             import logging
             logging.getLogger('app').warning(f'[drafts-store] write-through failed: {e!r}')
-    return draft_id
+    return draft_id, created
 
 
 def refresh_players(players):

@@ -115,7 +115,7 @@ def import_draft():
     if not picks:
         return jsonify({'error': 'No picks provided'}), 400
     try:
-        draft_id = save_draft(
+        draft_id, created = save_draft(
             num_teams   = 12,
             my_position = data.get('my_position', 0),
             picks       = picks,
@@ -124,9 +124,7 @@ def import_draft():
             entry_fee   = data.get('entry_fee'),
             drafted_at  = data.get('drafted_at'),
         )
-        if draft_id is None:
-            return jsonify({'success': True, 'draft_id': None, 'duplicate': True})
-        return jsonify({'success': True, 'draft_id': draft_id})
+        return jsonify({'success': True, 'draft_id': draft_id, 'duplicate': not created})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -165,8 +163,9 @@ def sync_drafts_from_dk():
         results = import_completed_contests(min_picks=min_picks)
 
     imported = sum(1 for r in results if r['status'] == 'imported')
-    app.logger.info(f'[sync-from-dk] {imported}/{len(results)} imported')
-    return jsonify({'ok': True, 'imported': imported, 'results': results})
+    updated = sum(1 for r in results if r['status'] == 'updated')
+    app.logger.info(f'[sync-from-dk] {imported} imported, {updated} updated of {len(results)}')
+    return jsonify({'ok': True, 'imported': imported, 'updated': updated, 'results': results})
 
 
 @app.route('/api/drafts/exposure', methods=['GET'])
