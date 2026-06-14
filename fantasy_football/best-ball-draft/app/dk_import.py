@@ -100,7 +100,7 @@ def import_one_draft(contest_id, entry_id=None, name=None, entry_fee=None,
             contest=name or f'Draft #{contest_id}',
             dk_draft_id=contest_id,
             entry_fee=entry_fee,
-            drafted_at=result.get('drafted_at'),
+            drafted_at=(result.get('drafted_at') or '')[:10] or None,  # YYYY-MM-DD, drop time
         )
         if saved_id is None:
             return {'contest_id': contest_id, 'status': 'duplicate', 'my_picks': len(my_picks),
