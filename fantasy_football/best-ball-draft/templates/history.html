@@ -133,6 +133,25 @@
         .draft-roster { display: none; margin: -2px 0 12px; padding: 0 2px; }
         .draft-roster.open { display: block; }
 
+        /* Draft tendencies — archetypes, builds, round heatmap */
+        .tend-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+        @media (max-width: 720px) { .tend-cols { grid-template-columns: 1fr; } }
+        .arch-row { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; font-size: 0.8rem; }
+        .arch-label { min-width: 86px; color: var(--text); }
+        .arch-track { flex: 1; height: 14px; background: var(--border-soft, rgba(128,128,128,0.12)); border-radius: 3px; overflow: hidden; }
+        .arch-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+        .arch-count { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 58px; text-align: right; }
+        .arch-mods { color: var(--muted); font-size: 0.74rem; margin-top: 8px; }
+        .build-row { display: flex; justify-content: space-between; gap: 12px; font-size: 0.78rem; padding: 3px 0; border-bottom: 1px solid var(--border-soft, rgba(128,128,128,0.1)); }
+        .build-row:last-child { border-bottom: none; }
+        .build-row .bc-build { color: var(--text); font-variant-numeric: tabular-nums; }
+        .build-row .bc-count { color: var(--muted); white-space: nowrap; }
+        .heatmap { border-collapse: collapse; font-size: 0.72rem; margin-top: 4px; }
+        .heatmap th, .heatmap td { padding: 3px 7px; text-align: center; border: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+        .heatmap th { color: var(--muted); font-weight: 700; }
+        .heatmap td.rd { color: var(--muted); font-weight: 700; }
+        .heatmap td .hm-pct { position: relative; z-index: 1; }
+
         @media (max-width: 600px) {
             .history-container { padding: 12px !important; }
             .exposure-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
@@ -165,6 +184,25 @@
             </div>
         </div>
         <div id="syncResults" class="sync-results" style="display:none;"></div>
+
+        <!-- How You Draft — tendencies overview -->
+        <div class="panel" id="tendPanel" style="margin-bottom: 20px;">
+            <div class="panel-header"><h2>How You Draft</h2><span id="tendSubtitle" style="font-size:0.8em;color:var(--muted);"></span></div>
+            <div style="padding: 14px;">
+                <div class="tend-cols">
+                    <div>
+                        <div class="section-title">Build archetypes</div>
+                        <div id="archetypeBars"></div>
+                        <div class="section-title" style="margin-top:16px;">Exact builds</div>
+                        <div id="buildCounts"></div>
+                    </div>
+                    <div>
+                        <div class="section-title">Position by round (% of drafts)</div>
+                        <div id="roundHeatmap"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Exposure section (collapsed; click to view) -->
         <div class="exposure-section panel" style="margin-bottom: 20px;">
@@ -210,6 +248,7 @@
             document.getElementById('exposureSubtitle').textContent = total ? `across ${total} drafts · click to view` : 'click to view';
 
             renderDrafts(_bd.drafts);
+            renderTendencies(_bd.drafts);
 
             // Rebuild the board only if the panel is currently open; otherwise defer until clicked.
             _boardBuilt = false;
@@ -237,6 +276,91 @@
             const c = {};
             picks.forEach(p => { c[p.pos] = (c[p.pos] || 0) + 1; });
             return ['QB', 'RB', 'WR', 'TE'].filter(pos => c[pos]).map(pos => `${c[pos]}${pos}`).join(' · ');
+        }
+
+        // Classify a draft's early-round strategy. Returns { primary, mods[] }.
+        function classifyArchetype(picks) {
+            const inRounds = (a, b, pos) => picks.filter(p => p.round >= a && p.round <= b && p.pos === pos).length;
+            const earlyRB = inRounds(1, 5, 'RB');
+            const r12RB   = inRounds(1, 2, 'RB');
+            let primary;
+            if (earlyRB === 0)                       primary = 'Zero RB';
+            else if (earlyRB >= 3)                   primary = 'Robust RB';
+            else if (r12RB >= 1 && earlyRB === 1)    primary = 'Hero RB';
+            else                                     primary = 'Balanced';
+            const mods = [];
+            if (inRounds(1, 3, 'TE') > 0) mods.push('Elite TE');
+            if (inRounds(1, 5, 'QB') > 0) mods.push('Early QB');
+            return { primary, mods };
+        }
+
+        const ARCH_ORDER = ['Zero RB', 'Hero RB', 'Balanced', 'Robust RB'];
+        const POS_RGB = { QB: '233,30,99', RB: '33,150,243', WR: '76,175,80', TE: '255,152,0' };
+
+        function renderTendencies(drafts) {
+            const n = drafts.length;
+            document.getElementById('tendSubtitle').textContent = n ? `${n} draft${n === 1 ? '' : 's'}` : '';
+            const archBars = document.getElementById('archetypeBars');
+            const buildBox = document.getElementById('buildCounts');
+            const heatBox  = document.getElementById('roundHeatmap');
+
+            if (!n) {
+                archBars.innerHTML = buildBox.innerHTML = heatBox.innerHTML =
+                    '<p class="empty-history" style="padding:14px;">Sync drafts to see your tendencies</p>';
+                return;
+            }
+
+            // --- Archetype distribution ---
+            const archCount = {}, modCount = {};
+            const buildTally = {};
+            drafts.forEach(d => {
+                const { primary, mods } = classifyArchetype(d.picks);
+                archCount[primary] = (archCount[primary] || 0) + 1;
+                mods.forEach(m => modCount[m] = (modCount[m] || 0) + 1);
+                const b = buildType(d.picks);
+                buildTally[b] = (buildTally[b] || 0) + 1;
+            });
+            const maxArch = Math.max(...ARCH_ORDER.map(a => archCount[a] || 0), 1);
+            archBars.innerHTML = ARCH_ORDER.map(a => {
+                const c = archCount[a] || 0;
+                const pct = Math.round((c / n) * 100);
+                return `<div class="arch-row">
+                    <span class="arch-label">${a}</span>
+                    <span class="arch-track"><span class="arch-fill" style="width:${(c / maxArch) * 100}%"></span></span>
+                    <span class="arch-count">${c} · ${pct}%</span>
+                </div>`;
+            }).join('') + (Object.keys(modCount).length
+                ? `<div class="arch-mods">${Object.entries(modCount).map(([m, c]) => `${m} in ${c}/${n}`).join(' · ')}</div>`
+                : '');
+
+            // --- Exact builds ---
+            buildBox.innerHTML = Object.entries(buildTally)
+                .sort((a, b) => b[1] - a[1])
+                .map(([b, c]) => `<div class="build-row"><span class="bc-build">${b}</span><span class="bc-count">${c}/${n}</span></div>`)
+                .join('');
+
+            // --- Position-by-round heatmap (one pick per round per draft) ---
+            const posList = ['QB', 'RB', 'WR', 'TE'];
+            const maxRound = Math.max(...drafts.flatMap(d => d.picks.map(p => p.round || 0)), 0);
+            const matrix = {};
+            for (let r = 1; r <= maxRound; r++) matrix[r] = { QB: 0, RB: 0, WR: 0, TE: 0 };
+            drafts.forEach(d => d.picks.forEach(p => {
+                if (matrix[p.round] && posList.includes(p.pos)) matrix[p.round][p.pos]++;
+            }));
+            let rows = '';
+            for (let r = 1; r <= maxRound; r++) {
+                const cells = posList.map(pos => {
+                    const c = matrix[r][pos];
+                    const pct = Math.round((c / n) * 100);
+                    const alpha = (c / n) * 0.85;
+                    const bg = c ? `background:rgba(${POS_RGB[pos]},${alpha.toFixed(2)});` : '';
+                    return `<td style="${bg}"><span class="hm-pct">${pct ? pct + '%' : ''}</span></td>`;
+                }).join('');
+                rows += `<tr><td class="rd">R${r}</td>${cells}</tr>`;
+            }
+            heatBox.innerHTML = `<table class="heatmap">
+                <thead><tr><th>Rd</th>${posList.map(p => `<th>${p}</th>`).join('')}</tr></thead>
+                <tbody>${rows}</tbody></table>`;
         }
 
         function renderExposureBoard(rankings, exposure, drafts) {
