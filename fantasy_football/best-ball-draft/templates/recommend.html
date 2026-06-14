@@ -445,7 +445,10 @@
   <div class="pick-banner">
     <div><div class="lbl">Overall Pick</div><div class="big" id="pickNum">—</div></div>
     <div><div class="lbl">Round</div><div class="big" id="roundNum">—</div></div>
-    <div id="turnBadge" class="not-turn-badge">—</div>
+    <div style="text-align:right;">
+      <div id="turnBadge" class="not-turn-badge">—</div>
+      <div id="nextPickInfo" style="font-size:0.72em;color:var(--muted);margin-top:5px;white-space:nowrap;"></div>
+    </div>
   </div>
   <div id="recsList"><div class="no-recs">Connect to your draft or add picks manually below.</div></div>
 </div>
@@ -1353,17 +1356,35 @@ function renderHeader() {
 
   const draftDone = state.myTeam.length >= 20;
   const myTurn = !draftDone && isMyTurn(pick, settings.numTeams, settings.myPosition);
-  const badge  = document.getElementById('turnBadge');
+  const badge    = document.getElementById('turnBadge');
+  const nextInfo = document.getElementById('nextPickInfo');
+
+  const pickLabel = n => {
+    const r = Math.floor((n - 1) / settings.numTeams) + 1;
+    return `Pk${n}·R${r}`;
+  };
+
   if (draftDone) {
     badge.className   = 'not-turn-badge';
     badge.textContent = 'Draft complete';
+    nextInfo.textContent = '';
   } else if (myTurn) {
     badge.className   = 'my-turn-badge';
     badge.textContent = 'YOUR PICK';
+    const next1 = nextMyOverallPick(pick + 1, settings.numTeams, settings.myPosition);
+    const next2 = next1 && nextMyOverallPick(next1 + 1, settings.numTeams, settings.myPosition);
+    nextInfo.textContent = next1
+      ? `Next: ${pickLabel(next1)}${next2 ? ' → ' + pickLabel(next2) : ''}`
+      : '';
   } else {
-    const wait = picksUntilMyTurn(pick, settings.numTeams, settings.myPosition);
+    const wait  = picksUntilMyTurn(pick, settings.numTeams, settings.myPosition);
     badge.className   = 'not-turn-badge';
     badge.textContent = wait > 0 ? `${wait} picks away` : '—';
+    const next1 = nextMyOverallPick(pick, settings.numTeams, settings.myPosition);
+    const next2 = next1 && nextMyOverallPick(next1 + 1, settings.numTeams, settings.myPosition);
+    nextInfo.textContent = next1
+      ? `${pickLabel(next1)}${next2 ? ' → ' + pickLabel(next2) : ''}`
+      : '';
   }
 }
 
@@ -1401,6 +1422,29 @@ function renderRecs() {
   if (!recs.length) {
     el.innerHTML = statusBar + '<div class="no-recs">No players available.</div>';
     return;
+  }
+
+  // ── Behind-pace allocation warning ────────────────────────────────────────
+  // After round 4, flag any position where you have fewer than expected by now.
+  const ALLOC_TARGETS = { QB: 2, RB: 6, WR: 8, TE: 2 };
+  const ALLOC_ROUNDS  = 18;
+  const picksMade     = state.myTeam.length;
+  let paceWarnHTML = '';
+  if (picksMade >= 4) {
+    const behind = ['RB', 'WR', 'QB', 'TE'].filter(pos => {
+      const have     = state.myTeam.filter(p => p.pos === pos).length;
+      const expected = Math.floor(ALLOC_TARGETS[pos] * picksMade / ALLOC_ROUNDS);
+      return expected > 0 && have < expected;
+    }).map(pos => {
+      const have     = state.myTeam.filter(p => p.pos === pos).length;
+      const expected = Math.floor(ALLOC_TARGETS[pos] * picksMade / ALLOC_ROUNDS);
+      return `<span style="font-weight:700;color:var(--orange)">${pos}</span> ${have}/${expected}`;
+    });
+    if (behind.length) {
+      paceWarnHTML = `<div class="rec-warn-bar" style="display:flex;gap:12px;align-items:center;">
+        <span>⚠ Behind pace:</span>${behind.map(b => `<span>${b}</span>`).join('')}
+      </div>`;
+    }
   }
 
   // ── Position wave panel ────────────────────────────────────────────────────
@@ -1445,7 +1489,7 @@ function renderRecs() {
 
   const displayRecs = recs;
 
-  el.innerHTML = statusBar + wavePanel + displayRecs.map((r, i) => {
+  el.innerHTML = statusBar + paceWarnHTML + wavePanel + displayRecs.map((r, i) => {
     const p = r.player;
 
     // Score breakdown panel

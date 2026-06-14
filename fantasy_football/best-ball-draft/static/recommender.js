@@ -166,9 +166,16 @@ function capitalAllocationInfo(player, myTeam, available) {
   const round  = myTeam.length + 1;
 
   if (need > 0) {
-    const cliff    = positionalAdpCliff(pos, available, need);
-    const scarcity = Math.min(1.0, cliff / 40);
-    return { mult: 1 + scarcity * 0.20, target, need, cliff, totalDeficit: 0 };
+    const cliff      = positionalAdpCliff(pos, available, need);
+    const scarcity   = Math.min(1.0, cliff / 40);
+    const lateFade   = Math.max(0, Math.min(1, (DRAFT_ROUNDS - round) / 5));
+    // Early rounds: boost driven by ADP tier cliff (are good options disappearing?).
+    // Late rounds: boost driven purely by how short you are on this position,
+    //              ignoring tiers since late-round talent is unpredictable.
+    const needFrac   = Math.min(1.0, need / (BASE_TARGETS[pos] || 1));
+    const cliffBoost = scarcity * 0.20 * lateFade;
+    const needBoost  = needFrac * 0.15 * (1 - lateFade);
+    return { mult: 1 + cliffBoost + needBoost, target, need, cliff, totalDeficit: 0 };
   }
 
   // Over dynamic target — penalty scales with how many other positions need help,

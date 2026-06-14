@@ -376,21 +376,21 @@
             archBars.innerHTML = ARCH_ORDER.map(a => {
                 const c = archCount[a] || 0;
                 const pct = Math.round((c / n) * 100);
-                return `<div class="arch-row clickable" data-ftype="arch" data-fval="${a}" onclick="setFilter('arch',${JSON.stringify(a)})">
+                return `<div class="arch-row clickable" data-ftype="arch" data-fval="${a}" onclick="setFilter(this.dataset.ftype,this.dataset.fval)">
                     <span class="arch-label">${a}</span>
                     <span class="arch-track"><span class="arch-fill" style="width:${(c / maxArch) * 100}%"></span></span>
                     <span class="arch-count">${c} · ${pct}%</span>
                 </div>`;
             }).join('') + (Object.keys(modCount).length
                 ? `<div class="arch-mods">${Object.entries(modCount).map(([m, c]) =>
-                    `<span class="arch-mod" data-ftype="mod" data-fval="${m}" onclick="setFilter('mod',${JSON.stringify(m)})">${m} in ${c}/${n}</span>`
+                    `<span class="arch-mod" data-ftype="mod" data-fval="${m}" onclick="setFilter(this.dataset.ftype,this.dataset.fval)">${m} in ${c}/${n}</span>`
                   ).join(' · ')}</div>`
                 : '');
 
             // --- Exact builds ---
             buildBox.innerHTML = Object.entries(buildTally)
                 .sort((a, b) => b[1] - a[1])
-                .map(([b, c]) => `<div class="build-row" data-ftype="build" data-fval="${b}" onclick="setFilter('build',${JSON.stringify(b)})"><span class="bc-build">${b}</span><span class="bc-count">${c}/${n}</span></div>`)
+                .map(([b, c]) => `<div class="build-row" data-ftype="build" data-fval="${b}" onclick="setFilter(this.dataset.ftype,this.dataset.fval)"><span class="bc-build">${b}</span><span class="bc-count">${c}/${n}</span></div>`)
                 .join('');
 
             // --- Position-by-round heatmap (one pick per round per draft) ---
