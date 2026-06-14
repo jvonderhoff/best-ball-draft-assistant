@@ -156,6 +156,16 @@
         .stat-card .sc-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700; }
         .stat-card .sc-value { font-size: 1.05rem; font-weight: 800; color: var(--text); margin-top: 3px; font-variant-numeric: tabular-nums; }
         .stat-card .sc-sub { font-size: 0.66rem; color: var(--muted); margin-top: 2px; }
+        /* Clickable tendency filters */
+        .arch-row.clickable, .build-row, .arch-mod { cursor: pointer; }
+        .arch-row.clickable:hover .arch-label, .build-row:hover .bc-build, .arch-mod:hover { color: var(--accent); }
+        .arch-row.active .arch-label, .build-row.active .bc-build { color: var(--accent); font-weight: 800; }
+        .arch-mod { display: inline; }
+        .arch-mod.active { color: var(--accent); font-weight: 700; }
+        .filter-pill { font-size: 0.78rem; color: var(--muted); }
+        .filter-pill b { color: var(--accent); }
+        .filter-pill .fp-clear { cursor: pointer; margin-left: 8px; color: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; font-size: 0.92em; }
+        .filter-pill .fp-clear:hover { color: var(--text); border-color: var(--accent); }
 
         @media (max-width: 600px) {
             .history-container { padding: 12px !important; }
@@ -226,7 +236,7 @@
 
         <!-- Draft list -->
         <div class="panel">
-            <div class="panel-header"><h2>Saved Drafts</h2></div>
+            <div class="panel-header"><h2>Saved Drafts</h2><div id="filterPill"></div></div>
             <div style="padding: 14px;">
                 <div id="draftList" class="draft-list">
                     <p class="empty-history">No drafts saved yet</p>
@@ -238,6 +248,41 @@
     <script>
         let _bd = { rankings: [], exposure: {}, drafts: [] };
         let _boardBuilt = false;
+        let _filter = null; // { type: 'arch'|'build'|'mod', value: string }
+
+        function setFilter(type, value) {
+            if (_filter && _filter.type === type && _filter.value === value) {
+                _filter = null;
+            } else {
+                _filter = { type, value };
+            }
+            applyFilter();
+        }
+
+        function clearFilter() { _filter = null; applyFilter(); }
+
+        function applyFilter() {
+            const drafts = _filter ? _bd.drafts.filter(d => {
+                const { primary, mods } = classifyArchetype(d.picks);
+                if (_filter.type === 'arch')  return primary === _filter.value;
+                if (_filter.type === 'mod')   return mods.includes(_filter.value);
+                if (_filter.type === 'build') return buildType(d.picks) === _filter.value;
+                return true;
+            }) : _bd.drafts;
+            renderDrafts(drafts);
+            const pill = document.getElementById('filterPill');
+            if (!_filter) {
+                pill.innerHTML = '';
+            } else {
+                pill.innerHTML = `<span class="filter-pill">Showing <b>${_filter.value}</b> — ${drafts.length} draft${drafts.length === 1 ? '' : 's'} <span class="fp-clear" onclick="clearFilter()">× clear</span></span>`;
+            }
+            document.querySelectorAll('[data-ftype]').forEach(el => el.classList.remove('active'));
+            if (_filter) {
+                document.querySelectorAll(`[data-ftype="${_filter.type}"]`).forEach(el => {
+                    if (el.dataset.fval === _filter.value) el.classList.add('active');
+                });
+            }
+        }
 
         async function load() {
             const [draftsResp, expResp, rankResp] = await Promise.all([
@@ -253,6 +298,7 @@
             document.getElementById('totalDrafts').textContent = `${total} draft${total === 1 ? '' : 's'} saved`;
             document.getElementById('exposureSubtitle').textContent = total ? `across ${total} drafts · click to view` : 'click to view';
 
+            _filter = null;
             renderDrafts(_bd.drafts);
             renderTendencies(_bd.drafts);
 
@@ -330,19 +376,21 @@
             archBars.innerHTML = ARCH_ORDER.map(a => {
                 const c = archCount[a] || 0;
                 const pct = Math.round((c / n) * 100);
-                return `<div class="arch-row">
+                return `<div class="arch-row clickable" data-ftype="arch" data-fval="${a}" onclick="setFilter('arch',${JSON.stringify(a)})">
                     <span class="arch-label">${a}</span>
                     <span class="arch-track"><span class="arch-fill" style="width:${(c / maxArch) * 100}%"></span></span>
                     <span class="arch-count">${c} · ${pct}%</span>
                 </div>`;
             }).join('') + (Object.keys(modCount).length
-                ? `<div class="arch-mods">${Object.entries(modCount).map(([m, c]) => `${m} in ${c}/${n}`).join(' · ')}</div>`
+                ? `<div class="arch-mods">${Object.entries(modCount).map(([m, c]) =>
+                    `<span class="arch-mod" data-ftype="mod" data-fval="${m}" onclick="setFilter('mod',${JSON.stringify(m)})">${m} in ${c}/${n}</span>`
+                  ).join(' · ')}</div>`
                 : '');
 
             // --- Exact builds ---
             buildBox.innerHTML = Object.entries(buildTally)
                 .sort((a, b) => b[1] - a[1])
-                .map(([b, c]) => `<div class="build-row"><span class="bc-build">${b}</span><span class="bc-count">${c}/${n}</span></div>`)
+                .map(([b, c]) => `<div class="build-row" data-ftype="build" data-fval="${b}" onclick="setFilter('build',${JSON.stringify(b)})"><span class="bc-build">${b}</span><span class="bc-count">${c}/${n}</span></div>`)
                 .join('');
 
             // --- Position-by-round heatmap (one pick per round per draft) ---
