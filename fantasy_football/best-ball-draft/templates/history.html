@@ -127,7 +127,7 @@
                 <span id="syncStatus" style="font-size:0.85em;color:var(--muted);"></span>
                 <span id="totalDrafts" style="color:var(--muted);font-size:0.9em;"></span>
                 <input id="syncIds" class="sync-input" placeholder="paste draft ID(s) or URL — optional"
-                       title="Sync specific drafts by ID/URL (comma or space separated). Leave blank to sync all saved drafts." />
+                       title="Leave blank to import all completed drafts. Or paste specific draft IDs/URLs (comma or space separated) to pull those by ID." />
                 <button id="syncBtn" class="sync-btn" onclick="syncFromDK()">Sync from DK</button>
             </div>
         </div>
@@ -261,7 +261,7 @@
             status.style.color = 'var(--muted)';
             status.textContent = ids.length
                 ? `Pulling ${ids.length} draft(s) from DraftKings…`
-                : 'Pulling all saved drafts from DraftKings…';
+                : 'Pulling completed drafts from DraftKings…';
             try {
                 const resp = await fetch('/api/drafts/sync-from-dk', {
                     method: 'POST',

@@ -148,24 +148,22 @@ def sync_drafts_from_dk():
     Works for past drafts AND a freshly-finished one — same path either way.
     Requires DK cookies + a cached user GUID on this instance.
     """
-    from app.dk_import import import_many, DEFAULT_MIN_PICKS
+    from app.dk_import import import_many, import_lineups, DEFAULT_MIN_PICKS
     data = request.get_json(silent=True) or {}
     min_picks = int(data.get('min_picks', DEFAULT_MIN_PICKS))
 
-    if data.get('draft_id'):
-        ids = [str(data['draft_id'])]
-    elif data.get('ids'):
-        ids = [str(i) for i in data['ids']]
+    # Explicit IDs → contest/board path (specific drafts by id, needs entry_id).
+    # Default (no ids) → completed rosters via the lineup endpoint, which is the
+    # reliable source for finished drafts (they drop off /drafts/live).
+    if data.get('draft_id') or data.get('ids'):
+        ids = [str(data['draft_id'])] if data.get('draft_id') else [str(i) for i in data['ids']]
+        items = [{'id': i,
+                  'entry_id': (_saved_draft_ids.get(i) or {}).get('entry_id'),
+                  'name': (_saved_draft_ids.get(i) or {}).get('name')} for i in ids]
+        results = import_many(items, min_picks=min_picks)
     else:
-        ids = list(_saved_draft_ids.keys())
+        results = import_lineups(min_picks=min_picks)
 
-    if not ids:
-        return jsonify({'error': 'No draft IDs to sync (none provided and none saved)'}), 400
-
-    items = [{'id': i,
-              'entry_id': (_saved_draft_ids.get(i) or {}).get('entry_id'),
-              'name': (_saved_draft_ids.get(i) or {}).get('name')} for i in ids]
-    results = import_many(items, min_picks=min_picks)
     imported = sum(1 for r in results if r['status'] == 'imported')
     app.logger.info(f'[sync-from-dk] {imported}/{len(results)} imported')
     return jsonify({'ok': True, 'imported': imported, 'results': results})

@@ -477,6 +477,52 @@ def _parse_live_drafts(data):
     return drafts
 
 
+def _lineup_player_team(p):
+    """A lineup player's NFL team = the home/away abbr matching their team id."""
+    return p.get('htabbr') if p.get('tid') == p.get('htid') else p.get('atabbr')
+
+
+def fetch_my_dk_lineups():
+    """Fetch the user's saved (completed-draft) rosters via direct API call.
+
+    Unlike /drafts/live (which only lists in-progress drafts and drops finished
+    ones), this returns full 20-man rosters for completed best-ball drafts —
+    keyed by LineupId, no entry_id needed. Returns a list of normalised dicts:
+        {lineup_id, draft_group_id, name, players:[{name,pos,team,pdkid}]}
+    """
+    session = _dk_session()
+    if not session:
+        print('  [DK] No DK cookies — cannot fetch lineups')
+        return []
+    try:
+        r = session.get('https://www.draftkings.com/lineup/getlineupswithplayersforuser', timeout=20)
+        r.raise_for_status()
+        lineups = r.json()
+    except Exception as e:
+        print(f'  [DK] fetch_my_dk_lineups error: {e}')
+        return []
+
+    out = []
+    for L in (lineups or []):
+        players = []
+        for p in (L.get('Players') or []):
+            fn, ln = (p.get('fn') or '').strip(), (p.get('ln') or '').strip()
+            players.append({
+                'name': f'{fn} {ln}'.strip(),
+                'pos':  p.get('pn', ''),
+                'team': _lineup_player_team(p) or '',
+                'pdkid': p.get('pdkid'),
+            })
+        out.append({
+            'lineup_id':      str(L.get('LineupId')),
+            'draft_group_id': str(L.get('ContestDraftGroupId', '')),
+            'name':           L.get('DisplayName') or L.get('Name') or f"Lineup {L.get('LineupId')}",
+            'players':        players,
+        })
+    print(f'  [DK] ✓ {len(out)} completed lineups fetched')
+    return out
+
+
 def fetch_my_dk_drafts(nav_draft_id=None):
     """
     Discover the user's active best ball drafts via direct API call.

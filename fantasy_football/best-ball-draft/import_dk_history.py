@@ -63,22 +63,25 @@ def main():
     from app.database import init_db
     init_db()
 
-    guid = _ensure_guid(args.guid)
-    if not guid:
-        print('✗ No DK user GUID available. Pass --guid <value>, set DK_USER_GUID, '
-              'or run sync_cookies.py first. Without it, your picks can\'t be identified.')
-        return 1
+    persist = 'Neon' if os.environ.get('DATABASE_URL') else 'local only'
 
-    items = _load_items(args.ids)
-    if not items:
-        print('No draft IDs found. Pass --ids or populate .saved_drafts.json.')
-        return 1
-
-    print(f'Importing {len(items)} draft(s) from DK '
-          f'(GUID {guid[:8]}…, persist={"Neon" if os.environ.get("DATABASE_URL") else "local only"})\n')
-
-    from app.dk_import import import_many
-    results = import_many(items, min_picks=args.min_picks)
+    if args.ids:
+        # Contest/board path for specific drafts — needs the GUID for pick attribution.
+        guid = _ensure_guid(args.guid)
+        if not guid:
+            print('✗ No DK user GUID available. Pass --guid <value>, set DK_USER_GUID, '
+                  'or run sync_cookies.py first. Without it, your picks can\'t be identified.')
+            return 1
+        items = _load_items(args.ids)
+        print(f'Importing {len(items)} draft(s) by ID from DK '
+              f'(GUID {guid[:8]}…, persist={persist})\n')
+        from app.dk_import import import_many
+        results = import_many(items, min_picks=args.min_picks)
+    else:
+        # Default: completed-draft rosters via the lineup endpoint (no GUID/entry_id needed).
+        print(f'Importing completed-draft rosters from DK (persist={persist})\n')
+        from app.dk_import import import_lineups
+        results = import_lineups(min_picks=args.min_picks)
 
     counts = {}
     for r in results:

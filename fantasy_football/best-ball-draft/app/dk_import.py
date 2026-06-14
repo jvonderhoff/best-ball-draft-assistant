@@ -29,15 +29,15 @@ def _norm(name: str) -> str:
 
 
 def players_by_name():
-    """{normalized name: {player_id, adp, week15, week16, week17}} from the players table."""
+    """{normalized name: {player_id, pos, team, adp, week15, week16, week17}} from the players table."""
     from app.database import get_db
     out = {}
     with get_db() as conn:
         for r in conn.execute(
-            "SELECT player_id, name, adp, week15, week16, week17 FROM players"
+            "SELECT player_id, name, pos, team, adp, week15, week16, week17 FROM players"
         ).fetchall():
             out[_norm(r['name'])] = {
-                'player_id': r['player_id'], 'adp': r['adp'],
+                'player_id': r['player_id'], 'pos': r['pos'], 'team': r['team'], 'adp': r['adp'],
                 'week15': r['week15'], 'week16': r['week16'], 'week17': r['week17'],
             }
     return out
@@ -59,8 +59,8 @@ def build_my_picks(raw_picks, name_map):
         out.append({
             'id':          enr.get('player_id') or (f'dk_{did}' if did else None),
             'name':        p.get('player_name'),
-            'pos':         p.get('pos', ''),
-            'team':        p.get('team', ''),
+            'pos':         enr.get('pos') or p.get('pos', ''),
+            'team':        enr.get('team') or p.get('team', ''),
             'adp':         enr.get('adp') or 0,
             'pick_number': p.get('pick_number'),
             'week15':      enr.get('week15'),
@@ -119,4 +119,65 @@ def import_many(items, min_picks=DEFAULT_MIN_PICKS):
             it.get('id'), entry_id=it.get('entry_id'), name=it.get('name'),
             min_picks=min_picks, name_map=name_map,
         ))
+    return results
+
+
+# ── Completed drafts via the lineup endpoint ──────────────────────────────────
+# DK drops finished drafts off /drafts/live, but getlineupswithplayersforuser
+# returns their full 20-man rosters directly (keyed by LineupId, no entry_id).
+# This is the canonical source for completed-draft history.
+
+def build_lineup_picks(lineup, name_map):
+    """Enrich a normalised lineup's players into save_draft's pick shape.
+
+    No true draft order is available, so pick_number is the roster index.
+    """
+    out = []
+    for i, p in enumerate(lineup.get('players', [])):
+        enr = name_map.get(_norm(p.get('name', ''))) or {}
+        out.append({
+            'id':          enr.get('player_id') or (f"dk_{p.get('pdkid')}" if p.get('pdkid') else None),
+            'name':        p.get('name'),
+            'pos':         enr.get('pos') or p.get('pos', ''),
+            'team':        enr.get('team') or p.get('team', ''),
+            'adp':         enr.get('adp') or 0,
+            'pick_number': i + 1,
+            'week15':      enr.get('week15'),
+            'week16':      enr.get('week16'),
+            'week17':      enr.get('week17'),
+        })
+    return out
+
+
+def import_lineups(lineups=None, min_picks=DEFAULT_MIN_PICKS):
+    """Import completed-draft rosters from the lineup endpoint.
+
+    Keyed by LineupId (as dk_draft_id) so it dedups independently of the live
+    contest path. Returns a result list shaped like import_many.
+    """
+    if lineups is None:
+        from app.data.api_fetcher import fetch_my_dk_lineups
+        lineups = fetch_my_dk_lineups()
+    name_map = players_by_name()
+    from app.database import save_draft
+    results = []
+    for L in lineups:
+        lid = L.get('lineup_id')
+        picks = build_lineup_picks(L, name_map)
+        if len(picks) < min_picks:
+            results.append({'contest_id': lid, 'status': 'incomplete', 'my_picks': len(picks),
+                            'reason': f'{len(picks)} players (< {min_picks})'})
+            continue
+        try:
+            saved_id = save_draft(num_teams=12, my_position=0, picks=picks,
+                                  contest=L.get('name') or f'Lineup {lid}', dk_draft_id=lid)
+            if saved_id is None:
+                results.append({'contest_id': lid, 'status': 'duplicate', 'my_picks': len(picks),
+                                'reason': 'already in history'})
+            else:
+                results.append({'contest_id': lid, 'status': 'imported', 'my_picks': len(picks),
+                                'draft_id': saved_id})
+        except Exception as e:
+            _log.warning(f'[dk-import] lineup {lid} failed: {e!r}')
+            results.append({'contest_id': lid, 'status': 'error', 'my_picks': len(picks), 'reason': repr(e)})
     return results
