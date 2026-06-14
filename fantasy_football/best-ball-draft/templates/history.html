@@ -151,6 +151,11 @@
         .heatmap th { color: var(--muted); font-weight: 700; }
         .heatmap td.rd { color: var(--muted); font-weight: 700; }
         .heatmap td .hm-pct { position: relative; z-index: 1; }
+        .stat-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 20px; }
+        .stat-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+        .stat-card .sc-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700; }
+        .stat-card .sc-value { font-size: 1.05rem; font-weight: 800; color: var(--text); margin-top: 3px; font-variant-numeric: tabular-nums; }
+        .stat-card .sc-sub { font-size: 0.66rem; color: var(--muted); margin-top: 2px; }
 
         @media (max-width: 600px) {
             .history-container { padding: 12px !important; }
@@ -201,6 +206,7 @@
                         <div id="roundHeatmap"></div>
                     </div>
                 </div>
+                <div id="statStrip" class="stat-strip"></div>
             </div>
         </div>
 
@@ -361,6 +367,43 @@
             heatBox.innerHTML = `<table class="heatmap">
                 <thead><tr><th>Rd</th>${posList.map(p => `<th>${p}</th>`).join('')}</tr></thead>
                 <tbody>${rows}</tbody></table>`;
+
+            // --- Stat strip: timing, construction, stacks, anchor ---
+            const firstRoundOf = (picks, pos) => {
+                const rs = picks.filter(p => p.pos === pos).map(p => p.round);
+                return rs.length ? Math.min(...rs) : null;
+            };
+            const avgFirst = pos => {
+                const v = drafts.map(d => firstRoundOf(d.picks, pos)).filter(x => x != null);
+                return v.length ? (v.reduce((a, b) => a + b, 0) / v.length) : null;
+            };
+            const fmtRound = v => v == null ? '—' : 'R' + v.toFixed(1);
+            const avgPos = pos => drafts.reduce((s, d) => s + d.picks.filter(p => p.pos === pos).length, 0) / n;
+
+            // QB stack = a QB sharing a team with a WR/TE you also drafted
+            const stackCount = drafts.filter(d => {
+                const pcTeams = new Set(d.picks.filter(p => ['WR', 'TE'].includes(p.pos) && p.team).map(p => p.team));
+                return d.picks.some(p => p.pos === 'QB' && pcTeams.has(p.team));
+            }).length;
+
+            // Round-1 anchor: most common R1 position + most-drafted R1 player
+            const r1 = drafts.map(d => d.picks.find(p => p.round === 1)).filter(Boolean);
+            const r1pos = {}, r1players = {};
+            r1.forEach(p => { r1pos[p.pos] = (r1pos[p.pos] || 0) + 1; r1players[p.player_name] = (r1players[p.player_name] || 0) + 1; });
+            const topPos = Object.entries(r1pos).sort((a, b) => b[1] - a[1])[0];
+            const topPlayer = Object.entries(r1players).sort((a, b) => b[1] - a[1])[0];
+
+            const card = (label, value, sub) =>
+                `<div class="stat-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div>${sub ? `<div class="sc-sub">${sub}</div>` : ''}</div>`;
+
+            document.getElementById('statStrip').innerHTML = [
+                card('First QB', fmtRound(avgFirst('QB')), 'avg round'),
+                card('First RB', fmtRound(avgFirst('RB')), 'avg round'),
+                card('First TE', fmtRound(avgFirst('TE')), 'avg round'),
+                card('Avg roster', `${avgPos('QB').toFixed(1)}·${avgPos('RB').toFixed(1)}·${avgPos('WR').toFixed(1)}·${avgPos('TE').toFixed(1)}`, 'QB·RB·WR·TE'),
+                card('QB stacks', `${stackCount}/${n}`, 'QB + own pass-catcher'),
+                card('R1 anchor', topPos ? `${topPos[0]} ${Math.round(topPos[1] / n * 100)}%` : '—', topPlayer ? `top: ${topPlayer[0]} ×${topPlayer[1]}` : ''),
+            ].join('');
         }
 
         function renderExposureBoard(rankings, exposure, drafts) {
