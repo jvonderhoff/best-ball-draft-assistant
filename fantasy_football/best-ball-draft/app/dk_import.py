@@ -70,8 +70,8 @@ def build_my_picks(raw_picks, name_map):
     return out
 
 
-def import_one_draft(contest_id, entry_id=None, name=None, min_picks=DEFAULT_MIN_PICKS,
-                     name_map=None, fetch_fn=None):
+def import_one_draft(contest_id, entry_id=None, name=None, entry_fee=None,
+                     min_picks=DEFAULT_MIN_PICKS, name_map=None, fetch_fn=None):
     """Pull one draft from DK and save it. Returns a result dict.
 
     status ∈ {imported, duplicate, incomplete, no_picks, error}
@@ -99,6 +99,8 @@ def import_one_draft(contest_id, entry_id=None, name=None, min_picks=DEFAULT_MIN
             picks=my_picks,
             contest=name or f'Draft #{contest_id}',
             dk_draft_id=contest_id,
+            entry_fee=entry_fee,
+            drafted_at=result.get('drafted_at'),
         )
         if saved_id is None:
             return {'contest_id': contest_id, 'status': 'duplicate', 'my_picks': len(my_picks),
@@ -111,13 +113,13 @@ def import_one_draft(contest_id, entry_id=None, name=None, min_picks=DEFAULT_MIN
 
 
 def import_many(items, min_picks=DEFAULT_MIN_PICKS):
-    """items: iterable of {id, entry_id?, name?}. Imports each; returns result list."""
+    """items: iterable of {id, entry_id?, name?, entry_fee?}. Imports each; returns result list."""
     name_map = players_by_name()
     results = []
     for it in items:
         results.append(import_one_draft(
             it.get('id'), entry_id=it.get('entry_id'), name=it.get('name'),
-            min_picks=min_picks, name_map=name_map,
+            entry_fee=it.get('entry_fee'), min_picks=min_picks, name_map=name_map,
         ))
     return results
 
@@ -133,7 +135,8 @@ def import_completed_contests(min_picks=DEFAULT_MIN_PICKS, include_incomplete=Fa
     from app.data.api_fetcher import fetch_my_dk_contests
     contests = fetch_my_dk_contests()
     targets = [c for c in contests if include_incomplete or c.get('lineup_id')]
-    items = [{'id': c['contest_id'], 'entry_id': c['entry_id'], 'name': c['name']} for c in targets]
+    items = [{'id': c['contest_id'], 'entry_id': c['entry_id'], 'name': c['name'],
+              'entry_fee': c.get('entry_fee')} for c in targets]
     return import_many(items, min_picks=min_picks)
 
 

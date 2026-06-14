@@ -387,7 +387,9 @@ def fetch_dk_draft_picks(contest_id, entry_id=None, draft_group_id=None):
             timeout=10,
         )
         r.raise_for_status()
-        draft_board = r.json().get('draftBoard') or []
+        _status = r.json()
+        draft_board = _status.get('draftBoard') or []
+        draft_start_time = _status.get('draftStartTime')   # when the draft happened
     except Exception as e:
         print(f'  [DK] draftStatus error: {e}')
         return None
@@ -436,7 +438,8 @@ def fetch_dk_draft_picks(contest_id, entry_id=None, draft_group_id=None):
         })
 
     print(f'  [DK] ✓ {len(picks)} picks for contest {contest_id}, my_position={my_position}')
-    return {'picks': picks, 'my_position': my_position} if picks or my_position else None
+    return {'picks': picks, 'my_position': my_position, 'drafted_at': draft_start_time} \
+        if picks or my_position else None
 
 
 # Path to cache the user's DK GUID so we can call the live-drafts endpoint directly
@@ -522,6 +525,7 @@ def fetch_my_dk_contests():
             'name':           o.get('ContestName', f'Draft #{cid}'),
             'draft_group_id': str(o.get('DraftGroupId', '')),
             'lineup_id':      str(o['LineupId']) if o.get('LineupId') else None,
+            'entry_fee':      o.get('BuyInAmount'),
         })
     print(f'  [DK] ✓ {len(out)} contests discovered ('
           f'{sum(1 for c in out if c["lineup_id"])} completed) from My Contests')

@@ -222,7 +222,7 @@
                         <div class="draft-card-header">
                             <div>
                                 <h3>${d.contest || 'Best Ball Draft'}</h3>
-                                <div class="draft-meta">${date} · ${d.num_teams} teams · Pick ${d.my_position}</div>
+                                <div class="draft-meta">${date} · ${d.num_teams} teams · Pick ${d.my_position}${d.entry_fee != null ? ' · $' + d.entry_fee : ''}</div>
                             </div>
                             <div style="display:flex; align-items:center; gap:12px;">
                                 <button class="delete-btn" onclick="deleteDraft(${d.id})">Delete</button>
