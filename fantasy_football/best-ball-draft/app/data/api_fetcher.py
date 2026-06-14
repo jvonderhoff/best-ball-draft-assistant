@@ -477,49 +477,54 @@ def _parse_live_drafts(data):
     return drafts
 
 
-def _lineup_player_team(p):
-    """A lineup player's NFL team = the home/away abbr matching their team id."""
-    return p.get('htabbr') if p.get('tid') == p.get('htid') else p.get('atabbr')
+def fetch_my_dk_contests():
+    """Discover ALL the user's best-ball contests from the My Contests page.
 
+    /drafts/live only lists in-progress drafts; this returns every contest the
+    user has entered (live AND completed) with both contest_id and entry_id,
+    which is what the board endpoint needs to pull pick-by-pick history.
 
-def fetch_my_dk_lineups():
-    """Fetch the user's saved (completed-draft) rosters via direct API call.
-
-    Unlike /drafts/live (which only lists in-progress drafts and drops finished
-    ones), this returns full 20-man rosters for completed best-ball drafts —
-    keyed by LineupId, no entry_id needed. Returns a list of normalised dicts:
-        {lineup_id, draft_group_id, name, players:[{name,pos,team,pdkid}]}
+    A populated LineupId means the draft is complete (a final roster exists).
+    Returns de-duped list of:
+        {contest_id, entry_id, name, draft_group_id, lineup_id}
     """
+    import json as _json
     session = _dk_session()
     if not session:
-        print('  [DK] No DK cookies — cannot fetch lineups')
+        print('  [DK] No DK cookies — cannot fetch contests')
         return []
     try:
-        r = session.get('https://www.draftkings.com/lineup/getlineupswithplayersforuser', timeout=20)
-        r.raise_for_status()
-        lineups = r.json()
+        html = session.get('https://www.draftkings.com/mycontests', timeout=20).text
     except Exception as e:
-        print(f'  [DK] fetch_my_dk_lineups error: {e}')
+        print(f'  [DK] fetch_my_dk_contests error: {e}')
         return []
 
-    out = []
-    for L in (lineups or []):
-        players = []
-        for p in (L.get('Players') or []):
-            fn, ln = (p.get('fn') or '').strip(), (p.get('ln') or '').strip()
-            players.append({
-                'name': f'{fn} {ln}'.strip(),
-                'pos':  p.get('pn', ''),
-                'team': _lineup_player_team(p) or '',
-                'pdkid': p.get('pdkid'),
-            })
+    dec = _json.JSONDecoder()
+    out, seen, idx = [], set(), 0
+    while True:
+        i = html.find('{"ContestId":', idx)
+        if i < 0:
+            break
+        try:
+            o, end = dec.raw_decode(html, i)
+            idx = end
+        except Exception:
+            idx = i + 13
+            continue
+        cid = o.get('ContestId')
+        eid = o.get('UserContestId')
+        if not cid or cid in seen or not eid:
+            continue
+        seen.add(cid)
         out.append({
-            'lineup_id':      str(L.get('LineupId')),
-            'draft_group_id': str(L.get('ContestDraftGroupId', '')),
-            'name':           L.get('DisplayName') or L.get('Name') or f"Lineup {L.get('LineupId')}",
-            'players':        players,
+            'contest_id':     str(cid),
+            'entry_id':       str(eid),
+            'name':           o.get('ContestName', f'Draft #{cid}'),
+            'draft_group_id': str(o.get('DraftGroupId', '')),
+            'lineup_id':      str(o['LineupId']) if o.get('LineupId') else None,
         })
-    print(f'  [DK] ✓ {len(out)} completed lineups fetched')
+    print(f'  [DK] ✓ {len(out)} contests discovered ('
+          f'{sum(1 for c in out if c["lineup_id"])} completed) from My Contests')
     return out
 
 

@@ -122,62 +122,18 @@ def import_many(items, min_picks=DEFAULT_MIN_PICKS):
     return results
 
 
-# ── Completed drafts via the lineup endpoint ──────────────────────────────────
-# DK drops finished drafts off /drafts/live, but getlineupswithplayersforuser
-# returns their full 20-man rosters directly (keyed by LineupId, no entry_id).
-# This is the canonical source for completed-draft history.
+def import_completed_contests(min_picks=DEFAULT_MIN_PICKS, include_incomplete=False):
+    """Discover the user's contests via My Contests, then board-import the completed ones.
 
-def build_lineup_picks(lineup, name_map):
-    """Enrich a normalised lineup's players into save_draft's pick shape.
-
-    No true draft order is available, so pick_number is the roster index.
+    This is the primary History sync: discovery yields contest_id + entry_id for
+    every entered contest (live and finished), and the board path preserves real
+    pick numbers and draft position — unlike the lineup-roster path. Completed =
+    a populated LineupId; in-progress drafts are skipped unless include_incomplete.
     """
-    out = []
-    for i, p in enumerate(lineup.get('players', [])):
-        enr = name_map.get(_norm(p.get('name', ''))) or {}
-        out.append({
-            'id':          enr.get('player_id') or (f"dk_{p.get('pdkid')}" if p.get('pdkid') else None),
-            'name':        p.get('name'),
-            'pos':         enr.get('pos') or p.get('pos', ''),
-            'team':        enr.get('team') or p.get('team', ''),
-            'adp':         enr.get('adp') or 0,
-            'pick_number': i + 1,
-            'week15':      enr.get('week15'),
-            'week16':      enr.get('week16'),
-            'week17':      enr.get('week17'),
-        })
-    return out
+    from app.data.api_fetcher import fetch_my_dk_contests
+    contests = fetch_my_dk_contests()
+    targets = [c for c in contests if include_incomplete or c.get('lineup_id')]
+    items = [{'id': c['contest_id'], 'entry_id': c['entry_id'], 'name': c['name']} for c in targets]
+    return import_many(items, min_picks=min_picks)
 
 
-def import_lineups(lineups=None, min_picks=DEFAULT_MIN_PICKS):
-    """Import completed-draft rosters from the lineup endpoint.
-
-    Keyed by LineupId (as dk_draft_id) so it dedups independently of the live
-    contest path. Returns a result list shaped like import_many.
-    """
-    if lineups is None:
-        from app.data.api_fetcher import fetch_my_dk_lineups
-        lineups = fetch_my_dk_lineups()
-    name_map = players_by_name()
-    from app.database import save_draft
-    results = []
-    for L in lineups:
-        lid = L.get('lineup_id')
-        picks = build_lineup_picks(L, name_map)
-        if len(picks) < min_picks:
-            results.append({'contest_id': lid, 'status': 'incomplete', 'my_picks': len(picks),
-                            'reason': f'{len(picks)} players (< {min_picks})'})
-            continue
-        try:
-            saved_id = save_draft(num_teams=12, my_position=0, picks=picks,
-                                  contest=L.get('name') or f'Lineup {lid}', dk_draft_id=lid)
-            if saved_id is None:
-                results.append({'contest_id': lid, 'status': 'duplicate', 'my_picks': len(picks),
-                                'reason': 'already in history'})
-            else:
-                results.append({'contest_id': lid, 'status': 'imported', 'my_picks': len(picks),
-                                'draft_id': saved_id})
-        except Exception as e:
-            _log.warning(f'[dk-import] lineup {lid} failed: {e!r}')
-            results.append({'contest_id': lid, 'status': 'error', 'my_picks': len(picks), 'reason': repr(e)})
-    return results

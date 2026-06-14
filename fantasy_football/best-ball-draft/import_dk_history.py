@@ -78,10 +78,11 @@ def main():
         from app.dk_import import import_many
         results = import_many(items, min_picks=args.min_picks)
     else:
-        # Default: completed-draft rosters via the lineup endpoint (no GUID/entry_id needed).
-        print(f'Importing completed-draft rosters from DK (persist={persist})\n')
-        from app.dk_import import import_lineups
-        results = import_lineups(min_picks=args.min_picks)
+        # Default: discover contests via My Contests and board-import the completed
+        # ones (preserves real pick numbers + draft position).
+        print(f'Discovering completed drafts from My Contests (persist={persist})\n')
+        from app.dk_import import import_completed_contests
+        results = import_completed_contests(min_picks=args.min_picks)
 
     counts = {}
     for r in results:

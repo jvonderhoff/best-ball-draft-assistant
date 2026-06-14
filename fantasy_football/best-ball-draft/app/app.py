@@ -148,13 +148,13 @@ def sync_drafts_from_dk():
     Works for past drafts AND a freshly-finished one — same path either way.
     Requires DK cookies + a cached user GUID on this instance.
     """
-    from app.dk_import import import_many, import_lineups, DEFAULT_MIN_PICKS
+    from app.dk_import import import_many, import_completed_contests, DEFAULT_MIN_PICKS
     data = request.get_json(silent=True) or {}
     min_picks = int(data.get('min_picks', DEFAULT_MIN_PICKS))
 
-    # Explicit IDs → contest/board path (specific drafts by id, needs entry_id).
-    # Default (no ids) → completed rosters via the lineup endpoint, which is the
-    # reliable source for finished drafts (they drop off /drafts/live).
+    # Explicit IDs → board path for those specific drafts.
+    # Default (no ids) → discover all contests via My Contests and board-import the
+    # completed ones, preserving real pick numbers and draft position.
     if data.get('draft_id') or data.get('ids'):
         ids = [str(data['draft_id'])] if data.get('draft_id') else [str(i) for i in data['ids']]
         items = [{'id': i,
@@ -162,7 +162,7 @@ def sync_drafts_from_dk():
                   'name': (_saved_draft_ids.get(i) or {}).get('name')} for i in ids]
         results = import_many(items, min_picks=min_picks)
     else:
-        results = import_lineups(min_picks=min_picks)
+        results = import_completed_contests(min_picks=min_picks)
 
     imported = sum(1 for r in results if r['status'] == 'imported')
     app.logger.info(f'[sync-from-dk] {imported}/{len(results)} imported')
