@@ -147,9 +147,7 @@
     }
     .player-table thead th.th-r { text-align: right; }
     .player-table thead th.th-c { text-align: center; }
-    .player-table tbody tr.player-row { cursor: pointer; border-bottom: 1px solid var(--border-soft, rgba(128,128,128,0.07)); }
-    .player-table tbody tr.player-row:active { background: var(--selected); }
-    .player-table tbody tr.player-row.selected { background: var(--selected); }
+    .player-table tbody tr.player-row { border-bottom: 1px solid var(--border-soft, rgba(128,128,128,0.07)); }
     .player-table tbody tr.player-row.taken { opacity: 0.32; }
     .player-table tbody tr.player-row.stack .pt-name { color: var(--green); font-weight: 700; }
     .player-table td { padding: 6px 6px; vertical-align: middle; }
@@ -472,10 +470,6 @@
     <button class="pos-btn" data-pos="WR">WR</button>
     <button class="pos-btn" data-pos="TE">TE</button>
     <button class="pos-btn" id="stackFilterBtn" data-pos="STACK">⚡</button>
-  </div>
-  <div class="action-bar" id="actionBar">
-    <button class="btn-opp"  id="btnOppPick">→ Opponent</button>
-    <button class="btn-undo" id="btnCancel" title="Cancel">✕</button>
   </div>
   <div class="list-sort-bar">
     <button class="sort-btn active" id="sortAdpBtn">ADP</button>
@@ -1274,7 +1268,6 @@ function renderPlayerList() {
     const isTaken    = state.takenIds.has(p.id);
     const isMine     = state.myTeam.some(t => t.id === p.id);
     const isStack    = !isTaken && myTeams.has(p.team);
-    const isSelected = selectedPlayer?.id === p.id;
     const isQBStack  = !isTaken && (
       (['WR','TE'].includes(p.pos) && myQBTeams.has(p.team)) ||
       (p.pos === 'QB' && state.myTeam.some(t => ['WR','TE'].includes(t.pos) && t.team === p.team))
@@ -1285,7 +1278,7 @@ function renderPlayerList() {
     const scoreStr = (!isTaken && score != null) ? score.toFixed(1) : '';
     const wk17col  = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'var(--muted)';
     const byeStr   = p.bye ? ` · bye ${p.bye}` : '';
-    return `<tr class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
+    return `<tr class="player-row ${isTaken?'taken':''} ${isStack?'stack':''}"
         data-id="${p.id}" data-pos="${p.pos}">
       <td class="pt-score">${scoreStr}</td>
       <td class="pt-num">${Math.round(p.adp)||'—'}</td>
@@ -1322,10 +1315,6 @@ function hideActionBar() {
   selectedPlayer = null;
 }
 
-document.getElementById('playerList').addEventListener('click', e => {
-  const row = e.target.closest('tr.player-row');
-  if (row) selectPlayer(row.dataset.id);
-});
 document.getElementById('btnOppPick').addEventListener('click', () => { if (selectedPlayer) addPick(selectedPlayer, false); });
 document.getElementById('btnCancel').addEventListener('click', hideActionBar);
 
