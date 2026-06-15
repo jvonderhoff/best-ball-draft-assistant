@@ -137,33 +137,39 @@
     .btn-undo { background: transparent; border: 1px solid var(--border) !important; color: var(--muted); flex: 0 0 44px; }
     button:active { opacity: 0.7; }
 
-    .player-list { display: flex; flex-direction: column; gap: 2px; max-height: 45vh; overflow-y: auto; }
-    .player-row {
-      display: flex; align-items: center; background: var(--card);
-      border-radius: 6px; padding: 9px 10px; gap: 8px;
-      border-left: 3px solid transparent; cursor: pointer; user-select: none;
-      min-height: 44px;
+    .player-list { max-height: 45vh; overflow-y: auto; }
+    .player-table { width: 100%; border-collapse: collapse; font-size: 0.8em; }
+    .player-table thead th {
+      position: sticky; top: 0; background: var(--surface); z-index: 1;
+      padding: 5px 6px; font-size: 0.7em; font-weight: 700; color: var(--muted);
+      letter-spacing: 0.04em; text-transform: uppercase;
+      border-bottom: 1px solid var(--border); white-space: nowrap;
     }
-    .player-row:active { background: var(--selected); }
-    .player-row.taken    { opacity: 0.32; }
-    .player-row.stack .p-body { color: var(--green) !important; font-weight: 700; }
-    .player-row.selected { background: var(--selected); border-left-color: var(--accent); }
-    .player-row[data-pos="QB"] { border-left-color: var(--QB); }
-    .player-row[data-pos="RB"] { border-left-color: var(--RB); }
-    .player-row[data-pos="WR"] { border-left-color: var(--WR); }
-    .player-row[data-pos="TE"] { border-left-color: var(--TE); }
-    .player-row.taken[data-pos] { border-left-color: transparent; }
+    .player-table thead th.th-r { text-align: right; }
+    .player-table thead th.th-c { text-align: center; }
+    .player-table tbody tr.player-row { cursor: pointer; border-bottom: 1px solid var(--border-soft, rgba(128,128,128,0.07)); }
+    .player-table tbody tr.player-row:active { background: var(--selected); }
+    .player-table tbody tr.player-row.selected { background: var(--selected); }
+    .player-table tbody tr.player-row.taken { opacity: 0.32; }
+    .player-table tbody tr.player-row.stack .pt-name { color: var(--green); font-weight: 700; }
+    .player-table td { padding: 6px 6px; vertical-align: middle; }
+    .player-table td:first-child { padding-left: 10px; border-left: 3px solid transparent; }
+    .player-table tr[data-pos="QB"] td:first-child { border-left-color: var(--QB); }
+    .player-table tr[data-pos="RB"] td:first-child { border-left-color: var(--RB); }
+    .player-table tr[data-pos="WR"] td:first-child { border-left-color: var(--WR); }
+    .player-table tr[data-pos="TE"] td:first-child { border-left-color: var(--TE); }
+    .player-table tr.taken td:first-child { border-left-color: transparent !important; }
+    .pt-score { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); text-align: right; }
+    .pt-num   { text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); }
+    .pt-name  { font-weight: 600; }
+    .pt-sub   { color: var(--muted); font-size: 0.85em; }
     .list-sort-bar { display: flex; gap: 6px; margin-bottom: 6px; }
     .sort-btn { flex: 1; padding: 5px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 0.72em; font-weight: 600; cursor: pointer; }
     .sort-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .adp-badge { min-width: 26px; text-align: center; font-size: 0.7em; color: var(--muted); font-weight: 700; flex-shrink: 0; }
-    .p-pos { font-size: 0.65em; font-weight: 700; padding: 1px 4px; border-radius: 3px; color: #fff; flex-shrink: 0; }
+    .p-pos { font-size: 0.65em; font-weight: 700; padding: 1px 4px; border-radius: 3px; color: #fff; flex-shrink: 0; margin-right: 4px; }
     .p-pos.QB { background: var(--QB); } .p-pos.RB { background: var(--RB); }
     .p-pos.WR { background: var(--WR); } .p-pos.TE { background: var(--TE); }
-    .p-body { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.85em; font-weight: 600; }
-    .p-body .p-sub { font-weight: 400; color: var(--muted); font-size: 0.85em; }
-    .p-right { flex-shrink: 0; text-align: right; font-size: 0.7em; color: var(--muted); line-height: 1.6; }
-    .taken-by { font-size: 0.65em; font-weight: 700; padding: 1px 5px; border-radius: 10px; flex-shrink: 0; }
+    .taken-by { font-size: 0.65em; font-weight: 700; padding: 1px 5px; border-radius: 10px; margin-left: 5px; }
     .taken-by.mine { background: var(--mine-bg); color: var(--accent); }
     .taken-by.opp  { background: var(--opp-bg); color: var(--muted); }
 
@@ -472,8 +478,9 @@
     <button class="btn-undo" id="btnCancel" title="Cancel">✕</button>
   </div>
   <div class="list-sort-bar">
-    <button class="sort-btn active" id="sortAdpBtn">Sort: ADP</button>
-    <button class="sort-btn" id="sortRankBtn">Sort: My Rank</button>
+    <button class="sort-btn active" id="sortAdpBtn">ADP</button>
+    <button class="sort-btn" id="sortRankBtn">My Rank</button>
+    <button class="sort-btn" id="sortScoreBtn">Score</button>
   </div>
   <div class="player-list" id="playerList"><div class="spinner">Loading players…</div></div>
 </div>
@@ -1238,42 +1245,66 @@ function getVisiblePlayers() {
 }
 
 function renderPlayerList() {
-  const players = getVisiblePlayers();
+  const myTurn = isMyTurn(state.overallPick, settings.numTeams, settings.myPosition);
+  const pickForScore = myTurn
+    ? state.overallPick
+    : (nextMyOverallPick(state.overallPick, settings.numTeams, settings.myPosition) || state.overallPick);
+  const nextMyPick = nextMyOverallPick(pickForScore + 1, settings.numTeams, settings.myPosition);
+  const allAvailable = applyCustomRanks(PLAYERS.filter(p => !state.takenIds.has(p.id)));
+  const scoreMap = {};
+  for (const p of allAvailable) {
+    scoreMap[p.id] = calculateValue(p, pickForScore, state.myTeam, STACK_INTENSITY, nextMyPick, allAvailable);
+  }
+
+  let players = getVisiblePlayers();
+  if (listSortMode === 'score') {
+    const avail = players.filter(p => !state.takenIds.has(p.id));
+    const taken = players.filter(p =>  state.takenIds.has(p.id));
+    avail.sort((a, b) => (scoreMap[b.id] || 0) - (scoreMap[a.id] || 0));
+    players = [...avail, ...taken];
+  }
+
   const ul = document.getElementById('playerList');
   if (!players.length) { ul.innerHTML = '<div class="spinner">No players found</div>'; return; }
-  const myTeams  = new Set(state.myTeam.map(p => p.team));
+
+  const myTeams   = new Set(state.myTeam.map(p => p.team));
   const myQBTeams = new Set(state.myTeam.filter(p => p.pos === 'QB').map(p => p.team));
-  ul.innerHTML = players.map(p => {
+
+  const rows = players.map(p => {
     const isTaken    = state.takenIds.has(p.id);
     const isMine     = state.myTeam.some(t => t.id === p.id);
     const isStack    = !isTaken && myTeams.has(p.team);
     const isSelected = selectedPlayer?.id === p.id;
-    const badge = isTaken
-      ? `<span class="taken-by ${isMine ? 'mine' : 'opp'}">${isMine ? 'Mine' : 'Taken'}</span>` : '';
-
-    // ⚡ QB stack icon: WR/TE whose QB I own, or QB whose WR/TE I own
-    const isQBStack = !isTaken && (
+    const isQBStack  = !isTaken && (
       (['WR','TE'].includes(p.pos) && myQBTeams.has(p.team)) ||
       (p.pos === 'QB' && state.myTeam.some(t => ['WR','TE'].includes(t.pos) && t.team === p.team))
     );
-
-    const byeStr   = p.bye ? ` · bye ${p.bye}` : '';
-    const wk17col  = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'var(--muted)';
-    const wk17str  = p.week17 ? `<span style="color:${wk17col}">wk 17 ${p.week17}</span>` : '—';
+    const badge    = isTaken ? `<span class="taken-by ${isMine?'mine':'opp'}">${isMine?'Mine':'Taken'}</span>` : '';
     const cr       = customRankMap[p.id];
-    const rankBadge = cr != null
-      ? `<div class="adp-badge" style="color:var(--accent)" title="My rank">#${cr}</div>`
-      : `<div class="adp-badge" style="color:var(--muted2)">${Math.round(p.adp) || '—'}</div>`;
-    return `<div class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
-         data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
-      <div class="adp-badge">${p.adp}</div>
-      ${rankBadge}
-      <span class="p-pos ${p.pos}">${p.pos}</span>
-      <div class="p-body">${p.name}${isQBStack ? ' ⚡' : ''} <span class="p-sub">· ${p.team}${byeStr}</span></div>
-      <div class="p-right">${wk17str}</div>
-      ${badge}
-    </div>`;
+    const score    = scoreMap[p.id];
+    const scoreStr = (!isTaken && score != null) ? score.toFixed(1) : '';
+    const wk17col  = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'var(--muted)';
+    const byeStr   = p.bye ? ` · bye ${p.bye}` : '';
+    return `<tr class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
+        data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
+      <td class="pt-score">${scoreStr}</td>
+      <td class="pt-num">${Math.round(p.adp)||'—'}</td>
+      <td class="pt-num" style="color:${cr!=null?'var(--accent)':'var(--muted2)'}">${cr!=null?'#'+cr:'—'}</td>
+      <td><span class="p-pos ${p.pos}">${p.pos}</span><span class="pt-name">${p.name}${isQBStack?' ⚡':''}</span><span class="pt-sub"> · ${p.team}${byeStr}</span>${badge}</td>
+      <td style="text-align:center;color:${wk17col};font-size:0.75em">${p.week17||'—'}</td>
+    </tr>`;
   }).join('');
+
+  ul.innerHTML = `<table class="player-table">
+    <thead><tr>
+      <th class="th-r">Score</th>
+      <th class="th-c">ADP</th>
+      <th class="th-c">Rank</th>
+      <th>Player</th>
+      <th class="th-c">Wk17</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
 }
 
 function selectPlayer(id) {
@@ -1294,18 +1325,16 @@ function hideActionBar() {
 document.getElementById('btnOppPick').addEventListener('click', () => { if (selectedPlayer) addPick(selectedPlayer, false); });
 document.getElementById('btnCancel').addEventListener('click', hideActionBar);
 
-document.getElementById('sortAdpBtn').addEventListener('click', () => {
-  listSortMode = 'adp';
-  document.getElementById('sortAdpBtn').classList.add('active');
-  document.getElementById('sortRankBtn').classList.remove('active');
+function setSortMode(mode) {
+  listSortMode = mode;
+  document.getElementById('sortAdpBtn').classList.toggle('active', mode === 'adp');
+  document.getElementById('sortRankBtn').classList.toggle('active', mode === 'rank');
+  document.getElementById('sortScoreBtn').classList.toggle('active', mode === 'score');
   renderPlayerList();
-});
-document.getElementById('sortRankBtn').addEventListener('click', () => {
-  listSortMode = 'rank';
-  document.getElementById('sortRankBtn').classList.add('active');
-  document.getElementById('sortAdpBtn').classList.remove('active');
-  renderPlayerList();
-});
+}
+document.getElementById('sortAdpBtn').addEventListener('click', () => setSortMode('adp'));
+document.getElementById('sortRankBtn').addEventListener('click', () => setSortMode('rank'));
+document.getElementById('sortScoreBtn').addEventListener('click', () => setSortMode('score'));
 
 function addPick(player, isMine) {
   const pickNum = state.overallPick;
