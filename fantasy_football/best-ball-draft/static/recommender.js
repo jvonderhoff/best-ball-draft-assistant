@@ -123,6 +123,10 @@ function playoffStackReason(player, myTeam) {
 // Base roster targets for an 18-round best-ball draft.
 const BASE_TARGETS  = { QB: 2, RB: 6, WR: 8, TE: 2 };
 const DRAFT_ROUNDS  = 18;
+// Hard caps on roster size per position — exceeding these always draws a strong penalty.
+const MAX_ROSTER    = { QB: 3, RB: 8, WR: 10, TE: 3 };
+// Sum of BASE_TARGETS — used to normalise deficit pressure.
+const MAX_DEFICIT   = Object.values(BASE_TARGETS).reduce((a, b) => a + b, 0);
 
 // ADP gap between the last "needed" player at a position and the next one after.
 // A large gap means the position gets dramatically worse if you wait — high scarcity.
@@ -149,7 +153,7 @@ function dynamicTarget(pos, myTeam) {
   const have   = myTeam.filter(p => p.pos === pos).length;
   const round  = myTeam.length + 1;
   const expectedSoFar = base * (round / DRAFT_ROUNDS);
-  const catchup = Math.min(base, Math.max(0, Math.round(expectedSoFar) - have));
+  const catchup = Math.min(Math.ceil(base / 2), Math.max(0, Math.round(expectedSoFar) - have));
   return base + catchup;
 }
 
@@ -173,21 +177,23 @@ function capitalAllocationInfo(player, myTeam, available) {
     // Late rounds: boost driven purely by how short you are on this position,
     //              ignoring tiers since late-round talent is unpredictable.
     const needFrac   = Math.min(1.0, need / (BASE_TARGETS[pos] || 1));
-    const cliffBoost = scarcity * 0.20 * lateFade;
-    const needBoost  = needFrac * 0.15 * (1 - lateFade);
+    const cliffBoost = scarcity * 0.25 * lateFade;
+    const needBoost  = needFrac * 0.20 * (1 - lateFade);
     return { mult: 1 + cliffBoost + needBoost, target, need, cliff, totalDeficit: 0 };
   }
 
-  // Over dynamic target — penalty scales with how many other positions need help,
-  // but fades in late rounds (13+) where cheap depth picks have low opportunity cost.
+  // Over dynamic target — penalty scales with how many other positions need help.
+  // Floor of 0.5 on lateFade keeps the penalty meaningful even in late rounds —
+  // taking a 10th WR in round 15 still has real opportunity cost if you need RBs.
   const totalDeficit = Object.entries(BASE_TARGETS).reduce((sum, [p, t]) => {
     if (p === pos) return sum;
     return sum + Math.max(0, t - myTeam.filter(m => m.pos === p).length);
   }, 0);
-  const maxDeficit      = Object.values(BASE_TARGETS).reduce((a, b) => a + b, 0);
-  const lateFade        = Math.max(0, Math.min(1, (DRAFT_ROUNDS - round) / 5));
-  const penaltyStrength = (totalDeficit / maxDeficit) * 0.20 * lateFade;
-  return { mult: 1 - penaltyStrength, target, need, cliff: 0, totalDeficit };
+  const lateFade        = Math.max(0.5, Math.min(1, (DRAFT_ROUNDS - round) / 5));
+  const penaltyStrength = (totalDeficit / MAX_DEFICIT) * 0.25 * lateFade;
+  // Hard ceiling: past MAX_ROSTER the penalty is severe regardless of deficit.
+  const maxMult = (have >= (MAX_ROSTER[pos] || Infinity)) ? 0.60 : 1.0;
+  return { mult: Math.min(maxMult, 1 - penaltyStrength), target, need, cliff: 0, totalDeficit };
 }
 
 // ── Bye week helpers ──────────────────────────────────────────────────────────
@@ -250,6 +256,19 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
   const qbTeams = getMyQBTeams(myTeam);
   let mult = 1.0;
 
+  // Pre-compute capital pressure so stack bonuses can be dampened when over-allocated.
+  // stackDamper = 1.0 when position is needed or balanced; shrinks toward 0.4 as
+  // other positions fall further behind while this one is over-target.
+  let stackDamper = 1.0;
+  let capNeedForWait = 0;
+  if (stackIntensity !== 'off' && available.length) {
+    const capPre = capitalAllocationInfo(player, myTeam, available);
+    capNeedForWait = capPre.need;
+    if (capPre.need < 0) {
+      stackDamper = Math.max(0.4, 1 - (capPre.totalDeficit / MAX_DEFICIT) * 0.6);
+    }
+  }
+
   // Zero QB emergency — having no QB past round 8 is a critical situation.
   // Scales from ×1.30 at round 9 up to ×2.00 at round 16+, overriding the normal urgency math.
   if (pos === 'QB' && myQBs === 0 && userRound >= 9) {
@@ -281,10 +300,10 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
 
     if (['WR', 'TE'].includes(pos)) {
       if (qbTeams.has(player.team)) {
-        if (existingCatchers === 0)      apply(s.first,  'Stack: 1st PC',  `${player.team} QB stack`);
-        else if (existingCatchers === 1) apply(s.second, 'Stack: 2nd PC',  `${player.team} QB stack`);
+        if (existingCatchers === 0)      apply(1 + (s.first  - 1) * stackDamper, 'Stack: 1st PC',  `${player.team} QB stack`);
+        else if (existingCatchers === 1) apply(1 + (s.second - 1) * stackDamper, 'Stack: 2nd PC',  `${player.team} QB stack`);
       } else if (existingCatchers >= 1) {
-        apply(s.cluster, 'Stack: receiver room', `${existingCatchers} PCs, no QB yet`);
+        apply(1 + (s.cluster - 1) * stackDamper, 'Stack: receiver room', `${existingCatchers} PCs, no QB yet`);
       }
     }
 
@@ -326,12 +345,12 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
           }
         }
         const note = `${existingCatchers} PC${existingCatchers > 1 ? 's' : ''} owned, window ${nextMyPick ? nextMyPick - myPickNumber : '?'}, ceil ×${ceiling.toFixed(2)}`;
-        apply(bringbackMult, 'Stack: bring-back QB', note);
+        apply(1 + (bringbackMult - 1) * stackDamper, 'Stack: bring-back QB', note);
       }
     }
 
     if (pos === 'RB' && myTeam.some(t => t.team === player.team && t.pos !== 'RB')) {
-      apply(s.rbCorrel, 'Stack: RB correl', `${player.team} game-script`);
+      apply(1 + (s.rbCorrel - 1) * stackDamper, 'Stack: RB correl', `${player.team} game-script`);
     }
 
   }
@@ -342,7 +361,7 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
   // Skipped when stack intensity is off so pure ADP/value mode is truly stack-free.
   if (stackIntensity !== 'off' && pos !== 'QB') {
     const pb = getPlayoffBonus(player, myTeam, userRound);
-    if (pb > 1.001) apply(pb, 'Playoff stack', playoffStackReason(player, myTeam) || '');
+    if (pb > 1.001) apply(1 + (pb - 1) * stackDamper, 'Playoff stack', playoffStackReason(player, myTeam) || '');
   }
 
 
@@ -362,9 +381,9 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
 
   // Draft window discount: if this player projects to survive past my NEXT pick,
   // soften his value now so an equally-needed player who WON'T survive gets taken
-  // first. Lets me grab the safe-to-wait guy on the next turn instead.
-  // Skipped in stack-off mode to keep it a pure ADP/value signal.
-  if (stackIntensity !== 'off') {
+  // first. Suppressed when position is scarce (capNeed > 0) — if you need this
+  // position, don't talk yourself out of taking the available option.
+  if (stackIntensity !== 'off' && capNeedForWait <= 0) {
     const { mult: waitMult, buffer } = waitabilityInfo(player, myPickNumber, nextMyPick);
     if (waitMult < 0.999) {
       apply(waitMult, 'Draft window', `likely avail next pick (ADP ${player.adp} vs next pick ${nextMyPick}, +${Math.round(buffer)} cushion)`);
