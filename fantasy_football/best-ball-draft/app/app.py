@@ -1550,6 +1550,38 @@ def _persist_saved_drafts():
 
 _load_saved_drafts()
 
+def _bg_discover_drafts():
+    """On startup, auto-discover live DK drafts and merge into saved list.
+    Runs in a background thread so it doesn't block the first request.
+    Compensates for DK_SAVED_DRAFTS env var being stale after a deploy or restart."""
+    import time as _time
+    _time.sleep(3)  # let gunicorn finish starting before hitting external APIs
+    try:
+        from app.data.api_fetcher import fetch_my_dk_drafts
+        drafts = fetch_my_dk_drafts()
+        added = []
+        for d in drafts:
+            did = str(d['id'])
+            if did not in _saved_draft_ids:
+                _saved_draft_ids[did] = {
+                    'name': d.get('name', f'Draft #{did}'),
+                    'entry_id': d.get('entry_id'),
+                    'saved_at': _time.time(),
+                }
+                added.append(did)
+            elif d.get('entry_id'):
+                _saved_draft_ids[did]['entry_id'] = d['entry_id']
+        if added:
+            _persist_saved_drafts()
+            print(f'[Drafts] Auto-discovered {len(added)} new draft(s) on startup: {added}')
+        else:
+            print(f'[Drafts] Startup discovery: {len(drafts)} live draft(s), none new')
+    except Exception as e:
+        print(f'[Drafts] Startup discovery error: {e}')
+
+import threading as _threading
+_threading.Thread(target=_bg_discover_drafts, daemon=True).start()
+
 
 @app.route('/api/dk-draft/save-id', methods=['POST'])
 def save_draft_id():
