@@ -900,12 +900,21 @@ async function pullAllDrafts() {
     const d = await r.json();
     const drafts = d.drafts || [];
     if (!drafts.length) return;
-    // Only pull drafts whose cached pick state is older than 30 s
-    await Promise.all(drafts.map(dr => {
-      if (getCached(`picks_${dr.id}`, 30 * 1000)) return Promise.resolve();
-      return fetch(`/api/dk-draft/pull/${encodeURIComponent(dr.id)}`, { method: 'POST' }).catch(() => {});
+    // Pull each draft independently; re-render as each one completes so the
+    // list populates progressively rather than waiting for all 11 to finish.
+    await Promise.all(drafts.map(async dr => {
+      if (getCached(`picks_${dr.id}`, 30 * 1000)) return;
+      try {
+        const res = await fetch(`/api/dk-draft/pull/${encodeURIComponent(dr.id)}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.error) {
+          // Permanent failure (completed/expired draft) — remove from saved list
+          // so it stops cluttering the UI on every load.
+          await fetch(`/api/dk-draft/delete-id/${encodeURIComponent(dr.id)}`, { method: 'DELETE' }).catch(() => {});
+        }
+        loadDraftList();  // re-render after each pull
+      } catch { /* ignore */ }
     }));
-    loadDraftList();
   } catch { /* ignore */ }
 }
 
