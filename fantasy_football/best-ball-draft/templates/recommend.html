@@ -1326,8 +1326,8 @@ function hideActionBar() {
   selectedPlayer = null;
 }
 
-document.getElementById('btnOppPick').addEventListener('click', () => { if (selectedPlayer) addPick(selectedPlayer, false); });
-document.getElementById('btnCancel').addEventListener('click', hideActionBar);
+document.getElementById('btnOppPick')?.addEventListener('click', () => { if (selectedPlayer) addPick(selectedPlayer, false); });
+document.getElementById('btnCancel')?.addEventListener('click', hideActionBar);
 
 function setSortMode(mode) {
   listSortMode = mode;
