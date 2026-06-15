@@ -1286,7 +1286,7 @@ function renderPlayerList() {
     const wk17col  = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'var(--muted)';
     const byeStr   = p.bye ? ` · bye ${p.bye}` : '';
     return `<tr class="player-row ${isTaken?'taken':''} ${isStack?'stack':''} ${isSelected?'selected':''}"
-        data-id="${p.id}" data-pos="${p.pos}" onclick="selectPlayer('${p.id}')">
+        data-id="${p.id}" data-pos="${p.pos}">
       <td class="pt-score">${scoreStr}</td>
       <td class="pt-num">${Math.round(p.adp)||'—'}</td>
       <td class="pt-num" style="color:${cr!=null?'var(--accent)':'var(--muted2)'}">${cr!=null?'#'+cr:'—'}</td>
@@ -1322,6 +1322,10 @@ function hideActionBar() {
   selectedPlayer = null;
 }
 
+document.getElementById('playerList').addEventListener('click', e => {
+  const row = e.target.closest('tr.player-row');
+  if (row) selectPlayer(row.dataset.id);
+});
 document.getElementById('btnOppPick').addEventListener('click', () => { if (selectedPlayer) addPick(selectedPlayer, false); });
 document.getElementById('btnCancel').addEventListener('click', hideActionBar);
 
