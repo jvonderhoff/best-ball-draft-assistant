@@ -387,7 +387,7 @@
     <span>Your active drafts:</span>
     <span style="display:flex;gap:10px;align-items:center;">
       <a href="/setup" style="color:var(--accent);font-size:0.85em;text-decoration:none;">⚙ Setup</a>
-      <button onclick="loadDraftList()" style="background:none;border:none;color:var(--accent);font-size:0.85em;cursor:pointer;">↻ Refresh</button>
+      <button onclick="loadDraftList({ discover: true }).then(() => pullAllDrafts())" style="background:none;border:none;color:var(--accent);font-size:0.85em;cursor:pointer;">↻ Refresh</button>
     </span>
   </div>
   <div id="draftListCards" style="display:flex;flex-direction:column;gap:8px;">
@@ -841,7 +841,7 @@ function renderDraftListCards(drafts) {
   }).join('');
 }
 
-async function loadDraftList() {
+async function loadDraftList({ discover = false } = {}) {
   const el = document.getElementById('draftListCards');
 
   // Show cached list immediately — avoids blank screen while fetching
@@ -851,6 +851,9 @@ async function loadDraftList() {
   } else {
     el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:20px;">Loading…</div>`;
   }
+
+  // Optionally auto-discover new drafts from DK before rendering
+  if (discover) await refreshFromDKSilent();
 
   // Fetch fresh data in parallel; render when both settle
   const [dkRes, dbRes] = await Promise.allSettled([
@@ -887,8 +890,8 @@ async function refreshFromDKSilent() {
   try {
     const r = await fetch('/api/dk-draft/refresh-from-dk', { method: 'POST' });
     const d = await r.json();
-    if (d.ok && d.added?.length) loadDraftList();
-  } catch { /* ignore — auth may not be set up */ }
+    return d.ok ? (d.added || []) : [];
+  } catch { return []; /* ignore — auth may not be set up */ }
 }
 
 async function pullAllDrafts() {
@@ -907,8 +910,7 @@ async function pullAllDrafts() {
 }
 
 function startDraftListPolling() {
-  loadDraftList();
-  refreshFromDKSilent().then(() => pullAllDrafts());
+  loadDraftList({ discover: true }).then(() => pullAllDrafts());
 }
 function stopDraftListPolling() {
   // no-op — draft list no longer auto-polls
