@@ -387,7 +387,7 @@
     <span>Your active drafts:</span>
     <span style="display:flex;gap:10px;align-items:center;">
       <a href="/setup" style="color:var(--accent);font-size:0.85em;text-decoration:none;">⚙ Setup</a>
-      <button onclick="loadDraftList({ discover: true }).then(() => pullAllDrafts())" style="background:none;border:none;color:var(--accent);font-size:0.85em;cursor:pointer;">↻ Refresh</button>
+      <button onclick="loadDraftList()" style="background:none;border:none;color:var(--accent);font-size:0.85em;cursor:pointer;">↻ Refresh</button>
     </span>
   </div>
   <div id="draftListCards" style="display:flex;flex-direction:column;gap:8px;">
@@ -841,7 +841,7 @@ function renderDraftListCards(drafts) {
   }).join('');
 }
 
-async function loadDraftList({ discover = false } = {}) {
+async function loadDraftList() {
   const el = document.getElementById('draftListCards');
 
   // Show cached list immediately — avoids blank screen while fetching
@@ -851,9 +851,6 @@ async function loadDraftList({ discover = false } = {}) {
   } else {
     el.innerHTML = `<div style="color:#546e7a;font-size:0.85em;text-align:center;padding:20px;">Loading…</div>`;
   }
-
-  // Optionally auto-discover new drafts from DK before rendering
-  if (discover) await refreshFromDKSilent();
 
   // Fetch fresh data in parallel; render when both settle
   const [dkRes, dbRes] = await Promise.allSettled([
@@ -890,8 +887,8 @@ async function refreshFromDKSilent() {
   try {
     const r = await fetch('/api/dk-draft/refresh-from-dk', { method: 'POST' });
     const d = await r.json();
-    return d.ok ? (d.added || []) : [];
-  } catch { return []; /* ignore — auth may not be set up */ }
+    if (d.ok && d.added?.length) loadDraftList();
+  } catch { /* ignore — auth may not be set up */ }
 }
 
 async function pullAllDrafts() {
@@ -900,26 +897,18 @@ async function pullAllDrafts() {
     const d = await r.json();
     const drafts = d.drafts || [];
     if (!drafts.length) return;
-    // Pull each draft independently; re-render as each one completes so the
-    // list populates progressively rather than waiting for all 11 to finish.
-    await Promise.all(drafts.map(async dr => {
-      if (getCached(`picks_${dr.id}`, 30 * 1000)) return;
-      try {
-        const res = await fetch(`/api/dk-draft/pull/${encodeURIComponent(dr.id)}`, { method: 'POST' });
-        const data = await res.json();
-        if (data.error) {
-          // Permanent failure (completed/expired draft) — remove from saved list
-          // so it stops cluttering the UI on every load.
-          await fetch(`/api/dk-draft/delete-id/${encodeURIComponent(dr.id)}`, { method: 'DELETE' }).catch(() => {});
-        }
-        loadDraftList();  // re-render after each pull
-      } catch { /* ignore */ }
+    // Only pull drafts whose cached pick state is older than 30 s
+    await Promise.all(drafts.map(dr => {
+      if (getCached(`picks_${dr.id}`, 30 * 1000)) return Promise.resolve();
+      return fetch(`/api/dk-draft/pull/${encodeURIComponent(dr.id)}`, { method: 'POST' }).catch(() => {});
     }));
+    loadDraftList();
   } catch { /* ignore */ }
 }
 
 function startDraftListPolling() {
-  loadDraftList({ discover: true }).then(() => pullAllDrafts());
+  loadDraftList();
+  refreshFromDKSilent().then(() => pullAllDrafts());
 }
 function stopDraftListPolling() {
   // no-op — draft list no longer auto-polls
