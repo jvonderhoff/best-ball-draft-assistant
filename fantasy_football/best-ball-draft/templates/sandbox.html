@@ -128,6 +128,14 @@
     /* ── Right column layout ── */
     .right-col { display: flex; flex-direction: column; gap: 12px; }
 
+    /* ── Copy / feedback button ── */
+    .copy-btn {
+      padding: 5px 12px; border-radius: 6px; border: 1px solid var(--accent);
+      background: none; color: var(--accent); font-size: 0.78em; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+    }
+    .copy-btn:active, .copy-btn.copied { background: var(--accent); color: #fff; }
+
     /* ── Roster view ── */
     .roster-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
     .roster-pos-group { }
@@ -197,6 +205,13 @@
       </div>
     </div>
 
+    <!-- Load from live draft -->
+    <div class="panel" style="margin-bottom:12px">
+      <div class="panel-title">Load from Live Draft</div>
+      <select class="draft-select" id="liveDraftSelect"><option value="">Loading…</option></select>
+      <button class="load-btn" id="loadLiveDraftBtn" style="width:100%;margin-top:6px">Load My Current Roster</button>
+    </div>
+
     <!-- Quick Simulate -->
     <div class="panel" style="margin-bottom:12px">
       <div class="panel-title">Quick Simulate</div>
@@ -256,7 +271,10 @@
 
     <!-- Recommendations -->
     <div class="panel">
-      <div class="results-hdr-title" style="font-size:0.75em;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Recommendations</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="results-hdr-title" style="font-size:0.75em;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Recommendations</div>
+        <button class="copy-btn" id="copyScenarioBtn" onclick="copyScenario()">📋 Copy for feedback</button>
+      </div>
       <div id="results"><div class="no-recs">Configure a scenario and hit Run.</div></div>
     </div>
 
@@ -555,6 +573,7 @@ function run() {
 
   const nextMyPick = nextMyOverallPick(pickNum + 1, numTeams, myPos);
   const recs = getTopRecommendations(available, myTeamWithRounds, pickNum, intensity, n, nextMyPick);
+  _lastRecs = recs;
 
   renderNeeds(myTeamWithRounds);
   renderRosterView();
@@ -652,11 +671,139 @@ makeDropdown('takenSearch', 'takenDropdown', p => {
   document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
 });
 
+// ── Load from live draft ──────────────────────────────────────────────────────
+let _lastRecs = [];
+
+async function loadLiveDrafts() {
+  try {
+    const r = await fetch('/api/my-dk-drafts');
+    const d = await r.json();
+    const sel = document.getElementById('liveDraftSelect');
+    const drafts = d.drafts || [];
+    if (!drafts.length) {
+      sel.innerHTML = '<option value="">No live drafts found</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">— select a draft —</option>' +
+      drafts.map(dr => {
+        const label = dr.name || `Draft #${dr.id}`;
+        const pos   = dr.my_position ? ` · Pos ${dr.my_position}` : '';
+        const pick  = dr.overall_pick ? ` · Pick ${dr.overall_pick}` : '';
+        return `<option value="${dr.id}">${label}${pos}${pick}</option>`;
+      }).join('');
+  } catch {
+    document.getElementById('liveDraftSelect').innerHTML = '<option value="">Failed to load</option>';
+  }
+}
+
+document.getElementById('loadLiveDraftBtn').addEventListener('click', async () => {
+  const draftId = document.getElementById('liveDraftSelect').value;
+  if (!draftId) return;
+  const btn = document.getElementById('loadLiveDraftBtn');
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+  try {
+    const r = await fetch(`/api/dk-draft/pull/${encodeURIComponent(draftId)}`, { method: 'POST' });
+    const d = await r.json();
+    if (d.error) { btn.textContent = 'Error — try again'; btn.disabled = false; return; }
+
+    const numTeams = d.num_teams || 12;
+    const myPos    = d.my_position || 1;
+    const picks    = d.picks || [];
+    const username = 'jvonderhoff';
+
+    // My picks
+    const myPicks = picks.filter(p => (p.username || '').toLowerCase() === username);
+    myRoster = myPicks.map(p => {
+      const live = PLAYERS.find(lp => lp.name === p.player_name && lp.pos === p.pos);
+      return live || { id: p.draftable_id, name: p.player_name, pos: p.pos, team: p.team || '', adp: p.adp || 999 };
+    });
+
+    // Opponent picks
+    const myIds = new Set(myPicks.map(p => p.draftable_id));
+    takenIds = new Set(
+      picks.filter(p => !myIds.has(p.draftable_id)).map(p => {
+        const live = PLAYERS.find(lp => lp.name === p.player_name && lp.pos === p.pos);
+        return live ? live.id : p.draftable_id;
+      })
+    );
+
+    document.getElementById('myPosition').value = myPos;
+    document.getElementById('numTeams').value    = numTeams;
+    document.getElementById('takenCount').textContent = takenIds.size;
+
+    // Set sim round to current pick
+    const curRound = d.overall_pick ? Math.ceil(d.overall_pick / numTeams) : myRoster.length + 1;
+    document.getElementById('simRound').value = curRound;
+    updatePickDisplay();
+
+    renderRosterChips();
+    run();
+  } catch (e) {
+    btn.textContent = 'Error — try again';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Load My Current Roster';
+  }
+});
+
+// ── Copy scenario for feedback ────────────────────────────────────────────────
+function copyScenario() {
+  const pickNum  = computePickNum();
+  const numTeams = parseInt(document.getElementById('numTeams').value) || 12;
+  const myPos    = parseInt(document.getElementById('myPosition').value) || 1;
+  const round    = Math.ceil(pickNum / numTeams);
+  const intensity = document.getElementById('stackIntensity').value;
+
+  const posOrder = { QB: 0, RB: 1, WR: 2, TE: 3 };
+  const grouped  = { QB: [], RB: [], WR: [], TE: [] };
+  myRoster.forEach(p => { if (grouped[p.pos]) grouped[p.pos].push(p); });
+
+  const rosterLines = Object.entries(grouped)
+    .filter(([, ps]) => ps.length)
+    .map(([pos, ps]) => `  ${pos}: ${ps.map(p => `${p.name} (ADP ${Math.round(p.adp||0)})`).join(', ')}`)
+    .join('\n');
+
+  const targets = { QB: 2, RB: 6, WR: 8, TE: 2 };
+  const counts  = {};
+  myRoster.forEach(p => { counts[p.pos] = (counts[p.pos] || 0) + 1; });
+  const needsLine = Object.entries(targets)
+    .map(([pos, t]) => `${pos}:${counts[pos]||0}/${t}`)
+    .join('  ');
+
+  const recLines = _lastRecs.slice(0, 7).map((r, i) => {
+    const p = r.player;
+    const mults = (r.bd || []).map(b => `${b.label} (×${b.mult.toFixed(2)})`).join(', ');
+    return `  #${i+1} ${p.pos} ${p.name} · ADP ${p.adp} · Score ${r.value.toFixed(2)}${mults ? '\n       ' + mults : ''}`;
+  }).join('\n');
+
+  const text = [
+    `=== Sandbox Scenario ===`,
+    `Pick #${pickNum} · Round ${round} · Draft pos ${myPos}/${numTeams} · Stack: ${intensity}`,
+    ``,
+    `My Roster (${myRoster.length} players):`,
+    rosterLines || '  (empty)',
+    ``,
+    `Needs: ${needsLine}`,
+    ``,
+    `Top Recommendations:`,
+    recLines || '  (none — run first)',
+  ].join('\n');
+
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copyScenarioBtn');
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '📋 Copy for feedback'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
 document.getElementById('runBtn').disabled = true;
 document.getElementById('runBtn').textContent = 'Loading players…';
 updatePickDisplay();
 loadPlayers();
 loadDraftList();
+loadLiveDrafts();
 </script>
 </body>
 </html>
