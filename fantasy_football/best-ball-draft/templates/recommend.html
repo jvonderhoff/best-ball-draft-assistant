@@ -961,20 +961,25 @@ function updateDebug(info) {
 
 async function pullLatest() {
   if (!syncDraftId) return;
+  const thisDraftId = syncDraftId;  // capture — user may switch drafts before fetch resolves
   const btn = document.getElementById('pullBtn');
   btn.disabled = true;
   btn.textContent = 'Pulling…';
 
   // Serve cached picks immediately so UI isn't blank while fetching
-  const cachedPicks = getCached(`picks_${syncDraftId}`, 45 * 1000);
-  if (cachedPicks && !state.takenIds.size) {
+  const cachedPicks = getCached(`picks_${thisDraftId}`, 45 * 1000);
+  if (cachedPicks && !state.takenIds.size && syncDraftId === thisDraftId) {
     applyDKPickState(cachedPicks);
-    updateSyncUI(true, `Draft <b>#${syncDraftId}</b> · ${cachedPicks.picks?.length ?? 0} picks · cached`);
+    updateSyncUI(true, `Draft <b>#${thisDraftId}</b> · ${cachedPicks.picks?.length ?? 0} picks · cached`);
   }
 
   try {
-    const r = await fetch(`/api/dk-draft/pull/${encodeURIComponent(syncDraftId)}`, { method: 'POST' });
+    const r = await fetch(`/api/dk-draft/pull/${encodeURIComponent(thisDraftId)}`, { method: 'POST' });
     const data = await r.json();
+
+    // User switched to a different draft while this fetch was in flight — discard results
+    if (syncDraftId !== thisDraftId) return;
+
     const serverPicks = data.picks?.length ?? 0;
 
     if (data.needs_auth) {
@@ -986,18 +991,22 @@ async function pullLatest() {
     updateDebug({ serverOk: r.ok, serverPicks, matched: state.takenIds.size, myTeam: state.myTeam.length, error: data.error || null });
 
     if (data.picks?.length) {
-      setCached(`picks_${syncDraftId}`, data);
+      setCached(`picks_${thisDraftId}`, data);
       applyDKPickState(data);
       updateDebug({ serverOk: true, serverPicks, matched: state.takenIds.size, myTeam: state.myTeam.length, error: null });
     } else {
       updateSyncUI(false, data.error || 'No picks yet');
     }
   } catch (e) {
-    if (!cachedPicks) updateSyncUI(false, 'Server unreachable');
-    updateDebug({ serverOk: false, serverPicks: null, matched: state.takenIds.size, myTeam: state.myTeam.length, error: String(e) });
+    if (syncDraftId === thisDraftId) {
+      if (!cachedPicks) updateSyncUI(false, 'Server unreachable');
+      updateDebug({ serverOk: false, serverPicks: null, matched: state.takenIds.size, myTeam: state.myTeam.length, error: String(e) });
+    }
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Pull Latest';
+    if (syncDraftId === thisDraftId) {
+      btn.disabled = false;
+      btn.textContent = 'Pull Latest';
+    }
   }
 }
 
