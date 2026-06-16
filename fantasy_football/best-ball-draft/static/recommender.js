@@ -133,13 +133,13 @@ const MAX_DEFICIT   = Object.values(BASE_TARGETS).reduce((a, b) => a + b, 0);
 function positionalAdpCliff(pos, available, stillNeed) {
   if (stillNeed <= 0) return 0;
   const atPos = available
-    .filter(p => p.pos === pos && p.adp)
-    .sort((a, b) => a.adp - b.adp);
+    .filter(p => p.pos === pos && (p.realAdp ?? p.adp))
+    .sort((a, b) => (a.realAdp ?? a.adp) - (b.realAdp ?? b.adp));
   if (atPos.length < stillNeed) return 150; // almost none left — critical
   const lastNeeded = atPos[stillNeed - 1];
   const firstAfter = atPos[stillNeed];
   if (!firstAfter) return 80;
-  return firstAfter.adp - lastNeeded.adp;
+  return (firstAfter.realAdp ?? firstAfter.adp) - (lastNeeded.realAdp ?? lastNeeded.adp);
 }
 
 // Dynamic target: expands when you're behind pace so catch-up drafting isn't
@@ -222,9 +222,10 @@ function byeWeekWarning(player, myTeam) {
 const WAIT_MAX_DISCOUNT = 0.18;
 
 function waitabilityInfo(player, myPickNumber, nextMyPick) {
-  if (nextMyPick == null || !player.adp) return { mult: 1.0, buffer: 0, safe: false };
+  const adp = player.realAdp ?? player.adp;
+  if (nextMyPick == null || !adp) return { mult: 1.0, buffer: 0, safe: false };
   const windowSize = Math.max(4, nextMyPick - myPickNumber);
-  const buffer     = player.adp - nextMyPick;
+  const buffer     = adp - nextMyPick;
   if (buffer <= 0) return { mult: 1.0, buffer, safe: false };   // at risk — could be gone, no discount
   const ratio      = Math.min(1, buffer / windowSize);
   const confidence = Math.pow(ratio, 0.7);
@@ -336,7 +337,7 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
         let bringbackMult = floor;
         if (nextMyPick != null) {
           const windowSize = Math.max(1, nextMyPick - myPickNumber);
-          const adpGap     = Math.max(0, (player.adp || myPickNumber) - myPickNumber);
+          const adpGap     = Math.max(0, (player.realAdp ?? player.adp ?? myPickNumber) - myPickNumber);
           if (adpGap < windowSize * 2.0) {
             // Concave urgency: rises steeply as adpGap → 0
             const rawUrgency = Math.max(0, 1 - adpGap / windowSize);

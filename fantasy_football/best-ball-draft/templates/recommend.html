@@ -537,10 +537,12 @@ async function loadCustomRankings() {
 }
 
 function applyCustomRanks(players) {
-  if (!useCustomRankings || !Object.keys(customRankMap).length) return players;
+  if (!useCustomRankings || !Object.keys(customRankMap).length) {
+    return players.map(p => p.realAdp != null ? p : { ...p, realAdp: p.adp });
+  }
   return players.map(p => {
     const cr = customRankMap[p.id];
-    return cr != null ? { ...p, adp: cr } : p;
+    return cr != null ? { ...p, adp: cr, realAdp: p.adp } : { ...p, realAdp: p.adp };
   });
 }
 
