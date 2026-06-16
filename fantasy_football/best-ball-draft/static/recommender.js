@@ -284,12 +284,18 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
     apply(emergencyBoost, 'QB emergency', `0 QBs in round ${userRound}`);
   }
 
-  // Bye week penalty for 2nd/3rd QB sharing a bye with an existing QB.
-  // With only 2-3 QBs rostered, a shared bye means zero QB coverage that week.
+  // Bye week penalty for a QB sharing a bye with an existing QB — but only
+  // when no other rostered QB has a DIFFERENT bye to cover that week. If you
+  // already have a QB on a different bye, that week is covered regardless of
+  // this pick, so the overlap is harmless and shouldn't be penalized.
   if (pos === 'QB' && myQBs >= 1 && player.bye) {
-    const qbByeClash = myTeam.find(p => p.pos === 'QB' && p.bye === player.bye && hasRealTeam(p));
-    if (qbByeClash) {
-      apply(0.70, 'QB bye clash', `same bye wk${player.bye} as ${qbByeClash.name.split(' ').pop()}`);
+    const existingQBs     = myTeam.filter(p => p.pos === 'QB' && hasRealTeam(p));
+    const weekIsCovered   = existingQBs.some(p => p.bye && p.bye !== player.bye);
+    if (!weekIsCovered) {
+      const qbByeClash = existingQBs.find(p => p.bye === player.bye);
+      if (qbByeClash) {
+        apply(0.70, 'QB bye clash', `same bye wk${player.bye} as ${qbByeClash.name.split(' ').pop()}, no other QB covers that week`);
+      }
     }
   }
 
