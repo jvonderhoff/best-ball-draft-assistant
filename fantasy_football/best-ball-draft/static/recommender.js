@@ -10,9 +10,9 @@
 const STACK_SETTINGS = {
   //            first   second  qbPull  cluster rbCorrel
   off:    { first: 1.00, second: 1.00, qbPull: 1.00, cluster: 1.00, rbCorrel: 1.00 },
-  light:  { first: 1.15, second: 1.05, qbPull: 1.15, cluster: 1.05, rbCorrel: 1.03 },
-  medium: { first: 1.25, second: 1.10, qbPull: 1.35, cluster: 1.10, rbCorrel: 1.05 },
-  heavy:  { first: 1.40, second: 1.18, qbPull: 1.40, cluster: 1.15, rbCorrel: 1.08 },
+  light:  { first: 1.20, second: 1.08, qbPull: 1.25, cluster: 1.08, rbCorrel: 1.04 },
+  medium: { first: 1.35, second: 1.15, qbPull: 1.50, cluster: 1.12, rbCorrel: 1.06 },
+  heavy:  { first: 1.55, second: 1.25, qbPull: 1.65, cluster: 1.20, rbCorrel: 1.10 },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -260,13 +260,20 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
   // Pre-compute capital pressure so stack bonuses can be dampened when over-allocated.
   // stackDamper = 1.0 when position is needed or balanced; shrinks toward 0.4 as
   // other positions fall further behind while this one is over-target.
+  // Late-round easing: comfortable reaching for stacks once the draft is winding
+  // down — roster spots are mostly bench depth by then, so the damper's floor
+  // rises from 0.4 (round 1) toward 1.0 (round 14+), letting stack bonuses through
+  // largely undamped late even when a position is technically over-allocated.
   let stackDamper = 1.0;
   let capNeedForWait = 0;
   if (stackIntensity !== 'off' && available.length) {
     const capPre = capitalAllocationInfo(player, myTeam, available);
     capNeedForWait = capPre.need;
     if (capPre.need < 0) {
-      stackDamper = Math.max(0.4, 1 - (capPre.totalDeficit / MAX_DEFICIT) * 0.6);
+      const round       = myTeam.length + 1;
+      const lateEase     = Math.min(1, Math.max(0, (round - 4) / 10)); // 0 at R4, 1 at R14+
+      const damperFloor  = 0.4 + 0.6 * lateEase;
+      stackDamper = Math.max(damperFloor, 1 - (capPre.totalDeficit / MAX_DEFICIT) * 0.6);
     }
   }
 
