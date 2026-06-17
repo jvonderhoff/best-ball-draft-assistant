@@ -147,14 +147,26 @@ function positionalAdpCliff(pos, available, stillNeed) {
 // late registers as filling a need rather than over-spending.
 //
 // expectedSoFar: linear pace of base target through the current round.
-// catchup: how many behind pace you are (capped at base so it can't double).
+// catchup: how many behind pace you are (capped at ceil(base/2)).
+//
+// Late-drafter bump: if the FIRST player at this position was drafted after the
+// halfway point of the draft, add 1 to the target permanently — late picks at
+// a position tend to be lower quality, so you need more of them.
 function dynamicTarget(pos, myTeam) {
   const base   = BASE_TARGETS[pos] || 4;
   const have   = myTeam.filter(p => p.pos === pos).length;
   const round  = myTeam.length + 1;
   const expectedSoFar = base * (round / DRAFT_ROUNDS);
   const catchup = Math.min(Math.ceil(base / 2), Math.max(0, Math.round(expectedSoFar) - have));
-  return base + catchup;
+
+  // If the first pick at this position came after the halfway point, the roster
+  // skews toward lower-tier options — bump target by 1 to reflect the extra
+  // depth needed to make up for the lack of an early anchor.
+  const atPos = myTeam.filter(p => p.pos === pos && p.round != null);
+  const firstRound = atPos.length ? Math.min(...atPos.map(p => p.round)) : null;
+  const lateBonus = firstRound != null && firstRound > Math.ceil(DRAFT_ROUNDS / 2) ? 1 : 0;
+
+  return base + catchup + lateBonus;
 }
 
 // Returns { mult, target, need, cliff, totalDeficit } for use in calculateValue.
