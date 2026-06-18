@@ -122,6 +122,39 @@
         .board-player.target { border-style: dashed; }
         .board-player.target .bp-exp { color: var(--accent); }
 
+        /* Exposure + Stacks inner tabs */
+        .exp-inner-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+        .exp-inner-tab { background: none; border: none; color: var(--muted); padding: 6px 16px; font-size: 0.82em; font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.15s; }
+        .exp-inner-tab:hover { color: var(--text); }
+        .exp-inner-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+        /* Exposure table */
+        .exp-tbl-wrap { overflow-x: auto; border-radius: 6px; border: 1px solid var(--border); }
+        .exp-tbl-wrap table { width: 100%; border-collapse: collapse; font-size: 0.8em; }
+        .exp-tbl-wrap thead { background: var(--card-hi, var(--card)); position: sticky; top: 0; z-index: 1; }
+        .exp-tbl-wrap th { padding: 8px 10px; text-align: left; color: var(--muted); font-weight: 700; font-size: 0.78em; letter-spacing: .04em; border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap; user-select: none; }
+        .exp-tbl-wrap th:hover { color: var(--text); }
+        .exp-tbl-wrap th.srt { color: var(--accent); }
+        .exp-tbl-wrap td { padding: 7px 10px; border-bottom: 1px solid var(--border-soft, rgba(128,128,128,0.1)); vertical-align: middle; }
+        .exp-tbl-wrap tr:last-child td { border-bottom: none; }
+        .exp-tbl-wrap tr:hover td { background: var(--border-soft, rgba(128,128,128,0.06)); }
+        .exp-bar-h { display: flex; align-items: center; gap: 5px; }
+        .exp-bar-h .eb { height: 5px; border-radius: 3px; background: var(--accent); }
+        .exp-bar-h .ep { font-size: 0.78em; color: var(--muted); white-space: nowrap; }
+        .clv-g { color: #4caf50; font-weight: 700; }
+        .clv-r { color: #ef5350; font-weight: 700; }
+        .clv-n { color: var(--muted); }
+        .pos-pip { font-size: 0.68em; font-weight: 700; padding: 1px 5px; border-radius: 3px; }
+        .pos-pip.QB { background: #880e4f; color: #f48fb1; }
+        .pos-pip.RB { background: #0d47a1; color: #90caf9; }
+        .pos-pip.WR { background: #1b5e20; color: #a5d6a7; }
+        .pos-pip.TE { background: #e65100; color: #ffcc80; }
+        .stk-badge { display: inline-flex; align-items: center; background: var(--card-hi, var(--card)); border: 1px solid var(--border); border-radius: 4px; padding: 2px 7px; font-size: 0.78em; white-space: nowrap; margin: 2px; }
+        .stk-badge.qb { color: #f48fb1; } .stk-badge.wr { color: #a5d6a7; } .stk-badge.te { color: #ffcc80; }
+        .stacks-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        @media (max-width: 720px) { .stacks-grid { grid-template-columns: 1fr; } }
+        .stk-panel-head { padding: 8px 10px; font-size: 0.72em; font-weight: 700; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+
         /* Collapsed saved-draft rows (click to expand roster) */
         .draft-row { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
         .draft-row:hover { background: var(--border-soft, rgba(128,128,128,0.08)); }
@@ -227,9 +260,70 @@
                 <span id="exposureSubtitle" style="font-size:0.8em;color:var(--muted);"></span>
             </div>
             <div id="exposureBody" style="padding: 14px; display: none;">
-                <div class="section-title">Your board by round — % = exposure across drafts · dashed tile = not yet drafted</div>
-                <div id="exposureBoard">
-                    <p class="empty-history">No rankings or drafts yet</p>
+                <div class="exp-inner-tabs">
+                    <button class="exp-inner-tab active" data-itab="board">Board</button>
+                    <button class="exp-inner-tab" data-itab="table">Exposure Table</button>
+                    <button class="exp-inner-tab" data-itab="stacks">Stacks</button>
+                </div>
+
+                <!-- Board view (existing) -->
+                <div id="itab-board">
+                    <div class="section-title">Your board by round — % = exposure across drafts · dashed tile = not yet drafted</div>
+                    <div id="exposureBoard">
+                        <p class="empty-history">No rankings or drafts yet</p>
+                    </div>
+                </div>
+
+                <!-- Exposure table view -->
+                <div id="itab-table" style="display:none">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+                        <input id="exp-tbl-search" type="text" placeholder="Search player…" style="background:var(--card-hi,var(--card));border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 10px;font-size:0.82em;width:180px;outline:none">
+                        <div style="display:flex;gap:5px" id="exp-tbl-pos-tabs">
+                            <button class="exp-inner-tab active" style="padding:3px 10px;font-size:0.76em" data-epos="">All</button>
+                            <button class="exp-inner-tab" style="padding:3px 10px;font-size:0.76em" data-epos="QB">QB</button>
+                            <button class="exp-inner-tab" style="padding:3px 10px;font-size:0.76em" data-epos="RB">RB</button>
+                            <button class="exp-inner-tab" style="padding:3px 10px;font-size:0.76em" data-epos="WR">WR</button>
+                            <button class="exp-inner-tab" style="padding:3px 10px;font-size:0.76em" data-epos="TE">TE</button>
+                        </div>
+                    </div>
+                    <div class="exp-tbl-wrap">
+                        <table>
+                            <thead><tr>
+                                <th data-esrt="name">Player</th>
+                                <th data-esrt="pos">Pos</th>
+                                <th data-esrt="count" class="srt">Drafts ▼</th>
+                                <th data-esrt="pct">Exposure</th>
+                                <th data-esrt="avgRound">Avg Rd</th>
+                                <th data-esrt="avgPick">Avg Pick</th>
+                                <th data-esrt="avgDraftAdp" title="DK ADP at the time of each draft">ADP @ Draft</th>
+                                <th data-esrt="currentAdp" title="Current DK ADP">Current ADP</th>
+                                <th data-esrt="adpMove" title="Negative = ADP rising (you got ahead of market). Positive = ADP falling.">ADP Move</th>
+                                <th data-esrt="avgClv" title="pick# − ADP at draft. Negative = drafted before market (good).">Avg CLV</th>
+                            </tr></thead>
+                            <tbody id="exp-tbl-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="empty-history" id="exp-tbl-empty" style="display:none">No players found.</div>
+                </div>
+
+                <!-- Stacks view -->
+                <div id="itab-stacks" style="display:none">
+                    <div class="stacks-grid">
+                        <div class="exp-tbl-wrap">
+                            <div class="stk-panel-head">QB + Pass Catcher Pairs</div>
+                            <table><thead><tr>
+                                <th>Drafts</th><th>Exp%</th><th>QB</th><th>Partner</th><th>Pos</th>
+                            </tr></thead><tbody id="stk-pairs-body"></tbody></table>
+                            <div class="empty-history" id="stk-pairs-empty" style="display:none">No stacks found.</div>
+                        </div>
+                        <div class="exp-tbl-wrap">
+                            <div class="stk-panel-head">Full QB Stacks</div>
+                            <table><thead><tr>
+                                <th>Drafts</th><th>Exp%</th><th>QB</th><th>Pass Catchers</th>
+                            </tr></thead><tbody id="stk-full-body"></tbody></table>
+                            <div class="empty-history" id="stk-full-empty" style="display:none">No stacks found.</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -318,6 +412,171 @@
         function buildBoard() {
             _boardBuilt = true;
             renderExposureBoard(_bd.rankings, _bd.exposure, _bd.drafts);
+        }
+
+        // ── Exposure inner tabs ───────────────────────────────────────────────
+        let _activeItab = 'board';
+        document.querySelectorAll('.exp-inner-tab[data-itab]').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                _activeItab = btn.dataset.itab;
+                document.querySelectorAll('.exp-inner-tab[data-itab]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('itab-board').style.display   = _activeItab === 'board'  ? '' : 'none';
+                document.getElementById('itab-table').style.display   = _activeItab === 'table'  ? '' : 'none';
+                document.getElementById('itab-stacks').style.display  = _activeItab === 'stacks' ? '' : 'none';
+                if (_activeItab === 'board' && !_boardBuilt) buildBoard();
+                if (_activeItab === 'table')  renderExpTable();
+                if (_activeItab === 'stacks') renderStacks();
+            });
+        });
+
+        // ── Exposure table ────────────────────────────────────────────────────
+        let _expSort = { col: 'count', dir: -1 };
+        let _expPos  = '';
+        let _expSearch = '';
+
+        function _buildExpRows() {
+            const total = _bd.drafts.length;
+            const map = {};
+            _bd.drafts.forEach(draft => {
+                draft.picks.forEach(pick => {
+                    const pid = pick.player_id;
+                    if (!map[pid]) map[pid] = { name: pick.player_name, pos: pick.pos, team: pick.team, picks: [] };
+                    map[pid].picks.push({ round: pick.round, pickNumber: pick.pick_number, adp: pick.adp });
+                });
+            });
+            return Object.entries(map).map(([pid, d]) => {
+                const count = d.picks.length;
+                const pct   = Math.round(count / total * 100);
+                const avgRound = +(d.picks.reduce((s, p) => s + p.round, 0) / count).toFixed(1);
+                const avgPick  = +(d.picks.reduce((s, p) => s + p.pickNumber, 0) / count).toFixed(1);
+                const hasAdp   = d.picks.some(p => p.adp != null);
+                const avgDraftAdp = hasAdp ? +(d.picks.reduce((s, p) => s + (p.adp || p.pickNumber), 0) / count).toFixed(1) : null;
+                const avgClv      = hasAdp ? +(d.picks.reduce((s, p) => s + (p.pickNumber - (p.adp || p.pickNumber)), 0) / count).toFixed(1) : null;
+                const currentAdp  = _expAdpMap[pid] ?? null;
+                const adpMove     = avgDraftAdp != null && currentAdp ? +(currentAdp - avgDraftAdp).toFixed(1) : null;
+                return { pid, name: d.name, pos: d.pos, team: d.team, count, pct, avgRound, avgPick, avgDraftAdp, currentAdp, adpMove, avgClv, total };
+            });
+        }
+
+        let _expAdpMap = {};
+        let _expAdpLoaded = false;
+        async function _ensureAdp() {
+            if (_expAdpLoaded) return;
+            try {
+                const r = await fetch('/api/players');
+                const ps = await r.json();
+                ps.forEach(p => { if (p.id) _expAdpMap[p.id] = p.adp; });
+                _expAdpLoaded = true;
+            } catch {}
+        }
+
+        async function renderExpTable() {
+            await _ensureAdp();
+            let rows = _buildExpRows();
+            if (_expPos)    rows = rows.filter(r => r.pos === _expPos);
+            if (_expSearch) rows = rows.filter(r => r.name.toLowerCase().includes(_expSearch) || r.team.toLowerCase().includes(_expSearch));
+            rows.sort((a, b) => {
+                const av = a[_expSort.col] ?? (_expSort.dir === 1 ? Infinity : -Infinity);
+                const bv = b[_expSort.col] ?? (_expSort.dir === 1 ? Infinity : -Infinity);
+                return av < bv ? _expSort.dir : av > bv ? -_expSort.dir : 0;
+            });
+            const total = _bd.drafts.length;
+            const tbody = document.getElementById('exp-tbl-body');
+            document.getElementById('exp-tbl-empty').style.display = rows.length ? 'none' : '';
+            tbody.innerHTML = rows.map(r => {
+                const barW  = Math.round(r.pct * 0.5);
+                const clvCls = r.avgClv == null ? 'clv-n' : r.avgClv < -1 ? 'clv-g' : r.avgClv > 1 ? 'clv-r' : 'clv-n';
+                const clvStr = r.avgClv == null ? '—' : (r.avgClv > 0 ? '+' : '') + r.avgClv;
+                const moveCls = r.adpMove == null ? 'clv-n' : r.adpMove < -2 ? 'clv-g' : r.adpMove > 2 ? 'clv-r' : 'clv-n';
+                const moveStr = r.adpMove == null ? '—' : (r.adpMove > 0 ? '+' : '') + r.adpMove;
+                return `<tr>
+                  <td><span style="font-weight:600">${r.name}</span> <span style="color:var(--muted);font-size:0.82em">${r.team}</span></td>
+                  <td><span class="pos-pip ${r.pos}">${r.pos}</span></td>
+                  <td style="font-weight:700;color:var(--accent)">${r.count} / ${total}</td>
+                  <td><div class="exp-bar-h"><div class="eb" style="width:${barW}px"></div><span class="ep">${r.pct}%</span></div></td>
+                  <td>${r.avgRound}</td>
+                  <td style="color:var(--muted)">${r.avgPick}</td>
+                  <td style="color:var(--muted)">${r.avgDraftAdp ?? '—'}</td>
+                  <td style="color:var(--muted)">${r.currentAdp ?? '—'}</td>
+                  <td><span class="${moveCls}">${moveStr}</span></td>
+                  <td><span class="${clvCls}" title="Negative = drafted before market (good)">${clvStr}</span></td>
+                </tr>`;
+            }).join('');
+        }
+
+        // Sort headers
+        document.querySelectorAll('th[data-esrt]').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.esrt;
+                if (_expSort.col === col) _expSort.dir *= -1;
+                else { _expSort.col = col; _expSort.dir = ['name','pos'].includes(col) ? 1 : -1; }
+                document.querySelectorAll('th[data-esrt]').forEach(t => t.classList.remove('srt'));
+                th.classList.add('srt');
+                renderExpTable();
+            });
+        });
+
+        // Pos filter tabs
+        document.querySelectorAll('#exp-tbl-pos-tabs [data-epos]').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                _expPos = btn.dataset.epos;
+                document.querySelectorAll('#exp-tbl-pos-tabs [data-epos]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                renderExpTable();
+            });
+        });
+
+        document.getElementById('exp-tbl-search').addEventListener('input', e => {
+            _expSearch = e.target.value.trim().toLowerCase();
+            renderExpTable();
+        });
+
+        // ── Stacks ────────────────────────────────────────────────────────────
+        function renderStacks() {
+            const total = _bd.drafts.length;
+            const pairMap = {}, fullMap = {};
+            _bd.drafts.forEach(draft => {
+                draft.picks.forEach(qb => {
+                    if (qb.pos !== 'QB') return;
+                    const catchers = draft.picks.filter(p => ['WR','TE'].includes(p.pos) && p.team === qb.team);
+                    if (!catchers.length) return;
+                    if (!fullMap[qb.player_name]) fullMap[qb.player_name] = { qb: qb.player_name, drafts: [] };
+                    fullMap[qb.player_name].drafts.push(catchers.map(c => ({ name: c.player_name, pos: c.pos })));
+                    catchers.forEach(c => {
+                        const key = `${qb.player_name}|${c.player_name}`;
+                        if (!pairMap[key]) pairMap[key] = { qb: qb.player_name, partner: c.player_name, partnerPos: c.pos, count: 0 };
+                        pairMap[key].count++;
+                    });
+                });
+            });
+
+            const pairs = Object.values(pairMap).sort((a,b) => b.count - a.count);
+            const pairsTbody = document.getElementById('stk-pairs-body');
+            document.getElementById('stk-pairs-empty').style.display = pairs.length ? 'none' : '';
+            pairsTbody.innerHTML = pairs.map(p => `<tr>
+              <td style="font-weight:700;color:var(--accent)">${p.count} / ${total}</td>
+              <td><div class="exp-bar-h"><div class="eb" style="width:${Math.round(p.count/total*50)}px"></div><span class="ep">${Math.round(p.count/total*100)}%</span></div></td>
+              <td><span class="stk-badge qb">${p.qb}</span></td>
+              <td><span class="stk-badge ${p.partnerPos.toLowerCase()}">${p.partner}</span></td>
+              <td><span class="pos-pip ${p.partnerPos}">${p.partnerPos}</span></td>
+            </tr>`).join('');
+
+            const fulls = Object.values(fullMap).map(f => ({ ...f, count: f.drafts.length })).sort((a,b) => b.count - a.count);
+            const fullTbody = document.getElementById('stk-full-body');
+            document.getElementById('stk-full-empty').style.display = fulls.length ? 'none' : '';
+            fullTbody.innerHTML = fulls.map(f => {
+                const allPartners = [...new Map(f.drafts.flat().map(p => [p.name, p])).values()];
+                const badges = allPartners.map(p => `<span class="stk-badge ${p.pos.toLowerCase()}">${p.name}</span>`).join('');
+                return `<tr>
+                  <td style="font-weight:700;color:var(--accent)">${f.count} / ${total}</td>
+                  <td><div class="exp-bar-h"><div class="eb" style="width:${Math.round(f.count/total*50)}px"></div><span class="ep">${Math.round(f.count/total*100)}%</span></div></td>
+                  <td><span class="stk-badge qb">${f.qb}</span></td>
+                  <td style="display:flex;flex-wrap:wrap">${badges}</td>
+                </tr>`;
+            }).join('');
         }
 
         // ISO/date string -> YYYY-MM-DD (no timezone shift, no time)
