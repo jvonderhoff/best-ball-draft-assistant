@@ -339,6 +339,19 @@ def refresh_players(players):
     return len(players)
 
 
+def get_players():
+    """Return all players from the DB in the same shape as player_cache.json."""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT player_id, name, pos, team, adp, ecr_rank, week15, week16, week17
+            FROM players ORDER BY adp
+        """).fetchall()
+        return [{'id': r['player_id'], 'name': r['name'], 'pos': r['pos'],
+                 'team': r['team'], 'adp': r['adp'], 'ecr_rank': r['ecr_rank'],
+                 'week15': r['week15'], 'week16': r['week16'], 'week17': r['week17']}
+                for r in rows]
+
+
 def get_all_drafts():
     with get_db() as conn:
         drafts = conn.execute(

@@ -188,6 +188,7 @@ def refresh_players():
         from app.database import refresh_players as db_refresh_players
         players = fetch_players(force_refresh=True)
         db_refresh_players(players)
+        _load_players_index()  # reload in-memory pick-matching index
         return jsonify({'success': True, 'player_count': len(players)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1797,14 +1798,22 @@ def recommend_page():
 
 @app.route('/api/players', methods=['GET'])
 def get_players():
-    """Return all players — from player_cache.json (primary) or players.js (legacy extension file)."""
+    """Return all players — from player_cache.json, then DB, then legacy players.js."""
     import re
-    # Primary: player_cache.json committed to repo
+    # Primary: player_cache.json (written by fetch_players, fast)
     from app.data.api_fetcher import CACHE_PATH as cache_path
     try:
         with open(cache_path) as f:
             data = json.load(f)
         players = data if isinstance(data, list) else data.get('players', [])
+        if players:
+            return jsonify(players)
+    except Exception:
+        pass
+    # Secondary: DB — survives redeploys even when ephemeral cache is wiped
+    try:
+        from app.database import get_players as db_get_players
+        players = db_get_players()
         if players:
             return jsonify(players)
     except Exception:
