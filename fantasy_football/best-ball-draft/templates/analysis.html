@@ -128,6 +128,33 @@
     /* ── Sleeper link indicator ── */
     .no-data { color: var(--no-data); font-style: italic; font-size: 0.85em; }
 
+    /* ── View tabs ── */
+    .view-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid var(--border); }
+    .view-tab {
+      background: none; border: none; color: var(--muted);
+      padding: 8px 20px; font-size: 0.85em; font-weight: 700; cursor: pointer;
+      border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s;
+    }
+    .view-tab:hover { color: var(--text); }
+    .view-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ── Exposure / Stacks table ── */
+    .exp-bar-wrap { display: flex; align-items: center; gap: 6px; min-width: 90px; }
+    .exp-bar { height: 6px; border-radius: 3px; background: var(--accent); flex-shrink: 0; }
+    .exp-pct { font-size: 0.8em; color: var(--muted); white-space: nowrap; }
+    .clv-pos { color: #4caf50; font-weight: 700; }
+    .clv-neg { color: #ef5350; font-weight: 700; }
+    .clv-zero { color: var(--muted); }
+    .stack-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 4px; padding: 2px 7px; font-size: 0.78em; white-space: nowrap;
+    }
+    .stack-qb { color: #f48fb1; }
+    .stack-wr { color: #a5d6a7; }
+    .stack-te { color: #ffcc80; }
+    .empty-section { text-align: center; padding: 40px; color: var(--muted); font-size: 0.9em; }
+
     /* ── Mobile ── */
     @media (max-width: 600px) {
       nav { padding: 0 12px; gap: 14px; height: 44px; }
@@ -163,29 +190,35 @@
     <div class="page-sub">SL = Sleeper · FP = FantasyPros</div>
   </div>
 
-  <div class="controls">
-    <input class="search-box" id="search" type="text" placeholder="Search player or team…">
-    <button class="btn btn-refresh" id="refresh-btn" onclick="loadData(true)">↻ Refresh Stats</button>
-    <button class="btn" id="dk-btn" onclick="fetchProps('dk')" style="border-color:#7b1fa2;color:#ce93d8" title="Scrape DK Sportsbook season prop lines (takes ~30s)">📊 Fetch DK Lines</button>
-    <button class="btn" id="ud-btn" onclick="fetchProps('ud')" style="border-color:#1565c0;color:#90caf9" title="Fetch Underdog Fantasy season prop lines">🐶 Fetch Underdog Lines</button>
+  <!-- View tabs -->
+  <div class="view-tabs">
+    <button class="view-tab active" data-view="stats">Player Stats</button>
+    <button class="view-tab" data-view="exposure">Exposure</button>
+    <button class="view-tab" data-view="stacks">Stacks</button>
   </div>
 
-  <div class="pos-tabs" id="pos-tabs">
-    <button class="pos-tab active" data-pos="">All</button>
-    <button class="pos-tab" data-pos="QB">QB</button>
-    <button class="pos-tab" data-pos="RB">RB</button>
-    <button class="pos-tab" data-pos="WR">WR</button>
-    <button class="pos-tab" data-pos="TE">TE</button>
-  </div>
-
-
-  <div class="table-wrap">
-    <div class="loading" id="loading">
-      <div class="spinner"></div>
-      Fetching 2025 Sleeper stats…
+  <!-- ── Player Stats view ── -->
+  <div id="view-stats">
+    <div class="controls">
+      <input class="search-box" id="search" type="text" placeholder="Search player or team…">
+      <button class="btn btn-refresh" id="refresh-btn" onclick="loadData(true)">↻ Refresh Stats</button>
+      <button class="btn" id="dk-btn" onclick="fetchProps('dk')" style="border-color:#7b1fa2;color:#ce93d8" title="Scrape DK Sportsbook season prop lines (takes ~30s)">📊 Fetch DK Lines</button>
+      <button class="btn" id="ud-btn" onclick="fetchProps('ud')" style="border-color:#1565c0;color:#90caf9" title="Fetch Underdog Fantasy season prop lines">🐶 Fetch Underdog Lines</button>
     </div>
-    <div class="error-msg" id="error-msg" style="display:none"></div>
-    <table id="analysis-table" style="display:none">
+    <div class="pos-tabs" id="pos-tabs">
+      <button class="pos-tab active" data-pos="">All</button>
+      <button class="pos-tab" data-pos="QB">QB</button>
+      <button class="pos-tab" data-pos="RB">RB</button>
+      <button class="pos-tab" data-pos="WR">WR</button>
+      <button class="pos-tab" data-pos="TE">TE</button>
+    </div>
+    <div class="table-wrap">
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        Fetching 2025 Sleeper stats…
+      </div>
+      <div class="error-msg" id="error-msg" style="display:none"></div>
+      <table id="analysis-table" style="display:none">
       <thead>
         <tr>
           <th data-col="custom_rank" class="sticky sticky-rank" title="Your personal rank from the Rankings page">My Rank <span class="sort-arrow"></span></th>
@@ -229,6 +262,84 @@
       <tbody id="tbody"></tbody>
     </table>
     <div class="empty-msg" id="empty-msg" style="display:none">No players match your filter.</div>
+    </div>
+  </div>
+
+  <!-- ── Exposure view ── -->
+  <div id="view-exposure" style="display:none">
+    <div class="controls">
+      <input class="search-box" id="exp-search" type="text" placeholder="Search player or team…">
+      <span id="exp-draft-count" style="font-size:0.82em;color:var(--muted)"></span>
+    </div>
+    <div class="pos-tabs" id="exp-pos-tabs">
+      <button class="pos-tab active" data-pos="">All</button>
+      <button class="pos-tab" data-pos="QB">QB</button>
+      <button class="pos-tab" data-pos="RB">RB</button>
+      <button class="pos-tab" data-pos="WR">WR</button>
+      <button class="pos-tab" data-pos="TE">TE</button>
+    </div>
+    <div class="table-wrap">
+      <div class="loading" id="exp-loading" style="display:none"><div class="spinner"></div>Loading drafts…</div>
+      <table id="exp-table" style="display:none">
+        <thead>
+          <tr>
+            <th data-etab="exp-table" data-col="name" class="sticky sticky-name">Player</th>
+            <th data-etab="exp-table" data-col="pos">Pos</th>
+            <th data-etab="exp-table" data-col="count" title="Drafts containing this player">Drafts <span class="sort-arrow">▼</span></th>
+            <th data-etab="exp-table" data-col="pct" title="% of your drafts with this player">Exposure</th>
+            <th data-etab="exp-table" data-col="avgRound" title="Average round you drafted this player">Avg Rd</th>
+            <th data-etab="exp-table" data-col="avgPick" title="Average overall pick number">Avg Pick</th>
+            <th data-etab="exp-table" data-col="avgDraftAdp" title="Average DK ADP at the time of each draft">ADP @ Draft</th>
+            <th data-etab="exp-table" data-col="currentAdp" title="Current DK ADP">Current ADP</th>
+            <th data-etab="exp-table" data-col="adpMove" title="ADP movement since you drafted: negative = rising (you got ahead of market), positive = falling">ADP Move</th>
+            <th data-etab="exp-table" data-col="avgClv" title="Closing Line Value: avg(pick# − ADP at draft). Negative = you drafted BEFORE the market (good). Positive = you paid above ADP.">Avg CLV</th>
+          </tr>
+        </thead>
+        <tbody id="exp-tbody"></tbody>
+      </table>
+      <div class="empty-section" id="exp-empty" style="display:none">No players found.</div>
+    </div>
+  </div>
+
+  <!-- ── Stacks view ── -->
+  <div id="view-stacks" style="display:none">
+    <div class="controls">
+      <span id="stk-draft-count" style="font-size:0.82em;color:var(--muted)"></span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="stacks-grid">
+      <div class="table-wrap">
+        <div style="padding:10px 14px;font-size:0.8em;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);letter-spacing:.04em">QB + PASS CATCHER PAIRS</div>
+        <table id="stk-pairs-table" style="display:none">
+          <thead>
+            <tr>
+              <th data-etab="stk-pairs-table" data-col="count">Drafts <span class="sort-arrow">▼</span></th>
+              <th data-etab="stk-pairs-table" data-col="pct">Exp%</th>
+              <th data-etab="stk-pairs-table" data-col="qb">QB</th>
+              <th data-etab="stk-pairs-table" data-col="partner">Partner</th>
+              <th data-etab="stk-pairs-table" data-col="partnerPos">Pos</th>
+            </tr>
+          </thead>
+          <tbody id="stk-pairs-tbody"></tbody>
+        </table>
+        <div class="empty-section" id="stk-pairs-empty" style="display:none">No stacks found.</div>
+      </div>
+      <div class="table-wrap">
+        <div style="padding:10px 14px;font-size:0.8em;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);letter-spacing:.04em">QB STACKS (ALL PASS CATCHERS)</div>
+        <table id="stk-full-table" style="display:none">
+          <thead>
+            <tr>
+              <th data-etab="stk-full-table" data-col="count">Drafts <span class="sort-arrow">▼</span></th>
+              <th data-etab="stk-full-table" data-col="pct">Exp%</th>
+              <th data-etab="stk-full-table" data-col="qb">QB</th>
+              <th data-etab="stk-full-table" data-col="partners">Pass Catchers</th>
+            </tr>
+          </thead>
+          <tbody id="stk-full-tbody"></tbody>
+        </table>
+        <div class="empty-section" id="stk-full-empty" style="display:none">No stacks found.</div>
+      </div>
+    </div>
+    <div class="loading" id="stk-loading" style="display:none"><div class="spinner"></div>Loading drafts…</div>
   </div>
 </div>
 
@@ -458,22 +569,277 @@ document.querySelectorAll('th[data-col]').forEach(th => {
   });
 });
 
-// ── Position tabs ─────────────────────────────────────────────────────────────
+// ── Position tabs (stats view) ────────────────────────────────────────────────
 
-document.querySelectorAll('.pos-tab').forEach(btn => {
+document.querySelectorAll('#pos-tabs .pos-tab').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.pos-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#pos-tabs .pos-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     activePos = btn.dataset.pos;
     renderTable();
   });
 });
 
-// ── Search ────────────────────────────────────────────────────────────────────
+// ── Search (stats view) ───────────────────────────────────────────────────────
 
 document.getElementById('search').addEventListener('input', e => {
   searchQ = e.target.value.trim();
   renderTable();
+});
+
+// ── View tab switching ────────────────────────────────────────────────────────
+
+let activeView = 'stats';
+
+document.querySelectorAll('.view-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeView = btn.dataset.view;
+    document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('view-stats').style.display    = activeView === 'stats'    ? '' : 'none';
+    document.getElementById('view-exposure').style.display = activeView === 'exposure' ? '' : 'none';
+    document.getElementById('view-stacks').style.display   = activeView === 'stacks'   ? '' : 'none';
+    if ((activeView === 'exposure' || activeView === 'stacks') && !draftsLoaded) loadDrafts();
+  });
+});
+
+// ── Draft data + exposure/stacks ─────────────────────────────────────────────
+
+let allDrafts = [];
+let draftsLoaded = false;
+let expSortCol = 'count';
+let expSortDir = -1;
+let expPos = '';
+let expSearch = '';
+
+// pair sort state
+let pairSortCol = 'count'; let pairSortDir = -1;
+let fullSortCol = 'count'; let fullSortDir = -1;
+
+async function loadDrafts() {
+  document.getElementById('exp-loading').style.display = '';
+  document.getElementById('stk-loading').style.display = '';
+  try {
+    const [draftsRes, playersRes] = await Promise.all([
+      fetch('/api/drafts'),
+      fetch('/api/players'),
+    ]);
+    allDrafts = await draftsRes.json();
+    const playersList = await playersRes.json();
+    // build current ADP map by player_id
+    currentAdpMap = {};
+    playersList.forEach(p => { if (p.id) currentAdpMap[p.id] = p.adp; });
+    draftsLoaded = true;
+    document.getElementById('exp-loading').style.display = 'none';
+    document.getElementById('stk-loading').style.display = 'none';
+    renderExposure();
+    renderStacks();
+  } catch (e) {
+    document.getElementById('exp-loading').innerHTML = `<span style="color:var(--red)">Failed to load drafts: ${e.message}</span>`;
+  }
+}
+
+let currentAdpMap = {};
+
+function buildExposureData() {
+  const totalDrafts = allDrafts.length;
+  const map = {};  // player_id → {name, pos, team, picks:[]}
+  allDrafts.forEach(draft => {
+    draft.picks.forEach(pick => {
+      const pid = pick.player_id;
+      if (!map[pid]) map[pid] = { name: pick.player_name, pos: pick.pos, team: pick.team, picks: [] };
+      map[pid].picks.push({ round: pick.round, pickNumber: pick.pick_number, adp: pick.adp });
+    });
+  });
+  return Object.entries(map).map(([pid, d]) => {
+    const count    = d.picks.length;
+    const pct      = Math.round(count / totalDrafts * 100);
+    const avgRound = +(d.picks.reduce((s, p) => s + p.round, 0) / count).toFixed(1);
+    const avgPick  = +(d.picks.reduce((s, p) => s + p.pickNumber, 0) / count).toFixed(1);
+    const avgDraftAdp = d.picks[0].adp != null
+      ? +(d.picks.reduce((s, p) => s + (p.adp || p.pickNumber), 0) / count).toFixed(1)
+      : null;
+    const avgClv = d.picks[0].adp != null
+      ? +(d.picks.reduce((s, p) => s + (p.pickNumber - (p.adp || p.pickNumber)), 0) / count).toFixed(1)
+      : null;
+    const currentAdp = currentAdpMap[pid] ?? null;
+    const adpMove = avgDraftAdp != null && currentAdp != null
+      ? +(currentAdp - avgDraftAdp).toFixed(1) : null;
+    return { pid, name: d.name, pos: d.pos, team: d.team, count, pct, avgRound, avgPick, avgDraftAdp, currentAdp, adpMove, avgClv };
+  });
+}
+
+function renderExposure() {
+  const totalDrafts = allDrafts.length;
+  document.getElementById('exp-draft-count').textContent = `${totalDrafts} saved draft${totalDrafts !== 1 ? 's' : ''}`;
+
+  let rows = buildExposureData();
+  if (expPos)    rows = rows.filter(r => r.pos === expPos);
+  if (expSearch) rows = rows.filter(r => r.name.toLowerCase().includes(expSearch) || r.team.toLowerCase().includes(expSearch));
+
+  rows.sort((a, b) => {
+    const av = a[expSortCol] ?? (expSortDir === 1 ? Infinity : -Infinity);
+    const bv = b[expSortCol] ?? (expSortDir === 1 ? Infinity : -Infinity);
+    return av < bv ? expSortDir : av > bv ? -expSortDir : 0;
+  });
+
+  const tbody = document.getElementById('exp-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '';
+    document.getElementById('exp-table').style.display = 'none';
+    document.getElementById('exp-empty').style.display = '';
+    return;
+  }
+  document.getElementById('exp-table').style.display = '';
+  document.getElementById('exp-empty').style.display = 'none';
+
+  tbody.innerHTML = rows.map(r => {
+    const barW = Math.round(r.pct * 0.6);
+    const clvCls = r.avgClv == null ? 'clv-zero' : r.avgClv < -1 ? 'clv-pos' : r.avgClv > 1 ? 'clv-neg' : 'clv-zero';
+    const clvStr = r.avgClv == null ? '—' : (r.avgClv > 0 ? '+' : '') + r.avgClv;
+    const moveCls = r.adpMove == null ? 'clv-zero' : r.adpMove < -2 ? 'clv-pos' : r.adpMove > 2 ? 'clv-neg' : 'clv-zero';
+    const moveStr = r.adpMove == null ? '—' : (r.adpMove > 0 ? '+' : '') + r.adpMove;
+    return `<tr>
+      <td class="sticky sticky-name"><span style="font-weight:600">${r.name}</span> <span style="color:var(--muted);font-size:0.82em">${r.team}</span></td>
+      <td><span class="pos pos-${r.pos}">${r.pos}</span></td>
+      <td style="font-weight:700;color:var(--accent)">${r.count} / ${totalDrafts}</td>
+      <td><div class="exp-bar-wrap"><div class="exp-bar" style="width:${barW}px"></div><span class="exp-pct">${r.pct}%</span></div></td>
+      <td>${r.avgRound}</td>
+      <td style="color:var(--muted)">${r.avgPick}</td>
+      <td style="color:var(--muted)">${r.avgDraftAdp ?? '—'}</td>
+      <td style="color:var(--muted)">${r.currentAdp ?? '—'}</td>
+      <td><span class="${moveCls}">${moveStr}</span></td>
+      <td><span class="${clvCls}" title="Negative = you drafted before the market (good)">${clvStr}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function buildStacksData() {
+  const totalDrafts = allDrafts.length;
+  const pairMap = {};  // "QB|Partner" → {qb, partner, partnerPos, count}
+  const fullMap = {};  // "QB" → {qb, partnerSets:[{names,posArr}], count}
+
+  allDrafts.forEach(draft => {
+    const picks = draft.picks;
+    const qbs = picks.filter(p => p.pos === 'QB');
+    qbs.forEach(qb => {
+      const catchers = picks.filter(p => ['WR','TE'].includes(p.pos) && p.team === qb.team);
+      if (!catchers.length) return;
+
+      // full stack entry
+      const fullKey = qb.player_name;
+      if (!fullMap[fullKey]) fullMap[fullKey] = { qb: qb.player_name, drafts: [] };
+      fullMap[fullKey].drafts.push(catchers.map(c => ({ name: c.player_name, pos: c.pos })));
+
+      // pair entries
+      catchers.forEach(c => {
+        const pairKey = `${qb.player_name}|${c.player_name}`;
+        if (!pairMap[pairKey]) pairMap[pairKey] = { qb: qb.player_name, partner: c.player_name, partnerPos: c.pos, count: 0 };
+        pairMap[pairKey].count++;
+      });
+    });
+  });
+
+  const pairs = Object.values(pairMap).map(p => ({ ...p, pct: Math.round(p.count / totalDrafts * 100) }));
+
+  const fulls = Object.values(fullMap).map(f => {
+    const count = f.drafts.length;
+    // flatten unique partner names per draft for display
+    const allPartners = f.drafts.map(d => d.map(p => ({ name: p.name, pos: p.pos })));
+    return { qb: f.qb, count, pct: Math.round(count / totalDrafts * 100), partnerSets: allPartners };
+  });
+
+  return { pairs, fulls, totalDrafts };
+}
+
+function renderStacks() {
+  const { pairs, fulls, totalDrafts } = buildStacksData();
+  document.getElementById('stk-draft-count').textContent = `${totalDrafts} saved draft${totalDrafts !== 1 ? 's' : ''}`;
+
+  // Pairs table
+  const sortedPairs = [...pairs].sort((a,b) => {
+    const av = a[pairSortCol] ?? 0; const bv = b[pairSortCol] ?? 0;
+    return av < bv ? pairSortDir : av > bv ? -pairSortDir : 0;
+  });
+  const pairsTbody = document.getElementById('stk-pairs-tbody');
+  if (sortedPairs.length) {
+    document.getElementById('stk-pairs-table').style.display = '';
+    document.getElementById('stk-pairs-empty').style.display = 'none';
+    pairsTbody.innerHTML = sortedPairs.map(p => `<tr>
+      <td style="font-weight:700;color:var(--accent)">${p.count} / ${totalDrafts}</td>
+      <td><div class="exp-bar-wrap"><div class="exp-bar" style="width:${Math.round(p.pct*0.6)}px"></div><span class="exp-pct">${p.pct}%</span></div></td>
+      <td><span class="stack-badge stack-qb">${p.qb}</span></td>
+      <td><span class="stack-badge stack-${p.partnerPos.toLowerCase()}">${p.partner}</span></td>
+      <td><span class="pos pos-${p.partnerPos}">${p.partnerPos}</span></td>
+    </tr>`).join('');
+  } else {
+    document.getElementById('stk-pairs-table').style.display = 'none';
+    document.getElementById('stk-pairs-empty').style.display = '';
+  }
+
+  // Full stacks table
+  const sortedFulls = [...fulls].sort((a,b) => b[fullSortCol] - a[fullSortCol]);
+  const fullTbody = document.getElementById('stk-full-tbody');
+  if (sortedFulls.length) {
+    document.getElementById('stk-full-table').style.display = '';
+    document.getElementById('stk-full-empty').style.display = 'none';
+    fullTbody.innerHTML = sortedFulls.map(f => {
+      // show each draft's catcher set as a row group — combine for display
+      const allNames = [...new Set(f.partnerSets.flat().map(p => `<span class="stack-badge stack-${p.pos.toLowerCase()}">${p.name}</span>`))].join(' ');
+      return `<tr>
+        <td style="font-weight:700;color:var(--accent)">${f.count} / ${totalDrafts}</td>
+        <td><div class="exp-bar-wrap"><div class="exp-bar" style="width:${Math.round(f.pct*0.6)}px"></div><span class="exp-pct">${f.pct}%</span></div></td>
+        <td><span class="stack-badge stack-qb">${f.qb}</span></td>
+        <td style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px">${allNames}</td>
+      </tr>`;
+    }).join('');
+  } else {
+    document.getElementById('stk-full-table').style.display = 'none';
+    document.getElementById('stk-full-empty').style.display = '';
+  }
+}
+
+// ── Exposure table sorting ────────────────────────────────────────────────────
+
+document.querySelectorAll('th[data-etab="exp-table"]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (expSortCol === col) expSortDir *= -1;
+    else { expSortCol = col; expSortDir = ['name','pos'].includes(col) ? 1 : -1; }
+    document.querySelectorAll('th[data-etab="exp-table"]').forEach(t => {
+      t.classList.remove('sorted');
+      const a = t.querySelector('.sort-arrow'); if (a) a.textContent = '';
+    });
+    th.classList.add('sorted');
+    const a = th.querySelector('.sort-arrow'); if (a) a.textContent = expSortDir === 1 ? '▼' : '▲';
+    renderExposure();
+  });
+});
+
+// ── Stacks table sorting ──────────────────────────────────────────────────────
+
+document.querySelectorAll('th[data-etab="stk-pairs-table"]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (pairSortCol === col) pairSortDir *= -1; else { pairSortCol = col; pairSortDir = -1; }
+    renderStacks();
+  });
+});
+
+// ── Exposure pos tabs ─────────────────────────────────────────────────────────
+
+document.querySelectorAll('#exp-pos-tabs .pos-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#exp-pos-tabs .pos-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    expPos = btn.dataset.pos;
+    renderExposure();
+  });
+});
+
+document.getElementById('exp-search').addEventListener('input', e => {
+  expSearch = e.target.value.trim().toLowerCase();
+  renderExposure();
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
