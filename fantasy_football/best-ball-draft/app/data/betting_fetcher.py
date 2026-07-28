@@ -1,7 +1,16 @@
 """
-Scrape 2026 NFL season player prop O/U lines from DraftKings Sportsbook.
+Fetch 2026 NFL season player prop O/U lines from DraftKings Sportsbook via
+direct calls to the sportsbook-nash API (no browser automation required).
 
-DK API structure (per response):
+Each prop type (passing yards, rushing TDs, etc.) lives under its own
+"subcategory" on DK's player-futures page. There's no discovery endpoint for
+these IDs — they're grabbed by opening the page in a browser, filtering
+DevTools Network on "leagueSubcategory", clicking each tab, and reading the
+second number out of the `templateVars=<leagueId>,<subCategoryId>` param.
+Update SUBCATEGORY_IDS the same way if DK adds a tab (e.g. Receptions,
+Interceptions aren't posted yet as of writing) or changes IDs season to season.
+
+API response structure:
   markets[]   → {id, name:"NFL 2026/27 - PlayerName Regular Season Stat",
                    marketType:{name:"Regular Season Stat OU"}}
   selections[] → {marketId, label:"Over 1050.5", outcomeType:"Over"/"Under",
@@ -11,18 +20,32 @@ Entry point: fetch_season_props()
 Returns: {player_name: {prop_type: {line, over_odds, under_odds}}}
 """
 
-import asyncio
 import re
+import requests
 
-try:
-    from playwright.async_api import async_playwright
-    _PLAYWRIGHT_AVAILABLE = True
-except ImportError:
-    _PLAYWRIGHT_AVAILABLE = False
+DK_NASH_URL = (
+    'https://sportsbook-nash.draftkings.com/sites/US-SB/api/sportscontent/'
+    'controldata/league/leagueSubcategory/v1/markets'
+)
+DK_REFERER = (
+    'https://sportsbook.draftkings.com/leagues/football/nfl'
+    '?category=futures&subcategory=player-futures'
+)
+NFL_LEAGUE_ID = '88808'
 
-DK_NFL_URL = 'https://sportsbook.draftkings.com/leagues/football/nfl'
+# prop key → DK subCategoryId (from templateVars=88808,<id> on the player-futures page)
+SUBCATEGORY_IDS = {
+    'pass_yd':  '17147',
+    'pass_td':  '17148',
+    'rec_yd':   '17314',
+    'rec_td':   '17315',
+    'rush_yd':  '17223',
+    'rush_td':  '17224',
+    # 'rec':      None,  # Receptions — not posted by DK yet
+    # 'pass_int': None,  # Interceptions — not posted by DK yet
+}
 
-# marketType.name → our prop key
+# marketType.name → our prop key (kept for matching within each subcategory's response)
 MARKET_TYPE_MAP = {
     'passing yards':       'pass_yd',
     'passing touchdowns':  'pass_td',
@@ -37,11 +60,22 @@ MARKET_TYPE_MAP = {
     'interceptions':       'pass_int',
 }
 
-# On-page tab labels → same map (for clicking)
-SUBCAT_TABS = [
-    'PASS YARDS', 'PASS TDS', 'REC YARDS', 'REC TDS',
-    'RUSH YARDS', 'RUSH TDS', 'RECEPTIONS', 'INTERCEPTIONS',
-]
+_HEADERS = {
+    'User-Agent': (
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    ),
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': DK_REFERER,
+    'Origin': 'https://sportsbook.draftkings.com',
+    'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"macOS"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-site',
+}
 
 
 def _prop_type_from_market(market_type_name: str):
@@ -76,7 +110,6 @@ def _parse_response(body: dict, props: dict):
     markets = body.get('markets', [])
     selections = body.get('selections', [])
 
-    # Build market lookup
     market_map = {}   # id → {player_name, prop_type}
     for m in markets:
         mt_name = m.get('marketType', {}).get('name', '')
@@ -88,7 +121,6 @@ def _parse_response(body: dict, props: dict):
             continue
         market_map[m['id']] = {'player_name': player_name, 'prop_type': prop_type}
 
-    # Parse selections
     for sel in selections:
         mid = sel.get('marketId')
         info = market_map.get(mid)
@@ -118,77 +150,24 @@ def _parse_response(body: dict, props: dict):
             props[pn][pt]['under_odds'] = odds
 
 
-async def _run_scraper(verbose=True):
-    props = {}
-    captured = []
-
-    async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent=(
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-                'AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/124.0.0.0 Safari/537.36'
-            ),
-            viewport={'width': 1280, 'height': 900},
-        )
-        page = await context.new_page()
-
-        async def on_response(response):
-            if response.status != 200:
-                return
-            if 'json' not in response.headers.get('content-type', ''):
-                return
-            if 'sportsbook-nash' not in response.url:
-                return
-            try:
-                body = await response.json()
-                if body.get('markets'):
-                    captured.append(body)
-            except Exception:
-                pass
-
-        page.on('response', on_response)
-
-        # Load player-futures page
-        if verbose:
-            print('  [Betting] Loading DK Sportsbook player futures…')
-        try:
-            await page.goto(
-                f'{DK_NFL_URL}?category=futures&subcategory=player-futures',
-                wait_until='networkidle',
-                timeout=30000,
-            )
-        except Exception as e:
-            if verbose:
-                print(f'  [Betting] Load warning: {e}')
-        await page.wait_for_timeout(2000)
-
-        # Click through each subcategory tab
-        for tab in SUBCAT_TABS:
-            if verbose:
-                print(f'  [Betting] Fetching {tab}…')
-            try:
-                el = page.get_by_text(tab, exact=True).first
-                if not await el.is_visible():
-                    el = page.get_by_text(tab, exact=False).first
-                await el.click()
-                await page.wait_for_timeout(2500)
-            except Exception:
-                pass
-
-        await browser.close()
-
-    if verbose:
-        print(f'  [Betting] {len(captured)} API responses captured')
-
-    for body in captured:
-        _parse_response(body, props)
-
-    if verbose:
-        print(f'  [Betting] {len(props)} players with prop lines')
-
-    return props
+def _fetch_subcategory(sub_id: str, session: requests.Session) -> dict:
+    params = {
+        'isBatchable': 'false',
+        'templateVars': f'{NFL_LEAGUE_ID},{sub_id}',
+        'eventsQuery': (
+            f"$filter=leagueId eq '{NFL_LEAGUE_ID}' AND "
+            f"clientMetadata/Subcategories/any(s: s/Id eq '{sub_id}')"
+        ),
+        'marketsQuery': (
+            f"$filter=clientMetadata/subCategoryId eq '{sub_id}' AND "
+            f"tags/all(t: t ne 'SportcastBetBuilder')"
+        ),
+        'include': 'Events',
+        'entity': 'events',
+    }
+    resp = session.get(DK_NASH_URL, params=params, headers=_HEADERS, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
 
 
 def props_to_fantasy_pts(player_props: dict) -> float:
@@ -205,11 +184,23 @@ def props_to_fantasy_pts(player_props: dict) -> float:
 
 def fetch_season_props(verbose=True) -> dict:
     """
-    Scrape DK Sportsbook season player prop O/U lines.
+    Fetch DK Sportsbook season player prop O/U lines via direct API calls.
     Returns {player_name: {prop_type: {line, over_odds, under_odds}}}
-    Returns {} if Playwright is not installed.
     """
-    if not _PLAYWRIGHT_AVAILABLE:
-        print('  [Props] Playwright not installed — skipping prop fetch')
-        return {}
-    return asyncio.run(_run_scraper(verbose=verbose))
+    props = {}
+    session = requests.Session()
+
+    for prop_type, sub_id in SUBCATEGORY_IDS.items():
+        if verbose:
+            print(f'  [Betting] Fetching {prop_type}…')
+        try:
+            body = _fetch_subcategory(sub_id, session)
+            _parse_response(body, props)
+        except Exception as e:
+            if verbose:
+                print(f'  [Betting] {prop_type} fetch error: {e}')
+
+    if verbose:
+        print(f'  [Betting] {len(props)} players with prop lines')
+
+    return props
