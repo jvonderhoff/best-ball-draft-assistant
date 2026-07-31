@@ -149,6 +149,35 @@
     .rpr-team { color: var(--muted2); font-size: 0.85em; }
     .rpr-adp  { color: var(--muted2); font-size: 0.82em; margin-left: auto; }
     .rpr-remove { color: var(--muted); font-size: 1em; margin-left: 4px; }
+
+    /* ── V1 vs V2 comparison ── */
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 760px) { .compare-grid { grid-template-columns: 1fr; } }
+    .model-col-hdr { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+    .model-badge { font-size: 0.66em; font-weight: 700; padding: 2px 7px; border-radius: 4px; color: #fff; letter-spacing: 0.04em; }
+    .model-badge.v1 { background: var(--muted); }
+    .model-badge.v2 { background: var(--accent); }
+    .model-sub { font-size: 0.68em; color: var(--muted2); }
+    .model-col .rec-card { padding: 9px 10px; margin-bottom: 6px; }
+    .model-col .rec-name { font-size: 0.82em; }
+    .model-col .rec-meta, .model-col .rec-reason { font-size: 0.68em; padding-left: 18px; }
+
+    /* Rank of this player in the OTHER model — the whole point of the view */
+    .xrank { font-size: 0.64em; font-weight: 700; padding: 1px 5px; border-radius: 3px; margin-left: auto; white-space: nowrap; }
+    .xrank.same  { background: var(--surface); color: var(--muted2); border: 1px solid var(--border); }
+    .xrank.up    { background: rgba(52,168,83,0.15); color: var(--green); border: 1px solid var(--green); }
+    .xrank.down  { background: rgba(230,145,56,0.15); color: var(--orange); border: 1px solid var(--orange); }
+    .xrank.absent{ background: rgba(230,145,56,0.15); color: var(--orange); border: 1px dashed var(--orange); }
+
+    /* Divergence summary */
+    .diverge { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.74em; color: var(--muted2);
+               background: var(--surface); border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; }
+    .diverge b { color: var(--text); }
+    .diverge .agree { color: var(--green); }
+    .diverge .clash { color: var(--orange); }
+    .v2-warn { font-size: 0.74em; color: var(--orange); padding: 10px 0; }
+    .bd-pts { font-weight: 700; min-width: 58px; }
+    .bd-pts.boost { color: var(--green); } .bd-pts.penalty { color: var(--orange); }
   </style>
 </head>
 <body>
@@ -275,7 +304,23 @@
         <div class="results-hdr-title" style="font-size:0.75em;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Recommendations</div>
         <button class="copy-btn" id="copyScenarioBtn" onclick="copyScenario()">📋 Copy for feedback</button>
       </div>
-      <div id="results"><div class="no-recs">Configure a scenario and hit Run.</div></div>
+      <div id="divergeBar"></div>
+      <div class="compare-grid">
+        <div class="model-col">
+          <div class="model-col-hdr">
+            <span class="model-badge v1">V1</span>
+            <span class="model-sub">ADP × multipliers · stack: <span id="v1IntensityLabel">medium</span></span>
+          </div>
+          <div id="results"><div class="no-recs">Configure a scenario and hit Run.</div></div>
+        </div>
+        <div class="model-col">
+          <div class="model-col-hdr">
+            <span class="model-badge v2">V2</span>
+            <span class="model-sub">projections · pts/week</span>
+          </div>
+          <div id="resultsV2"><div class="no-recs">Configure a scenario and hit Run.</div></div>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -283,9 +328,13 @@
 </div>
 
 <script src="/static/recommender.js"></script>
+<script src="/static/recommender-v2.js"></script>
 <script>
 let PLAYERS = [];
 let customRankMap = {};
+let projMapCache = {};      // player_id -> projection payload
+let projReady = false;      // V2 needs projections; without them it can't score
+let projError = '';
 let myRoster = [];   // player objects
 let takenIds = new Set();
 let allDrafts = [];  // cached from /api/drafts
@@ -402,11 +451,56 @@ async function loadPlayers() {
     const rankings = await rr.json();
     customRankMap = {};
     rankings.forEach(r => { if (r.custom_rank != null) customRankMap[r.player_id] = r.custom_rank; });
+
+    // Preserve true market ADP before any custom-rank override. V2 uses realAdp for
+    // every timing/market decision, so this must survive "My Rank" mode.
+    PLAYERS.forEach(p => { if (p.realAdp == null) p.realAdp = p.adp; });
+
+    // V2 projections. Attached in place, so roster objects (same references) carry
+    // _eff too — the order-statistic bar needs it for players already drafted.
+    try {
+      const jr = await fetch('/api/projections-v2');
+      const jd = await jr.json();
+      if (jd.error) throw new Error(jd.error);
+      projMapCache = {};
+      (jd.players || []).forEach(p => { if (p.id) projMapCache[p.id] = p; });
+      reattachV2();
+      projReady = true;
+      if (jd.stale) projError = 'projections are stale (rebuild failed, serving cache)';
+    } catch (e) {
+      projError = e.message || 'failed to load projections';
+    }
+
     document.getElementById('runBtn').disabled = false;
     document.getElementById('runBtn').textContent = 'Run Recommendations';
   } catch (e) {
     document.getElementById('runBtn').textContent = 'Failed to load players';
   }
+}
+
+// Rebuild V2's effective projections. The custom-rank blend has to respect the
+// Rankings toggle: in ADP mode neither model should see your board, otherwise the
+// two columns are scoring different inputs and the comparison means nothing.
+function reattachV2() {
+  if (!PLAYERS.length) return;
+  const useRank = document.getElementById('rankingMode').value === 'rank';
+  v2AttachEffective(PLAYERS, projMapCache, { customRankMap: useRank ? customRankMap : {} });
+}
+
+document.getElementById('rankingMode').addEventListener('change', () => { reattachV2(); run(); });
+
+// Every remaining pick of mine after `fromPick`, in order — lets V2 measure its
+// replacement horizon against the real snake schedule.
+function myRemainingPicks(fromPick, numTeams, myPos) {
+  const out = [];
+  let cur = fromPick;
+  for (let i = 0; i < 24; i++) {
+    const nxt = nextMyOverallPick(cur, numTeams, myPos);
+    if (!nxt || nxt > numTeams * 20) break;
+    out.push(nxt);
+    cur = nxt + 1;
+  }
+  return out;
 }
 
 // ── Player search dropdown ────────────────────────────────────────────────────
@@ -575,47 +669,140 @@ function run() {
   const recs = getTopRecommendations(available, myTeamWithRounds, pickNum, intensity, n, nextMyPick);
   _lastRecs = recs;
 
+  // V2 over the same board. Ranked deeper than n so we can report where V1's picks
+  // land on V2's board even when they fall outside the displayed rows.
+  let recsV2 = [];
+  if (projReady) {
+    const myPicks = myRemainingPicks(pickNum + 1, numTeams, myPos);
+    recsV2 = getTopRecommendationsV2(available, myTeamWithRounds, pickNum,
+                                     Math.max(n, 40), nextMyPick, myPicks);
+  }
+  _lastRecsV2 = recsV2.slice(0, n);
+
   renderNeeds(myTeamWithRounds);
   renderRosterView();
+  document.getElementById('v1IntensityLabel').textContent = intensity;
 
   const round = Math.floor((pickNum - 1) / numTeams) + 1;
   document.getElementById('scenarioLabel').textContent =
     `Pick ${pickNum} · Rd ${round} · ${myRoster.length} on roster`;
 
-  if (!recs.length) {
-    document.getElementById('results').innerHTML = '<div class="no-recs">No players available.</div>';
-    return;
-  }
+  // Cross-model rank lookups drive the badges and the divergence bar.
+  const v1Rank = new Map(recs.map((r, i) => [r.player.id, i + 1]));
+  const v2Rank = new Map(recsV2.map((r, i) => [r.player.id, i + 1]));
 
-  document.getElementById('results').innerHTML = recs.map((r, i) => {
-    const p = r.player;
-    const cr = customRankMap[p.id];
-    const adpLabel = cr != null ? `Rank #${cr}` : `ADP ${p.adp}`;
-    const bdRows = (r.bd || []).map(b => {
-      const isBoost = b.mult > 1;
-      return `<div class="bd-row">
-        <span class="bd-mult ${isBoost ? 'boost' : 'penalty'}">×${b.mult.toFixed(3)}</span>
-        <span class="bd-label">${b.label}</span>
-        <span class="bd-note">${b.note || ''}</span>
+  renderDivergence(recs, recsV2, v1Rank, v2Rank, n);
+
+  // ── V1 column ──
+  const v1El = document.getElementById('results');
+  if (!recs.length) {
+    v1El.innerHTML = '<div class="no-recs">No players available.</div>';
+  } else {
+    v1El.innerHTML = recs.map((r, i) => {
+      const p = r.player;
+      const cr = customRankMap[p.id];
+      const adpLabel = (useRank && cr != null) ? `Rank #${cr}` : `ADP ${p.realAdp ?? p.adp}`;
+      const bdRows = (r.bd || []).map(b => `<div class="bd-row">
+          <span class="bd-mult ${b.mult > 1 ? 'boost' : 'penalty'}">×${b.mult.toFixed(3)}</span>
+          <span class="bd-label">${b.label}</span>
+          <span class="bd-note">${b.note || ''}</span>
+        </div>`).join('');
+      const baseVal = (r.baseScore || (1000 / (p.adp || 1))).toFixed(2);
+      return `<div class="rec-card" onclick="this.classList.toggle('expanded')">
+        <div class="rec-card-top">
+          <span class="rec-rank">#${i+1}</span>
+          <span class="rec-pos ${p.pos}">${p.pos}</span>
+          <span class="rec-name">${p.name}</span>
+          ${xrankBadge(v2Rank.get(p.id), i + 1, 'V2')}
+        </div>
+        <div class="rec-meta">${p.team}${p.bye ? ' · bye '+p.bye : ''} · ${adpLabel} · score ${r.value.toFixed(2)}</div>
+        ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
+        <div class="rec-breakdown">
+          <div class="bd-base"><span>Base (1000 ÷ ${p.adp})</span><span>${baseVal}</span></div>
+          ${bdRows}
+          <div class="bd-total"><span>Final score</span><span>${r.value.toFixed(2)}</span></div>
+        </div>
       </div>`;
     }).join('');
-    const baseVal = (r.baseScore || (1000 / (p.adp || 1))).toFixed(2);
-    return `<div class="rec-card" onclick="this.classList.toggle('expanded')">
-      <div class="rec-card-top">
-        <span class="rec-rank">#${i+1}</span>
-        <span class="rec-score">${r.value.toFixed(2)}</span>
-        <span class="rec-pos ${p.pos}">${p.pos}</span>
-        <span class="rec-name">${p.name}</span>
-      </div>
-      <div class="rec-meta">${p.team}${p.bye ? ' · bye '+p.bye : ''} · ${adpLabel}</div>
-      ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
-      <div class="rec-breakdown">
-        <div class="bd-base"><span>Base (1000 ÷ ${p.adp})</span><span>${baseVal}</span></div>
-        ${bdRows}
-        <div class="bd-total"><span>Final score</span><span>${r.value.toFixed(2)}</span></div>
-      </div>
-    </div>`;
-  }).join('');
+  }
+
+  // ── V2 column ──
+  const v2El = document.getElementById('resultsV2');
+  if (!projReady) {
+    v2El.innerHTML = `<div class="v2-warn">V2 unavailable — ${projError || 'no projections'}.<br>
+      Rebuild with <code>POST /api/projections-v2?refresh=1</code>.</div>`;
+  } else if (!recsV2.length) {
+    v2El.innerHTML = '<div class="no-recs">No players available.</div>';
+  } else {
+    v2El.innerHTML = recsV2.slice(0, n).map((r, i) => {
+      const p = r.player;
+      const e = p._eff || {};
+      const bdRows = (r.bd || []).map(b => `<div class="bd-row">
+          <span class="bd-pts ${b.points > 0 ? 'boost' : 'penalty'}">${b.points > 0 ? '+' : ''}${b.points.toFixed(3)}</span>
+          <span class="bd-label">${b.label}</span>
+          <span class="bd-note">${b.note || ''}</span>
+        </div>`).join('');
+      const src = e.sources >= 2 ? `${e.sources} sources` : (e.projected ? '1 source' : 'no projection');
+      return `<div class="rec-card" onclick="this.classList.toggle('expanded')">
+        <div class="rec-card-top">
+          <span class="rec-rank">#${i+1}</span>
+          <span class="rec-pos ${p.pos}">${p.pos}</span>
+          <span class="rec-name">${p.name}</span>
+          ${xrankBadge(v1Rank.get(p.id), i + 1, 'V1')}
+        </div>
+        <div class="rec-meta">${p.team}${p.bye ? ' · bye '+p.bye : ''} · ADP ${p.realAdp ?? p.adp}
+          · ${e.mean != null ? e.mean.toFixed(1)+' ppg / '+e.ceiling.toFixed(1)+' ceil' : '—'} · ${src}</div>
+        ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
+        <div class="rec-breakdown">
+          ${bdRows}
+          <div class="bd-total"><span>Net pts/week vs replacement</span><span>${r.value.toFixed(3)}</span></div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
+// Badge showing where this player sits on the other model's board.
+function xrankBadge(otherRank, myRank, otherLabel) {
+  if (otherRank == null) return `<span class="xrank absent">${otherLabel} —</span>`;
+  const diff = myRank - otherRank;      // +ve => other model likes him more
+  if (diff === 0)  return `<span class="xrank same">${otherLabel} =</span>`;
+  const cls = diff > 0 ? 'up' : 'down';
+  return `<span class="xrank ${cls}">${otherLabel} #${otherRank}</span>`;
+}
+
+// Last name, skipping generational suffixes — a naive split-and-pop turns
+// "Michael Pittman Jr." into "Jr.".
+function shortName(name) {
+  const SUFFIX = /^(jr|sr|ii|iii|iv|v)\.?$/i;
+  const parts = (name || '').trim().split(/\s+/).filter(t => !SUFFIX.test(t));
+  return parts.length ? parts[parts.length - 1] : (name || '');
+}
+
+// How much the two models actually disagree on this board.
+function renderDivergence(recs, recsV2, v1Rank, v2Rank, n) {
+  const el = document.getElementById('divergeBar');
+  if (!recs.length || !recsV2.length) { el.innerHTML = ''; return; }
+
+  const topV1 = recs[0].player, topV2 = recsV2[0].player;
+  const sameTop = topV1.id === topV2.id;
+
+  const v1Top = recs.slice(0, 5).map(r => r.player.id);
+  const v2Top = recsV2.slice(0, 5).map(r => r.player.id);
+  const overlap = v1Top.filter(id => v2Top.includes(id)).length;
+
+  // Where does each model's top pick sit on the other's board?
+  const topV1onV2 = v2Rank.get(topV1.id);
+  const topV2onV1 = v1Rank.get(topV2.id);
+
+  el.innerHTML = `<div class="diverge">
+    <span>Top pick: ${sameTop
+      ? `<b class="agree">agree — ${topV1.name}</b>`
+      : `<b class="clash">disagree</b> · V1 <b>${shortName(topV1.name)}</b> (V2 #${topV1onV2 ?? '—'})
+         vs V2 <b>${shortName(topV2.name)}</b> (V1 #${topV2onV1 ?? '—'})`}</span>
+    <span>Top-5 overlap: <b>${overlap}/5</b></span>
+    <span>V2 pool: <b>${recsV2.filter(r => r.player._eff && r.player._eff.projected).length}</b> projected of ${recsV2.length} ranked</span>
+  </div>`;
 }
 
 // ── Quick simulate ────────────────────────────────────────────────────────────
@@ -673,6 +860,7 @@ makeDropdown('takenSearch', 'takenDropdown', p => {
 
 // ── Load from live draft ──────────────────────────────────────────────────────
 let _lastRecs = [];
+let _lastRecsV2 = [];
 
 async function loadLiveDrafts() {
   try {
@@ -774,7 +962,13 @@ function copyScenario() {
   const recLines = _lastRecs.slice(0, 7).map((r, i) => {
     const p = r.player;
     const mults = (r.bd || []).map(b => `${b.label} (×${b.mult.toFixed(2)})`).join(', ');
-    return `  #${i+1} ${p.pos} ${p.name} · ADP ${p.adp} · Score ${r.value.toFixed(2)}${mults ? '\n       ' + mults : ''}`;
+    return `  #${i+1} ${p.pos} ${p.name} · ADP ${p.realAdp ?? p.adp} · Score ${r.value.toFixed(2)}${mults ? '\n       ' + mults : ''}`;
+  }).join('\n');
+
+  const recLinesV2 = _lastRecsV2.slice(0, 7).map((r, i) => {
+    const p = r.player;
+    const parts = (r.bd || []).map(b => `${b.label} (${b.points > 0 ? '+' : ''}${b.points.toFixed(2)})`).join(', ');
+    return `  #${i+1} ${p.pos} ${p.name} · ADP ${p.realAdp ?? p.adp} · ${r.value.toFixed(3)} pts/wk${parts ? '\n       ' + parts : ''}`;
   }).join('\n');
 
   const text = [
@@ -786,8 +980,11 @@ function copyScenario() {
     ``,
     `Needs: ${needsLine}`,
     ``,
-    `Top Recommendations:`,
+    `V1 (ADP x multipliers):`,
     recLines || '  (none — run first)',
+    ``,
+    `V2 (projections, pts/week vs replacement):`,
+    recLinesV2 || '  (none — projections unavailable)',
   ].join('\n');
 
   navigator.clipboard.writeText(text).then(() => {
