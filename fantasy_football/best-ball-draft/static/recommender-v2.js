@@ -683,7 +683,6 @@ function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = n
     ctx.typicalSd[pos] = sds.length ? sds.reduce((a, b) => a + b, 0) / sds.length : 0;
   }
 
-  const roundsLeft = Math.max(1, V2_DRAFT_ROUNDS - myTeam.length);
 
   for (const pos of Object.keys(V2_STARTER_SLOTS)) {
     const horizon = v2ReplacementHorizon(ctx);
@@ -693,13 +692,20 @@ function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = n
     const survAccum = v2ExpectedBestSurvivor(pos, available, myTeam, horizon, 'accum', ctx);
     const survSpike = v2ExpectedBestSurvivor(pos, available, myTeam, horizon, 'spike', ctx);
 
-    // Value baseline: the player at this position who will still be there once the
-    // league has taken everyone it is going to take.  Depth shrinks as the draft
-    // runs down, so late in the draft the baseline correctly rises toward what is
-    // actually left on the board.
-    const depth = Math.max(1, Math.round(
-      (V2_ROSTER_TARGETS[pos] || 1) * V2_NUM_TEAMS * (roundsLeft / V2_DRAFT_ROUNDS)
-    ));
+    // Value baseline: the last STARTABLE player at this position across the league,
+    // i.e. lineup demand (slots x teams), not roster demand (target x teams).
+    //
+    // Using roster demand put the quarterback baseline at QB36 — a player worth under
+    // 2 ppg who nobody ever starts — so an elite QB scored ~19 points above
+    // "replacement" and the model would reach many picks for him.  Your actual
+    // fallback is never QB36; it is the next competent starter a round or two later.
+    // Lineup demand puts the baseline near QB12, which is the real alternative and
+    // the standard VORP definition.
+    //
+    // Indexing into the *available* pool means this self-adjusts as the draft runs
+    // down: once the good players are gone, the Nth-best remaining is worse, and the
+    // baseline rises on its own without scaling by rounds left.
+    const depth = Math.max(1, Math.round((V2_STARTER_SLOTS[pos] || 1) * V2_NUM_TEAMS));
     const atPos = available
       .filter(p => p.pos === pos && p._eff)
       .sort((a, b) => b._eff.mean - a._eff.mean);
