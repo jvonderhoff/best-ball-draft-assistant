@@ -78,6 +78,10 @@ const V2_W_PLAYOFF      = _v2env.V2_W_PO  ? parseFloat(_v2env.V2_W_PO)  : 0.60;
 // ceiling problem rather than a mean problem.
 const V2_SPIKE_Z = 1.0;
 
+// Chance a given player is on bye in a given week of the 14-week accumulation phase.
+// Every team has exactly one bye inside that window.
+const V2_BYE_RATE = 1 / 14;
+
 // Same-team / same-game correlation coefficients for weekly fantasy scoring.
 // QB-to-his-own-WR1 is the strongest routinely available correlation in football;
 // two WRs on one team partly cannibalise each other but share game environment.
@@ -90,7 +94,7 @@ const V2_CORRELATION = {
 
 // Scales correlation into points-per-week so a stack is a nudge, not a 60-pick reach.
 // Every source is explicit that you should not reach far to complete a stack.
-const V2_CORRELATION_WEIGHT = 0.35;
+const V2_CORRELATION_WEIGHT = _v2env.V2_CORR ? parseFloat(_v2env.V2_CORR) : 0.35;
 
 // Correlation is only paid on the first 3 pass-catchers tied to one QB.  Past
 // QB + 3, you are guaranteeing wasted roster spots on most weeks.
@@ -99,6 +103,48 @@ const V2_MAX_STACK_PARTNERS = 3;
 // Playoff-week correlation is worth more than regular-season correlation: in a
 // win-the-week format you need your whole team to spike simultaneously.
 const V2_PLAYOFF_STACK_MULTIPLIER = 1.8;
+
+// Pod size. Used to work out how many players at a position the rest of the league
+// will still take, which sets the replacement baseline below.
+const V2_NUM_TEAMS = 12;
+
+// How the value baseline is split between two different questions:
+//
+//   VOR  (weight 1 - V2_TIMING_WEIGHT)  "how much better is he than a body I can get
+//                                        at this position at the end of the draft?"
+//   VONA (weight V2_TIMING_WEIGHT)      "how much better is he than what survives to
+//                                        my next pick?"
+//
+// VONA alone does not work, and the failure is instructive: it is a *timing* signal,
+// not a value signal.  It measures which position degrades fastest between now and
+// your next turn, so whichever position wins that question gets stockpiled no matter
+// how few lineup slots can absorb it.  Run on pure VONA the model piled up receivers;
+// with the horizon corrected it piled up tight ends instead — the bias moved, it did
+// not go away.  VOR is scaled against a fixed replacement level and is therefore
+// comparable across positions, which is what stops the stockpiling; VONA is kept as a
+// tilt because when the next tier really is about to disappear, that matters.
+const V2_TIMING_WEIGHT = _v2env.V2_TIMING ? parseFloat(_v2env.V2_TIMING) : 0.35;
+
+// How hard to anchor on market ADP.
+//
+// This turned out to be the single most important constant in the model, and the
+// reason is worth recording.  ADP is thousands of drafters' collective answer to the
+// roster-construction problem in this exact format — it is not merely a price signal,
+// it carries positional-value information that the slot math above is trying to
+// re-derive from first principles using a dozen hand-set parameters (starter slots,
+// per-position CVs, spike threshold, availability, replacement depth).
+//
+// With this term weak, every baseline formulation produced a lopsided roster: pure
+// VONA stockpiled receivers, a corrected horizon stockpiled tight ends, a VOR blend
+// starved running backs.  The bias kept moving because the slot math has no anchor
+// telling it what a position is worth in the aggregate.  ADP is that anchor.
+//
+// Swept against the slot-attribution harness, weeks 1-14 points versus V1:
+//   0.25 -> -143    1.0 -> -80    2.5 -> -41    4.0 -> +22    5.0 -> +30    8.0 -> +36
+// Anything from ~4 upward wins; the differences across that range are inside the
+// harness's noise, so this is set mid-range rather than at the sampled maximum, to
+// avoid fitting the simulator.
+const V2_MARKET_PULL = _v2env.V2_MKT ? parseFloat(_v2env.V2_MKT) : 5.0;
 
 // ADP noise.  Players do not come off the board exactly at ADP; the spread grows
 // roughly proportionally as you get deeper into the draft.
@@ -233,12 +279,13 @@ function v2AttachEffective(players, projMap, opts = {}) {
     const curve = curves[pos];
     const proj  = p._proj;
 
-    let mean, sd, sources;
+    let mean, sd, sources, avail = 1;
 
     if (proj && proj.ppg > 0) {
       mean    = proj.ppg;
       sd      = proj.sd;
       sources = proj.sources || 1;
+      avail   = proj.avail ?? 1;
     } else {
       // No projection — estimate from where the market ranks him at his position.
       const list    = adpRankByPos[pos] || [];
@@ -248,6 +295,7 @@ function v2AttachEffective(players, projMap, opts = {}) {
       mean    = est * 0.92;   // unprojected players skew toward the downside
       sd      = est * 0.70;
       sources = 0;
+      avail   = 0.80;         // no projection usually means a fringe/injury-risk body
     }
 
     // Rank-based sanity blend.  A single projection source can be badly wrong on
@@ -274,6 +322,7 @@ function v2AttachEffective(players, projMap, opts = {}) {
       sd:      sd,
       ceiling: blended + 1.2816 * sd,
       sources: sources,
+      avail:   avail,
       ecrWeight: wUsed,
       customRanked: customPts != null,
       projected: !!(proj && proj.ppg > 0),
@@ -292,16 +341,31 @@ function v2AttachEffective(players, projMap, opts = {}) {
 // normals with different means and SDs have no clean analytic form, and this only
 // runs once per position per pick (not once per candidate), so it is cheap.
 //
+// Availability is the important part.  An earlier version assumed every rostered
+// player suits up every week, which is what let the model carry four running backs
+// against two mandatory RB slots.  Each player is instead drawn as absent with his
+// own probability (bye week plus a position injury rate), and an absent player
+// contributes nothing.  With ten receivers, one absence barely moves the third-best
+// score; with four running backs it routinely empties a starting slot, which drops
+// the bar, which raises the marginal value of adding depth.  That is the entire
+// mechanism by which a thin position asks for more bodies.
+//
 // k > roster count means the slot is currently empty, so the bar is zero.
-function v2OrderStatMoments(pos, myTeam, k) {
+function v2OrderStatMoments(pos, myTeam, k, mode) {
   const owned = myTeam.filter(p => p.pos === pos && p._eff);
   if (owned.length < k) return { mean: 0, sd: 0 };
 
-  const rng = v2Rng(0x9E3779B9 ^ (owned.length * 31 + k * 7));
+  // Byes only exist in the weeks 1-14 accumulation phase; the knockout weeks are
+  // past the bye schedule entirely.
+  const byeRate = mode === 'spike' ? 0 : V2_BYE_RATE;
+
+  const rng = v2Rng(0x9E3779B9 ^ (owned.length * 31 + k * 7 + (mode === 'spike' ? 3 : 0)));
   const draws = new Array(V2_ORDER_STAT_DRAWS);
 
   for (let d = 0; d < V2_ORDER_STAT_DRAWS; d++) {
     const week = owned.map(p => {
+      const avail = (p._eff.avail ?? 1) * (1 - byeRate);
+      if (rng() > avail) return 0;
       // Box-Muller
       let u = rng(); if (u === 0) u = 1e-9;
       const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rng());
@@ -336,20 +400,23 @@ function v2OrderStatMoments(pos, myTeam, k) {
 // the bar instead of inflating the player keeps both terms on the same points scale
 // and still rewards high-variance players — they clear a high bar more often — but
 // only once.
-function v2PositionGain(pos, mean, sd, myTeam, mode, ctx = null) {
+function v2PositionGain(pos, mean, sd, myTeam, mode, ctx = null, avail = 1) {
   const slots = V2_STARTER_SLOTS[pos] || 1;
   const lo    = Math.floor(slots);
   const hi    = lo + 1;
   const frac  = slots - lo;
 
+  // Cached per position AND mode — the bars differ between phases, since byes exist
+  // in weeks 1-14 but not in the knockout weeks.
   const barCache = ctx && ctx.barCache;
-  let bars = barCache && barCache[pos];
+  const cacheKey = `${pos}|${mode}`;
+  let bars = barCache && barCache[cacheKey];
   if (!bars) {
     bars = {
-      lo: v2OrderStatMoments(pos, myTeam, lo),
-      hi: v2OrderStatMoments(pos, myTeam, hi),
+      lo: v2OrderStatMoments(pos, myTeam, lo, mode),
+      hi: v2OrderStatMoments(pos, myTeam, hi, mode),
     };
-    if (barCache) barCache[pos] = bars;
+    if (barCache) barCache[cacheKey] = bars;
   }
 
   // How much a slot has to beat its own norm to win a knockout week.  Sized off the
@@ -363,7 +430,12 @@ function v2PositionGain(pos, mean, sd, myTeam, mode, ctx = null) {
 
   const gLo = v2MarginalGain(mean, sd, bars.lo.mean + offset, bars.lo.sd);
   const gHi = v2MarginalGain(mean, sd, bars.hi.mean + offset, bars.hi.sd);
-  return { gain: gLo * (1 - frac) + gHi * frac, bars, offset };
+
+  // A player only helps in the weeks he actually plays.
+  const byeRate  = mode === 'spike' ? 0 : V2_BYE_RATE;
+  const playRate = avail * (1 - byeRate);
+
+  return { gain: (gLo * (1 - frac) + gHi * frac) * playRate, bars, offset };
 }
 
 // ── Survival modelling ────────────────────────────────────────────────────────
@@ -376,25 +448,25 @@ function v2SurvivalProb(player, pick) {
   return 1 - v2NormCdf((pick - adp) / sigma);
 }
 
-// The pick by which you'd realistically have to stop punting this position.
+// The pick this position's replacement level is measured at.
 //
-// Naive VONA compares against your very next pick, which is myopic: "an equally good
-// RB will be there next turn" is true at every individual step, but following that
-// logic ten turns running leaves you taking 3-ppg RBs in round 19.  If you still need
-// k more bodies at a position, the honest comparison is against the board k turns from
-// now, because that is where punting actually lands you.
+// Deciding between player P and player Q at this pick is a pairwise swap: taking P now
+// and Q later versus Q now and P later differ by
+//
+//     [P_now - P_later] - [Q_now - Q_later]
+//
+// so the correct quantity per position is the drop-off between now and the NEXT time
+// you pick.  That is one-step VONA, and it is what this returns.
+//
+// A previous version scaled the horizon by how many bodies the position still needed
+// (target minus rostered), reaching further down the board for positions with bigger
+// targets.  That was not derived from anything — and because WR carries the largest
+// target, it handed WR the lowest replacement level and therefore the highest VONA at
+// every pick.  Slot-level attribution showed the damage: the model won the receiver
+// slots by 71 points a season and lost 82 at running back and 28 at quarterback,
+// because it never spent an early pick on the two positions with mandatory starters.
 function v2ReplacementHorizon(pos, myTeam, ctx) {
-  const have = myTeam.filter(p => p.pos === pos).length;
-  const need = Math.max(1, (V2_ROSTER_TARGETS[pos] || 1) - have);
-
-  const picks = ctx.myPicks;
-  if (picks && picks.length) {
-    return picks[Math.min(need, picks.length) - 1];
-  }
-  // Fallback when the caller didn't supply a pick schedule: assume uniform gaps.
-  if (ctx.nextMyPick == null) return null;
-  const gap = Math.max(1, ctx.nextMyPick - ctx.myPickNumber);
-  return ctx.myPickNumber + gap * need;
+  return ctx.nextMyPick;
 }
 
 // Expected marginal gain of the best player at `pos` who survives to `nextPick`.
@@ -405,7 +477,7 @@ function v2ExpectedBestSurvivor(pos, available, myTeam, nextPick, mode, ctx) {
   const candidates = available
     .filter(p => p.pos === pos && p._eff)
     .map(p => ({
-      gain: v2PositionGain(pos, p._eff.mean, p._eff.sd, myTeam, mode, ctx).gain,
+      gain: v2PositionGain(pos, p._eff.mean, p._eff.sd, myTeam, mode, ctx, p._eff.avail ?? 1).gain,
       surv: v2SurvivalProb(p, nextPick),
     }))
     .sort((a, b) => b.gain - a.gain)
@@ -594,7 +666,7 @@ function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = n
   // the current roster, so they are computed once per pick, not once per candidate.
   const ctx = {
     nextMyPick, myPickNumber, myPicks,
-    replAccum: {}, replSpike: {}, barCache: {}, typicalSd: {}, horizon: {},
+    replAccum: {}, replSpike: {}, barCache: {}, typicalSd: {}, horizon: {}, replDepth: {},
   };
 
   // Typical starter SD per position, used to size the knockout-week spike bar.
@@ -609,11 +681,37 @@ function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = n
     ctx.typicalSd[pos] = sds.length ? sds.reduce((a, b) => a + b, 0) / sds.length : 0;
   }
 
+  const roundsLeft = Math.max(1, V2_DRAFT_ROUNDS - myTeam.length);
+
   for (const pos of Object.keys(V2_STARTER_SLOTS)) {
     const horizon = v2ReplacementHorizon(pos, myTeam, ctx);
-    ctx.horizon[pos]   = horizon;
-    ctx.replAccum[pos] = v2ExpectedBestSurvivor(pos, available, myTeam, horizon, 'accum', ctx);
-    ctx.replSpike[pos] = v2ExpectedBestSurvivor(pos, available, myTeam, horizon, 'spike', ctx);
+    ctx.horizon[pos] = horizon;
+
+    // Timing baseline: the best player at this position likely to survive to my next pick.
+    const survAccum = v2ExpectedBestSurvivor(pos, available, myTeam, horizon, 'accum', ctx);
+    const survSpike = v2ExpectedBestSurvivor(pos, available, myTeam, horizon, 'spike', ctx);
+
+    // Value baseline: the player at this position who will still be there once the
+    // league has taken everyone it is going to take.  Depth shrinks as the draft
+    // runs down, so late in the draft the baseline correctly rises toward what is
+    // actually left on the board.
+    const depth = Math.max(1, Math.round(
+      (V2_ROSTER_TARGETS[pos] || 1) * V2_NUM_TEAMS * (roundsLeft / V2_DRAFT_ROUNDS)
+    ));
+    const atPos = available
+      .filter(p => p.pos === pos && p._eff)
+      .sort((a, b) => b._eff.mean - a._eff.mean);
+    const repl = atPos.length ? atPos[Math.min(depth, atPos.length - 1)] : null;
+
+    const vorAccum = repl
+      ? v2PositionGain(pos, repl._eff.mean, repl._eff.sd, myTeam, 'accum', ctx, repl._eff.avail ?? 1).gain : 0;
+    const vorSpike = repl
+      ? v2PositionGain(pos, repl._eff.mean, repl._eff.sd, myTeam, 'spike', ctx, repl._eff.avail ?? 1).gain : 0;
+
+    const w = V2_TIMING_WEIGHT;
+    ctx.replAccum[pos] = vorAccum * (1 - w) + survAccum * w;
+    ctx.replSpike[pos] = vorSpike * (1 - w) + survSpike * w;
+    ctx.replDepth[pos] = depth;
   }
   return ctx;
 }
@@ -637,11 +735,11 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   };
 
   // ── Accumulation value (weeks 1-14) ────────────────────────────────────────
-  const rAcc    = v2PositionGain(pos, eff.mean, eff.sd, myTeam, 'accum', ctx);
+  const rAcc    = v2PositionGain(pos, eff.mean, eff.sd, myTeam, 'accum', ctx, eff.avail ?? 1);
   const vonaAcc = rAcc.gain - (ctx.replAccum[pos] || 0);
 
   // ── Playoff value (weeks 15-17) ────────────────────────────────────────────
-  const rSpk    = v2PositionGain(pos, eff.mean, eff.sd, myTeam, 'spike', ctx);
+  const rSpk    = v2PositionGain(pos, eff.mean, eff.sd, myTeam, 'spike', ctx, eff.avail ?? 1);
   const vonaSpk = (rSpk.gain - (ctx.replSpike[pos] || 0)) * v2PlayoffAvailability(player);
 
   let score = 0;
@@ -670,7 +768,7 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   const adp = player.realAdp ?? player.adp;
   if (adp) {
     const fell = myPickNumber - adp;
-    const tilt = Math.max(-1.5, Math.min(1.5, fell / 24)) * 0.25 * (eff.sd / 10);
+    const tilt = Math.max(-1.5, Math.min(1.5, fell / 24)) * V2_MARKET_PULL * (eff.sd / 10);
     if (Math.abs(tilt) > 0.005) {
       score += add(tilt, fell > 0 ? 'Value vs ADP' : 'Reaching vs ADP',
                    `ADP ${adp.toFixed(1)} at pick ${myPickNumber}`);

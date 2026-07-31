@@ -46,6 +46,13 @@ YARDAGE_CV = {'rec_yd': 0.85, 'rush_yd': 0.62, 'pass_yd': 0.42}
 # bye), which would deflate every per-game number by ~6%.
 MAX_GAMES = 17.0
 
+# Share of games a healthy-entering player at each position misses in a typical
+# season.  Projection sources publish an optimistic ~17 games for nearly everyone,
+# which would tell the recommender that four running backs cover a whole season.
+# They don't — and the cost of being thin lands hardest at RB, which has both the
+# highest injury rate and two mandatory weekly starting slots.
+POS_INJURY_RATE = {'QB': 0.12, 'RB': 0.18, 'WR': 0.14, 'TE': 0.15}
+
 BONUS_THRESHOLD = {'rec_yd': 100.0, 'rush_yd': 100.0, 'pass_yd': 300.0}
 BONUS_POINTS    = 3.0
 
@@ -257,6 +264,10 @@ def _build(force_refresh: bool = False) -> list:
             'ppg':         round(ppg, 2),
             'sd':          round(sd, 2),
             'ceiling':     round(ppg + CEILING_Z * sd, 2),
+            # Probability this player is active in a given non-bye week.  Takes the
+            # position prior unless the projection itself forecasts a short season
+            # (a known injury or suspension), in which case that governs.
+            'avail':       round(min(games / MAX_GAMES, 1 - POS_INJURY_RATE[pos]), 3),
             'upside':      p.get('upside'),
             'trajectory':  p.get('trajectory'),
             'consensus_rank':   p.get('consensus_rank'),
