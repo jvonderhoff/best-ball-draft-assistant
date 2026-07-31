@@ -526,9 +526,25 @@ function v2CorrelationValue(player, myTeam) {
   const myQBs    = sameTeam.filter(m => m.pos === 'QB');
   const myCatch  = sameTeam.filter(m => ['WR', 'TE'].includes(m.pos));
 
+  // Same-team correlation pays into BOTH phases, and pays more into the knockout
+  // weeks than the regular season.
+  //
+  // This was previously credited only to `regular`, so a QB-to-his-own-receiver
+  // stack — the strongest and most useful correlation in the sport — earned nothing
+  // in the weeks 15-17 term, while a mere opposing-game stack earned full playoff
+  // weight plus a 1.8x multiplier despite a much weaker coefficient. Backwards:
+  // stacking is a win-the-week play. Its whole purpose is simultaneous spikes, which
+  // is exactly what a single-week knockout rewards and what a 14-week accumulation
+  // total mostly averages away.
+  //
+  // It also invalidated an earlier finding. Sweeping V2_CORRELATION_WEIGHT appeared
+  // to show that stacking cost the model badly, so it was left low — but that dial
+  // only ever fed the 0.40-weighted accumulation term, so the experiment was
+  // measuring a lever wired to the wrong place.
   const pair = (rho, partner, label) => {
     const v = rho * Math.min(sdMe, partner._eff.sd) * V2_CORRELATION_WEIGHT;
     regular += v;
+    playoff += v * V2_PLAYOFF_STACK_MULTIPLIER;
     notes.push(`${label} ${partner.name.split(' ').pop()}`);
     return v;
   };
@@ -550,7 +566,9 @@ function v2CorrelationValue(player, myTeam) {
     // environment only.
     if (stackRoom) {
       for (const c of myCatch) {
-        regular += V2_CORRELATION.passCatcherPair * Math.min(sdMe, c._eff.sd) * V2_CORRELATION_WEIGHT;
+        const v = V2_CORRELATION.passCatcherPair * Math.min(sdMe, c._eff.sd) * V2_CORRELATION_WEIGHT;
+        regular += v;
+        playoff += v * V2_PLAYOFF_STACK_MULTIPLIER;
       }
       if (!myQBs.length && myCatch.length) notes.push(`${player.team} receiver room`);
     }
@@ -563,6 +581,10 @@ function v2CorrelationValue(player, myTeam) {
     }
   }
 
+  // A back paired with his own QB is the one same-team combination that does NOT get
+  // playoff weight. The week a quarterback goes nuclear is a pass-heavy week, which
+  // is usually not his running back's big week — the volume correlation is real over
+  // a season but the spike correlation is not.
   if (player.pos === 'RB' && myQBs.length) {
     regular += V2_CORRELATION.qbRb * Math.min(sdMe, myQBs[0]._eff.sd) * V2_CORRELATION_WEIGHT;
   }
