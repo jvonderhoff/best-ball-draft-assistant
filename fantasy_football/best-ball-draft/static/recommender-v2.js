@@ -465,7 +465,9 @@ function v2SurvivalProb(player, pick) {
 // every pick.  Slot-level attribution showed the damage: the model won the receiver
 // slots by 71 points a season and lost 82 at running back and 28 at quarterback,
 // because it never spent an early pick on the two positions with mandatory starters.
-function v2ReplacementHorizon(pos, myTeam, ctx) {
+// Takes no position or roster argument on purpose: the horizon is the same for every
+// position, and making that explicit is the point of keeping the function.
+function v2ReplacementHorizon(ctx) {
   return ctx.nextMyPick;
 }
 
@@ -684,7 +686,7 @@ function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = n
   const roundsLeft = Math.max(1, V2_DRAFT_ROUNDS - myTeam.length);
 
   for (const pos of Object.keys(V2_STARTER_SLOTS)) {
-    const horizon = v2ReplacementHorizon(pos, myTeam, ctx);
+    const horizon = v2ReplacementHorizon(ctx);
     ctx.horizon[pos] = horizon;
 
     // Timing baseline: the best player at this position likely to survive to my next pick.
