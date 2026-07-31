@@ -5,3 +5,7 @@ ssl.crt
 # store and reverted live edits on every deploy. Rankings now persist in the
 # external DB (DATABASE_URL); this file is rebuilt locally on first run.
 drafts.db
+
+# V2 recommender projection cache (regenerated on demand)
+app/data/projection_cache.json
+tools/replay-draft.json

@@ -1854,6 +1854,28 @@ def get_analysis():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/projections-v2', methods=['GET'])
+def get_projections_v2():
+    """
+    Lean per-player projection payload for the V2 recommender: DK-adjusted season
+    points, per-game mean, weekly SD and ceiling.  Disk-cached (6h) so the live
+    draft page never blocks on the Sleeper fetch.
+    """
+    try:
+        from app.projections import get_projections as build_projections
+        force = request.args.get('refresh', '').lower() in ('1', 'true', 'yes')
+        data  = build_projections(force_refresh=force)
+        return jsonify({
+            'ok': True,
+            'players': data['players'],
+            'count': len(data['players']),
+            'generated_at': data.get('generated_at'),
+            'stale': data.get('stale', False),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # ── Cookie sync (Mac → Render) ─────────────────────────────────────────────────
 _COOKIES_FILE = os.path.join(basedir, '.synced_cookies.json')
 

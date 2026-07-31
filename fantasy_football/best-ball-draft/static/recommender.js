@@ -555,3 +555,13 @@ function currentRound(overallPick, numTeams) {
   if (!numTeams) return null;
   return Math.floor((overallPick - 1) / numTeams) + 1;
 }
+
+// Node harness support — no effect in the browser.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    calculateValue, getTopRecommendations, getStackSummary,
+    isMyTurn, nextMyOverallPick, picksUntilMyTurn, currentRound,
+    getTeamNeeds, capitalAllocationInfo, waitabilityInfo,
+    BASE_TARGETS, DRAFT_ROUNDS, MAX_ROSTER,
+  };
+}
