@@ -129,6 +129,13 @@ const V2_NUM_TEAMS = 12;
 // tilt because when the next tier really is about to disappear, that matters.
 const V2_TIMING_WEIGHT = _v2env.V2_TIMING ? parseFloat(_v2env.V2_TIMING) : 0.35;
 
+// A player who falls only counts as value to the extent you can use him. FIT_REF is
+// the share of his weekly output that has to clear your lineup bar for the fall to
+// count in full; FLOOR keeps a genuine bargain from being zeroed out entirely at a
+// position you are deep in. See the market-value block in calculateValueV2.
+const V2_VALUE_FIT_REF   = 0.50;
+const V2_VALUE_FIT_FLOOR = 0.20;
+
 // How hard to anchor on market ADP.
 //
 // This turned out to be the single most important constant in the model, and the
@@ -957,10 +964,31 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   if (adp) {
     const fell     = myPickNumber - adp;
     const adpSigma = Math.max(V2_ADP_SIGMA_FLOOR, V2_ADP_SIGMA_RATIO * adp);
-    const tilt = Math.max(-1.5, Math.min(1.5, fell / adpSigma)) * V2_MARKET_PULL * (eff.sd / 10);
+    let tilt = Math.max(-1.5, Math.min(1.5, fell / adpSigma)) * V2_MARKET_PULL * (eff.sd / 10);
+
+    // The two directions are not symmetric.
+    //
+    // Reaching is scaled by nothing but the market: overpaying is overpaying whether
+    // or not the player fits, and leaving that unscaled is what keeps the model
+    // anchored to ADP, which is what makes its positional allocation sane.
+    //
+    // Falling value is different. A player who slides is only a bargain to the extent
+    // you can actually use him, and the amount of his production that clears your
+    // lineup bar is exactly what the accumulation gain already measures. A third tight
+    // end behind an elite one is six points a week below the slot he would compete
+    // for — the fourteen picks he fell are close to meaningless, yet unscaled they
+    // were worth 0.93, some 43% of his score and enough to rank him first overall.
+    let fit = 1;
+    if (fell > 0) {
+      fit = Math.max(V2_VALUE_FIT_FLOOR,
+                     Math.min(1, rAcc.gain / Math.max(0.01, V2_VALUE_FIT_REF * eff.mean)));
+      tilt *= fit;
+    }
+
     if (Math.abs(tilt) > 0.005) {
       score += add(tilt, fell > 0 ? 'Value vs ADP' : 'Reaching vs ADP',
-                   `ADP ${adp.toFixed(1)} at pick ${myPickNumber}, ${Math.abs(fell / adpSigma).toFixed(2)}σ of market noise`);
+                   `ADP ${adp.toFixed(1)} at pick ${myPickNumber}, ${Math.abs(fell / adpSigma).toFixed(2)}σ of market noise`
+                   + (fell > 0 && fit < 0.999 ? ` · x${fit.toFixed(2)} roster fit` : ''));
     }
   }
 
