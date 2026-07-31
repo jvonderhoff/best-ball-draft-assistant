@@ -22,11 +22,9 @@ _sleeper_cache = {}   # module-level cache so we only fetch once per process
 
 
 def _normalize(name: str) -> str:
-    """Lowercase, strip punctuation/suffixes for fuzzy name matching."""
-    name = name.lower()
-    name = re.sub(r"['\-\.]", '', name)
-    name = re.sub(r'\s+(jr|sr|ii|iii|iv|v)\s*$', '', name)
-    return name.strip()
+    """Cross-source name key. See app.data.names for why nicknames matter."""
+    from app.data.names import normalize_name
+    return normalize_name(name)
 
 
 def _fetch_sleeper():

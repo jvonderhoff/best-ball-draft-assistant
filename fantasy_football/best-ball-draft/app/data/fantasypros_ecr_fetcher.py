@@ -38,11 +38,9 @@ SKILL_POSITIONS = {'QB', 'RB', 'WR', 'TE'}
 
 
 def _normalize(name: str) -> str:
-    """Lowercase, strip suffixes and punctuation for fuzzy matching."""
-    name = name.lower()
-    name = re.sub(r"\b(jr\.?|sr\.?|ii|iii|iv)\b", '', name)
-    name = re.sub(r"[^a-z ]", '', name)
-    return ' '.join(name.split())
+    """Cross-source name key. See app.data.names for why nicknames matter."""
+    from app.data.names import normalize_name
+    return normalize_name(name)
 
 
 def fetch_ecr(verbose=True) -> dict:

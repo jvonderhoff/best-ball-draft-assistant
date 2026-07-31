@@ -670,12 +670,9 @@ def fetch_dk_players(ranking_id: str = DK_RANKINGS_ID) -> list:
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 def _normalize_name(name: str) -> str:
-    """Lowercase, strip suffixes and punctuation for cross-source name matching."""
-    import re
-    name = name.lower()
-    name = re.sub(r"\b(jr\.?|sr\.?|ii|iii|iv)\b", '', name)
-    name = re.sub(r"[^a-z ]", '', name)
-    return ' '.join(name.split())
+    """Cross-source name key. See app.data.names for why nicknames matter."""
+    from app.data.names import normalize_name
+    return normalize_name(name)
 
 
 def fetch_players(force_refresh=False):
