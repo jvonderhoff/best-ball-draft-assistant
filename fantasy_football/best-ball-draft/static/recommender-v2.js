@@ -167,7 +167,28 @@ const V2_ADP_SIGMA_RATIO = 0.30;
 // source is populated, since a single source can be an outlier.
 const V2_ECR_WEIGHT_SINGLE_SOURCE = 0.30;
 const V2_ECR_WEIGHT_MULTI_SOURCE  = 0.15;
-const V2_CUSTOM_RANK_WEIGHT       = 0.35;
+
+// Your own board outweighs the point projections.
+//
+// Not arbitrary: Sleeper and ESPN publish generic season-long PPR projections, which
+// are redraft artifacts. They know nothing about spike weeks, playoff schedule or
+// roster construction — the things that decide a best-ball draft. A board built by a
+// best-ball specialist encodes exactly those, so on this format it is the better
+// signal about ORDERING.
+//
+// The projections still matter and are deliberately not sidelined. Ranks are read off
+// the positional projection curve, so they set the point SCALE — "the WR you have 12th
+// is worth what the 12th-best-projected WR is worth". That is what keeps a rank
+// comparable across positions and lets the marginal-gain math work at all. A pure
+// ranking model cannot do that; it is what V1 does, and why it cannot tell you whether
+// a WR or an RB is the better pick.
+//
+// Effective shares at this setting: board ~52%, projections ~41%, ECR ~6%.
+//
+// NOTE: the harness cannot evaluate this. Simulated truth is derived from projections
+// or ADP, so it has no way to represent your board being right — raising this can only
+// look neutral-to-worse there by construction. This is set on judgement, not evidence.
+const V2_CUSTOM_RANK_WEIGHT       = _v2env.V2_RANKW ? parseFloat(_v2env.V2_RANKW) : 0.55;
 
 // ── Math helpers ──────────────────────────────────────────────────────────────
 
