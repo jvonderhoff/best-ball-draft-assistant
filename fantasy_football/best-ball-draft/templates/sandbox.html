@@ -308,6 +308,7 @@
         <div class="results-hdr-title" style="font-size:0.75em;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Recommendations</div>
         <button class="copy-btn" id="copyScenarioBtn" onclick="copyScenario()">📋 Copy for feedback</button>
       </div>
+      <div id="unmatchedBar"></div>
       <div id="divergeBar"></div>
       <div class="compare-grid">
         <div class="model-col">
@@ -396,7 +397,7 @@ document.getElementById('loadDraftBtn').addEventListener('click', () => {
 
   // Map picks to PLAYERS objects (for full player data including adp)
   myRoster = myPicks.map(p => {
-    const live = PLAYERS.find(lp => lp.id === p.player_id);
+    const live = resolvePlayer({ id: p.player_id, name: p.player_name, pos: p.pos });
     return live || { id: p.player_id, name: p.player_name, pos: p.pos, team: p.team, adp: p.adp || 999 };
   });
 
@@ -492,6 +493,49 @@ function reattachV2() {
 }
 
 document.getElementById('rankingMode').addEventListener('change', () => { reattachV2(); run(); });
+
+
+// ── Roster player resolution ─────────────────────────────────────────────────
+// Draft feeds identify players by name, and names drift ("Marvin Harrison Jr." vs
+// "Marvin Harrison", "Deebo Samuel Sr."). A miss matters more than it looks: the
+// stub object a failed match produces carries no _eff, and V2 filters roster players
+// on _eff when it computes the positional bar — so an unmatched player is invisible
+// to V2, which then thinks the slot is emptier than it is and overvalues that
+// position for the rest of the draft. Resolve hard, and surface whatever is left.
+function normName(n) {
+  return (n || '').toLowerCase()
+    .replace(/[^a-z ]/g, '')
+    .replace(/\b(jr|sr|ii|iii|iv)\b/g, '')
+    .replace(/\s+/g, ' ').trim();
+}
+
+function resolvePlayer(ref) {
+  if (ref.id) {
+    const byId = PLAYERS.find(p => p.id === ref.id);
+    if (byId) return byId;
+  }
+  if (ref.name) {
+    const exact = PLAYERS.find(p => p.name === ref.name && (!ref.pos || p.pos === ref.pos));
+    if (exact) return exact;
+    const key = normName(ref.name);
+    const fuzzy = PLAYERS.find(p => normName(p.name) === key && (!ref.pos || p.pos === ref.pos));
+    if (fuzzy) return fuzzy;
+    const anyPos = PLAYERS.find(p => normName(p.name) === key);
+    if (anyPos) return anyPos;
+  }
+  return null;
+}
+
+// Banner for roster players V2 cannot see. Silence here would be worse than noise.
+function renderUnmatched() {
+  const bad = myRoster.filter(p => !p._eff);
+  const el = document.getElementById('unmatchedBar');
+  if (!bad.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="v2-warn" style="background:var(--surface);border-radius:6px;padding:8px 12px;margin-bottom:10px">
+    ⚠ ${bad.length} roster player${bad.length > 1 ? 's' : ''} not matched to the player pool —
+    V2 is scoring as if ${bad.length > 1 ? 'they are' : 'he is'} not on your roster:
+    <b>${bad.map(p => p.name).join(', ')}</b></div>`;
+}
 
 // Every remaining pick of mine after `fromPick`, in order — lets V2 measure its
 // replacement horizon against the real snake schedule.
@@ -695,6 +739,7 @@ function run() {
   const v1Rank = new Map(recs.map((r, i) => [r.player.id, i + 1]));
   const v2Rank = new Map(recsV2.map((r, i) => [r.player.id, i + 1]));
 
+  renderUnmatched();
   renderDivergence(recs, recsV2, v1Rank, v2Rank, n);
 
   // ── V1 column ──
@@ -907,7 +952,7 @@ document.getElementById('loadLiveDraftBtn').addEventListener('click', async () =
     // My picks
     const myPicks = picks.filter(p => (p.username || '').toLowerCase() === username);
     myRoster = myPicks.map(p => {
-      const live = PLAYERS.find(lp => lp.name === p.player_name && lp.pos === p.pos);
+      const live = resolvePlayer({ name: p.player_name, pos: p.pos });
       return live || { id: p.draftable_id, name: p.player_name, pos: p.pos, team: p.team || '', adp: p.adp || 999 };
     });
 
@@ -915,7 +960,7 @@ document.getElementById('loadLiveDraftBtn').addEventListener('click', async () =
     const myIds = new Set(myPicks.map(p => p.draftable_id));
     takenIds = new Set(
       picks.filter(p => !myIds.has(p.draftable_id)).map(p => {
-        const live = PLAYERS.find(lp => lp.name === p.player_name && lp.pos === p.pos);
+        const live = resolvePlayer({ name: p.player_name, pos: p.pos });
         return live ? live.id : p.draftable_id;
       })
     );
