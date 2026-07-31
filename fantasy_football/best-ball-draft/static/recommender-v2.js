@@ -584,13 +584,69 @@ function v2CorrelationValue(player, myTeam) {
   return { regular, playoff, notes };
 }
 
+// How likely an unsigned free agent is to be on a roster by the knockout weeks.
+//
+// Read off the market rather than assumed: if the field spends a round-12 pick on a
+// free agent, the field believes he will sign and contribute, and that belief is
+// already in his ADP.  Applying a further flat penalty on top double-counts it.
+//
+// The curve is deliberately convex, so only players going at the very back of the
+// draft — where a pick is a dart throw and non-signing is a live outcome — take a
+// real discount.  Never reaches 1.0: even a certain signing carries genuine risk of
+// a late deal, a reduced role, or a bad landing spot, and we cannot see his schedule.
+function v2FreeAgentSignProb(player, ctx) {
+  const adp = player.realAdp ?? player.adp;
+  const max = (ctx && ctx.maxAdp) || 250;
+  if (!adp) return 0.45;
+  const depth = Math.min(1, adp / max);
+  return Math.max(0.45, Math.min(0.95, 0.95 - 0.55 * Math.pow(depth, 3)));
+}
+
 // Fraction of the three knockout weeks in which this player's team actually has a
-// game.  Free agents (and anyone with no scheduled playoff-week opponent) are worth
-// nothing in exactly the weeks that pay.
-function v2PlayoffAvailability(player) {
+// game.  A player with a real team and no scheduled opponent is a data gap; an
+// unsigned free agent is discounted by how likely the market thinks he is to sign.
+function v2PlayoffAvailability(player, ctx) {
   const weeks = ['week15', 'week16', 'week17'].filter(w => player[w]);
-  if (!weeks.length) return v2HasRealTeam(player) ? 1.0 : 0.35;
-  return weeks.length / 3;
+  if (weeks.length) return weeks.length / 3;
+  return v2HasRealTeam(player) ? 1.0 : v2FreeAgentSignProb(player, ctx);
+}
+
+// Expected playoff game-stack value for a player whose team we do not know yet.
+//
+// Returning zero (the previous behaviour) is not neutral, it is a penalty: in a
+// roster with several playoff-week partners every rostered candidate collects a
+// point or more of game-stack value, and a free agent alone cannot. But he will
+// land somewhere, and some landing spots do stack with your roster.
+//
+// So instead of guessing, average the actual stack value over every team on the
+// board — the schedule is known even when the player's destination is not.
+function v2ExpectedUnknownTeamStack(player, myTeam, ctx) {
+  if (!ctx || !ctx.teamSchedules || !player._eff) return 0;
+  const teams = Object.keys(ctx.teamSchedules);
+  if (!teams.length) return 0;
+
+  const sdMe = player._eff.sd;
+  const weekWeight = { 17: 1.6, 16: 1.0, 15: 0.9 };
+  let total = 0;
+
+  for (const team of teams) {
+    const sched = ctx.teamSchedules[team];
+    for (const week of [17, 16, 15]) {
+      const opp = sched[`week${week}`];
+      if (!opp) continue;
+      for (const m of myTeam) {
+        if (!m._eff) continue;
+        // Would a player on `team` share this week's game with teammate m?
+        if (m.team !== opp && m[`week${week}`] !== team) continue;
+        total += V2_CORRELATION.opposingGame
+               * Math.min(sdMe, m._eff.sd)
+               * V2_CORRELATION_WEIGHT
+               * V2_PLAYOFF_STACK_MULTIPLIER
+               * weekWeight[week];
+      }
+    }
+  }
+  return (total / teams.length) * v2FreeAgentSignProb(player, ctx);
 }
 
 // ── Bye weeks ─────────────────────────────────────────────────────────────────
@@ -669,7 +725,22 @@ function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = n
   const ctx = {
     nextMyPick, myPickNumber, myPicks,
     replAccum: {}, replSpike: {}, barCache: {}, typicalSd: {}, horizon: {}, replDepth: {},
+    maxAdp: 250, teamSchedules: {},
   };
+
+  // Deepest ADP on the board — the scale a free agent's draft position is read
+  // against when estimating how likely the market thinks he is to sign.
+  let maxAdp = 0;
+  for (const p of available) {
+    const a = p.realAdp ?? p.adp;
+    if (a && a < 9999 && a > maxAdp) maxAdp = a;
+    // Playoff schedule per NFL team, recovered from the pool. Lets an unsigned
+    // player's expected game stack be averaged over real destinations.
+    if (v2HasRealTeam(p) && !ctx.teamSchedules[p.team] && (p.week15 || p.week16 || p.week17)) {
+      ctx.teamSchedules[p.team] = { week15: p.week15, week16: p.week16, week17: p.week17 };
+    }
+  }
+  if (maxAdp > 0) ctx.maxAdp = maxAdp;
 
   // Typical starter SD per position, used to size the knockout-week spike bar.
   // Taken from the best remaining players at each position rather than the whole
@@ -748,7 +819,7 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
 
   // ── Playoff value (weeks 15-17) ────────────────────────────────────────────
   const rSpk    = v2PositionGain(pos, eff.mean, eff.sd, myTeam, 'spike', ctx, eff.avail ?? 1);
-  const vonaSpk = (rSpk.gain - (ctx.replSpike[pos] || 0)) * v2PlayoffAvailability(player);
+  const vonaSpk = (rSpk.gain - (ctx.replSpike[pos] || 0)) * v2PlayoffAvailability(player, ctx);
 
   let score = 0;
   score += add(V2_W_ACCUMULATION * vonaAcc, 'Accumulation (wk 1-14)',
@@ -760,6 +831,15 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   const corr = v2CorrelationValue(player, myTeam);
   if (corr.regular) score += add(V2_W_ACCUMULATION * corr.regular, 'Correlation', corr.notes.join(' · '));
   if (corr.playoff) score += add(V2_W_PLAYOFF * corr.playoff, 'Playoff game stack', corr.notes.join(' · '));
+
+  // Unsigned free agent: no known team, so no concrete stack — but an expected one.
+  if (!v2HasRealTeam(player)) {
+    const exp = v2ExpectedUnknownTeamStack(player, myTeam, ctx);
+    if (exp) {
+      score += add(V2_W_PLAYOFF * exp, 'Expected stack (unsigned)',
+                   `avg over all landing spots, ${Math.round(v2FreeAgentSignProb(player, ctx) * 100)}% signing weight`);
+    }
+  }
 
   // ── Penalties ──────────────────────────────────────────────────────────────
   const bye = v2ByePenalty(player, myTeam);
@@ -809,6 +889,9 @@ function getTopRecommendationsV2(available, myTeam, myPickNumber, n = 5, nextMyP
     const corr = v2CorrelationValue(p, myTeam);
     if (corr.notes.length) reasons.push(corr.notes.join(' · '));
 
+    if (!v2HasRealTeam(p)) {
+      reasons.push(`🔓 unsigned — ${Math.round(v2FreeAgentSignProb(p, ctx) * 100)}% signing weight, no known schedule`);
+    }
     if (p._eff) {
       if (!p._eff.projected) reasons.push('⚠ no projection — ADP-implied');
       else if (p._eff.sources === 1) reasons.push('single projection source');
@@ -839,7 +922,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     calculateValueV2, getTopRecommendationsV2, buildV2Context,
     v2AttachEffective, v2MarginalGain, v2SurvivalProb, v2PositionGain, v2OrderStatMoments,
-    v2ExpectedBestSurvivor, v2CorrelationValue,
+    v2ExpectedBestSurvivor, v2CorrelationValue, v2FreeAgentSignProb, v2PlayoffAvailability,
     V2_DRAFT_ROUNDS, V2_ROSTER_TARGETS, V2_STARTER_SLOTS,
   };
 }
