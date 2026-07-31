@@ -212,7 +212,8 @@ def _build(force_refresh: bool = False) -> list:
             })
             continue
 
-        sources = sum(1 for k in ('proj_pts_ppr', 'fp_pts_ppr', 'yahoo_pts_ppr')
+        sources = sum(1 for k in ('proj_pts_ppr', 'fp_pts_ppr',
+                                  'yahoo_pts_ppr', 'espn_pts_ppr')
                       if (p.get(k) or 0) > 0)
 
         # Projected games. Sleeper publishes this; fall back to a full season.

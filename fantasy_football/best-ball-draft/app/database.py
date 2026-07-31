@@ -81,6 +81,27 @@ def init_db():
                 updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            -- ESPN season projections. Kept in its own table (rather than sharing
+            -- player_projections) because that table is UNIQUE on player_name alone,
+            -- so a second source would overwrite the first. Components are stored
+            -- too — ESPN is the only free source that projects receptions, which
+            -- full-PPR valuation and the betting-prop correction both need.
+            CREATE TABLE IF NOT EXISTS espn_projections (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_name TEXT    NOT NULL UNIQUE,
+                fpts        REAL,
+                pos         TEXT,
+                pass_yd     REAL,
+                pass_td     REAL,
+                pass_int    REAL,
+                rush_yd     REAL,
+                rush_td     REAL,
+                rec         REAL,
+                rec_yd      REAL,
+                rec_td      REAL,
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS kv_store (
                 key         TEXT PRIMARY KEY,
                 value       TEXT,
@@ -486,6 +507,37 @@ def get_raw_projections():
         rows = conn.execute(
             'SELECT player_name, fpts, pos, source, updated_at FROM player_projections'
         ).fetchall()
+    return {r['player_name']: dict(r) for r in rows}
+
+
+_ESPN_COMPONENTS = ('pass_yd', 'pass_td', 'pass_int', 'rush_yd', 'rush_td',
+                    'rec', 'rec_yd', 'rec_td')
+
+
+def save_espn_projections(projections: dict):
+    """Upsert ESPN projections from {player_name: {'fpts', 'pos', <components>}}."""
+    cols = ('player_name', 'fpts', 'pos') + _ESPN_COMPONENTS
+    placeholders = ', '.join('?' * len(cols))
+    updates = ', '.join(f'{c} = excluded.{c}' for c in cols[1:])
+    sql = f"""
+        INSERT INTO espn_projections ({', '.join(cols)}, updated_at)
+        VALUES ({placeholders}, CURRENT_TIMESTAMP)
+        ON CONFLICT(player_name) DO UPDATE SET
+            {updates}, updated_at = CURRENT_TIMESTAMP
+    """
+    with get_db() as conn:
+        count = 0
+        for player_name, data in projections.items():
+            conn.execute(sql, (player_name, data.get('fpts'), data.get('pos'))
+                         + tuple(data.get(c) for c in _ESPN_COMPONENTS))
+            count += 1
+    return count
+
+
+def get_espn_projections():
+    """Return {player_name: {fpts, pos, components…, updated_at}}."""
+    with get_db() as conn:
+        rows = conn.execute('SELECT * FROM espn_projections').fetchall()
     return {r['player_name']: dict(r) for r in rows}
 
 

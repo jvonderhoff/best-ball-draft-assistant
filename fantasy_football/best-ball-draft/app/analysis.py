@@ -10,7 +10,7 @@ Scoring is full PPR.
 """
 import re
 import requests
-from app.database import get_db, get_all_props, get_raw_projections, get_yahoo_projections
+from app.database import get_db, get_all_props, get_raw_projections, get_yahoo_projections, get_espn_projections
 from app.data.betting_fetcher import props_to_fantasy_pts
 
 SLEEPER_STATS_URL       = 'https://api.sleeper.app/v1/stats/nfl/regular/2025'
@@ -204,12 +204,25 @@ def get_analysis_data(force_refresh: bool = False):
         p['yahoo_pts_ppr'] = round(float(yp['fpts']), 1) if yp and yp.get('fpts') else 0
         p['yahoo_rank']    = yp.get('yahoo_rank') if yp else None
 
-    # ── Consensus PPR (average of available PPR point sources: FP + SL + Yahoo) ─
+    # ── ESPN projections (from DB) ────────────────────────────────────────────
+    # ESPN is the practical replacement for FantasyPros season projections, which
+    # are now paywalled down to a 10-per-position teaser.  It also carries component
+    # stats — notably projected receptions, which no sportsbook quotes — so it backs
+    # the betting-prop correction in app/projections.py.
+    espn_raw  = get_espn_projections()
+    espn_norm = {_normalize(k): v for k, v in espn_raw.items()}
+    espn_components = ('pass_yd', 'pass_td', 'pass_int', 'rush_yd', 'rush_td',
+                       'rec', 'rec_yd', 'rec_td')
     for p in players:
-        sl_pt    = p['proj_pts_ppr']
-        fp_pt    = p['fp_pts_ppr']
-        yahoo_pt = p['yahoo_pts_ppr']
-        pts      = [v for v in (sl_pt, fp_pt, yahoo_pt) if v > 0]
+        ep = espn_norm.get(_normalize(p['name']))
+        p['espn_pts_ppr'] = round(float(ep['fpts']), 1) if ep and ep.get('fpts') else 0
+        for c in espn_components:
+            p[f'espn_{c}'] = (ep or {}).get(c) or 0
+
+    # ── Consensus PPR (average of available PPR point sources) ────────────────
+    for p in players:
+        pts = [v for v in (p['proj_pts_ppr'], p['fp_pts_ppr'],
+                           p['yahoo_pts_ppr'], p['espn_pts_ppr']) if v > 0]
         p['consensus_ppr'] = round(sum(pts) / len(pts), 1) if pts else 0
 
     # ── Positional ranks per source (used for rank-based consensus) ───────────

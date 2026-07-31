@@ -1854,6 +1854,21 @@ def get_analysis():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/refresh-espn-projections', methods=['POST'])
+def refresh_espn_projections():
+    """Pull ESPN full-PPR season projections and persist them."""
+    try:
+        from app.data.espn_fetcher import fetch_espn_projections
+        from app.database import save_espn_projections
+        projections = fetch_espn_projections()
+        if not projections:
+            return jsonify({'error': 'ESPN returned no projections'}), 502
+        count = save_espn_projections(projections)
+        return jsonify({'ok': True, 'count': count})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/projections-v2', methods=['GET'])
 def get_projections_v2():
     """
