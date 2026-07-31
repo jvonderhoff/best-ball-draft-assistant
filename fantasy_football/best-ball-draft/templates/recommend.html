@@ -493,7 +493,7 @@
 </div>
 
 
-<script src="/static/recommender.js"></script>
+<script src="/static/recommender.js?v=4"></script>
 <script>
 // ── TTL cache (sessionStorage) ────────────────────────────────────────────────
 // Survives draft switching within a session, cleared on tab/window close.
@@ -613,7 +613,12 @@ const SETTINGS_KEY = 'bba_settings';
 let settings = loadSettings();
 
 // Hardcoded recommender constants — tweak directly in code
-const STACK_INTENSITY = 'heavy';
+// Single source of truth lives in recommender.js so the sandbox matches.
+// Guarded: if a stale cached recommender.js predates the constant, an undefined
+// value would fall through to STACK_SETTINGS.medium inside calculateValue and
+// silently drop this page from heavy to medium mid-draft.
+const STACK_INTENSITY =
+  (typeof DEFAULT_STACK_INTENSITY !== 'undefined') ? DEFAULT_STACK_INTENSITY : 'heavy';
 
 function defaultSettings() {
   return { myPosition: 1, numTeams: 12, dkUsername: 'jvonderhoff' };

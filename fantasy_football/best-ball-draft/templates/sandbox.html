@@ -228,7 +228,7 @@
         <select id="stackIntensity">
           <option value="off">Off</option>
           <option value="light">Light</option>
-          <option value="medium" selected>Medium</option>
+          <option value="medium">Medium</option>
           <option value="heavy">Heavy</option>
         </select>
       </div>
@@ -308,6 +308,7 @@
         <div class="results-hdr-title" style="font-size:0.75em;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Recommendations</div>
         <button class="copy-btn" id="copyScenarioBtn" onclick="copyScenario()">📋 Copy for feedback</button>
       </div>
+      <div id="intensityWarn"></div>
       <div id="unmatchedBar"></div>
       <div id="divergeBar"></div>
       <div class="compare-grid">
@@ -332,8 +333,8 @@
 
 </div>
 
-<script src="/static/recommender.js"></script>
-<script src="/static/recommender-v2.js"></script>
+<script src="/static/recommender.js?v=4"></script>
+<script src="/static/recommender-v2.js?v=4"></script>
 <script>
 let PLAYERS = [];
 let customRankMap = {};
@@ -729,7 +730,9 @@ function run() {
 
   renderNeeds(myTeamWithRounds);
   renderRosterView();
-  document.getElementById('v1IntensityLabel').textContent = intensity;
+  document.getElementById('v1IntensityLabel').textContent =
+    intensity + (intensity === LIVE_STACK_INTENSITY ? ' (matches live)' : ' ⚠ differs from live');
+  renderIntensityWarning();
 
   const round = Math.floor((pickNum - 1) / numTeams) + 1;
   document.getElementById('scenarioLabel').textContent =
@@ -1042,6 +1045,26 @@ function copyScenario() {
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = '📋 Copy for feedback'; btn.classList.remove('copied'); }, 2000);
   });
+}
+
+// Match the live draft page by default. Changing this makes V1 here score
+// differently from the app you actually draft with, so it is called out.
+// Falls back rather than throwing if a stale cached recommender.js predates the
+// shared constant — a broken sandbox is worse than a slightly wrong default.
+const LIVE_STACK_INTENSITY =
+  (typeof DEFAULT_STACK_INTENSITY !== 'undefined') ? DEFAULT_STACK_INTENSITY : 'heavy';
+document.getElementById('stackIntensity').value = LIVE_STACK_INTENSITY;
+document.getElementById('stackIntensity').addEventListener('change', () => {
+  renderIntensityWarning();
+  run();
+});
+function renderIntensityWarning() {
+  const v = document.getElementById('stackIntensity').value;
+  const el = document.getElementById('intensityWarn');
+  el.innerHTML = v === LIVE_STACK_INTENSITY ? ''
+    : `<div class="v2-warn" style="background:var(--surface);border-radius:6px;padding:7px 11px;margin-bottom:8px">
+        ⚠ V1 is set to <b>${v}</b>, but the live draft page runs <b>${LIVE_STACK_INTENSITY}</b> —
+        the V1 column will not match production.</div>`;
 }
 
 document.getElementById('runBtn').disabled = true;

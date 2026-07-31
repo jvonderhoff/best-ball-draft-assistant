@@ -15,6 +15,12 @@ const STACK_SETTINGS = {
   heavy:  { first: 1.55, second: 1.25, qbPull: 1.65, cluster: 1.20, rbCorrel: 1.10 },
 };
 
+// The intensity the live draft page runs at. Declared here rather than in the page
+// so the sandbox can default to the same value — otherwise the sandbox silently
+// scores a different model than the one you actually draft with, which is exactly
+// the sort of difference that makes a comparison tool worse than useless.
+const DEFAULT_STACK_INTENSITY = 'heavy';
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // Free agents have no real NFL team — they must not correlate with each other
@@ -562,6 +568,6 @@ if (typeof module !== 'undefined' && module.exports) {
     calculateValue, getTopRecommendations, getStackSummary,
     isMyTurn, nextMyOverallPick, picksUntilMyTurn, currentRound,
     getTeamNeeds, capitalAllocationInfo, waitabilityInfo,
-    BASE_TARGETS, DRAFT_ROUNDS, MAX_ROSTER,
+    BASE_TARGETS, DRAFT_ROUNDS, MAX_ROSTER, DEFAULT_STACK_INTENSITY,
   };
 }
