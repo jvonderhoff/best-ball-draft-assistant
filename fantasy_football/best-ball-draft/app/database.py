@@ -140,6 +140,7 @@ def init_db():
         _seed_players_if_empty(conn)
         _hydrate_external_rankings(conn)
         _hydrate_external_drafts(conn)
+        _hydrate_external_projections(conn)
 
 
 def _seed_players_if_empty(conn):
@@ -221,6 +222,66 @@ def _hydrate_external_rankings(conn):
     except Exception as e:
         import logging
         logging.getLogger('app').warning(f'[rankings-store] hydrate failed: {e!r}')
+
+
+def _hydrate_external_projections(conn):
+    """Make the durable external store the source of truth for V2's projection inputs.
+
+    ESPN projections and betting props are fetched from third parties and written to
+    SQLite, which Render wipes on every deploy and idle spin-down. Without this the
+    deployed recommender quietly falls back to Sleeper alone — 356 players drop from
+    two projection sources to one and the ECR blend doubles — with no error anywhere.
+
+    Same contract as the rankings hydrate: None means the store is unreachable, so
+    keep whatever is local rather than wiping it on the strength of an outage. An
+    empty store on first run gets seeded from local.
+    """
+    from app import projections_store as ps
+    if not ps.external_enabled():
+        return
+    try:
+        ps.init_external()
+
+        ext_espn = ps.load_espn()
+        if ext_espn is not None:
+            if ext_espn:
+                conn.execute("DELETE FROM espn_projections")
+                cols = ['player_name', 'fpts', 'pos'] + list(ps.ESPN_COMPONENTS)
+                conn.executemany(
+                    f"INSERT OR IGNORE INTO espn_projections ({', '.join(cols)}, updated_at) "
+                    f"VALUES ({', '.join(['?'] * len(cols))}, CURRENT_TIMESTAMP)",
+                    [tuple([n, d.get('fpts'), d.get('pos')]
+                           + [d.get(c) for c in ps.ESPN_COMPONENTS])
+                     for n, d in ext_espn.items()]
+                )
+            else:
+                local = conn.execute("SELECT * FROM espn_projections").fetchall()
+                if local:
+                    ps.save_espn({r['player_name']: dict(r) for r in local})
+
+        ext_props = ps.load_props()
+        if ext_props is not None:
+            if ext_props:
+                conn.execute("DELETE FROM player_props")
+                conn.executemany(
+                    "INSERT OR IGNORE INTO player_props "
+                    "(player_name, prop_type, line, over_odds, under_odds, book, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                    [(r['player_name'], r['prop_type'], r['line'],
+                      r['over_odds'], r['under_odds'], r['book']) for r in ext_props]
+                )
+            else:
+                local = conn.execute("SELECT * FROM player_props").fetchall()
+                by_book = {}
+                for r in local:
+                    by_book.setdefault(r['book'], {}).setdefault(r['player_name'], {})[r['prop_type']] = {
+                        'line': r['line'], 'over_odds': r['over_odds'], 'under_odds': r['under_odds']
+                    }
+                for book, data in by_book.items():
+                    ps.save_props(data, book=book)
+    except Exception as e:
+        import logging
+        logging.getLogger('app').warning(f'[projections-store] hydrate failed: {e!r}')
 
 
 def _hydrate_external_drafts(conn):
@@ -455,6 +516,12 @@ def save_props(props_by_player: dict, book: str = 'DraftKings'):
                 """, (player_name, prop_type, data.get('line'),
                       str(data.get('over_odds') or ''), str(data.get('under_odds') or ''), book))
                 count += 1
+    # Mirror to the durable external store; no-op without DATABASE_URL.
+    try:
+        from app import projections_store
+        projections_store.save_props(props_by_player, book=book)
+    except Exception:
+        pass
     return count
 
 
@@ -515,7 +582,10 @@ _ESPN_COMPONENTS = ('pass_yd', 'pass_td', 'pass_int', 'rush_yd', 'rush_td',
 
 
 def save_espn_projections(projections: dict):
-    """Upsert ESPN projections from {player_name: {'fpts', 'pos', <components>}}."""
+    """Upsert ESPN projections from {player_name: {'fpts', 'pos', <components>}}.
+
+    Write-throughs to the durable external store so the data survives Render's
+    ephemeral filesystem. No-op when DATABASE_URL is unset."""
     cols = ('player_name', 'fpts', 'pos') + _ESPN_COMPONENTS
     placeholders = ', '.join('?' * len(cols))
     updates = ', '.join(f'{c} = excluded.{c}' for c in cols[1:])
@@ -531,6 +601,11 @@ def save_espn_projections(projections: dict):
             conn.execute(sql, (player_name, data.get('fpts'), data.get('pos'))
                          + tuple(data.get(c) for c in _ESPN_COMPONENTS))
             count += 1
+    try:
+        from app import projections_store
+        projections_store.save_espn(projections)
+    except Exception:
+        pass
     return count
 
 
