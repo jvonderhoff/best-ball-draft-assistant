@@ -49,6 +49,43 @@ MAX_GAMES = 17.0
 BONUS_THRESHOLD = {'rec_yd': 100.0, 'rush_yd': 100.0, 'pass_yd': 300.0}
 BONUS_POINTS    = 3.0
 
+# ── Betting-prop correction ───────────────────────────────────────────────────
+#
+# Sportsbooks price season-long yardage and touchdown totals with real money behind
+# them, which makes them a sharper read than fantasy projection sites — and one that
+# is genuinely independent of the industry consensus that Sleeper, FantasyPros and
+# ECR all draw from.
+#
+# But props CANNOT be used to build a projection.  Neither DraftKings nor Underdog
+# posts a season receptions market, so a prop-implied point total for a WR is missing
+# the entire PPR reception component — roughly 70-100 of his ~280 points — while an
+# RB's or QB's total is nearly complete.  Blending that into a consensus would drag
+# every pass-catcher down relative to every runner, invisibly.
+#
+# So props are applied as a per-COMPONENT correction instead.  Each market line is
+# compared against the projected value for that same component and only that
+# component moves.  A player with a rec_yd line and nothing else gets his receiving
+# yards corrected and nothing else touched.  Missing markets contribute exactly zero,
+# so partial coverage degrades gracefully rather than biasing the result.
+
+# DK scoring value of one unit of each component, full PPR.
+COMPONENT_POINTS = {
+    'rush_yd': 0.1, 'rush_td': 6.0,
+    'rec_yd':  0.1, 'rec_td':  6.0, 'rec': 1.0,
+    'pass_yd': 0.04, 'pass_td': 4.0, 'pass_int': -2.0,
+}
+
+# Receptions are never quoted, but they move with receiving yards — a receiver the
+# market has above his projected yardage is almost always seeing more volume too.
+# We propagate a damped share of the rec_yd tilt to receptions rather than assuming
+# receptions are unchanged (too conservative) or scaling them fully (overconfident,
+# since some of a yardage beat is yards-per-catch rather than volume).
+RECEPTION_PROPAGATION = 0.5
+
+# Cap on how far props may move a projection, as a fraction of the original. Guards
+# against a stale or misparsed line wrecking a player's valuation mid-draft.
+MAX_PROP_SHIFT = 0.35
+
 # ~90th percentile week. Best ball rewards the weeks a player wins you the slot,
 # not his average, so this is the number that drives lineup share.
 CEILING_Z = 1.2816
@@ -96,6 +133,63 @@ def _dk_bonus_points(player: dict, games: float, scale: float) -> float:
     return total
 
 
+def _market_lines(player: dict) -> dict:
+    """
+    Best available market line per component, averaging the books when both quote it.
+
+    analysis.py already matched props onto players and exposed them as dk_<key> and
+    ud_<key>.  Returns {component: line} containing only components that are actually
+    quoted — never a zero placeholder, since a missing market and a line of zero mean
+    very different things.
+    """
+    lines = {}
+    for key in COMPONENT_POINTS:
+        vals = [player.get(f'{b}_{key}') for b in ('dk', 'ud')]
+        vals = [float(v) for v in vals if v is not None]
+        if vals:
+            lines[key] = sum(vals) / len(vals)
+    return lines
+
+
+def _prop_correction(player: dict, scale: float) -> tuple:
+    """
+    Points delta implied by moving each projected component onto its market line.
+
+    `scale` rescales Sleeper's components to the consensus total so the correction is
+    applied against the same basis as the projection it is adjusting.
+
+    Returns (delta_points, components_corrected).
+    """
+    lines = _market_lines(player)
+    if not lines:
+        return 0.0, []
+
+    delta = 0.0
+    used  = []
+
+    for key, line in lines.items():
+        pts = COMPONENT_POINTS.get(key)
+        if pts is None:
+            continue
+        projected = (player.get(f'proj_{key}') or 0) * scale
+        # A component the projection has at zero gives us no basis for comparison —
+        # scaling from zero is undefined, and books quote plenty of players Sleeper
+        # projects nothing for.
+        if projected <= 0:
+            continue
+        delta += (line - projected) * pts
+        used.append(key)
+
+        # Volume spillover into the unquoted receptions market.
+        if key == 'rec_yd':
+            proj_rec = (player.get('proj_rec') or 0) * scale
+            if proj_rec > 0:
+                ratio = line / projected
+                delta += proj_rec * (ratio - 1.0) * RECEPTION_PROPAGATION * COMPONENT_POINTS['rec']
+
+    return delta, used
+
+
 def _build(force_refresh: bool = False) -> list:
     from app.analysis import get_analysis_data
 
@@ -134,6 +228,16 @@ def _build(force_refresh: bool = False) -> list:
         # Guard against a wild ratio when one source is an outlier.
         scale = max(0.5, min(2.0, scale))
 
+        # Market correction, applied to the PPR total before DK bonuses so the bonus
+        # estimate is computed off market-corrected yardage.
+        prop_delta, prop_used = _prop_correction(p, scale)
+        if prop_delta:
+            cap        = ppr * MAX_PROP_SHIFT
+            prop_delta = max(-cap, min(cap, prop_delta))
+            ppr        = max(0.0, ppr + prop_delta)
+            # Re-derive the component scale so bonus estimation matches the corrected total.
+            scale = max(0.5, min(2.0, (ppr / sleeper_ppr) if sleeper_ppr > 0 else 1.0))
+
         bonus   = _dk_bonus_points(p, games, scale)
         proj_dk = ppr + bonus
 
@@ -144,6 +248,8 @@ def _build(force_refresh: bool = False) -> list:
             'id':          p.get('player_id'),
             'pos':         pos,
             'proj_ppr':    round(ppr, 1),
+            'prop_delta':  round(prop_delta, 1),
+            'prop_markets': prop_used,
             'dk_bonus':    round(bonus, 1),
             'proj_dk':     round(proj_dk, 1),
             'games':       round(games, 1),
@@ -154,7 +260,12 @@ def _build(force_refresh: bool = False) -> list:
             'trajectory':  p.get('trajectory'),
             'consensus_rank':   p.get('consensus_rank'),
             'consensus_label':  p.get('consensus_label'),
-            'sources':     sources,
+            # A market correction is independent evidence, not just another
+            # fantasy-industry opinion, so it counts toward source confidence — which
+            # is what decides how heavily the recommender leans on ECR as a sanity
+            # blend.  Reported separately so the UI can still show true source count.
+            'sources':          sources + (1 if prop_used else 0),
+            'proj_sources':     sources,
         })
 
     return out
