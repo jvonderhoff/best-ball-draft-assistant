@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>Recommender Sandbox</title>
-  <script src="/static/theme.js"></script>
-  <link rel="stylesheet" href="/static/theme.css?v=3">
+  <script src="{{ asset('theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ asset('theme.css') }}">
   <style>
     body { padding: 12px; max-width: 1240px; margin: 0 auto; font-family: system-ui, sans-serif; }
     h1 { font-size: 1.1em; color: var(--text); margin: 0 0 4px; }
@@ -333,8 +333,8 @@
 
 </div>
 
-<script src="/static/recommender.js?v=4"></script>
-<script src="/static/recommender-v2.js?v=4"></script>
+<script src="{{ asset('recommender.js') }}"></script>
+<script src="{{ asset('recommender-v2.js') }}"></script>
 <script>
 let PLAYERS = [];
 let customRankMap = {};

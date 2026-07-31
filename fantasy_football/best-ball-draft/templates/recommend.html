@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>Live Draft — Best Ball Assistant</title>
-  <script src="/static/theme.js"></script>
-  <link rel="stylesheet" href="/static/theme.css?v=3">
+  <script src="{{ asset('theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ asset('theme.css') }}">
   <style>
 
     /* ── Sync bar ── */
@@ -493,7 +493,7 @@
 </div>
 
 
-<script src="/static/recommender.js?v=4"></script>
+<script src="{{ asset('recommender.js') }}"></script>
 <script>
 // ── TTL cache (sessionStorage) ────────────────────────────────────────────────
 // Survives draft switching within a session, cleared on tab/window close.

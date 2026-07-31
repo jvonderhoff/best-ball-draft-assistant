@@ -17,6 +17,26 @@ app = Flask(__name__,
 app.secret_key = 'best-ball-secret-key-2024'
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+
+@app.template_global()
+def asset(filename):
+    """
+    Static URL with a cache-busting token derived from the file's mtime.
+
+    Hand-maintained ?v=N query strings do not work in practice: the number gets
+    bumped once and the file keeps changing, so browsers serve stale JavaScript
+    while the server has the new version. That failure is silent and genuinely
+    confusing — the recommender appeared not to reflect fixes that were in fact
+    deployed. Deriving the token from mtime means it changes exactly when the
+    file does, and never when it doesn't.
+    """
+    path = os.path.join(app.static_folder, filename)
+    try:
+        stamp = int(os.path.getmtime(path))
+    except OSError:
+        stamp = 0
+    return f'/static/{filename}?v={stamp}'
+
 # Make app.logger.info() visible under gunicorn on Render (default would hide INFO).
 import logging
 _gunicorn_logger = logging.getLogger('gunicorn.error')
