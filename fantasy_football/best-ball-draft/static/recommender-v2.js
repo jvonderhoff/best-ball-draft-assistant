@@ -938,15 +938,29 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   // ── Market value ───────────────────────────────────────────────────────────
   // Unlike V1 this uses realAdp, so it measures "the market let him fall to me"
   // rather than re-counting your own board (which already set the projection).
-  // Deliberately small: it is a tiebreak between similarly-valued players, not a
-  // driver.  Scaled by SD so it means the same thing across positions.
+  // Scaled by SD so it means the same thing across positions.
+  //
+  // Measured in units of the market's OWN uncertainty about that player, not in
+  // raw picks. A fixed pick yardstick treats reaching eight spots at pick 12 and at
+  // pick 212 as the same mistake, and they are nothing alike: early ADP is a tight
+  // consensus of thousands of drafters on heavily-researched players, while late ADP
+  // is mostly noise — the gap between the 190th and 230th player is nobody knowing
+  // who is any good. FantasyPros bears this out directly: expert rank disagreement
+  // runs a standard deviation above 45 for some players inside the top 150.
+  //
+  // The scale is the same ADP sigma the survival model already uses (0.30 x adp), so
+  // reaching is priced against how precisely the player is actually priced. Around
+  // six picks at ADP 20, around sixty at ADP 200. That makes late-round reaches for
+  // stacks and playoff correlation nearly free, which is the point: when the market
+  // does not know either, structural edges are the better thing to spend on.
   const adp = player.realAdp ?? player.adp;
   if (adp) {
-    const fell = myPickNumber - adp;
-    const tilt = Math.max(-1.5, Math.min(1.5, fell / 24)) * V2_MARKET_PULL * (eff.sd / 10);
+    const fell     = myPickNumber - adp;
+    const adpSigma = Math.max(V2_ADP_SIGMA_FLOOR, V2_ADP_SIGMA_RATIO * adp);
+    const tilt = Math.max(-1.5, Math.min(1.5, fell / adpSigma)) * V2_MARKET_PULL * (eff.sd / 10);
     if (Math.abs(tilt) > 0.005) {
       score += add(tilt, fell > 0 ? 'Value vs ADP' : 'Reaching vs ADP',
-                   `ADP ${adp.toFixed(1)} at pick ${myPickNumber}`);
+                   `ADP ${adp.toFixed(1)} at pick ${myPickNumber}, ${Math.abs(fell / adpSigma).toFixed(2)}σ of market noise`);
     }
   }
 
