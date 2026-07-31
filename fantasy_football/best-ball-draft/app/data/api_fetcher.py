@@ -723,6 +723,31 @@ def fetch_players(force_refresh=False):
     players.sort(key=lambda p: p['adp'])
     players = [p for p in players if p['adp'] < 9999]
 
+    # Merge FantasyPros expert consensus rank.
+    #
+    # This has to happen here rather than as a separate step: DraftKings is the only
+    # source of the player list, so every refresh rebuilds it from scratch and any
+    # field not set in this loop is silently lost.  ecr_rank was previously populated
+    # out of band, which meant a routine player refresh quietly wiped it from all 400+
+    # players and left the recommender's rank-blend with nothing to blend.
+    #
+    # A failure here is non-fatal — stale ADP would be far worse than missing ECR.
+    try:
+        from app.data.fantasypros_ecr_fetcher import fetch_ecr
+        ecr = fetch_ecr(verbose=False)
+        if ecr:
+            matched = 0
+            for p in players:
+                hit = ecr.get(_normalize_name(p['name']))
+                if hit:
+                    p['ecr_rank'] = hit['ecr_rank']
+                    matched += 1
+            print(f'  ✓ ECR merged for {matched}/{len(players)} players')
+        else:
+            print('  ! ECR fetch returned nothing — players saved without ecr_rank')
+    except Exception as e:
+        print(f'  ! ECR merge failed ({e}) — players saved without ecr_rank')
+
     print(f'  ✓ {len(players)} players')
     _save_cache(players, '2026')
     return players
