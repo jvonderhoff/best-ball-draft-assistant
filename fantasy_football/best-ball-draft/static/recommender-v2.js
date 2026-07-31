@@ -100,6 +100,10 @@ const V2_CORRELATION_WEIGHT = _v2env.V2_CORR ? parseFloat(_v2env.V2_CORR) : 0.35
 // QB + 3, you are guaranteeing wasted roster spots on most weeks.
 const V2_MAX_STACK_PARTNERS = 3;
 
+// How much of a same-team backup RB's knockout-week value is stripped, at the limit
+// where the back you already own is the entire backfield. See v2BackfieldSpikeDiscount.
+const V2_BACKFIELD_DISCOUNT = 0.80;
+
 // Playoff-week correlation is worth more than regular-season correlation: in a
 // win-the-week format you need your whole team to spike simultaneously.
 const V2_PLAYOFF_STACK_MULTIPLIER = 1.8;
@@ -566,10 +570,20 @@ function v2CorrelationValue(player, myTeam) {
   // Playoff game stacks — both sides of one week 15/16/17 game.  Weighted far
   // more heavily than regular-season correlation because those weeks are
   // win-or-go-home, and week 17 is the final.
+  //
+  // Capped at the same partner count as pass-catcher stacks.  Uncapped, this summed
+  // over every partner in all three weeks, so a player whose team happened to face
+  // several teams you own racked up a point of "stack" value on volume alone — a
+  // 3.4-ppg back was scoring 0.93 from six partners, which was 93% of his total and
+  // enough to rank him 2nd on the board.  Correlation past a few partners is not
+  // additional edge, it is the same bet placed repeatedly.
   const weekWeight = { 17: 1.6, 16: 1.0, 15: 0.9 };
+  let stackPartners = 0;
   for (const week of [17, 16, 15]) {
     const partners = myTeam.filter(m => m._eff && v2SamePlayoffGame(player, m, week));
     for (const partner of partners) {
+      if (stackPartners >= V2_MAX_STACK_PARTNERS) break;
+      stackPartners++;
       playoff += V2_CORRELATION.opposingGame
                * Math.min(sdMe, partner._eff.sd)
                * V2_CORRELATION_WEIGHT
@@ -582,6 +596,54 @@ function v2CorrelationValue(player, myTeam) {
   }
 
   return { regular, playoff, notes };
+}
+
+// How much of a running back's knockout-week value survives when you already own a
+// back from the same team.
+//
+// Only one back is on the field for most snaps, so two from one backfield essentially
+// never post big weeks together.  That matters asymmetrically across the two phases,
+// which is why this discounts the spike term only:
+//
+//   Weeks 1-14   the backup genuinely helps.  Over fourteen weeks he covers the
+//                starter's absences, and those are real accumulated points.
+//   Weeks 15-17  he does not.  You need one enormous score from the slot, and the
+//                week your starter explodes is not a week his backup also explodes.
+//                There is no independent path to the score that wins the week.
+//
+// Two things scale it, and they are genuinely different signals:
+//
+//   Workload share  — how lopsided the backfield is.  A clear backup behind a
+//                     workhorse keeps little; a true committee back keeps most,
+//                     because he has his own path to a big week.
+//   Draft capital   — how early the back you already own went.  Pairing two mid or
+//                     late-round backs is a reasonable bet on an unsettled job: you
+//                     do not need either specifically, so owning both sides is fine.
+//                     Pairing the backup to a first-round back is not the same
+//                     move.  Spending that pick concentrates your season on him
+//                     hitting, and the weeks his backup pays off are weeks you have
+//                     already lost the accumulation phase.  Insurance that only
+//                     settles in branches where you are eliminated is worth little
+//                     in a top-heavy tournament.
+//
+// Receivers are deliberately exempt — they are on the field together and can both
+// go off in the same game.
+function v2BackfieldSpikeDiscount(player, myTeam) {
+  if (player.pos !== 'RB' || !player._eff || !v2HasRealTeam(player)) return 1;
+  const mates = myTeam.filter(m => m.pos === 'RB' && m._eff && m.team === player.team);
+  if (!mates.length) return 1;
+
+  // The most valuable back from that team you already hold.
+  const mate = mates.reduce((a, b) => (a._eff.mean >= b._eff.mean ? a : b));
+  const share = mate._eff.mean / Math.max(0.01, mate._eff.mean + player._eff.mean);
+
+  // Draft capital sunk into him, from where the market had him. Full weight inside
+  // the first ~2 rounds, fading to none by roughly round 10.
+  const mateAdp = mate.realAdp ?? mate.adp ?? 999;
+  const capital = Math.max(0, Math.min(1, 1 - mateAdp / 120));
+
+  const discount = V2_BACKFIELD_DISCOUNT * share * (0.5 + 0.5 * capital);
+  return Math.max(0.15, 1 - discount);
 }
 
 // How likely an unsigned free agent is to be on a roster by the knockout weeks.
@@ -818,14 +880,17 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   const vonaAcc = rAcc.gain - (ctx.replAccum[pos] || 0);
 
   // ── Playoff value (weeks 15-17) ────────────────────────────────────────────
-  const rSpk    = v2PositionGain(pos, eff.mean, eff.sd, myTeam, 'spike', ctx, eff.avail ?? 1);
-  const vonaSpk = (rSpk.gain - (ctx.replSpike[pos] || 0)) * v2PlayoffAvailability(player, ctx);
+  const rSpk     = v2PositionGain(pos, eff.mean, eff.sd, myTeam, 'spike', ctx, eff.avail ?? 1);
+  const backfield = v2BackfieldSpikeDiscount(player, myTeam);
+  const vonaSpk   = (rSpk.gain - (ctx.replSpike[pos] || 0))
+                  * v2PlayoffAvailability(player, ctx) * backfield;
 
   let score = 0;
   score += add(V2_W_ACCUMULATION * vonaAcc, 'Accumulation (wk 1-14)',
                `${eff.mean.toFixed(1)} ppg, adds ${rAcc.gain.toFixed(2)} over slot bar ${rAcc.bars.lo.mean.toFixed(1)}; replacement adds ${(ctx.replAccum[pos] || 0).toFixed(2)}`);
   score += add(V2_W_PLAYOFF * vonaSpk, 'Playoff spike (wk 15-17)',
-               `${eff.ceiling.toFixed(1)} ceiling, adds ${rSpk.gain.toFixed(2)} over spike bar ${(rSpk.bars.lo.mean + rSpk.offset).toFixed(1)}; replacement adds ${(ctx.replSpike[pos] || 0).toFixed(2)}`);
+               `${eff.ceiling.toFixed(1)} ceiling, adds ${rSpk.gain.toFixed(2)} over spike bar ${(rSpk.bars.lo.mean + rSpk.offset).toFixed(1)}; replacement adds ${(ctx.replSpike[pos] || 0).toFixed(2)}`
+               + (backfield < 0.999 ? ` · x${backfield.toFixed(2)} same-backfield` : ''));
 
   // ── Correlation ────────────────────────────────────────────────────────────
   const corr = v2CorrelationValue(player, myTeam);
@@ -904,6 +969,13 @@ function getTopRecommendationsV2(available, myTeam, myPickNumber, n = 5, nextMyP
       else if (surv < 0.20) reasons.push(`⚠ ${Math.round(surv * 100)}% to last — grab now`);
     }
 
+    const bf = v2BackfieldSpikeDiscount(p, myTeam);
+    if (bf < 0.999) {
+      const mate = myTeam.filter(m => m.pos === 'RB' && m.team === p.team)
+                         .sort((a,b) => (b._eff?.mean||0) - (a._eff?.mean||0))[0];
+      reasons.push(`⚠ shares ${p.team} backfield w/ ${mate ? mate.name.split(' ').pop() : 'your RB'} — spike value x${bf.toFixed(2)}`);
+    }
+
     const bye = v2ByePenalty(p, myTeam);
     if (bye.note) reasons.push(`⚠ ${bye.note}`);
 
@@ -923,6 +995,7 @@ if (typeof module !== 'undefined' && module.exports) {
     calculateValueV2, getTopRecommendationsV2, buildV2Context,
     v2AttachEffective, v2MarginalGain, v2SurvivalProb, v2PositionGain, v2OrderStatMoments,
     v2ExpectedBestSurvivor, v2CorrelationValue, v2FreeAgentSignProb, v2PlayoffAvailability,
+    v2BackfieldSpikeDiscount,
     V2_DRAFT_ROUNDS, V2_ROSTER_TARGETS, V2_STARTER_SLOTS,
   };
 }
