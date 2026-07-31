@@ -7,7 +7,7 @@
   <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/theme.css?v=3">
   <style>
-    body { padding: 12px; max-width: 900px; margin: 0 auto; font-family: system-ui, sans-serif; }
+    body { padding: 12px; max-width: 1240px; margin: 0 auto; font-family: system-ui, sans-serif; }
     h1 { font-size: 1.1em; color: var(--text); margin: 0 0 4px; }
     .page-sub { font-size: 0.78em; color: var(--muted); margin-bottom: 16px; }
 
@@ -152,7 +152,11 @@
 
     /* ── V1 vs V2 comparison ── */
     .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    @media (max-width: 760px) { .compare-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 1000px) { .compare-grid { grid-template-columns: 1fr; } }
+    /* When stacked, keep the second model reachable rather than 10 cards down. */
+    @media (max-width: 1000px) {
+      .model-col-hdr { position: sticky; top: 0; z-index: 5; background: var(--card); padding: 6px 0; }
+    }
     .model-col-hdr { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
     .model-badge { font-size: 0.66em; font-weight: 700; padding: 2px 7px; border-radius: 4px; color: #fff; letter-spacing: 0.04em; }
     .model-badge.v1 { background: var(--muted); }
