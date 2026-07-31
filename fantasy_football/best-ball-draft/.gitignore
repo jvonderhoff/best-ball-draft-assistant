@@ -9,3 +9,7 @@ drafts.db
 # V2 recommender projection cache (regenerated on demand)
 app/data/projection_cache.json
 tools/replay-draft.json
+
+# Local backups taken before data refreshes
+drafts.db.bak-*
+app/data/player_cache.json.bak-*
