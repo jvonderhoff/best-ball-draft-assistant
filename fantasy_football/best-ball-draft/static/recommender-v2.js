@@ -943,9 +943,30 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
                + (backfield < 0.999 ? ` · x${backfield.toFixed(2)} same-backfield` : ''));
 
   // ── Correlation ────────────────────────────────────────────────────────────
+  // Scaled by the same roster fit the market-value term uses, and for the same
+  // reason: correlation only pays on points that actually reach your lineup.
+  //
+  // A third tight end behind an elite one is 6 points a week below the slot he
+  // competes for, so he starts almost never — and a "stack" with a player who is
+  // not in the lineup is not a stack at all. Unscaled, one such player scored 1.93
+  // from game stacks against 0.50 of his own value, which was 75% of his total and
+  // enough to rank him first overall ahead of every startable option.
+  //
+  // Note this is the third place the same mistake appeared: value credited without
+  // checking whether the player can be used. Falling ADP value and same-backfield
+  // spikes were the other two.
   const corr = v2CorrelationValue(player, myTeam);
-  if (corr.regular) score += add(V2_W_ACCUMULATION * corr.regular, 'Correlation', corr.notes.join(' · '));
-  if (corr.playoff) score += add(V2_W_PLAYOFF * corr.playoff, 'Playoff game stack', corr.notes.join(' · '));
+  const corrFit = Math.max(V2_VALUE_FIT_FLOOR,
+                           Math.min(1, rAcc.gain / Math.max(0.01, V2_VALUE_FIT_REF * eff.mean)));
+  const fitNote = corrFit < 0.999 ? ` · x${corrFit.toFixed(2)} roster fit` : '';
+  if (corr.regular) {
+    score += add(V2_W_ACCUMULATION * corr.regular * corrFit, 'Correlation',
+                 corr.notes.join(' · ') + fitNote);
+  }
+  if (corr.playoff) {
+    score += add(V2_W_PLAYOFF * corr.playoff * corrFit, 'Playoff game stack',
+                 corr.notes.join(' · ') + fitNote);
+  }
 
   // Unsigned free agent: no known team, so no concrete stack — but an expected one.
   if (!v2HasRealTeam(player)) {
