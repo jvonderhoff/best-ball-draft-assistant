@@ -723,8 +723,10 @@ function run() {
   let recsV2 = [];
   if (projReady) {
     const myPicks = myRemainingPicks(pickNum + 1, numTeams, myPos);
+    // PLAYERS is the full universe — needed to tell "taken" from "never existed",
+    // which is what the positional-run read depends on.
     recsV2 = getTopRecommendationsV2(available, myTeamWithRounds, pickNum,
-                                     Math.max(n, 40), nextMyPick, myPicks);
+                                     Math.max(n, 40), nextMyPick, myPicks, PLAYERS);
   }
   _lastRecsV2 = recsV2.slice(0, n);
 

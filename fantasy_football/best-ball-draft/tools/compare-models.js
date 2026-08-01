@@ -252,7 +252,7 @@ function simulateDraft(players, modelSlot, model, rng) {
         chosen = recs.length ? recs[0].player : pool[0];
       } else {
         const myPicks = remainingPicksForSlot(pick + 1, slot, NUM_TEAMS);
-        const recs = V2.getTopRecommendationsV2(pool, myTeam, pick, 1, nextPick, myPicks);
+        const recs = V2.getTopRecommendationsV2(pool, myTeam, pick, 1, nextPick, myPicks, players);
         chosen = recs.length ? recs[0].player : pool[0];
       }
     } else {

@@ -133,6 +133,10 @@ const V2_MAX_STACK_PARTNERS = 3;
 // where the back you already own is the entire backfield. See v2BackfieldSpikeDiscount.
 const V2_BACKFIELD_DISCOUNT = 0.80;
 
+// Cost per body once a position reaches its modal-build target, escalating beyond it.
+// Swept against the harness rather than assumed; see v2StructuralPenalty.
+const V2_OVER_TARGET_COST = _v2env.V2_OVERCOST ? parseFloat(_v2env.V2_OVERCOST) : 0.0;
+
 // Playoff-week correlation is worth more than regular-season correlation: in a
 // win-the-week format you need your whole team to spike simultaneously.
 const V2_PLAYOFF_STACK_MULTIPLIER = 1.8;
@@ -188,6 +192,11 @@ const V2_MARKET_PULL = _v2env.V2_MKT ? parseFloat(_v2env.V2_MKT) : 5.0;
 
 // ADP noise.  Players do not come off the board exactly at ADP; the spread grows
 // roughly proportionally as you get deeper into the draft.
+// Bounds on the draft-room run factor. A room cannot be read as drafting a position
+// at half or double ADP pace on a handful of picks without the signal being noise.
+const V2_RUN_CLAMP_LO = 0.70;
+const V2_RUN_CLAMP_HI = 1.45;
+
 const V2_ADP_SIGMA_FLOOR = 5.0;
 const V2_ADP_SIGMA_RATIO = 0.30;
 
@@ -510,11 +519,52 @@ function v2PositionGain(pos, mean, sd, myTeam, mode, ctx = null, avail = 1, disa
 // ── Survival modelling ────────────────────────────────────────────────────────
 
 // P(this player is still on the board at `pick`), from noisy ADP.
-function v2SurvivalProb(player, pick) {
+// How fast each position is actually coming off the board in THIS room, relative to
+// what ADP predicts by now.
+//
+// ADP is a league-wide average. It cannot tell you that the eleven people in your
+// draft have taken eight quarterbacks by pick 60, and that reading is often the whole
+// edge — every room behaves differently, and the one you are in is the only one whose
+// remaining supply you actually draft from. A position running hot has fewer survivors
+// than ADP implies, so waiting costs more than the static model thinks; a position
+// falling gives you the opposite.
+//
+// Measured as taken-so-far against ADP-expected-taken-so-far, using the full player
+// universe against what remains on the board. Returns 1.0 when a position is running
+// exactly to ADP, above 1 when it is going early, below 1 when it is falling.
+function v2PositionalRun(universe, available, pick) {
+  const out = { QB: 1, RB: 1, WR: 1, TE: 1 };
+  if (!universe || !universe.length || !pick) return out;
+
+  const onBoard = new Set(available.map(p => p.id));
+  for (const pos of Object.keys(out)) {
+    let expected = 0, taken = 0;
+    for (const p of universe) {
+      if (p.pos !== pos) continue;
+      const adp = p.realAdp ?? p.adp;
+      if (!adp || adp >= 9999) continue;
+      if (adp < pick) expected++;
+      if (!onBoard.has(p.id)) taken++;
+    }
+    // Needs enough of a sample to mean anything; early picks are all noise.
+    if (expected >= 4) {
+      out[pos] = Math.max(V2_RUN_CLAMP_LO, Math.min(V2_RUN_CLAMP_HI, taken / expected));
+    }
+  }
+  return out;
+}
+
+// Probability this player is still on the board at `pick`.
+//
+// `run` shifts the curve by how hard his position is being drafted in this specific
+// room: at a run factor of 1.4 the market is effectively 40% further through the
+// position than ADP says, so he is correspondingly less likely to last.
+function v2SurvivalProb(player, pick, run = 1) {
   const adp = player.realAdp ?? player.adp;
   if (!adp || !pick) return 0.5;
   const sigma = Math.max(V2_ADP_SIGMA_FLOOR, V2_ADP_SIGMA_RATIO * adp);
-  return 1 - v2NormCdf((pick - adp) / sigma);
+  const effAdp = run && run !== 1 ? adp / run : adp;
+  return 1 - v2NormCdf((pick - effAdp) / sigma);
 }
 
 // The pick this position's replacement level is measured at.
@@ -549,7 +599,7 @@ function v2ExpectedBestSurvivor(pos, available, myTeam, nextPick, mode, ctx) {
     .filter(p => p.pos === pos && p._eff)
     .map(p => ({
       gain: v2PositionGain(pos, p._eff.mean, p._eff.sd, myTeam, mode, ctx, p._eff.avail ?? 1, p._eff.disagreement ?? 0).gain,
-      surv: v2SurvivalProb(p, nextPick),
+      surv: v2SurvivalProb(p, nextPick, (ctx && ctx.run && ctx.run[pos]) || 1),
     }))
     .sort((a, b) => b.gain - a.gain)
     .slice(0, 25);
@@ -837,6 +887,25 @@ function v2StructuralPenalty(player, myTeam) {
     notes.push(`already ${have} ${pos} (cap ${V2_MAX_ROSTER[pos]})`);
   }
 
+  // Soft cost for going past the modal build, escalating with each extra body.
+  //
+  // Not a cap — going over is sometimes right, and a hard limit at three tight ends
+  // measured worse. But it should be a deliberate choice rather than the default, and
+  // it was the default: 87% of rosters finished with four tight ends, and every
+  // construction the harness flags as underperforming has TE:4 while the two best
+  // builds have TE:3.
+  //
+  // The marginal-value math is not wrong at the moment it takes them. Late in the
+  // draft the remaining tight ends genuinely out-project the remaining backs and
+  // receivers, so each individual pick is defensible. What it cannot see is that a
+  // fourth tight end has almost nowhere to play, and that the shape it accumulates
+  // one locally-correct pick at a time is one that loses.
+  const over = have - (V2_ROSTER_TARGETS[pos] ?? 99);
+  if (over >= 0) {
+    penalty += V2_OVER_TARGET_COST * (over + 1);
+    notes.push(`${have} ${pos} already (target ${V2_ROSTER_TARGETS[pos]})`);
+  }
+
   // Team concentration.  Correlation bonuses actively push toward stacking, so
   // something has to push back: a roster stacked onto three NFL teams shares their
   // bye weeks in the accumulation phase and collapses entirely if those offences
@@ -868,13 +937,14 @@ function v2StructuralPenalty(player, myTeam) {
 
 // Precompute the per-position replacement expectations once per pick rather than
 // once per candidate — they depend only on position, roster and next pick.
-function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = null) {
+function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = null, universe = null) {
   // barCache holds the order-statistic moments per position — they depend only on
   // the current roster, so they are computed once per pick, not once per candidate.
   const ctx = {
     nextMyPick, myPickNumber, myPicks,
     replAccum: {}, replSpike: {}, barCache: {}, typicalSd: {}, horizon: {}, replDepth: {},
     maxAdp: 250, teamSchedules: {},
+    run: v2PositionalRun(universe, available, myPickNumber),
   };
 
   // Deepest ADP on the board — the scale a free agent's draft position is read
@@ -1080,9 +1150,9 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
 // myPicks: your remaining pick numbers after this one, in order.  Optional but worth
 // supplying — it lets the replacement horizon look the correct number of turns ahead
 // instead of assuming uniform gaps in what is actually a snake draft.
-function getTopRecommendationsV2(available, myTeam, myPickNumber, n = 5, nextMyPick = null, myPicks = null) {
+function getTopRecommendationsV2(available, myTeam, myPickNumber, n = 5, nextMyPick = null, myPicks = null, universe = null) {
   if (!available.length) return [];
-  const ctx = buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks);
+  const ctx = buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks, universe);
 
   const scored = available.map(p => {
     const bd  = [];
@@ -1098,6 +1168,10 @@ function getTopRecommendationsV2(available, myTeam, myPickNumber, n = 5, nextMyP
     const corr = v2CorrelationValue(p, myTeam);
     if (corr.notes.length) reasons.push(corr.notes.join(' · '));
 
+    const runF = (ctx.run && ctx.run[p.pos]) || 1;
+    if (runF >= 1.15) reasons.push(`🔥 ${p.pos} run — going ${Math.round((runF - 1) * 100)}% ahead of ADP in this room`);
+    else if (runF <= 0.88) reasons.push(`🧊 ${p.pos} falling — ${Math.round((1 - runF) * 100)}% behind ADP pace`);
+
     if (!v2HasRealTeam(p)) {
       reasons.push(`🔓 unsigned — ${Math.round(v2FreeAgentSignProb(p, ctx) * 100)}% signing weight, no known schedule`);
     }
@@ -1108,7 +1182,7 @@ function getTopRecommendationsV2(available, myTeam, myPickNumber, n = 5, nextMyP
 
     // Survival read: if he is likely to last, you can take a scarcer need first.
     if (nextMyPick != null) {
-      const surv = v2SurvivalProb(p, nextMyPick);
+      const surv = v2SurvivalProb(p, nextMyPick, (ctx.run && ctx.run[p.pos]) || 1);
       if (surv > 0.65)      reasons.push(`⏳ ${Math.round(surv * 100)}% to last til ${nextMyPick}`);
       else if (surv < 0.20) reasons.push(`⚠ ${Math.round(surv * 100)}% to last — grab now`);
     }
@@ -1139,6 +1213,7 @@ if (typeof module !== 'undefined' && module.exports) {
     calculateValueV2, getTopRecommendationsV2, buildV2Context,
     v2AttachEffective, v2MarginalGain, v2SurvivalProb, v2PositionGain, v2OrderStatMoments,
     v2ExpectedBestSurvivor, v2CorrelationValue, v2FreeAgentSignProb, v2PlayoffAvailability,
+    v2PositionalRun,
     v2BackfieldSpikeDiscount,
     V2_DRAFT_ROUNDS, V2_ROSTER_TARGETS, V2_STARTER_SLOTS,
   };
