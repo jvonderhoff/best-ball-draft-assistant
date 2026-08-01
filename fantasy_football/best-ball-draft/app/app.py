@@ -1889,6 +1889,36 @@ def refresh_espn_projections():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/props/upload', methods=['POST'])
+def upload_props():
+    """Accept prop lines fetched elsewhere and store them.
+
+    DraftKings' sportsbook API refuses datacenter traffic: the identical fetch that
+    returns 131 players from a residential connection returns 403 Forbidden from
+    Render, so /api/props/refresh can never work in production for that book. No
+    amount of retrying or header-tweaking fixes an IP-based block.
+
+    This lets the fetch run where it is allowed to and push the result here.
+    Protected by BBA_API_KEY, since it writes to the shared store.
+    """
+    api_key = request.headers.get('X-Api-Key') or (request.json or {}).get('api_key', '')
+    expected = os.environ.get('BBA_API_KEY', '')
+    if expected and api_key != expected:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    payload = request.get_json(silent=True) or {}
+    book  = (payload.get('book') or 'DraftKings').strip()
+    props = payload.get('props') or {}
+    if not isinstance(props, dict) or not props:
+        return jsonify({'error': 'props must be a non-empty object'}), 400
+
+    # save_props write-throughs to the durable external store, so an uploaded book
+    # survives the next deploy and spin-down like any locally-fetched one.
+    count = save_props(props, book=book)
+    app.logger.info(f'[props/upload] stored {count} rows for {book} ({len(props)} players)')
+    return jsonify({'ok': True, 'book': book, 'players': len(props), 'rows': count})
+
+
 @app.route('/api/projections-v2', methods=['GET'])
 def get_projections_v2():
     """
