@@ -595,9 +595,14 @@ def refresh_yahoo_projections():
 def refresh_props():
     try:
         from app.data.betting_fetcher import fetch_season_props as fetch_dk
-        props = fetch_dk(verbose=True)
+        errors = []
+        props = fetch_dk(verbose=True, errors=errors)
         if not props:
-            return jsonify({'ok': False, 'error': 'No props scraped — DK Sportsbook may have changed or season props not yet posted'}), 200
+            return jsonify({
+                'ok': False,
+                'error': 'No props scraped — DK Sportsbook may have changed or season props not yet posted',
+                'subcategory_errors': errors,
+            }), 200
         count = save_props(props, book='DraftKings')
         return jsonify({'ok': True, 'book': 'DraftKings', 'players': len(props), 'rows': count})
     except Exception as e:

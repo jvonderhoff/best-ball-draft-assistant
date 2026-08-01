@@ -182,10 +182,13 @@ def props_to_fantasy_pts(player_props: dict) -> float:
     return round(rush_pts + rec_pts + pass_pts, 1)
 
 
-def fetch_season_props(verbose=True) -> dict:
+def fetch_season_props(verbose=True, errors=None) -> dict:
     """
     Fetch DK Sportsbook season player prop O/U lines via direct API calls.
     Returns {player_name: {prop_type: {line, over_odds, under_odds}}}
+
+    If `errors` is passed a list, per-subcategory fetch failures are appended
+    to it as "{prop_type}: {message}" strings instead of only being printed.
     """
     props = {}
     session = requests.Session()
@@ -199,6 +202,8 @@ def fetch_season_props(verbose=True) -> dict:
         except Exception as e:
             if verbose:
                 print(f'  [Betting] {prop_type} fetch error: {e}')
+            if errors is not None:
+                errors.append(f'{prop_type}: {e}')
 
     if verbose:
         print(f'  [Betting] {len(props)} players with prop lines')
