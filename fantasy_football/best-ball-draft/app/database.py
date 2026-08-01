@@ -161,7 +161,7 @@ def _seed_players_if_empty(conn):
     conn.executemany("""
         INSERT OR IGNORE INTO players
             (player_id, name, pos, team, adp, ecr_rank, ecr_std, week15, week16, week17, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """, [(p['id'], p['name'], p['pos'], p['team'], p.get('adp'),
            p.get('ecr_rank'), p.get('ecr_std'), p.get('week15'), p.get('week16'), p.get('week17'))
           for p in players])
