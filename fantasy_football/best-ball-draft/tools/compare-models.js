@@ -44,6 +44,16 @@ const V1 = require(path.join(ROOT, 'static', 'recommender.js'));
 const V2 = require(path.join(ROOT, 'static', 'recommender-v2.js'));
 
 const NUM_TEAMS = 12;
+
+// Weekly starting slots per position, used to define "the startable tier" a breakout
+// lands in. Mirrors the recommender's lineup shape.
+const STARTABLE = { QB: 1.0, RB: 2.3, WR: 3.6, TE: 1.1 };
+
+// How often roles change from what the projection assumed. Tunable so the harness's
+// own assumptions can be stress-tested rather than trusted — a conclusion that only
+// holds at one breakout rate is not a conclusion.
+const BREAKOUT_BASE = process.env.SIM_BREAKOUT ? parseFloat(process.env.SIM_BREAKOUT) : 0.14;
+const BUST_BASE     = process.env.SIM_BUST     ? parseFloat(process.env.SIM_BUST)     : 0.14;
 const ROUNDS    = 20;
 
 // Weekly lineup: 1 QB, 2 RB, 3 WR, 1 TE, 1 FLEX (RB/WR/TE)
@@ -140,7 +150,46 @@ function assignTruth(players, mode, rng) {
     // Real outcomes are not the projection — add season-long "who they turned out
     // to be" noise so neither model gets a perfect board.
     const noise = Math.exp(gauss(rng) * 0.30 - 0.045);
-    p._true = { mean: mean * noise, cv: p._eff.sd / Math.max(p._eff.mean, 0.01) };
+    mean *= noise;
+
+    // ── Regime change ────────────────────────────────────────────────────────
+    // Lognormal noise around a projection cannot produce a breakout. It scales a
+    // player up or down a bit; it never turns a 3-ppg bench body into a 13-ppg
+    // starter. Real drafts are decided by exactly that event, and without it the
+    // simulator silently assumes every player's role is already known — which
+    // makes it incapable of judging any model that bets on uncertainty, while
+    // still returning confident-looking numbers.
+    //
+    // A breakout is modelled as what it actually is: winning a role. The player's
+    // true ability jumps to somewhere inside his position's startable tier rather
+    // than being multiplied by a fudge factor, so the size of the jump follows
+    // from how far down the board he started.
+    //
+    // Probability rises with expert disagreement, which is the observable the
+    // recommender keys on, and with how little the projection expects of him — a
+    // player with no assumed role has the most room to gain one. Busts are the
+    // mirror image, so the feature cannot win simply by adding upside.
+    const c = curves[p.pos];
+    const startable = Math.max(3, Math.round(STARTABLE[p.pos] * NUM_TEAMS));
+    const tierFloor = c[Math.min(c.length - 1, startable)] ?? 0;
+    const headroom = tierFloor > 0 ? Math.max(0, Math.min(1, 1 - mean / tierFloor)) : 0;
+    const dis = p._eff.disagreement ?? 0;
+
+    const pBreak = Math.min(0.30, BREAKOUT_BASE * (0.35 + dis) * (0.25 + headroom));
+    const pBust  = Math.min(0.30, BUST_BASE * (0.35 + dis) * (1.25 - headroom));
+
+    const roll = rng();
+    if (roll < pBreak) {
+      // Wins a role: lands somewhere in the startable tier for his position.
+      const idx = Math.floor(rng() * startable);
+      const target = c[Math.min(c.length - 1, idx)] ?? mean;
+      mean = Math.max(mean, target * (0.65 + 0.35 * rng()));
+    } else if (roll < pBreak + pBust) {
+      // Loses the role the projection assumed: usage collapses.
+      mean *= 0.30 + 0.35 * rng();
+    }
+
+    p._true = { mean, cv: p._eff.sd / Math.max(p._eff.mean, 0.01) };
   }
 }
 
