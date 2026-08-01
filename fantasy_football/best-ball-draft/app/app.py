@@ -507,6 +507,10 @@ def yahoo_status():
         'redirect_uri': _yahoo_redirect_uri(),
         'expires_at': expires_at,
         'token_in_db': bool(db_raw),
+        # Yahoo echoes the granted scope back with the token. A token missing
+        # 'fspt' explains a 403 on /fantasy/v2/* and is otherwise invisible.
+        'granted_scope': (json.loads(db_raw).get('xoauth_yahoo_guid') and
+                          json.loads(db_raw).get('scope')) if db_raw else None,
         'token_on_disk': disk_exists,
         'token_in_env': env_set,
         'has_access_token': bool(tokens.get('access_token')),

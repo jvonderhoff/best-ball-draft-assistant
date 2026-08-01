@@ -18,6 +18,7 @@ import time
 import base64
 import requests
 import re
+from typing import Optional
 from urllib.parse import urlencode
 
 # Credentials — set as Render env vars: YAHOO_CLIENT_ID, YAHOO_CLIENT_SECRET
@@ -86,11 +87,19 @@ def _save_tokens(tokens: dict):
 
 # ── OAuth helpers ─────────────────────────────────────────────────────────────
 
+# Fantasy Sports read access. Without this the authorization request yields a token
+# that authenticates fine but is not permitted on /fantasy/v2/*, so every call comes
+# back 403 Forbidden rather than 401 — which reads like a credentials problem when it
+# is actually a permissions one.
+YAHOO_SCOPE = 'fspt-r'
+
+
 def get_auth_url(redirect_uri: str) -> str:
     params = {
         'client_id':     CLIENT_ID,
         'redirect_uri':  redirect_uri,
         'response_type': 'code',
+        'scope':         YAHOO_SCOPE,
     }
     return f"{AUTH_URL}?{urlencode(params)}"
 
@@ -130,7 +139,7 @@ def _refresh_tokens(tokens: dict) -> dict:
     return new_tokens
 
 
-def _get_access_token() -> str | None:
+def _get_access_token() -> Optional[str]:
     tokens = _load_tokens()
     if not tokens.get('access_token'):
         return None
@@ -150,7 +159,7 @@ def is_authenticated() -> bool:
 
 # ── API wrapper ───────────────────────────────────────────────────────────────
 
-def _api_get(path: str, params: dict = None) -> dict | None:
+def _api_get(path: str, params: dict = None) -> Optional[dict]:
     token = _get_access_token()
     if not token:
         return None
@@ -177,7 +186,7 @@ def _api_get(path: str, params: dict = None) -> dict | None:
 
 _nfl_game_key_cache = None
 
-def _get_nfl_game_key() -> str | None:
+def _get_nfl_game_key() -> Optional[str]:
     global _nfl_game_key_cache
     if _nfl_game_key_cache:
         return _nfl_game_key_cache
@@ -222,7 +231,7 @@ def _normalize(name: str) -> str:
     return name.strip()
 
 
-def _parse_player_block(player_list: list) -> dict | None:
+def _parse_player_block(player_list: list) -> Optional[dict]:
     """
     Yahoo wraps player info as: [[info_items...], {player_stats}]
     info_items is a list of single-key dicts e.g. [{'player_key': ...}, {'name': {...}}, ...]
