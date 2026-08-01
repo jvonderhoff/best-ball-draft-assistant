@@ -375,6 +375,13 @@ function evaluate(model, opts) {
     reachFinal: 0, accPoints: 0, wk17Points: 0, n: 0,
     posCounts: { QB: 0, RB: 0, WR: 0, TE: 0 },
     stackedPasscatchers: 0, playoffPartners: 0,
+    // Advance rate bucketed by the roster construction that produced it. The public
+    // best-ball research reports exactly this, and its central claim — that some
+    // builds fail regardless of who is in them — is testable here rather than taken
+    // on faith. Recording the shape a model actually produces alongside how those
+    // rosters performed also shows whether an average like "2.4 QB" hides a tail of
+    // 1-QB rosters, which the research says is among the worst constructions.
+    byBuild: new Map(),
   };
 
   for (let d = 0; d < drafts; d++) {
@@ -396,6 +403,10 @@ function evaluate(model, opts) {
       }
     }
 
+    const build = POS.map(p => mine.filter(x => x.pos === p).length).join('-');
+    if (!stats.byBuild.has(build)) stats.byBuild.set(build, { n: 0, adv: 0, fin: 0 });
+    const bucket = stats.byBuild.get(build);
+
     // Same season draws for every model via a seed tied to the draft index only.
     for (let s = 0; s < seasons; s++) {
       const srng = mulberry32(seed + 100000 + s);
@@ -407,6 +418,8 @@ function evaluate(model, opts) {
 
       const advanced = rankOf(acc, slot) <= 2;
       if (advanced) stats.advance14++;
+      bucket.n++;
+      if (advanced) bucket.adv++;
 
       const w15 = rankOf(wk[15], slot) === 1;
       const w16 = rankOf(wk[16], slot) === 1;
@@ -415,7 +428,7 @@ function evaluate(model, opts) {
       if (w16) stats.win16++;
       if (w17) stats.win17++;
       // Full tournament path: survive weeks 1-14, then win 15 and 16 to reach the final.
-      if (advanced && w15 && w16) stats.reachFinal++;
+      if (advanced && w15 && w16) { stats.reachFinal++; bucket.fin++; }
     }
   }
 
@@ -430,6 +443,9 @@ function evaluate(model, opts) {
     accPoints:  stats.accPoints / n,
     wk17Points: stats.wk17Points / n,
     pos: Object.fromEntries(POS.map(p => [p, stats.posCounts[p] / drafts])),
+    byBuild: [...stats.byBuild.entries()]
+      .map(([build, b]) => ({ build, n: b.n, advance: b.adv / b.n, reachFinal: b.fin / b.n }))
+      .sort((a, b) => b.n - a.n),
     stackedPC: stats.stackedPasscatchers / drafts,
     playoffPartners: stats.playoffPartners / drafts,
   };
@@ -550,6 +566,23 @@ function main() {
     const v1 = evaluate('v1', o);
     const v2 = evaluate('v2', o);
     report(truth, v1, v2, o);
+  // Construction table. Ordered by frequency so the builds a model actually relies on
+  // are visible, not just whichever happened to score well in a small sample.
+  for (const [label, res] of [['V1', v1], ['V2', v2]]) {
+    if (!res.byBuild || !res.byBuild.length) continue;
+    const total = res.byBuild.reduce((a, b) => a + b.n, 0);
+    const rows = res.byBuild.filter(b => b.n >= total * 0.03).slice(0, 8);
+    if (!rows.length) continue;
+    console.log(`\n${label} — advance rate by roster construction (QB-RB-WR-TE)`);
+    console.log(`  ${'build'.padEnd(12)}${'share'.padStart(8)}${'advance'.padStart(10)}${'reach final'.padStart(13)}`);
+    for (const b of rows) {
+      const flag = b.advance < res.advance14 * 0.85 ? '   <-- underperforms' : '';
+      console.log(`  ${b.build.padEnd(12)}${(100 * b.n / total).toFixed(1).padStart(7)}%`
+        + `${(100 * b.advance).toFixed(1).padStart(9)}%${(100 * b.reachFinal).toFixed(2).padStart(12)}%${flag}`);
+    }
+  }
+
+
   }
 
   console.log('\nNote: absolute rates are not calibrated to the real contest (the other 11');
