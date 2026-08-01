@@ -489,6 +489,26 @@ def yahoo_callback():
         )
 
 
+def _yahoo_token_field(raw, field):
+    """One field from the stored Yahoo token payload, or None. Never a token value."""
+    if not raw:
+        return None
+    try:
+        return json.loads(raw).get(field)
+    except Exception:
+        return None
+
+
+def _yahoo_token_keys(raw):
+    """Which keys Yahoo returned with the token — values deliberately omitted."""
+    if not raw:
+        return []
+    try:
+        return sorted(json.loads(raw).keys())
+    except Exception:
+        return []
+
+
 @app.route('/api/yahoo/status')
 def yahoo_status():
     from app.data.yahoo_fetcher import is_authenticated, _load_tokens, CLIENT_ID
@@ -509,8 +529,13 @@ def yahoo_status():
         'token_in_db': bool(db_raw),
         # Yahoo echoes the granted scope back with the token. A token missing
         # 'fspt' explains a 403 on /fantasy/v2/* and is otherwise invisible.
-        'granted_scope': (json.loads(db_raw).get('xoauth_yahoo_guid') and
-                          json.loads(db_raw).get('scope')) if db_raw else None,
+        # What Yahoo actually returned with the token. `scope` is the field that
+        # decides whether /fantasy/v2/* is permitted at all — a token without fspt
+        # authenticates fine and then 403s on every call, which is otherwise
+        # indistinguishable from a credentials problem. Token values are never
+        # included, only which keys came back and the scope string itself.
+        'granted_scope': _yahoo_token_field(db_raw, 'scope'),
+        'token_fields':  _yahoo_token_keys(db_raw),
         'token_on_disk': disk_exists,
         'token_in_env': env_set,
         'has_access_token': bool(tokens.get('access_token')),
