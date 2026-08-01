@@ -141,6 +141,7 @@ def init_db():
         _hydrate_external_rankings(conn)
         _hydrate_external_drafts(conn)
         _hydrate_external_projections(conn)
+        _hydrate_external_kv(conn)
 
 
 def _seed_players_if_empty(conn):
@@ -222,6 +223,43 @@ def _hydrate_external_rankings(conn):
     except Exception as e:
         import logging
         logging.getLogger('app').warning(f'[rankings-store] hydrate failed: {e!r}')
+
+
+def _hydrate_external_kv(conn):
+    """Make the durable external store the source of truth for kv_store.
+
+    This is where Yahoo OAuth tokens live. Render wipes SQLite on every deploy and
+    idle spin-down, so without this the tokens vanish and the Yahoo API returns a
+    bare 403 with nothing to indicate the credentials were simply gone.
+
+    Same contract as the other hydrates: None means unreachable, so keep whatever
+    is local rather than destroying credentials over a transient outage. An empty
+    external store on first run is seeded from local.
+    """
+    from app import kv_store_external as kv
+    if not kv.external_enabled():
+        return
+    try:
+        kv.init_external()
+        ext = kv.load_all()
+        if ext is None:
+            return  # store unreachable — never wipe local credentials on an outage
+        if not ext:
+            local = conn.execute("SELECT key, value FROM kv_store").fetchall()
+            for r in local:
+                kv.save(r['key'], r['value'])
+            return
+        # External wins. Upsert rather than DELETE-then-insert: a key written
+        # locally since boot (a token refreshed seconds ago) must not be lost.
+        for key, value in ext.items():
+            conn.execute(
+                "INSERT INTO kv_store (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP",
+                (key, value)
+            )
+    except Exception as e:
+        import logging
+        logging.getLogger('app').warning(f'[kv-store] hydrate failed: {e!r}')
 
 
 def _hydrate_external_projections(conn):
@@ -652,13 +690,23 @@ def yahoo_projections_meta():
 
 
 def kv_set(key: str, value: str):
-    """Store a string value by key (upsert)."""
+    """Store a string value by key (upsert).
+
+    Write-throughs to the durable external store. Yahoo refresh tokens rotate on
+    every renewal, so this path has to persist or the credentials are lost at the
+    next deploy. No-op when DATABASE_URL is unset.
+    """
     with get_db() as conn:
         conn.execute(
             'INSERT INTO kv_store (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) '
             'ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP',
             (key, value)
         )
+    try:
+        from app import kv_store_external
+        kv_store_external.save(key, value)
+    except Exception:
+        pass
 
 
 def kv_get(key: str) -> str | None:
