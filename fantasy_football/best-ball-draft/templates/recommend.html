@@ -354,7 +354,29 @@
     @keyframes flash { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
     @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
     .live-flash { animation: flash 0.4s ease; }
-  </style>
+  
+    /* ── V1 / V2 comparison ── */
+    .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+    @media (max-width: 900px) { .cmp-grid { grid-template-columns: 1fr; } }
+    .cmp-col-hdr { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; position: sticky; top: 0;
+                   background: var(--bg, #111); z-index: 3; padding: 4px 0; }
+    .cmp-badge { font-size: 0.62em; font-weight: 700; padding: 2px 6px; border-radius: 4px; color: #fff; letter-spacing: .04em; }
+    .cmp-badge.v1 { background: var(--muted); }
+    .cmp-badge.v2 { background: var(--accent); }
+    .cmp-sub { font-size: 0.64em; color: var(--muted2); }
+    .cmp-grid .rec-card { padding: 8px 9px; margin-bottom: 6px; }
+    .cmp-grid .rec-name { font-size: 0.8em; }
+    .cmp-grid .rec-adp, .cmp-grid .rec-reason { font-size: 0.66em; }
+    .xr { font-size: 0.6em; font-weight: 700; padding: 1px 4px; border-radius: 3px; margin-left: auto; white-space: nowrap; }
+    .xr.same { background: var(--surface); color: var(--muted2); border: 1px solid var(--border); }
+    .xr.up   { background: rgba(52,168,83,.15);  color: var(--green);  border: 1px solid var(--green); }
+    .xr.down { background: rgba(230,145,56,.15); color: var(--orange); border: 1px solid var(--orange); }
+    .xr.none { background: rgba(230,145,56,.12); color: var(--orange); border: 1px dashed var(--orange); }
+    .cmp-note { font-size: 0.68em; color: var(--muted2); background: var(--surface);
+                border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; }
+    .cmp-note b { color: var(--text); }
+    .cmp-warn { font-size: 0.68em; color: var(--orange); padding: 8px 0; }
+</style>
 </head>
 <body>
 
@@ -494,6 +516,7 @@
 
 
 <script src="{{ asset('recommender.js') }}"></script>
+<script src="{{ asset('recommender-v2.js') }}"></script>
 <script>
 // ── TTL cache (sessionStorage) ────────────────────────────────────────────────
 // Survives draft switching within a session, cleared on tab/window close.
@@ -613,6 +636,44 @@ const SETTINGS_KEY = 'bba_settings';
 let settings = loadSettings();
 
 // Hardcoded recommender constants — tweak directly in code
+// ── V2 (projection model) — advisory second opinion alongside V1 ─────────────
+// Loaded defensively: every failure path leaves V1 exactly as it was, because this
+// is the page used during a live draft and a broken projection feed must never cost
+// a pick.
+let v2Ready = false, v2Error = '';
+async function loadV2Projections() {
+  try {
+    const r = await fetch('/api/projections-v2');
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const map = {};
+    (d.players || []).forEach(p => { if (p.id) map[p.id] = p; });
+    PLAYERS.forEach(p => { if (p.realAdp == null) p.realAdp = p.adp; });
+    v2AttachEffective(PLAYERS, map, { customRankMap: useCustomRankings ? customRankMap : {} });
+    v2Ready = true;
+    if (d.stale) v2Error = 'projections stale';
+  } catch (e) {
+    v2Error = e.message || 'projections unavailable';
+    v2Ready = false;
+  }
+}
+
+function v2RemainingPicks(fromPick, numTeams, myPos) {
+  const out = []; let cur = fromPick;
+  for (let i = 0; i < 24; i++) {
+    const nxt = nextMyOverallPick(cur, numTeams, myPos);
+    if (!nxt || nxt > numTeams * 20) break;
+    out.push(nxt); cur = nxt + 1;
+  }
+  return out;
+}
+
+function xrBadge(otherRank, myRank, label) {
+  if (otherRank == null) return `<span class="xr none">${label} —</span>`;
+  if (otherRank === myRank) return `<span class="xr same">${label} =</span>`;
+  return `<span class="xr ${myRank > otherRank ? 'up' : 'down'}">${label} #${otherRank}</span>`;
+}
+
 // Single source of truth lives in recommender.js so the sandbox matches.
 // Guarded: if a stale cached recommender.js predates the constant, an undefined
 // value would fall through to STACK_SETTINGS.medium inside calculateValue and
@@ -1221,6 +1282,9 @@ async function loadPlayers() {
     buildNameLookup();
     renderPlayerList();
     renderRecs();
+    // V2 loads after the board is already usable, then re-renders. A slow or failed
+    // projection fetch must never delay V1 appearing during a live draft.
+    loadV2Projections().then(renderRecs);
     return;
   }
   try {
@@ -1230,6 +1294,7 @@ async function loadPlayers() {
     buildNameLookup();
     renderPlayerList();
     renderRecs();
+    loadV2Projections().then(renderRecs);
   } catch {
     document.getElementById('playerList').innerHTML =
       '<div class="spinner" style="color:#ef5350">Failed to load players.</div>';
@@ -1538,7 +1603,44 @@ function renderRecs() {
 
   const displayRecs = recs;
 
-  el.innerHTML = statusBar + paceWarnHTML + wavePanel + displayRecs.map((r, i) => {
+  // ── V2 second opinion ──────────────────────────────────────────────────────
+  // Ranked deeper than shown so a V1 pick outside V2's visible rows still resolves
+  // to a real number rather than a dash.
+  let recsV2 = [];
+  if (v2Ready) {
+    try {
+      const myPicks = v2RemainingPicks(pickForRec + 1, settings.numTeams, settings.myPosition);
+      recsV2 = getTopRecommendationsV2(available, state.myTeam, pickForRec, 40,
+                                       nextMyPick, myPicks, PLAYERS);
+    } catch (e) { recsV2 = []; v2Error = 'V2 scoring failed: ' + e.message; }
+  }
+  const v1Rank = new Map(recs.map((r, i) => [r.player.id, i + 1]));
+  const v2Rank = new Map(recsV2.map((r, i) => [r.player.id, i + 1]));
+
+  // Draft-room read: which positions this room is taking faster than ADP.
+  let roomHTML = '';
+  if (v2Ready && recsV2.length) {
+    try {
+      const run = v2PositionalRun(PLAYERS, available, pickForRec);
+      const hot  = Object.entries(run).filter(([, v]) => v >= 1.15)
+                     .map(([k, v]) => `<b>${k}</b> +${Math.round((v - 1) * 100)}%`);
+      const cold = Object.entries(run).filter(([, v]) => v <= 0.88)
+                     .map(([k, v]) => `<b>${k}</b> −${Math.round((1 - v) * 100)}%`);
+      if (hot.length || cold.length) {
+        roomHTML = `<div class="cmp-note">📊 This room vs ADP: `
+          + (hot.length  ? `🔥 going early ${hot.join(', ')} ` : '')
+          + (cold.length ? `🧊 falling ${cold.join(', ')}` : '') + `</div>`;
+      }
+    } catch (e) { /* read is advisory; never block the board */ }
+  }
+
+  // When the columns stack (phone), showing ten cards each buries V2 a thousand
+  // pixels down the page — unusable mid-draft. Show fewer per column instead, so
+  // both models stay reachable with one thumb.
+  const stacked = window.innerWidth <= 900;
+  const shownN  = stacked ? 5 : displayRecs.length;
+
+  const v1CardsHTML = displayRecs.slice(0, shownN).map((r, i) => {
     const p = r.player;
 
     // Score breakdown panel
@@ -1564,14 +1666,57 @@ function renderRecs() {
         <span class="rec-rank">#${i+1}</span>
         <span class="rec-pos ${p.pos}">${p.pos}</span>
         <span class="rec-name">${p.name}</span>
-        <span class="rec-score-badge">${scoreVal}</span>
+        ${xrBadge(v2Rank.get(p.id), i + 1, 'V2')}
       </div>
       <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ${useCustomRankings ? 'Rank' : 'ADP'} ${Math.round(p.adp)}</div>
       ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
       ${breakdown}
     </div>`;
   }).join('');
+
+  const v2CardsHTML = !v2Ready
+    ? `<div class="cmp-warn">V2 unavailable — ${v2Error || 'no projections'}. V1 is unaffected.</div>`
+    : !recsV2.length
+      ? '<div class="no-recs">No players available.</div>'
+      : recsV2.slice(0, shownN).map((r, i) => {
+          const p = r.player, e = p._eff || {};
+          const bd = (r.bd || []).map(b => `<div class="bd-row">
+              <span class="bd-mult ${b.points > 0 ? 'boost' : 'penalty'}">${b.points > 0 ? '+' : ''}${b.points.toFixed(3)}</span>
+              <span class="bd-label">${b.label}</span>
+              <span class="bd-note">${b.note || ''}</span>
+            </div>`).join('');
+          return `<div class="rec-card" onclick="this.classList.toggle('expanded')">
+            <div class="rec-card-hdr">
+              <span class="rec-rank">#${i+1}</span>
+              <span class="rec-pos ${p.pos}">${p.pos}</span>
+              <span class="rec-name">${p.name}</span>
+              ${xrBadge(v1Rank.get(p.id), i + 1, 'V1')}
+            </div>
+            <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ADP ${Math.round(p.realAdp ?? p.adp)}
+              · ${e.mean != null ? e.mean.toFixed(1)+' ppg / '+e.ceiling.toFixed(1)+' ceil' : '—'}
+              · <b>${r.value.toFixed(2)}</b> pts/wk</div>
+            ${r.reason ? `<div class="rec-reason">${r.reason}</div>` : ''}
+            <div class="rec-breakdown">${bd}
+              <div class="bd-total"><span>Net pts/week vs replacement</span><span>${r.value.toFixed(3)}</span></div>
+            </div>
+          </div>`;
+        }).join('');
+
+  el.innerHTML = statusBar + paceWarnHTML + roomHTML + wavePanel
+    + `<div class="cmp-grid">
+         <div><div class="cmp-col-hdr"><span class="cmp-badge v1">V1</span>
+              <span class="cmp-sub">ADP × multipliers</span></div>${v1CardsHTML}</div>
+         <div><div class="cmp-col-hdr"><span class="cmp-badge v2">V2</span>
+              <span class="cmp-sub">projections · pts/week</span></div>${v2CardsHTML}</div>
+       </div>`;
 }
+
+// Card count depends on whether the columns are stacked, so re-render on rotate.
+let _cmpWasStacked = window.innerWidth <= 900;
+window.addEventListener('resize', () => {
+  const now = window.innerWidth <= 900;
+  if (now !== _cmpWasStacked) { _cmpWasStacked = now; renderRecs(); }
+});
 
 // ── Roster ─────────────────────────────────────────────────────────────────────
 function renderCapitalBar() {

@@ -436,10 +436,10 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
   if (valueGap > 0) {
     const stealCap = pos === 'QB' ? 0.20 : 0.60;
     const m = 1 + Math.min((valueGap / effectiveRound) * 0.20, stealCap);
-    apply(m, 'Value steal', `fell ${valueGap} picks (ADP ${player.adp} at pick ${myPickNumber})`);
+    apply(m, 'Value steal', `fell ${Math.round(valueGap)} picks (ADP ${player.adp} at pick ${myPickNumber})`);
   } else if (valueGap < 0) {
     const penalty = Math.min(((-valueGap) / effectiveRound) * 0.10, 0.70);
-    apply(1 - penalty, 'Reach penalty', `${-valueGap} picks early (ADP ${player.adp} at pick ${myPickNumber})`);
+    apply(1 - penalty, 'Reach penalty', `${Math.round(-valueGap)} picks early (ADP ${player.adp} at pick ${myPickNumber})`);
   }
 
   return adpValue * mult;
@@ -465,8 +465,10 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
     const pGapThresh = Math.max(2, pRound);
     const pcCount    = passCatcherCount(p.team, myTeam);
 
-    let reason = gap >= pGapThresh ? `🔥 ${gap} picks of value`
-               : gap < -pGapThresh ? `⚠️ reaching ${-gap} picks early`
+    // ADP is fractional, so these gaps are too — round for display only. The
+    // unrounded values still drive every threshold and multiplier above.
+    let reason = gap >= pGapThresh ? `🔥 ${Math.round(gap)} picks of value`
+               : gap < -pGapThresh ? `⚠️ reaching ${Math.round(-gap)} picks early`
                : '';
 
     // Stack relationship to current roster
