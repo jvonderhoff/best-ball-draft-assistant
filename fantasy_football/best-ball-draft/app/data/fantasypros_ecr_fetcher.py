@@ -72,7 +72,21 @@ def fetch_ecr(verbose=True) -> dict:
         if ecr_rank is None:
             continue
         team = (p.get('player_team_id') or '').upper()
-        result[_normalize(name)] = {'ecr_rank': int(ecr_rank), 'pos': pos, 'team': team}
+        # rank_std is the spread across the ~74 contributing experts. It is the only
+        # signal available for OUTCOME uncertainty — whether a player will be good at
+        # all — as distinct from the week-to-week variance the projections model.
+        # Ja'Marr Chase sits at 1.1; players the panel is split on run past 45.
+        def _f(v):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+        result[_normalize(name)] = {
+            'ecr_rank': int(ecr_rank), 'pos': pos, 'team': team,
+            'ecr_std':  _f(p.get('rank_std')),
+            'ecr_min':  _f(p.get('rank_min')),
+            'ecr_max':  _f(p.get('rank_max')),
+        }
 
     if verbose:
         print(f'  [FP ECR] {len(result)} skill-position players ranked')

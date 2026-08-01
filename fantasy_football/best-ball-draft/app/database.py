@@ -115,6 +115,7 @@ def init_db():
                 team       TEXT,
                 adp        REAL,
                 ecr_rank   INTEGER,
+                ecr_std    REAL,
                 week15     TEXT,
                 week16     TEXT,
                 week17     TEXT,
@@ -132,6 +133,8 @@ def init_db():
         player_cols = [r[1] for r in conn.execute("PRAGMA table_info(players)").fetchall()]
         if 'ecr_rank' not in player_cols:
             conn.execute("ALTER TABLE players ADD COLUMN ecr_rank INTEGER")
+        if 'ecr_std' not in player_cols:
+            conn.execute("ALTER TABLE players ADD COLUMN ecr_std REAL")
         pick_cols = [r[1] for r in conn.execute("PRAGMA table_info(draft_picks)").fetchall()]
         for col in ('week15', 'week16', 'week17'):
             if col not in pick_cols:
@@ -157,10 +160,10 @@ def _seed_players_if_empty(conn):
     players = data.get('players', data) if isinstance(data, dict) else data
     conn.executemany("""
         INSERT OR IGNORE INTO players
-            (player_id, name, pos, team, adp, ecr_rank, week15, week16, week17, updated_at)
+            (player_id, name, pos, team, adp, ecr_rank, ecr_std, week15, week16, week17, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """, [(p['id'], p['name'], p['pos'], p['team'], p.get('adp'),
-           p.get('ecr_rank'), p.get('week15'), p.get('week16'), p.get('week17'))
+           p.get('ecr_rank'), p.get('ecr_std'), p.get('week15'), p.get('week16'), p.get('week17'))
           for p in players])
 
 
@@ -445,10 +448,17 @@ def refresh_players(players):
     """Replace the players table with fresh data (clears stale rows first)."""
     with get_db() as conn:
         conn.execute("DELETE FROM players")
+        # ecr_rank and ecr_std must be written here. This function DELETEs the table
+        # first, so any column it omits is destroyed on every player refresh — ECR was
+        # being silently dropped that way, leaving the recommender's rank blend with
+        # nothing to blend and no error to show for it.
         conn.executemany("""
-            INSERT INTO players (player_id, name, pos, team, adp, week15, week16, week17, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO players
+                (player_id, name, pos, team, adp, ecr_rank, ecr_std,
+                 week15, week16, week17, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """, [(p['id'], p['name'], p['pos'], p['team'], p.get('adp'),
+               p.get('ecr_rank'), p.get('ecr_std'),
                p.get('week15'), p.get('week16'), p.get('week17'))
               for p in players])
         # Remove rankings for players no longer in the pool
@@ -463,11 +473,12 @@ def get_players():
     """Return all players from the DB in the same shape as player_cache.json."""
     with get_db() as conn:
         rows = conn.execute("""
-            SELECT player_id, name, pos, team, adp, ecr_rank, week15, week16, week17
+            SELECT player_id, name, pos, team, adp, ecr_rank, ecr_std, week15, week16, week17
             FROM players ORDER BY adp
         """).fetchall()
         return [{'id': r['player_id'], 'name': r['name'], 'pos': r['pos'],
                  'team': r['team'], 'adp': r['adp'], 'ecr_rank': r['ecr_rank'],
+                 'ecr_std': r['ecr_std'],
                  'week15': r['week15'], 'week16': r['week16'], 'week17': r['week17']}
                 for r in rows]
 

@@ -78,6 +78,35 @@ const V2_W_PLAYOFF      = _v2env.V2_W_PO  ? parseFloat(_v2env.V2_W_PO)  : 0.60;
 // ceiling problem rather than a mean problem.
 const V2_SPIKE_Z = 1.0;
 
+// How far expert disagreement widens a player's knockout-week spread.
+//
+// SD is otherwise computed as a fixed multiple of the mean, so a 3-ppg round-18
+// receiver gets an SD of 1.8 and a ceiling of 5.0 — the model concludes he cannot
+// spike, every late pick collapses toward zero, and the ordering among the last five
+// rounds becomes noise. But real late-round hits do not drift from 3 to 5; they win a
+// job and go to 14. That is a change of regime rather than variance, and nothing in a
+// mean-scaled SD can represent it.
+//
+// FantasyPros' rank_std across ~74 experts is the observable proxy: a player the panel
+// splits on is one some experts already think is a starter. It widens the SPIKE term
+// only. Accumulation is left alone deliberately — disagreement says the outcome is
+// uncertain, not that the fourteen-week expectation is higher.
+// DEFAULTS TO OFF. The plumbing is complete and the reasoning above holds, but the
+// only test available argues against it: swept against the harness, advance rate over
+// V1 falls monotonically — 0.0 gives +40.6%, 0.8 gives +34.8%, 1.6 gives +30.7%.
+//
+// That result is not trustworthy either. tools/compare-models.js draws each player's
+// true mean from the projection curve with lognormal noise and sets cv = sd/mean, so
+// no simulated player ever becomes better than his projection implies. There is no
+// regime change in the truth model, which means it is scoring a bet on breakouts in a
+// world where breakouts cannot happen — the only available outcome is a penalty for
+// deviating from projection-optimal picks.
+//
+// So the feature is unvalidated in both directions and left off rather than shipped on
+// theory alone. Settling it needs breakout events in the simulator's truth model; then
+// this constant can be swept honestly. Set V2_BREAKOUT to experiment.
+const V2_BREAKOUT_SD_GAIN = _v2env.V2_BREAKOUT ? parseFloat(_v2env.V2_BREAKOUT) : 0.0;
+
 // Chance a given player is on bye in a given week of the 14-week accumulation phase.
 // Every team has exactly one bye inside that window.
 const V2_BYE_RATE = 1 / 14;
@@ -311,13 +340,14 @@ function v2AttachEffective(players, projMap, opts = {}) {
     const curve = curves[pos];
     const proj  = p._proj;
 
-    let mean, sd, sources, avail = 1;
+    let mean, sd, sources, avail = 1, disagree = 0;
 
     if (proj && proj.ppg > 0) {
       mean    = proj.ppg;
       sd      = proj.sd;
       sources = proj.sources || 1;
       avail   = proj.avail ?? 1;
+      disagree = proj.disagreement ?? 0;
     } else {
       // No projection — estimate from where the market ranks him at his position.
       const list    = adpRankByPos[pos] || [];
@@ -328,6 +358,7 @@ function v2AttachEffective(players, projMap, opts = {}) {
       sd      = est * 0.70;
       sources = 0;
       avail   = 0.80;         // no projection usually means a fringe/injury-risk body
+      disagree = 0.35;        // unprojected bodies are inherently uncertain, not inherently bad
     }
 
     // Rank-based sanity blend.  A single projection source can be badly wrong on
@@ -355,6 +386,7 @@ function v2AttachEffective(players, projMap, opts = {}) {
       ceiling: blended + 1.2816 * sd,
       sources: sources,
       avail:   avail,
+      disagreement: disagree,
       ecrWeight: wUsed,
       customRanked: customPts != null,
       projected: !!(proj && proj.ppg > 0),
@@ -432,7 +464,7 @@ function v2OrderStatMoments(pos, myTeam, k, mode) {
 // the bar instead of inflating the player keeps both terms on the same points scale
 // and still rewards high-variance players — they clear a high bar more often — but
 // only once.
-function v2PositionGain(pos, mean, sd, myTeam, mode, ctx = null, avail = 1) {
+function v2PositionGain(pos, mean, sd, myTeam, mode, ctx = null, avail = 1, disagreement = 0) {
   const slots = V2_STARTER_SLOTS[pos] || 1;
   const lo    = Math.floor(slots);
   const hi    = lo + 1;
@@ -460,8 +492,13 @@ function v2PositionGain(pos, mean, sd, myTeam, mode, ctx = null, avail = 1) {
     offset = V2_SPIKE_Z * typicalSd;
   }
 
-  const gLo = v2MarginalGain(mean, sd, bars.lo.mean + offset, bars.lo.sd);
-  const gHi = v2MarginalGain(mean, sd, bars.hi.mean + offset, bars.hi.sd);
+  // Outcome uncertainty only counts where the format pays for it: one huge week.
+  const sdEff = mode === 'spike'
+    ? sd * (1 + V2_BREAKOUT_SD_GAIN * (disagreement || 0))
+    : sd;
+
+  const gLo = v2MarginalGain(mean, sdEff, bars.lo.mean + offset, bars.lo.sd);
+  const gHi = v2MarginalGain(mean, sdEff, bars.hi.mean + offset, bars.hi.sd);
 
   // A player only helps in the weeks he actually plays.
   const byeRate  = mode === 'spike' ? 0 : V2_BYE_RATE;
@@ -511,7 +548,7 @@ function v2ExpectedBestSurvivor(pos, available, myTeam, nextPick, mode, ctx) {
   const candidates = available
     .filter(p => p.pos === pos && p._eff)
     .map(p => ({
-      gain: v2PositionGain(pos, p._eff.mean, p._eff.sd, myTeam, mode, ctx, p._eff.avail ?? 1).gain,
+      gain: v2PositionGain(pos, p._eff.mean, p._eff.sd, myTeam, mode, ctx, p._eff.avail ?? 1, p._eff.disagreement ?? 0).gain,
       surv: v2SurvivalProb(p, nextPick),
     }))
     .sort((a, b) => b.gain - a.gain)
@@ -897,7 +934,7 @@ function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = n
     const vorAccum = repl
       ? v2PositionGain(pos, repl._eff.mean, repl._eff.sd, myTeam, 'accum', ctx, repl._eff.avail ?? 1).gain : 0;
     const vorSpike = repl
-      ? v2PositionGain(pos, repl._eff.mean, repl._eff.sd, myTeam, 'spike', ctx, repl._eff.avail ?? 1).gain : 0;
+      ? v2PositionGain(pos, repl._eff.mean, repl._eff.sd, myTeam, 'spike', ctx, repl._eff.avail ?? 1, repl._eff.disagreement ?? 0).gain : 0;
 
     const w = V2_TIMING_WEIGHT;
     ctx.replAccum[pos] = vorAccum * (1 - w) + survAccum * w;
@@ -930,7 +967,7 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   const vonaAcc = rAcc.gain - (ctx.replAccum[pos] || 0);
 
   // ── Playoff value (weeks 15-17) ────────────────────────────────────────────
-  const rSpk     = v2PositionGain(pos, eff.mean, eff.sd, myTeam, 'spike', ctx, eff.avail ?? 1);
+  const rSpk     = v2PositionGain(pos, eff.mean, eff.sd, myTeam, 'spike', ctx, eff.avail ?? 1, eff.disagreement ?? 0);
   const backfield = v2BackfieldSpikeDiscount(player, myTeam);
   const vonaSpk   = (rSpk.gain - (ctx.replSpike[pos] || 0))
                   * v2PlayoffAvailability(player, ctx) * backfield;
@@ -940,7 +977,8 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
                `${eff.mean.toFixed(1)} ppg, adds ${rAcc.gain.toFixed(2)} over slot bar ${rAcc.bars.lo.mean.toFixed(1)}; replacement adds ${(ctx.replAccum[pos] || 0).toFixed(2)}`);
   score += add(V2_W_PLAYOFF * vonaSpk, 'Playoff spike (wk 15-17)',
                `${eff.ceiling.toFixed(1)} ceiling, adds ${rSpk.gain.toFixed(2)} over spike bar ${(rSpk.bars.lo.mean + rSpk.offset).toFixed(1)}; replacement adds ${(ctx.replSpike[pos] || 0).toFixed(2)}`
-               + (backfield < 0.999 ? ` · x${backfield.toFixed(2)} same-backfield` : ''));
+               + (backfield < 0.999 ? ` · x${backfield.toFixed(2)} same-backfield` : '')
+               + ((eff.disagreement ?? 0) > 0.35 ? ` · experts split (${(eff.disagreement*100).toFixed(0)}%) — widened` : ''));
 
   // ── Correlation ────────────────────────────────────────────────────────────
   // Scaled by the same roster fit the market-value term uses, and for the same

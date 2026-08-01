@@ -140,6 +140,32 @@ def _dk_bonus_points(player: dict, games: float, scale: float) -> float:
     return total
 
 
+def _disagreement(player: dict) -> float:
+    """
+    How much the expert panel disagrees about this player, scaled 0-1.
+
+    FantasyPros publishes rank_std across ~74 contributing experts. It measures a
+    different thing from the projections: not how much a player varies week to week,
+    but whether he will be any good at all. Ja'Marr Chase sits at 1.1 — nobody
+    argues. Ricky Pearsall runs 46.7, with one expert at 67th and another at 368th.
+
+    That distinction matters most exactly where the projections are weakest. A round
+    18 receiver projected at 3 ppg gets a modelled SD of 1.8 and a ceiling of 5.0,
+    because SD is computed as a multiple of the mean — so the model believes he
+    cannot spike. Real late-round hits do not drift from 3 to 5; they win a job and
+    go to 14. That is a change of regime, not variance, and disagreement is the only
+    observable signal for it.
+
+    Normalised by rank, since a spread of 30 is enormous at ECR 20 and unremarkable
+    at ECR 200.
+    """
+    std = player.get('ecr_std')
+    rank = player.get('ecr_rank')
+    if not std or not rank or rank <= 0:
+        return 0.0
+    return round(max(0.0, min(1.0, float(std) / (0.45 * float(rank) + 8.0))), 3)
+
+
 def _market_lines(player: dict) -> dict:
     """
     Best available market line per component, averaging the books when both quote it.
@@ -268,6 +294,10 @@ def _build(force_refresh: bool = False) -> list:
             # position prior unless the projection itself forecasts a short season
             # (a known injury or suspension), in which case that governs.
             'avail':       round(min(games / MAX_GAMES, 1 - POS_INJURY_RATE[pos]), 3),
+            # Expert disagreement, normalised against the player's own draft position.
+            # A standard deviation of 30 means something very different at ECR 20 than
+            # at ECR 200, so it is expressed relative to where he is ranked.
+            'disagreement': _disagreement(p),
             'upside':      p.get('upside'),
             'trajectory':  p.get('trajectory'),
             'consensus_rank':   p.get('consensus_rank'),

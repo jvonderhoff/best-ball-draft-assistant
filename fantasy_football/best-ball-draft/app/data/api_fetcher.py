@@ -738,6 +738,7 @@ def fetch_players(force_refresh=False):
                 hit = ecr.get(_normalize_name(p['name']))
                 if hit:
                     p['ecr_rank'] = hit['ecr_rank']
+                    p['ecr_std']  = hit.get('ecr_std')
                     matched += 1
             print(f'  ✓ ECR merged for {matched}/{len(players)} players')
         else:

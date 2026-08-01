@@ -115,6 +115,7 @@ def get_analysis_data(force_refresh: bool = False):
     with get_db() as conn:
         rows = conn.execute("""
             SELECT p.player_id, p.name, p.pos, p.team, p.adp,
+                   p.ecr_rank, p.ecr_std,
                    p.week15, p.week16, p.week17,
                    r.custom_rank
             FROM players p
