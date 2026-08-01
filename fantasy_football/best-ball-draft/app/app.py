@@ -1953,6 +1953,53 @@ def upload_props():
     return jsonify({'ok': True, 'book': book, 'players': len(props), 'rows': count})
 
 
+def _db():
+    from app.database import get_db
+    return get_db()
+
+
+@app.route('/api/stores/status', methods=['GET'])
+def stores_status():
+    """Row counts in the DURABLE external store, read straight from Postgres.
+
+    Distinct from every other endpoint, which reports the local SQLite. That
+    distinction is the whole point: SQLite on Render is populated right up until
+    the instance spins down, so it cannot tell you whether the write-through
+    actually reached Postgres. Only these numbers survive a restart.
+
+    Counts and timestamps only — kv_store holds OAuth tokens, so no values.
+    """
+    from app import projections_store, kv_store_external, rankings_store
+    out = {
+        'external_configured': projections_store.external_enabled(),
+        'local': {},
+        'external': {},
+    }
+    with _db() as conn:
+        for t in ('espn_projections', 'player_props', 'player_rankings', 'kv_store'):
+            try:
+                out['local'][t] = conn.execute(f'SELECT COUNT(*) FROM {t}').fetchone()[0]
+            except Exception as e:
+                out['local'][t] = f'error: {e}'
+
+    if not out['external_configured']:
+        out['note'] = 'DATABASE_URL unset — external store disabled, nothing survives a restart'
+        return jsonify(out)
+
+    espn = projections_store.load_espn()
+    props = projections_store.load_props()
+    kv = kv_store_external.load_all()
+    ranks = rankings_store.load_rankings()
+    # None means unreachable, which is a different failure from empty.
+    out['external'] = {
+        'espn_projections': 'UNREACHABLE' if espn is None else len(espn),
+        'player_props':     'UNREACHABLE' if props is None else len(props),
+        'kv_store':         'UNREACHABLE' if kv is None else len(kv),
+        'player_rankings':  'UNREACHABLE' if ranks is None else len(ranks),
+    }
+    return jsonify(out)
+
+
 @app.route('/api/projections-v2', methods=['GET'])
 def get_projections_v2():
     """
