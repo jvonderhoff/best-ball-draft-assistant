@@ -451,6 +451,16 @@
     <label>Number of Teams</label>
     <input type="number" id="numTeams" min="8" max="16" value="12">
   </div>
+  <div class="setting-group" style="margin-bottom:10px;">
+    <label>Diversify across drafts (V2)</label>
+    <select id="diversify" style="width:100%;padding:9px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.95em;box-sizing:border-box;">
+      <option value="0">Off — ignore past exposure</option>
+      <option value="0.5">Light</option>
+      <option value="1" selected>Normal</option>
+      <option value="1.5">Heavy</option>
+    </select>
+    <div class="settings-hint" id="diversifyHint">Costs players you already own elsewhere. Stack bonuses are untouched.</div>
+  </div>
   <div class="setting-group" style="margin-bottom:12px;">
     <label>DraftKings Username</label>
     <input type="text" id="dkUsername" placeholder="e.g. jvonderhoff" style="width:100%;padding:9px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.95em;box-sizing:border-box;">
@@ -538,6 +548,9 @@ function bustCache(key) {
 
 // ── Draft state ────────────────────────────────────────────────────────────────
 let PLAYERS = [];
+// Portfolio exposure across your saved drafts, for V2's diversification cost.
+// Never blocks the board: if this fetch fails the recommender just sees no history.
+let EXPOSURE = null, TOTAL_DRAFTS = 0;
 let playersById = {};  // id → player object (O(1) lookup)
 
 // ── Custom rankings ────────────────────────────────────────────────────────────
@@ -682,7 +695,7 @@ const STACK_INTENSITY =
   (typeof DEFAULT_STACK_INTENSITY !== 'undefined') ? DEFAULT_STACK_INTENSITY : 'heavy';
 
 function defaultSettings() {
-  return { myPosition: 1, numTeams: 12, dkUsername: 'jvonderhoff' };
+  return { myPosition: 1, numTeams: 12, dkUsername: 'jvonderhoff', diversify: 1 };
 }
 function loadSettings() {
 
@@ -700,7 +713,9 @@ function persistSettings() {
   settings.myPosition = parseInt(document.getElementById('myPosition').value) || 1;
   settings.numTeams   = parseInt(document.getElementById('numTeams').value) || 12;
   settings.dkUsername = document.getElementById('dkUsername').value.trim().toLowerCase();
+  settings.diversify  = parseFloat(document.getElementById('diversify').value);
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  renderRecs();
   if (syncDraftId) localStorage.setItem(`bba_pos_${syncDraftId}`, settings.myPosition);
 }
 
@@ -709,6 +724,8 @@ function loadDraftPosition(draftId) {
   if (saved) {
     settings.myPosition = parseInt(saved);
     document.getElementById('myPosition').value = settings.myPosition;
+    const dv = document.getElementById('diversify');
+    if (dv) dv.value = String(settings.diversify ?? 1);
   }
 }
 
@@ -1278,6 +1295,7 @@ async function loadPlayers() {
   // Players don't change mid-session — cache 10 min.
   const cached = getCached('players_bundle', 10 * 60 * 1000);
   if (cached) {
+    loadExposure();
     PLAYERS = cached.players;
     buildNameLookup();
     renderPlayerList();
@@ -1287,6 +1305,7 @@ async function loadPlayers() {
     loadV2Projections().then(renderRecs);
     return;
   }
+  loadExposure();
   try {
     const pr = await fetch('/api/players');
     PLAYERS   = await pr.json();
@@ -1299,6 +1318,18 @@ async function loadPlayers() {
     document.getElementById('playerList').innerHTML =
       '<div class="spinner" style="color:#ef5350">Failed to load players.</div>';
   }
+}
+
+// Exposure is advisory — a failure here must never stop a live draft, so it is fired
+// and forgotten and simply re-renders if it lands.
+async function loadExposure() {
+  try {
+    const r = await fetch('/api/drafts/exposure');
+    const d = await r.json();
+    EXPOSURE     = d.players || null;
+    TOTAL_DRAFTS = d.total_drafts || 0;
+    if (TOTAL_DRAFTS) renderRecs();
+  } catch { /* no history, no diversification */ }
 }
 
 // ── Player list ────────────────────────────────────────────────────────────────
@@ -1611,7 +1642,9 @@ function renderRecs() {
     try {
       const myPicks = v2RemainingPicks(pickForRec + 1, settings.numTeams, settings.myPosition);
       recsV2 = getTopRecommendationsV2(available, state.myTeam, pickForRec, 40,
-                                       nextMyPick, myPicks, PLAYERS);
+                                       nextMyPick, myPicks, PLAYERS,
+                                       { exposure: EXPOSURE, totalDrafts: TOTAL_DRAFTS,
+                                         diversify: settings.diversify ?? 1 });
     } catch (e) { recsV2 = []; v2Error = 'V2 scoring failed: ' + e.message; }
   }
   const v1Rank = new Map(recs.map((r, i) => [r.player.id, i + 1]));

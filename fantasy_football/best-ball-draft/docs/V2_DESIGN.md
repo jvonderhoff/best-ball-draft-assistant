@@ -51,6 +51,7 @@ Baseline is **65% VOR** (vs the last startable player, `slots × 12`) **+ 35% VO
 | `V2_TIMING_WEIGHT` | 0.35 | VONA as a tilt on VOR. Pure VONA stockpiles whichever position degrades fastest. |
 | `V2_W_ACCUMULATION / PLAYOFF` | **0.40 / 0.60** | Swept 100/0 → 40/60; roster shape barely moved (RB 4.06–4.14 throughout), so this is *not* the allocation lever it looks like. Re-swept across contest sizes (§5.2): best or tied-best at 3 of 4. Pushing toward spike is badly wrong for large finals. |
 | `V2_CORRELATION_WEIGHT` | **0.35** | Swept against a real 1,089-team final (§5). Interior maximum, and the curve is steeply asymmetric — see §5.1. |
+| `V2_DIVERSITY_WEIGHT` | **1.0** | Portfolio diversification cost, §3.1. Sized against board spread, not guessed. **Benefit is unmeasurable in this harness** — see §9. |
 | `V2_BACKFIELD_DISCOUNT` | 0.80 | Judgement. Retained spike value: backup behind a R1 workhorse 38%, two mid-round committee backs 73%. |
 | `V2_VALUE_FIT_REF / FLOOR` | 0.50 / 0.20 | Roster-fit scaling, applied in three places (§3). |
 | `V2_BREAKOUT_SD_GAIN` | **0.0 (off)** | Fully plumbed, doesn't earn its place. See §4. |
@@ -74,6 +75,46 @@ was found separately, as a bug, before the pattern was obvious:
    since over 14 weeks the backup covers absences.
 3. **Correlation** — a stack with a player who never starts isn't a stack. One TE
    was scoring 1.93 from game stacks against 0.50 of his own value.
+
+### 3.1 Portfolio diversification
+
+Recovered from `origin/reorganize/fantasy-football-folder`, where 29 commits sat
+unmerged since June. Everything else on that branch had been reimplemented on master;
+this had not. The backend survived (`/api/drafts/exposure`, `get_exposure()`,
+`history.html`) — only the two places that *used* it were lost.
+
+Entering the same contest twenty times with the same four players is not twenty bets,
+it is one bet at twenty times stake. `exposure_rate` = your own picks only
+(`dk_import.py` filters the DK board to them), over saved drafts.
+
+**A points-per-week cost, not the old multiplier.** V1's version was
+`val *= 1 - rate * strength`, which moves a player a different distance depending on
+where he is going — the same defect §1 calls out in V1's stack bonus. A flat ppw cost
+means the same thing in round 2 and round 18.
+
+Three guards, each earning its place:
+
+| Guard | Value | Why |
+|---|---|---|
+| Floor | 0.40 | Every drafter is heavy on somebody. Taxing a 30% share is a tax on having opinions. |
+| Confidence ramp | `n/(n+5)` | After one draft every player you took reads 100%. Damps to 17% of full at 1 draft, 50% at 5, 80% at 20. Not hypothetical — the live DB had exactly one saved draft when this was wired. |
+| Never scales correlation | — | The cost hits standalone value only, so a stack partner keeps his full bonus and merely has to clear the cost. |
+
+Sized against the actual board rather than picked. Spots the top candidate drops at
+100% exposure over 20 drafts: **pick 25 → 1, pick 60 → 2, pick 120 → 5, pick 200 → 1**;
+at a realistic 60% it is 0-1 everywhere. The ppw denomination does the work — early
+rounds have ~1 ppw between adjacent candidates so an elite player you are heavy on is
+still taken, round 10 has ~0.05 and diversifies freely. That is the right place for
+the effect to live. 2.0 was tested and moves 8 spots at pick 120, which is no longer
+a nudge.
+
+Stacking survives, measured: owning Lamar Jackson with Mark Andrews at 100% exposure,
+Andrews falls rank 7 → 13. The same player at the same exposure *without* his QB
+rostered falls 24 → 33. The stack keeps him 20 spots higher and moves him less.
+
+**What is NOT established.** The harness simulates independent drafts, so
+diversification has no upside in it at all — it can only cost. Every number above is
+a price, not a return. See §9.
 
 ---
 
@@ -390,14 +431,23 @@ accordingly (clamped 0.70–1.45). Improved advance rate +31.0% → +35.4%.
    are V1 and V2 themselves, so nothing here speaks to whether V2 beats real humans,
    who draft like neither. Closing this needs actual DK draft exports as field
    rosters, not more simulation.
-3. **Yahoo** — blocked on app registration at developer.yahoo.com needing Fantasy
+3. **A portfolio harness, to price diversification's benefit.** §3.1 ships a cost
+   with no measured return, which is exactly the position `V2_CORRELATION_WEIGHT` was
+   in before the final field was built — and it failed for the same structural reason:
+   the harness models one entry at a time, and the whole point of diversification is
+   what happens across twenty. The build: draft N entries with exposure accumulating
+   from the model's own previous drafts, then score the portfolio jointly (payout is
+   summed across entries, and P(at least one extreme finish) is the thing
+   diversification buys). That makes the benefit measurable and would settle whether
+   1.0 is right, too high, or far too low. Until then the constant is judgement.
+4. **Yahoo** — blocked on app registration at developer.yahoo.com needing Fantasy
    Sports read permission. Error is `"This application is not authorized to perform
    this action"`, which is app-level. Code side (scope, token persistence, Python
    3.9 compat) is done.
-4. **Flex modelling** — TE gets a fixed 10% flex share against a 2nd-best-TE bar
+5. **Flex modelling** — TE gets a fixed 10% flex share against a 2nd-best-TE bar
    rather than a true cross-positional contest. Known approximation; the obvious fix
    measured *worse* (§4).
-5. **V2 is not the default.** `/recommend` shows V1 and V2 side by side; V1 still
+6. **V2 is not the default.** `/recommend` shows V1 and V2 side by side; V1 still
    drives nothing-changed behaviour. Swapping outright is premature — three real
    errors in V2 were caught by eye in its first day (stale FA team, name mismatch,
    inflated stack).

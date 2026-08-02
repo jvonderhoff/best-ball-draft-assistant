@@ -133,6 +133,43 @@ const V2_MAX_STACK_PARTNERS = 3;
 // where the back you already own is the entire backfield. See v2BackfieldSpikeDiscount.
 const V2_BACKFIELD_DISCOUNT = 0.80;
 
+// ── Portfolio diversification ────────────────────────────────────────────────
+// Entering the same contest twenty times with the same four players is not twenty
+// bets, it is one bet with a twenty-times stake. Exposure data (`/api/drafts/exposure`,
+// your own picks only) is the observable, and this converts it into a cost.
+//
+// Deliberately a points-per-week COST rather than the multiplier the old V1 build
+// used (`val *= 1 - rate * strength`). A multiplier on total value moves a player a
+// different distance depending on where he is going, which is the same defect §1
+// called out in V1's stack bonus; a flat ppw cost means the same thing in round 2
+// and round 18.
+//
+// It is subtracted from standalone value and NEVER scales the correlation terms, so
+// a player you are heavy on still earns his full stack bonus and only has to clear
+// the cost to be taken. Diversification is the default; a real stack overrides it.
+//
+// IMPORTANT: the harness cannot measure whether this is worth it. It simulates
+// independent drafts, and in a single-draft world diversification has no upside at
+// all — it can only cost. What the harness CAN measure is the price, which is what
+// V2_DIVERSIFY was swept for. The benefit needs a portfolio harness (see §9).
+// Sized against the board rather than guessed. Spots the top candidate drops at 100%
+// exposure over 20 drafts: pick 25 -> 1, pick 60 -> 2, pick 120 -> 5, pick 200 -> 1.
+// At a realistic 60% exposure it is 0-1 spots everywhere. The ppw denomination does
+// the work: early rounds have ~1 ppw between adjacent candidates so an elite player
+// you are heavy on is still taken, while round 10 has ~0.05 and diversifies freely.
+// That is the correct place for the effect to live. 2.0 was tested and moves 8 spots
+// at pick 120, which is no longer a nudge.
+const V2_DIVERSITY_WEIGHT = _v2env.V2_DIVERSIFY ? parseFloat(_v2env.V2_DIVERSIFY) : 1.0;
+
+// Exposure below this is not over-exposure. Every drafter is heavy on somebody, and
+// penalising a 30% share would just be a tax on having opinions.
+const V2_DIVERSITY_FLOOR = 0.40;
+
+// Exposure over very few drafts is noise — after one draft every player you took
+// reads 100%. Ramps the cost in as the sample grows: ~17% of full at 1 draft, 50%
+// at 5, 80% at 20.
+const V2_DIVERSITY_CONFIDENCE_K = 5;
+
 // Cost per body once a position reaches its modal-build target, escalating beyond it.
 // Swept against the harness rather than assumed; see v2StructuralPenalty.
 const V2_OVER_TARGET_COST = _v2env.V2_OVERCOST ? parseFloat(_v2env.V2_OVERCOST) : 0.0;
@@ -873,6 +910,29 @@ function v2ByePenalty(player, myTeam) {
 // Marginal gain already self-regulates roster shape, so these only catch the
 // extremes: blowing past a sane position cap, or ending the draft with an
 // unusable roster.
+// Cost of taking a player you are already heavy on across your saved drafts.
+// Returns points per week, to be subtracted.
+function v2DiversityCost(player, ctx) {
+  const strength = (ctx && ctx.diversify != null) ? ctx.diversify : 1;
+  if (!ctx || !ctx.exposure || !V2_DIVERSITY_WEIGHT || strength <= 0) return { penalty: 0, note: '' };
+
+  const e = ctx.exposure[player.id];
+  if (!e) return { penalty: 0, note: '' };
+
+  const rate = e.exposure_rate ?? 0;
+  if (rate <= V2_DIVERSITY_FLOOR) return { penalty: 0, note: '' };
+
+  const over = (rate - V2_DIVERSITY_FLOOR) / (1 - V2_DIVERSITY_FLOOR);
+  const n    = ctx.totalDrafts ?? 0;
+  const conf = n / (n + V2_DIVERSITY_CONFIDENCE_K);
+
+  return {
+    penalty: V2_DIVERSITY_WEIGHT * strength * over * conf,
+    rate,
+    note: `on ${Math.round(rate * 100)}% of your ${n} draft${n === 1 ? '' : 's'}`,
+  };
+}
+
 function v2StructuralPenalty(player, myTeam) {
   const pos   = player.pos;
   const have  = myTeam.filter(p => p.pos === pos).length;
@@ -937,7 +997,7 @@ function v2StructuralPenalty(player, myTeam) {
 
 // Precompute the per-position replacement expectations once per pick rather than
 // once per candidate — they depend only on position, roster and next pick.
-function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = null, universe = null) {
+function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = null, universe = null, opts = {}) {
   // barCache holds the order-statistic moments per position — they depend only on
   // the current roster, so they are computed once per pick, not once per candidate.
   const ctx = {
@@ -945,6 +1005,11 @@ function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = n
     replAccum: {}, replSpike: {}, barCache: {}, typicalSd: {}, horizon: {}, replDepth: {},
     maxAdp: 250, teamSchedules: {},
     run: v2PositionalRun(universe, available, myPickNumber),
+    // Portfolio state: absent in the harness and on a first draft, which is why every
+    // consumer of these has to tolerate undefined.
+    exposure: opts.exposure || null,
+    totalDrafts: opts.totalDrafts || 0,
+    diversify: opts.diversify != null ? opts.diversify : 1,
   };
 
   // Deepest ADP on the board — the scale a free agent's draft position is read
@@ -1092,6 +1157,9 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   const struct = v2StructuralPenalty(player, myTeam);
   if (struct.penalty) score += add(-struct.penalty, 'Roster structure', struct.notes.join(' · '));
 
+  const div = v2DiversityCost(player, ctx);
+  if (div.penalty) score += add(-div.penalty, 'Over-exposed', div.note);
+
   // ── Market value ───────────────────────────────────────────────────────────
   // Unlike V1 this uses realAdp, so it measures "the market let him fall to me"
   // rather than re-counting your own board (which already set the projection).
@@ -1150,9 +1218,9 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
 // myPicks: your remaining pick numbers after this one, in order.  Optional but worth
 // supplying — it lets the replacement horizon look the correct number of turns ahead
 // instead of assuming uniform gaps in what is actually a snake draft.
-function getTopRecommendationsV2(available, myTeam, myPickNumber, n = 5, nextMyPick = null, myPicks = null, universe = null) {
+function getTopRecommendationsV2(available, myTeam, myPickNumber, n = 5, nextMyPick = null, myPicks = null, universe = null, opts = {}) {
   if (!available.length) return [];
-  const ctx = buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks, universe);
+  const ctx = buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks, universe, opts);
 
   const scored = available.map(p => {
     const bd  = [];
@@ -1167,6 +1235,9 @@ function getTopRecommendationsV2(available, myTeam, myPickNumber, n = 5, nextMyP
 
     const corr = v2CorrelationValue(p, myTeam);
     if (corr.notes.length) reasons.push(corr.notes.join(' · '));
+
+    const divR = v2DiversityCost(p, ctx);
+    if (divR.penalty) reasons.push(`♻️ already ${divR.note}`);
 
     const runF = (ctx.run && ctx.run[p.pos]) || 1;
     if (runF >= 1.15) reasons.push(`🔥 ${p.pos} run — going ${Math.round((runF - 1) * 100)}% ahead of ADP in this room`);
@@ -1214,7 +1285,7 @@ if (typeof module !== 'undefined' && module.exports) {
     v2AttachEffective, v2MarginalGain, v2SurvivalProb, v2PositionGain, v2OrderStatMoments,
     v2ExpectedBestSurvivor, v2CorrelationValue, v2FreeAgentSignProb, v2PlayoffAvailability,
     v2PositionalRun,
-    v2BackfieldSpikeDiscount,
+    v2BackfieldSpikeDiscount, v2DiversityCost,
     V2_DRAFT_ROUNDS, V2_ROSTER_TARGETS, V2_STARTER_SLOTS,
   };
 }
