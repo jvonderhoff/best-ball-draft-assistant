@@ -3,13 +3,13 @@
 // V1 vs V2 recommender comparison harness.
 //
 // Runs both models through complete simulated DraftKings Best Ball drafts and
-// scores the resulting rosters against the metric that actually pays: advance
-// rate through the tournament's four phases.
+// scores the resulting rosters against the metric that actually pays: expected
+// dollars through the tournament's four phases.
 //
 //   Weeks 1-14   cumulative, top 2 of 12 advance
 //   Week 15      single week, top 1 of 12
 //   Week 16      single week, top 1 of 12
-//   Week 17      single week, the final
+//   Week 17      single week, THE FINAL — ~1,089 teams, one common realisation
 //
 // ── Methodology, and its honest limitations ──────────────────────────────────
 //
@@ -17,6 +17,16 @@
 // draft to ADP with noise (with light positional sanity limits).  The resulting
 // 12 rosters then play a simulated season many times over, using common random
 // numbers so V1 and V2 face identical luck.
+//
+// Weekly scoring is drawn ONCE PER PLAYER PER WEEK and shared by every roster that
+// owns him.  This matters for two separate reasons:
+//
+//   1. It is what makes the final a contest.  If a player is diced independently
+//      for each team that rosters him, nobody is ever "on the chalk" and there is
+//      no such thing as leverage.
+//   2. It makes common random numbers real.  Previously the draws were consumed
+//      roster-by-roster, so the moment V1 and V2 drafted different players the two
+//      runs diverged into different weather; "identical luck" held only at the seed.
 //
 // The season simulator models correlation explicitly — a shared team-week factor
 // that QBs and pass-catchers load on heavily and RBs load on lightly, plus a
@@ -34,6 +44,7 @@
 //   node tools/compare-models.js                      # 400 drafts, both truth scenarios
 //   node tools/compare-models.js --drafts 200 --seasons 300
 //   node tools/compare-models.js --truth market
+//   node tools/compare-models.js --field-pods 200     # smaller/faster final field
 //   node tools/compare-models.js --replay             # pick-by-pick on your real draft
 
 const fs   = require('fs');
@@ -79,6 +90,46 @@ function finalPayout(frac) {
   return 0;
 }
 
+// ── Contests other than the Millionaire ──────────────────────────────────────
+//
+// Every DK best-ball tournament with this advancement structure sends 1 team in 864
+// to the final (12-team pods, top 2 of 12 over weeks 1-14, then two single-week
+// knockouts: 12 x 6 x 12 x 12 = 864). So the final's size is just entries/864, and
+// it varies enormously across the lobby while the path to it stays identical:
+//
+//   $20M Millionaire   940,000 entries -> ~1,088 finalists
+//   $1M Play-Action    395,300         ->   ~458
+//   $500K Play-Action  197,800         ->   ~229
+//   $300K Button Hook   38,800         ->    ~45
+//   $150K Huddle        35,400         ->    ~41
+//   $50K Tuddy           8,400         ->    ~10
+//
+// That matters for how a roster should be built. Winning a 1,088-team final needs a
+// ~99.9th-percentile week; winning a 10-team final needs ~90th. Those are different
+// asks, and a constant tuned against one of them is not obviously right for the
+// other. Nested prefixes of the sampled field give every size in a single run — the
+// field is shuffled first so a prefix is a random subset rather than the strongest.
+// Confirmed against DK's own "Contest Sizes" panel for the $200K Bubble Screen:
+// Round 1 top-2-of-12, Round 2 top-1-of-12, Round 3 top-1-of-12, Round 4 = 18 players.
+// 15,500 / 864 = 17.9, so the 1-in-864 derivation is exact and the listed round sizes
+// assume a full contest — an underfilled one produces a smaller final, not an easier
+// path to the same 18.
+const FINAL_SIZES = [10, 18, 45, 229, 458, 1089];
+
+// Payout inside the final, as a share of that final's prize pool. A power law over
+// rank, paying the top `paidFrac`. At alpha 1.7 / 36.7% paid this puts ~51% of the
+// pool on first place, which is where the published 1,089-team Millionaire table
+// sits — close enough for comparative statics, though it smooths the real curve's
+// middle. Reported as a share, so contests with different pool sizes stay comparable.
+function buildFinalPayouts(n, alpha, paidFrac) {
+  const paid  = Math.max(1, Math.round(n * paidFrac));
+  const share = new Float64Array(n + 1);
+  let norm = 0;
+  for (let r = 1; r <= paid; r++) norm += Math.pow(r, -alpha);
+  for (let r = 1; r <= paid; r++) share[r] = Math.pow(r, -alpha) / norm;
+  return share;
+}
+
 // Weekly starting slots per position, used to define "the startable tier" a breakout
 // lands in. Mirrors the recommender's lineup shape.
 const STARTABLE = { QB: 1.0, RB: 2.3, WR: 3.6, TE: 1.1 };
@@ -91,32 +142,46 @@ const BUST_BASE     = process.env.SIM_BUST     ? parseFloat(process.env.SIM_BUST
 const ROUNDS    = 20;
 
 // Weekly lineup: 1 QB, 2 RB, 3 WR, 1 TE, 1 FLEX (RB/WR/TE)
+const POS = ['QB', 'RB', 'WR', 'TE'];
+const POS_IDX = { QB: 0, RB: 1, WR: 2, TE: 3 };
 const LINEUP = { QB: 1, RB: 2, WR: 3, TE: 1 };
-const FLEX_ELIGIBLE = ['RB', 'WR', 'TE'];
+const LINEUP_N = POS.map(p => LINEUP[p]);
+const FLEX_OK  = POS.map(p => p !== 'QB');
 
 // How strongly each position loads on its team's weekly game environment.
 // This is what makes stacking mathematically worthwhile in the simulation.
 const TEAM_LOADING = { QB: 0.75, WR: 0.65, TE: 0.60, RB: 0.35 };
+const LOAD = POS.map(p => TEAM_LOADING[p]);
 const TEAM_FACTOR_CV = 0.35;
 const GAME_FACTOR_CV = 0.22;   // shared by both teams in a playoff-week game
 
-const POS = ['QB', 'RB', 'WR', 'TE'];
+const T_SIGMA = Math.sqrt(Math.log(1 + TEAM_FACTOR_CV ** 2));
+const G_SIGMA = Math.sqrt(Math.log(1 + GAME_FACTOR_CV ** 2));
 
 // ── Deterministic RNG so runs are reproducible ────────────────────────────────
 function mulberry32(seed) {
-  return function () {
+  const f = function () {
     seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+  f.spare = null;   // see gauss(): Box-Muller's second variate, per stream
+  return f;
 }
 
+// Box-Muller produces two independent normals per pair of uniforms; the second is
+// cached ON THE STREAM rather than in a module-level variable, so interleaving
+// several rngs (draft bots, truth assignment, season weather) cannot leak a variate
+// from one stream into another.
 function gauss(rng) {
+  if (rng.spare !== null) { const s = rng.spare; rng.spare = null; return s; }
   let u = 0, v = 0;
   while (u === 0) u = rng();
   while (v === 0) v = rng();
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  const r = Math.sqrt(-2 * Math.log(u)), th = 2 * Math.PI * v;
+  rng.spare = r * Math.sin(th);
+  return r * Math.cos(th);
 }
 
 // ── Data loading ──────────────────────────────────────────────────────────────
@@ -147,36 +212,202 @@ function loadData() {
   return players;
 }
 
+// ── Scoring context ───────────────────────────────────────────────────────────
+//
+// Everything the weekly simulation needs, flattened into typed arrays and indexed
+// by a per-player slot `_si`. Rosters are then just lists of `_si`, which is what
+// lets one week's draw be shared by 1,089 teams at once.
+
+function buildScoringContext(players) {
+  const scored = players.filter(p => p._eff);
+  scored.forEach((p, i) => { p._si = i; });
+  const n = scored.length;
+
+  const ctx = {
+    players: scored, n,
+    pos:   new Int32Array(n),
+    team:  new Int32Array(n),
+    bye:   new Int32Array(n),
+    game:  { 15: new Int32Array(n), 16: new Int32Array(n), 17: new Int32Array(n) },
+    mean:  new Float64Array(n),
+    idioReg: new Float64Array(n),
+    idioPo:  new Float64Array(n),
+    scores:  new Float64Array(n),
+  };
+
+  const teamIdx = new Map();
+  for (let i = 0; i < n; i++) {
+    const p = scored[i];
+    ctx.pos[i] = POS_IDX[p.pos];
+    ctx.bye[i] = p.bye || 0;
+    const t = p.team && p.team !== 'FA' ? p.team : null;
+    if (t === null) ctx.team[i] = -1;
+    else {
+      if (!teamIdx.has(t)) teamIdx.set(t, teamIdx.size);
+      ctx.team[i] = teamIdx.get(t);
+    }
+  }
+  ctx.nTeams = teamIdx.size;
+
+  // Playoff-week games. Both sides of one game share a factor, which is what makes
+  // a game stack (as opposed to a team stack) mean anything.
+  ctx.nGames = {};
+  for (const wk of [15, 16, 17]) {
+    const gameIdx = new Map();
+    for (let i = 0; i < n; i++) {
+      const p = scored[i];
+      const opp = p[`week${wk}`];
+      if (!opp || !p.team || p.team === 'FA') { ctx.game[wk][i] = -1; continue; }
+      const key = [p.team, opp].sort().join('@');
+      if (!gameIdx.has(key)) gameIdx.set(key, gameIdx.size);
+      ctx.game[wk][i] = gameIdx.get(key);
+    }
+    ctx.nGames[wk] = gameIdx.size;
+  }
+
+  // Per-week scratch: one extra slot on each factor array holds 1.0, so a player
+  // with no team (index -1) needs no branch.
+  const maxGames = Math.max(ctx.nGames[15], ctx.nGames[16], ctx.nGames[17]);
+  ctx.teamPow = POS.map(() => new Float64Array(ctx.nTeams + 1));
+  ctx.gamePow = POS.map(() => new Float64Array(maxGames + 1));
+  ctx.teamRaw = new Float64Array(ctx.nTeams);
+  ctx.gameRaw = new Float64Array(maxGames);
+
+  // Static inputs to the truth model: the projected-points curve per position, and
+  // each player's rank on the ADP board. Neither depends on the world being drawn,
+  // and recomputing them per draft was an O(n^2) indexOf scan.
+  ctx.curves = {};
+  for (const pos of POS) {
+    ctx.curves[pos] = scored.filter(p => p.pos === pos).map(p => p._eff.mean).sort((a, b) => b - a);
+  }
+  for (const pos of POS) {
+    const byAdp = scored.filter(p => p.pos === pos).sort((a, b) => a.adp - b.adp);
+    byAdp.forEach((p, i) => { p._adpRank = i; });
+  }
+  ctx.startable = {};
+  ctx.tierFloor = {};
+  for (const pos of POS) {
+    const c = ctx.curves[pos];
+    const s = Math.max(3, Math.round(STARTABLE[pos] * NUM_TEAMS));
+    ctx.startable[pos] = s;
+    ctx.tierFloor[pos] = c[Math.min(c.length - 1, s)] ?? 0;
+  }
+
+  return ctx;
+}
+
+// Flatten the per-player variance budget for the current truth assignment. Called
+// once per world instead of once per player per week, which is where the old inner
+// loop spent most of its time.
+function compileTruth(ctx) {
+  for (let i = 0; i < ctx.n; i++) {
+    const p = ctx.players[i];
+    if (!p._true) { ctx.mean[i] = 0; continue; }
+    ctx.mean[i] = p._true.mean;
+    const load = LOAD[ctx.pos[i]];
+    const total = Math.log(1 + p._true.cv ** 2);
+    const tSig2 = (T_SIGMA * load) ** 2;
+    const gSig2 = (G_SIGMA * load) ** 2;
+    ctx.idioReg[i] = Math.sqrt(Math.max(0.01, total - tSig2));
+    ctx.idioPo[i]  = Math.sqrt(Math.max(0.01, total - tSig2 - gSig2));
+  }
+}
+
+// One week of football, for everybody at once. Returns ctx.scores — a live buffer,
+// valid until the next call.
+function drawWeekScores(ctx, week, rng) {
+  const playoff = week >= 15;
+  const { teamRaw, gameRaw, teamPow, gamePow, nTeams } = ctx;
+
+  for (let t = 0; t < nTeams; t++) {
+    teamRaw[t] = Math.exp(gauss(rng) * T_SIGMA - T_SIGMA * T_SIGMA / 2);
+  }
+  for (let k = 0; k < 4; k++) {
+    const arr = teamPow[k], load = LOAD[k];
+    for (let t = 0; t < nTeams; t++) arr[t] = Math.pow(teamRaw[t], load);
+    arr[nTeams] = 1;
+  }
+
+  const nG = playoff ? ctx.nGames[week] : 0;
+  if (playoff) {
+    for (let g = 0; g < nG; g++) {
+      gameRaw[g] = Math.exp(gauss(rng) * G_SIGMA - G_SIGMA * G_SIGMA / 2);
+    }
+    for (let k = 0; k < 4; k++) {
+      const arr = gamePow[k], load = LOAD[k];
+      for (let g = 0; g < nG; g++) arr[g] = Math.pow(gameRaw[g], load);
+    }
+  }
+
+  const { scores, mean, pos, team, bye, n } = ctx;
+  const gameW = playoff ? ctx.game[week] : null;
+  const sig = playoff ? ctx.idioPo : ctx.idioReg;
+
+  for (let i = 0; i < n; i++) {
+    const m = mean[i];
+    if (m <= 0 || bye[i] === week) { scores[i] = 0; continue; }
+    const k = pos[i];
+    let f = teamPow[k][team[i] < 0 ? nTeams : team[i]];
+    if (playoff) {
+      const g = gameW[i];
+      // No game scheduled in a knockout week means no points, which is the whole
+      // reason playoff schedule shows up in the recommender at all.
+      if (g < 0) { scores[i] = 0; continue; }
+      f *= gamePow[k][g];
+    }
+    const s = sig[i];
+    scores[i] = m * f * Math.exp(gauss(rng) * s - s * s / 2);
+  }
+  return scores;
+}
+
+// A roster reduced to what scoring needs: score-indices grouped by position.
+function toFastRoster(roster) {
+  const byPos = [[], [], [], []];
+  for (const p of roster) {
+    if (p._si === undefined) continue;
+    byPos[POS_IDX[p.pos]].push(p._si);
+  }
+  return byPos.map(a => Int32Array.from(a));
+}
+
+const _lineupBuf = [new Float64Array(32), new Float64Array(32), new Float64Array(32), new Float64Array(32)];
+
+// Optimal best-ball lineup for one week: best N at each position plus one flex.
+function scoreRoster(fr, scores) {
+  let total = 0, bestLeft = 0;
+  for (let k = 0; k < 4; k++) {
+    const ids = fr[k], len = ids.length;
+    if (!len) continue;
+    const buf = _lineupBuf[k];
+    for (let j = 0; j < len; j++) buf[j] = scores[ids[j]];
+    // Descending insertion sort — rosters hold at most ~10 per position.
+    for (let j = 1; j < len; j++) {
+      const v = buf[j];
+      let m = j - 1;
+      while (m >= 0 && buf[m] < v) { buf[m + 1] = buf[m]; m--; }
+      buf[m + 1] = v;
+    }
+    const need = LINEUP_N[k];
+    const take = len < need ? len : need;
+    for (let j = 0; j < take; j++) total += buf[j];
+    if (FLEX_OK[k] && len > need && buf[need] > bestLeft) bestLeft = buf[need];
+  }
+  return total + bestLeft;
+}
+
 // ── "True" player ability for the season simulation ───────────────────────────
 //
 // proj:   truth == the projections V2 optimises against (flatters V2)
 // market: truth == ADP-implied ability, so neither model has an information edge
-function assignTruth(players, mode, rng) {
-  // Position curves of projected points, used to map a rank onto an ability level.
-  const curves = {};
-  for (const pos of POS) {
-    curves[pos] = players
-      .filter(p => p.pos === pos && p._eff)
-      .map(p => p._eff.mean)
-      .sort((a, b) => b - a);
-  }
-
-  const adpRank = {};
-  for (const pos of POS) {
-    adpRank[pos] = players
-      .filter(p => p.pos === pos)
-      .sort((a, b) => a.adp - b.adp);
-  }
-
+function assignTruth(players, mode, rng, ctx) {
   for (const p of players) {
     if (!p._eff) { p._true = null; continue; }
 
+    const c = ctx.curves[p.pos];
     let mean;
     if (mode === 'market') {
-      const list = adpRank[p.pos];
-      const i    = list.indexOf(p);
-      const c    = curves[p.pos];
-      mean = c[Math.min(c.length - 1, i)] ?? c[c.length - 1];
+      mean = c[Math.min(c.length - 1, p._adpRank)] ?? c[c.length - 1];
     } else {
       mean = p._eff.mean;
     }
@@ -203,9 +434,8 @@ function assignTruth(players, mode, rng) {
     // recommender keys on, and with how little the projection expects of him — a
     // player with no assumed role has the most room to gain one. Busts are the
     // mirror image, so the feature cannot win simply by adding upside.
-    const c = curves[p.pos];
-    const startable = Math.max(3, Math.round(STARTABLE[p.pos] * NUM_TEAMS));
-    const tierFloor = c[Math.min(c.length - 1, startable)] ?? 0;
+    const startable = ctx.startable[p.pos];
+    const tierFloor = ctx.tierFloor[p.pos];
     const headroom = tierFloor > 0 ? Math.max(0, Math.min(1, 1 - mean / tierFloor)) : 0;
     const dis = p._eff.disagreement ?? 0;
 
@@ -225,6 +455,7 @@ function assignTruth(players, mode, rng) {
 
     p._true = { mean, cv: p._eff.sd / Math.max(p._eff.mean, 0.01) };
   }
+  compileTruth(ctx);
 }
 
 // ── Draft simulation ──────────────────────────────────────────────────────────
@@ -235,12 +466,38 @@ function snakeSlot(pick, numTeams) {
   return round % 2 === 0 ? idx : numTeams - 1 - idx;
 }
 
-// ADP bot with noise and loose positional limits, standing in for the other 11 seats.
+// ADP bot with noise and loose positional limits, standing in for the other seats.
 const BOT_LIMITS = { QB: 3, RB: 8, WR: 10, TE: 3 };
 
-function botPick(available, roster, rng) {
+// ...and a hard floor: enough bodies to actually field a weekly lineup. Without it
+// a pure-ADP bot will happily finish a draft with zero quarterbacks and score a
+// structural zero at that slot every week, because QB and TE ADP sits far below the
+// top of the board (QB median ADP ~116, TE ~149). In a 12-team draft the board runs
+// deep enough that this rarely bites; in a 3-team Sit & Go only ~60 players come off
+// the board, so it happens constantly and hands the model under test a free win it
+// would never get against a human. The floor is the weekly lineup and nothing more —
+// it stops the bot being broken without dictating a roster build.
+const BOT_MINIMUMS = { QB: 1, RB: 2, WR: 3, TE: 1 };
+
+function botPick(available, roster, rng, picksLeft) {
   const counts = {};
   for (const p of roster) counts[p.pos] = (counts[p.pos] || 0) + 1;
+
+  let unmet = 0;
+  for (const pos of POS) unmet += Math.max(0, BOT_MINIMUMS[pos] - (counts[pos] || 0));
+
+  // Out of slack: every remaining pick has to go toward the lineup floor. Scan the
+  // whole board, not just the top 40 — the needed QB may be 90 picks down.
+  if (picksLeft !== undefined && unmet >= picksLeft) {
+    let best = null, bestScore = Infinity;
+    for (let i = 0; i < available.length; i++) {
+      const p = available[i];
+      if ((counts[p.pos] || 0) >= BOT_MINIMUMS[p.pos]) continue;
+      const score = p.adp + gauss(rng) * Math.max(4, p.adp * 0.12);
+      if (score < bestScore) { bestScore = score; best = p; }
+    }
+    if (best) return best;
+  }
 
   let best = null, bestScore = Infinity;
   for (let i = 0; i < Math.min(available.length, 40); i++) {
@@ -268,35 +525,39 @@ function remainingPicksForSlot(fromPick, slot, numTeams) {
   return out;
 }
 
-function simulateDraft(players, modelSlot, model, rng) {
+// `modelSlot < 0` runs an all-bot draft, which is how the final's field is built.
+// `numTeams` is a parameter only so the Sit & Go tool can run 3- and 6-team drafts;
+// both recommenders are internally hardcoded to a 12-team league, which is itself
+// one of the findings there.
+function simulateDraft(players, modelSlot, model, rng, numTeams = NUM_TEAMS) {
   const available = players.filter(p => p._eff).sort((a, b) => a.adp - b.adp);
   const pool      = available.slice();
-  const rosters   = Array.from({ length: NUM_TEAMS }, () => []);
+  const rosters   = Array.from({ length: numTeams }, () => []);
 
-  for (let pick = 1; pick <= NUM_TEAMS * ROUNDS; pick++) {
-    const slot = snakeSlot(pick, NUM_TEAMS);
+  for (let pick = 1; pick <= numTeams * ROUNDS; pick++) {
+    const slot = snakeSlot(pick, numTeams);
     let chosen;
 
     if (slot === modelSlot) {
       const myTeam   = rosters[slot];
-      const nextPick = nextPickForSlot(pick + 1, slot, NUM_TEAMS);
+      const nextPick = nextPickForSlot(pick + 1, slot, numTeams);
 
       if (model === 'v1') {
         const recs = V1.getTopRecommendations(pool, myTeam, pick, 'heavy', 1, nextPick);
         chosen = recs.length ? recs[0].player : pool[0];
       } else {
-        const myPicks = remainingPicksForSlot(pick + 1, slot, NUM_TEAMS);
+        const myPicks = remainingPicksForSlot(pick + 1, slot, numTeams);
         const recs = V2.getTopRecommendationsV2(pool, myTeam, pick, 1, nextPick, myPicks, players);
         chosen = recs.length ? recs[0].player : pool[0];
       }
     } else {
-      chosen = botPick(pool, rosters[slot], rng);
+      chosen = botPick(pool, rosters[slot], rng, ROUNDS - rosters[slot].length);
     }
 
     const idx = pool.indexOf(chosen);
     if (idx >= 0) pool.splice(idx, 1);
     // V1's dynamicTarget reads p.round off rostered players.
-    rosters[slot].push({ ...chosen, round: Math.floor((pick - 1) / NUM_TEAMS) + 1 });
+    rosters[slot].push({ ...chosen, round: Math.floor((pick - 1) / numTeams) + 1 });
   }
 
   return rosters;
@@ -304,110 +565,183 @@ function simulateDraft(players, modelSlot, model, rng) {
 
 // ── Season simulation ─────────────────────────────────────────────────────────
 
-// Optimal best-ball lineup for one week.
-function optimalLineup(scores) {
-  const byPos = {};
-  for (const pos of POS) {
-    byPos[pos] = scores.filter(s => s.pos === pos).map(s => s.pts).sort((a, b) => b - a);
-  }
-  let total = 0;
-  const leftovers = [];
-  for (const pos of POS) {
-    const need = LINEUP[pos];
-    const list = byPos[pos];
-    for (let i = 0; i < list.length; i++) {
-      if (i < need) total += list[i];
-      else if (FLEX_ELIGIBLE.includes(pos)) leftovers.push(list[i]);
-    }
-  }
-  if (leftovers.length) total += Math.max(...leftovers);
-  return total;
-}
-
-function simulateSeason(rosters, rng) {
-  // Accumulated weeks 1-14 plus the three knockout weeks, per team.
-  const acc  = new Array(NUM_TEAMS).fill(0);
-  const wk   = { 15: [], 16: [], 17: [] };
-
-  const teams = new Set();
-  for (const r of rosters) for (const p of r) if (p.team && p.team !== 'FA') teams.add(p.team);
+function simulateSeason(fastRosters, rng, ctx) {
+  const nR  = fastRosters.length;
+  const acc = new Float64Array(nR);
+  const wk  = { 15: null, 16: null, 17: null };
 
   for (let week = 1; week <= 17; week++) {
-    // Shared team-week environment factors -> intra-team correlation.
-    const teamFactor = {};
-    const tSigma = Math.sqrt(Math.log(1 + TEAM_FACTOR_CV ** 2));
-    for (const t of teams) teamFactor[t] = Math.exp(gauss(rng) * tSigma - tSigma * tSigma / 2);
-
-    // In the knockout weeks we know the actual matchups, so both sides of a game
-    // additionally share a game factor -> game stacks correlate.
-    const gameFactor = {};
-    if (week >= 15) {
-      const gSigma = Math.sqrt(Math.log(1 + GAME_FACTOR_CV ** 2));
-      const seen = new Set();
-      for (const r of rosters) for (const p of r) {
-        const opp = p[`week${week}`];
-        if (!opp || !p.team) continue;
-        const key = [p.team, opp].sort().join('@');
-        if (seen.has(key)) continue;
-        seen.add(key);
-        gameFactor[key] = Math.exp(gauss(rng) * gSigma - gSigma * gSigma / 2);
-      }
-    }
-
-    const weekScores = rosters.map(roster => {
-      const scores = roster.map(p => {
-        if (!p._true) return { pos: p.pos, pts: 0 };
-        if (p.bye === week) return { pos: p.pos, pts: 0 };
-        // Playoff weeks: no game scheduled means no points.
-        if (week >= 15 && !p[`week${week}`]) return { pos: p.pos, pts: 0 };
-
-        const load  = TEAM_LOADING[p.pos] ?? 0.5;
-        const tf    = (teamFactor[p.team] ?? 1) ** load;
-
-        let gf = 1;
-        if (week >= 15 && p.team) {
-          const opp = p[`week${week}`];
-          if (opp) {
-            const key = [p.team, opp].sort().join('@');
-            gf = (gameFactor[key] ?? 1) ** load;
-          }
-        }
-
-        // Idiosyncratic component, sized so total variance matches the player's CV.
-        const totalSigma = Math.sqrt(Math.log(1 + p._true.cv ** 2));
-        const tSig = Math.sqrt(Math.log(1 + TEAM_FACTOR_CV ** 2)) * load;
-        const gSig = week >= 15 ? Math.sqrt(Math.log(1 + GAME_FACTOR_CV ** 2)) * load : 0;
-        const idioSigma = Math.sqrt(Math.max(0.01, totalSigma ** 2 - tSig ** 2 - gSig ** 2));
-        const idio = Math.exp(gauss(rng) * idioSigma - idioSigma * idioSigma / 2);
-
-        return { pos: p.pos, pts: Math.max(0, p._true.mean * tf * gf * idio) };
-      });
-      return optimalLineup(scores);
-    });
-
+    const scores = drawWeekScores(ctx, week, rng);
     if (week <= 14) {
-      for (let i = 0; i < NUM_TEAMS; i++) acc[i] += weekScores[i];
+      for (let i = 0; i < nR; i++) acc[i] += scoreRoster(fastRosters[i], scores);
     } else {
-      wk[week] = weekScores;
+      const out = new Float64Array(nR);
+      for (let i = 0; i < nR; i++) out[i] = scoreRoster(fastRosters[i], scores);
+      wk[week] = out;
     }
   }
-
-  return { acc, wk };
+  // ctx.scores still holds week 17 — the caller scores the final field against it
+  // before anything else draws. Passing the buffer instead of copying it is what
+  // keeps a 1,089-team final affordable.
+  return { acc, wk, wk17Scores: ctx.scores };
 }
 
 function rankOf(arr, i) {
-  return arr.filter(v => v > arr[i]).length + 1;
+  let better = 1;
+  for (let k = 0; k < arr.length; k++) if (arr[k] > arr[i]) better++;
+  return better;
+}
+
+// ── The final field ───────────────────────────────────────────────────────────
+//
+// The single biggest thing this harness used to get wrong. Week 17 was scored as
+// top-1-of-12 against the same pod the team had played all season, when the real
+// contest is ~1,089 pod winners in one room with a payout curve that pays 5,000x
+// more for first than for 400th. Correlation exists to buy the extreme right tail;
+// a 12-team pod never asks for one, so the harness's verdict that stacking hurt was
+// a verdict on a tournament that does not exist.
+//
+// Construction:
+//   1. Draft a large population of all-bot rosters.
+//   2. Estimate each one's probability of surviving the same three phases the model
+//      has to survive — top 2 of 12 over weeks 1-14, then win week 15, then win
+//      week 16 — by simulating the population across many worlds and reading each
+//      roster's percentile F in the population that week. Beating 11 random
+//      opponents is F^11, and finishing top-2 of 12 is F^11 + 11·F^10·(1−F).
+//   3. SAMPLE 1,088 rosters without replacement with those probabilities as weights.
+//
+// Step 3 is the part that is easy to get wrong. Taking the top 1,088 by propensity
+// instead would build a field of the intrinsically best rosters — but a real final
+// is not the best 1,089 teams, it is 1,089 teams that beat 11 opponents twice in a
+// row, which is mostly a very good team and partly a lucky mediocre one. A field
+// with the luck squeezed out is far too strong, and it would understate every
+// high-variance strategy by making first place unreachable.
+//
+// Residual approximation, stated plainly: field membership is decided across many
+// worlds, while the model's own finalist qualified inside the world it is scored
+// in. Simulating true in-world qualification for the field would cost ~110,000
+// team-seasons per world. The field is also drawn from ADP bots, so it is a field
+// of ordinary drafters that got hot, not of sharp ones.
+
+function buildFieldPods(players, nPods, seed) {
+  const pods = [];
+  for (let i = 0; i < nPods; i++) {
+    const rosters = simulateDraft(players, -1, null, mulberry32(seed + i * 104729));
+    pods.push(rosters.map(toFastRoster));
+  }
+  return pods;
+}
+
+// Percentile of every candidate within the population, as `out[i] = F(vals[i])`.
+function cdfRanks(vals, srt, out, n) {
+  srt.set(vals);
+  srt.sort();
+  for (let i = 0; i < n; i++) {
+    const v = vals[i];
+    let lo = 0, hi = n;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (srt[mid] < v) lo = mid + 1; else hi = mid; }
+    out[i] = lo / n;
+  }
+}
+
+function selectFinalField(players, ctx, pods, truth, size, worlds, seed) {
+  const cands = [];
+  for (const pod of pods) for (const r of pod) cands.push(r);
+
+  const nC   = cands.length;
+  const qual = new Float64Array(nC);   // summed P(reach the final), across worlds
+  const str  = new Float64Array(nC);   // summed knockout-week percentile — a readout
+  const acc  = new Float64Array(nC);
+  const s15  = new Float64Array(nC);
+  const srt  = new Float64Array(nC);
+  const fAcc = new Float64Array(nC);
+  const f15  = new Float64Array(nC);
+  const f16  = new Float64Array(nC);
+
+  for (let w = 0; w < worlds; w++) {
+    const rng = mulberry32(seed + w * 7907);
+    assignTruth(players, truth, rng, ctx);
+
+    acc.fill(0);
+    for (let week = 1; week <= 14; week++) {
+      const scores = drawWeekScores(ctx, week, rng);
+      for (let i = 0; i < nC; i++) acc[i] += scoreRoster(cands[i], scores);
+    }
+    let scores = drawWeekScores(ctx, 15, rng);
+    for (let i = 0; i < nC; i++) s15[i] = scoreRoster(cands[i], scores);
+    cdfRanks(s15, srt, f15, nC);
+
+    scores = drawWeekScores(ctx, 16, rng);
+    for (let i = 0; i < nC; i++) s15[i] = scoreRoster(cands[i], scores);
+    cdfRanks(s15, srt, f16, nC);
+
+    cdfRanks(acc, srt, fAcc, nC);
+
+    for (let i = 0; i < nC; i++) {
+      const A = fAcc[i];
+      // Top 2 of 12 against 11 draws from the population: nobody above, or one.
+      const pAcc = Math.pow(A, 10) * (A + 11 * (1 - A));
+      qual[i] += pAcc * Math.pow(f15[i], 11) * Math.pow(f16[i], 11);
+      str[i]  += f15[i];
+    }
+  }
+
+  // Weighted sampling without replacement (Efraimidis-Spirakis): the k smallest
+  // keys of -ln(u)/w are a sample drawn proportionally to w.
+  const rng  = mulberry32(seed + 31337);
+  const keys = new Float64Array(nC);
+  for (let i = 0; i < nC; i++) {
+    keys[i] = qual[i] > 0 ? -Math.log(rng() || 1e-12) / qual[i] : Infinity;
+  }
+  const order = Array.from({ length: nC }, (_, i) => i).sort((a, b) => keys[a] - keys[b]);
+  const keep  = order.slice(0, Math.min(size, nC));
+
+  // Sorting by key leaves the strongest rosters at the front. Shuffle so that a
+  // prefix of the field is a random subset of it — that is what makes nested
+  // prefixes valid smaller finals rather than all-star games.
+  for (let i = keep.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const t = keep[i]; keep[i] = keep[j]; keep[j] = t;
+  }
+
+  const meanStr = keep.reduce((s, i) => s + str[i], 0) / (keep.length * worlds);
+  const totQ    = qual.reduce((s, v) => s + v, 0);
+  return {
+    rosters: keep.map(i => cands[i]),
+    candidates: nC,
+    // Median-ish strength of the field, as a percentile of the bot population in a
+    // knockout week. A field of average rosters would read 50%.
+    fieldStrength: meanStr,
+    // Share of all qualification probability the sampled field accounts for.
+    weightShare: totQ > 0 ? keep.reduce((s, i) => s + qual[i], 0) / totQ : 0,
+  };
+}
+
+// Where `myScore` lands among the field. 1 == won the final.
+//
+// `out` collects the placement inside each nested prefix as well, so one pass over
+// the 1,088 field rosters prices every contest size at once.
+function placeInField(field, scores, myScore, sizes, out) {
+  let better = 1, si = 0;
+  for (let i = 0; i < field.length; i++) {
+    while (si < sizes.length && i === sizes[si] - 1) out[si++] = better;
+    if (scoreRoster(field[i], scores) > myScore) better++;
+  }
+  while (si < sizes.length) out[si++] = better;
+  return better;
 }
 
 // ── Running the comparison ────────────────────────────────────────────────────
 
 function evaluate(model, opts) {
-  const { drafts, seasons, truth, players, baseSeed } = opts;
+  const { drafts, seasons, truth, players, ctx, field, baseSeed } = opts;
+  const fieldSize = field.rosters.length + 1;
 
   const stats = {
-    advance14: 0, win15: 0, win16: 0, win17: 0,
-    reachFinal: 0, accPoints: 0, wk17Points: 0, n: 0,
-    ev: 0, finalistScores: [],
+    advance14: 0, win15: 0, win16: 0,
+    reachFinal: 0, winFinal: 0, top15: 0, cashBig: 0,
+    accPoints: 0, wk17Points: 0, n: 0,
+    ev: 0, evNoJp: 0, placeSum: 0,
     posCounts: { QB: 0, RB: 0, WR: 0, TE: 0 },
     stackedPasscatchers: 0, playoffPartners: 0,
     // Advance rate bucketed by the roster construction that produced it. The public
@@ -419,14 +753,25 @@ function evaluate(model, opts) {
     byBuild: new Map(),
   };
 
+  const JACKPOT = FINAL_PAYOUTS[0][1];
+
+  // Contest-size sensitivity: EV as a share of the final's prize pool, for each
+  // final size, so builds can be compared across contests with different pools.
+  const sizes    = FINAL_SIZES.filter(s => s <= fieldSize);
+  const payTable = sizes.map(s => buildFinalPayouts(s, opts.finalAlpha, opts.finalPaid));
+  const evBySize = new Float64Array(sizes.length);
+  const winBySize = new Float64Array(sizes.length);
+  const placeBuf = new Int32Array(sizes.length);
+
   for (let d = 0; d < drafts; d++) {
     const seed = baseSeed + d * 7919;
     const rng  = mulberry32(seed);
-    assignTruth(players, truth, rng);
+    assignTruth(players, truth, rng, ctx);
 
     const slot    = d % NUM_TEAMS;
     const rosters = simulateDraft(players, slot, model, mulberry32(seed + 1));
     const mine    = rosters[slot];
+    const fast    = rosters.map(toFastRoster);
 
     for (const p of mine) stats.posCounts[p.pos]++;
     // Roster shape diagnostics
@@ -439,13 +784,13 @@ function evaluate(model, opts) {
     }
 
     const build = POS.map(p => mine.filter(x => x.pos === p).length).join('-');
-    if (!stats.byBuild.has(build)) stats.byBuild.set(build, { n: 0, adv: 0, fin: 0 });
+    if (!stats.byBuild.has(build)) stats.byBuild.set(build, { n: 0, adv: 0, fin: 0, ev: 0 });
     const bucket = stats.byBuild.get(build);
 
     // Same season draws for every model via a seed tied to the draft index only.
     for (let s = 0; s < seasons; s++) {
       const srng = mulberry32(seed + 100000 + s);
-      const { acc, wk } = simulateSeason(rosters, srng);
+      const { acc, wk, wk17Scores } = simulateSeason(fast, srng, ctx);
 
       stats.n++;
       stats.accPoints  += acc[slot];
@@ -458,38 +803,61 @@ function evaluate(model, opts) {
 
       const w15 = rankOf(wk[15], slot) === 1;
       const w16 = rankOf(wk[16], slot) === 1;
-      const w17 = rankOf(wk[17], slot) === 1;
       if (w15) stats.win15++;
       if (w16) stats.win16++;
-      if (w17) stats.win17++;
-      // Full tournament path: survive weeks 1-14, then win 15 and 16 to reach the final.
-      if (advanced && w15 && w16) { stats.reachFinal++; bucket.fin++; }
 
       // ── Expected dollars ─────────────────────────────────────────────────
       // Consolations are small and near-certain; the final is enormous and rare.
       // Reporting only advance rate hides which of those a model is buying.
-      if (advanced && !w15) stats.ev += PAYOUT_WK15_CONSOLATION;
-      else if (advanced && w15 && !w16) stats.ev += PAYOUT_WK16_CONSOLATION;
-      else if (advanced && w15 && w16) stats.finalistScores.push(wk[17][slot]);
+      if (advanced && !w15) { stats.ev += PAYOUT_WK15_CONSOLATION; stats.evNoJp += PAYOUT_WK15_CONSOLATION; }
+      else if (advanced && w15 && !w16) { stats.ev += PAYOUT_WK16_CONSOLATION; stats.evNoJp += PAYOUT_WK16_CONSOLATION; }
+      else if (advanced && w15 && w16) {
+        stats.reachFinal++; bucket.fin++;
+
+        // The real thing: one common week 17, ~1,089 teams, top-heavy payouts.
+        const place = placeInField(field.rosters, wk17Scores, wk[17][slot], sizes, placeBuf);
+        for (let k = 0; k < sizes.length; k++) {
+          evBySize[k] += payTable[k][placeBuf[k]] || 0;
+          if (placeBuf[k] === 1) winBySize[k]++;
+        }
+        const frac  = place / fieldSize;
+        const prize = finalPayout(frac);
+
+        stats.placeSum += frac;
+        if (place === 1) stats.winFinal++;
+        if (place <= 15) stats.top15++;
+        if (prize >= 1000) stats.cashBig++;
+        stats.ev    += prize;
+        stats.evNoJp += prize >= JACKPOT ? FINAL_PAYOUTS[1][1] : prize;
+        bucket.ev   += prize;
+      }
     }
   }
 
   const n = stats.n || 1;
-  const totalPlayers = drafts * ROUNDS || 1;
   return {
     advance14:  stats.advance14 / n,
-    ev:         stats.ev,          // consolations only; final EV added after both models run
-    finalistScores: stats.finalistScores,
     seasons:    n,
     win15:      stats.win15 / n,
     win16:      stats.win16 / n,
-    win17:      stats.win17 / n,
     reachFinal: stats.reachFinal / n,
+    winFinal:   stats.winFinal / n,
+    top15:      stats.top15 / n,
+    cashBig:    stats.cashBig / n,
+    finalists:  stats.reachFinal,
+    jackpots:   stats.winFinal,
+    avgPlaceFrac: stats.reachFinal ? stats.placeSum / stats.reachFinal : 0,
+    evTotal:    stats.ev / n,
+    evNoJackpot: stats.evNoJp / n,
+    sizes,
+    // Parts per million of the final's prize pool, per entry.
+    evBySize:  Array.from(evBySize, v => 1e6 * v / n),
+    winBySize: Array.from(winBySize, v => v / n),
     accPoints:  stats.accPoints / n,
     wk17Points: stats.wk17Points / n,
     pos: Object.fromEntries(POS.map(p => [p, stats.posCounts[p] / drafts])),
     byBuild: [...stats.byBuild.entries()]
-      .map(([build, b]) => ({ build, n: b.n, advance: b.adv / b.n, reachFinal: b.fin / b.n }))
+      .map(([build, b]) => ({ build, n: b.n, advance: b.adv / b.n, reachFinal: b.fin / b.n, ev: b.ev / b.n }))
       .sort((a, b) => b.n - a.n),
     stackedPC: stats.stackedPasscatchers / drafts,
     playoffPartners: stats.playoffPartners / drafts,
@@ -497,32 +865,68 @@ function evaluate(model, opts) {
 }
 
 function pct(x) { return (x * 100).toFixed(2) + '%'; }
+function pct4(x) { return (x * 100).toFixed(4) + '%'; }
 
 function report(truth, v1, v2, opts) {
   console.log(`\n${'='.repeat(74)}`);
   console.log(`TRUTH SCENARIO: ${truth === 'proj' ? 'projections (flatters V2 — see caveat)' : 'market/ADP-implied (neutral)'}`);
   console.log(`${opts.drafts} drafts x ${opts.seasons} seasons = ${opts.drafts * opts.seasons} team-seasons per model`);
+  console.log(`Final: ${opts.field.rosters.length + 1} teams sampled from ${opts.field.candidates} bot rosters `
+            + `by qualification odds\n       (field sits at the ${(100 * opts.field.fieldStrength).toFixed(1)}th percentile of that population)`);
   console.log('='.repeat(74));
 
   const rows = [
-    ['Top-2 of 12, weeks 1-14',   'advance14',  true],
-    ['Win week 15 (1 of 12)',     'win15',      true],
-    ['Win week 16 (1 of 12)',     'win16',      true],
-    ['Win week 17 (1 of 12)',     'win17',      true],
-    ['Reach the final',           'reachFinal', true],
-    ['Avg wk 1-14 points',        'accPoints',  false],
-    ['Avg week 17 points',        'wk17Points', false],
+    ['Top-2 of 12, weeks 1-14',   'advance14',  pct],
+    ['Win week 15 (1 of 12)',     'win15',      pct],
+    ['Win week 16 (1 of 12)',     'win16',      pct],
+    ['Reach the final',           'reachFinal', pct],
+    [`Win the final (1 of ${opts.field.rosters.length + 1})`, 'winFinal', pct4],
+    ['Top 15 of the final',       'top15',      pct4],
+    ['Final pays $1,000+',        'cashBig',    pct4],
+    ['Avg wk 1-14 points',        'accPoints',  null],
+    ['Avg week 17 points',        'wk17Points', null],
   ];
 
   console.log(`\n${'Metric'.padEnd(28)}${'V1'.padStart(12)}${'V2'.padStart(12)}${'Δ'.padStart(12)}`);
   console.log('-'.repeat(64));
-  for (const [label, key, isPct] of rows) {
+  for (const [label, key, fmt] of rows) {
     const a = v1[key], b = v2[key];
-    const fa = isPct ? pct(a) : a.toFixed(1);
-    const fb = isPct ? pct(b) : b.toFixed(1);
+    const fa = fmt ? fmt(a) : a.toFixed(1);
+    const fb = fmt ? fmt(b) : b.toFixed(1);
     const rel = a > 0 ? ((b - a) / a * 100) : 0;
-    const delta = isPct ? `${rel >= 0 ? '+' : ''}${rel.toFixed(1)}%` : `${b - a >= 0 ? '+' : ''}${(b - a).toFixed(1)}`;
+    const delta = fmt ? `${rel >= 0 ? '+' : ''}${rel.toFixed(1)}%` : `${b - a >= 0 ? '+' : ''}${(b - a).toFixed(1)}`;
     console.log(`${label.padEnd(28)}${fa.padStart(12)}${fb.padStart(12)}${delta.padStart(12)}`);
+  }
+  console.log(`${'Avg finish in final'.padEnd(28)}${('top ' + pct(v1.avgPlaceFrac)).padStart(12)}`
+            + `${('top ' + pct(v2.avgPlaceFrac)).padStart(12)}`);
+
+  console.log('\nExpected value per entry (approx DK Millionaire payouts)');
+  const row = (label, a, b) => console.log(
+    `  ${label.padEnd(24)}${('$' + a.toFixed(2)).padStart(10)}${('$' + b.toFixed(2)).padStart(12)}`
+    + `${((b - a >= 0 ? '+$' : '-$') + Math.abs(b - a).toFixed(2)).padStart(12)}`);
+  console.log(`  ${'source'.padEnd(24)}${'V1'.padStart(10)}${'V2'.padStart(12)}${'delta'.padStart(12)}`);
+  row('TOTAL', v1.evTotal, v2.evTotal);
+  row('TOTAL (jackpot capped)', v1.evNoJackpot, v2.evNoJackpot);
+  const relEv = v1.evTotal ? (v2.evTotal - v1.evTotal) / v1.evTotal * 100 : 0;
+  console.log(`  ${'as % of V1'.padEnd(24)}${''.padStart(10)}${''.padStart(12)}${((relEv >= 0 ? '+' : '') + relEv.toFixed(1) + '%').padStart(12)}`);
+  console.log(`  finalists: V1 ${v1.finalists}, V2 ${v2.finalists} | finals won: V1 ${v1.jackpots}, V2 ${v2.jackpots}`);
+  console.log('  NOTE: first place is 1-in-1089 and pays 5,000x the min cash. Unless finals');
+  console.log('  won number in the dozens, read the jackpot-capped row.');
+
+  // ── Does the right build depend on the contest? ─────────────────────────────
+  // Same rosters, same seasons, same path to the final — only the size of the room
+  // they land in changes. Anything that moves here is a reason to draft differently
+  // for a $50K Tuddy than for the Millionaire.
+  console.log('\nEV by contest size (ppm of the final prize pool, per entry)');
+  console.log(`  ${'finalists'.padStart(10)}${'~entries'.padStart(10)}${'V1'.padStart(10)}`
+            + `${'V2'.padStart(10)}${'Δ'.padStart(10)}${'V2 wins it'.padStart(12)}`);
+  for (let k = 0; k < v1.sizes.length; k++) {
+    const a = v1.evBySize[k], b = v2.evBySize[k];
+    const rel = a > 0 ? (b - a) / a * 100 : 0;
+    console.log(`  ${String(v1.sizes[k]).padStart(10)}${(v1.sizes[k] * 864).toLocaleString().padStart(10)}`
+      + `${a.toFixed(0).padStart(10)}${b.toFixed(0).padStart(10)}`
+      + `${((rel >= 0 ? '+' : '') + rel.toFixed(1) + '%').padStart(10)}`
+      + `${pct4(v2.winBySize[k]).padStart(12)}`);
   }
 
   console.log(`\n${'Roster shape (avg)'.padEnd(28)}${'V1'.padStart(12)}${'V2'.padStart(12)}`);
@@ -532,11 +936,28 @@ function report(truth, v1, v2, opts) {
   }
   console.log(`${'  QB-stacked pass catchers'.padEnd(28)}${v1.stackedPC.toFixed(2).padStart(12)}${v2.stackedPC.toFixed(2).padStart(12)}`);
   console.log(`${'  players w/ playoff partner'.padEnd(28)}${v1.playoffPartners.toFixed(2).padStart(12)}${v2.playoffPartners.toFixed(2).padStart(12)}`);
+
+  // Construction table. Ordered by frequency so the builds a model actually relies on
+  // are visible, not just whichever happened to score well in a small sample.
+  for (const [label, res] of [['V1', v1], ['V2', v2]]) {
+    if (!res.byBuild || !res.byBuild.length) continue;
+    const total = res.byBuild.reduce((a, b) => a + b.n, 0);
+    const rows2 = res.byBuild.filter(b => b.n >= total * 0.03).slice(0, 8);
+    if (!rows2.length) continue;
+    console.log(`\n${label} — by roster construction (QB-RB-WR-TE)`);
+    console.log(`  ${'build'.padEnd(12)}${'share'.padStart(8)}${'advance'.padStart(10)}${'reach final'.padStart(13)}${'final $/entry'.padStart(15)}`);
+    for (const b of rows2) {
+      const flag = b.advance < res.advance14 * 0.85 ? '  <-- underperforms' : '';
+      console.log(`  ${b.build.padEnd(12)}${(100 * b.n / total).toFixed(1).padStart(7)}%`
+        + `${(100 * b.advance).toFixed(1).padStart(9)}%${(100 * b.reachFinal).toFixed(2).padStart(12)}%`
+        + `${('$' + b.ev.toFixed(2)).padStart(15)}${flag}`);
+    }
+  }
 }
 
 // ── Replay mode: pick-by-pick on a real draft ─────────────────────────────────
 
-function replay(players) {
+function replay(players, ctx) {
   const draftPath = path.join(__dirname, 'replay-draft.json');
   if (!fs.existsSync(draftPath)) {
     console.error('Missing tools/replay-draft.json — generate it with tools/export-draft.py');
@@ -545,8 +966,7 @@ function replay(players) {
   const draft = JSON.parse(fs.readFileSync(draftPath, 'utf8'));
   const byId  = Object.fromEntries(players.map(p => [p.id, p]));
 
-  const rng = mulberry32(12345);
-  assignTruth(players, 'proj', rng);
+  assignTruth(players, 'proj', mulberry32(12345), ctx);
 
   console.log(`\nReplay: ${draft.contest} — ${draft.num_teams} teams, your slot ${draft.my_position}`);
   console.log('At each of your picks: what you took vs what each model wanted.\n');
@@ -591,104 +1011,57 @@ function main() {
   };
 
   const players = loadData();
+  const ctx     = buildScoringContext(players);
   console.log(`Loaded ${players.length} players, ${players.filter(p => p._eff && p._eff.projected).length} with projections.`);
 
-  if (args.includes('--replay')) return replay(players);
+  if (args.includes('--replay')) return replay(players, ctx);
 
   const opts = {
     drafts:  parseInt(arg('drafts', '400'), 10),
     seasons: parseInt(arg('seasons', '200'), 10),
     baseSeed: 20260730,
-    players,
+    players, ctx,
+    finalAlpha: parseFloat(arg('final-alpha', '1.7')),
+    finalPaid:  parseFloat(arg('final-paid', '0.367')),
   };
+  const fieldPods   = parseInt(arg('field-pods', '900'), 10);
+  const fieldWorlds = parseInt(arg('field-worlds', '120'), 10);
+
+  const t0 = Date.now();
+  const pods = buildFieldPods(players, fieldPods, 555001);
+  console.log(`Built ${fieldPods} bot pods (${fieldPods * NUM_TEAMS} candidate rosters) in ${((Date.now() - t0) / 1000).toFixed(1)}s.`);
 
   const scenarios = args.includes('--truth')
     ? [arg('truth', 'market')]
     : ['proj', 'market'];
 
   for (const truth of scenarios) {
-    const o  = { ...opts, truth };
+    const t1 = Date.now();
+    const field = selectFinalField(players, ctx, pods, truth, FINAL_FIELD_SIZE - 1, fieldWorlds, 909001);
+    console.log(`\n[${truth}] final field: sampled ${field.rosters.length} of ${field.candidates} candidates `
+              + `(${(100 * field.fieldStrength).toFixed(1)}th pctile, ${(100 * field.weightShare).toFixed(0)}% of qualification weight) `
+              + `in ${((Date.now() - t1) / 1000).toFixed(1)}s.`);
+    if (field.rosters.length < FINAL_FIELD_SIZE - 1) {
+      console.log(`  WARNING: field is smaller than the real ${FINAL_FIELD_SIZE}-team final — first place is`);
+      console.log('  correspondingly easier. Raise --field-pods before quoting EV.');
+    }
+
+    const o  = { ...opts, truth, field };
     const v1 = evaluate('v1', o);
     const v2 = evaluate('v2', o);
     report(truth, v1, v2, o);
-  // ── Expected dollars ───────────────────────────────────────────────────────
-  // A finalist's prize depends on where his week-17 score lands among the ~1,089
-  // teams contesting the final. Those teams are pod winners, which is precisely the
-  // population collected here — so both models' finalist scores are pooled to form
-  // the field, and each finalist is placed against it.
-  //
-  // Pooling matters: scoring a model's finalists against only its own finalists
-  // would grade each on a different curve and make them incomparable.
-  {
-    const field = [...v1.finalistScores, ...v2.finalistScores].sort((a, b) => b - a);
-    // Expected fraction of a 1,089-team final this score would finish above.
-    //
-    // Continuity-corrected as (rank + 0.5) / n rather than rank / n. Without it the
-    // single best sampled finalist maps to fraction 0 and collects the jackpot
-    // outright — and with only a few hundred finalists sampled that one hit is worth
-    // ~$116 per entry, which is larger than every other effect combined. A sample of
-    // n finalists cannot resolve a 1-in-1089 outcome, and pretending otherwise turns
-    // the whole EV comparison into a coin flip on who got the lucky season.
-    const placeFrac = (score) => {
-      if (!field.length) return 1;
-      let lo = 0, hi = field.length;
-      while (lo < hi) { const mid = (lo + hi) >> 1; if (field[mid] > score) lo = mid + 1; else hi = mid; }
-      return (lo + 0.5) / field.length;
-    };
-    const JACKPOT = FINAL_PAYOUTS[0][1];
-    for (const res of [v1, v2]) {
-      let finalEv = 0, finalEvNoJp = 0, jackpots = 0;
-      for (const sc of res.finalistScores) {
-        const prize = finalPayout(placeFrac(sc));
-        finalEv += prize;
-        if (prize >= JACKPOT) { jackpots++; finalEvNoJp += FINAL_PAYOUTS[1][1]; }
-        else finalEvNoJp += prize;
-      }
-      res.jackpots = jackpots;
-      res.evNoJackpot = res.seasons ? (res.ev + finalEvNoJp) / res.seasons : 0;
-      res.evTotal      = (res.ev + finalEv) / res.seasons;   // dollars per entry
-      res.evFinalShare = res.seasons ? finalEv / res.seasons : 0;
-      res.evConsolation = res.seasons ? res.ev / res.seasons : 0;
-    }
-    const d = v2.evTotal - v1.evTotal;
-    const pct = v1.evTotal ? (d / v1.evTotal) * 100 : 0;
-    console.log('\nExpected value per entry (approx DK Millionaire payouts)');
-    console.log(`  ${'source'.padEnd(24)}${'V1'.padStart(10)}${'V2'.padStart(12)}${'delta'.padStart(12)}`);
-    const row = (label, a, b) => console.log(
-      `  ${label.padEnd(24)}${('$' + a.toFixed(2)).padStart(10)}${('$' + b.toFixed(2)).padStart(12)}`
-      + `${((b - a >= 0 ? '+$' : '-$') + Math.abs(b - a).toFixed(2)).padStart(12)}`);
-    row('wk15/16 consolations', v1.evConsolation, v2.evConsolation);
-    row('week 17 final', v1.evFinalShare, v2.evFinalShare);
-    row('TOTAL', v1.evTotal, v2.evTotal);
-    row('TOTAL (jackpot capped)', v1.evNoJackpot, v2.evNoJackpot);
-    console.log(`  ${'as % of V1'.padEnd(24)}${''.padStart(10)}${''.padStart(12)}${((pct >= 0 ? '+' : '') + pct.toFixed(1) + '%').padStart(12)}`);
-    console.log(`  finalists sampled: V1 ${v1.finalistScores.length}, V2 ${v2.finalistScores.length}`
-      + ` | jackpot hits: V1 ${v1.jackpots}, V2 ${v2.jackpots}`);
-    console.log('  NOTE: the top tier is 1-in-1089. Unless finalists number in the thousands,');
-    console.log('  read the jackpot-capped row — the uncapped one turns on single lucky seasons.');
-  }
-
-  // Construction table. Ordered by frequency so the builds a model actually relies on
-  // are visible, not just whichever happened to score well in a small sample.
-  for (const [label, res] of [['V1', v1], ['V2', v2]]) {
-    if (!res.byBuild || !res.byBuild.length) continue;
-    const total = res.byBuild.reduce((a, b) => a + b.n, 0);
-    const rows = res.byBuild.filter(b => b.n >= total * 0.03).slice(0, 8);
-    if (!rows.length) continue;
-    console.log(`\n${label} — advance rate by roster construction (QB-RB-WR-TE)`);
-    console.log(`  ${'build'.padEnd(12)}${'share'.padStart(8)}${'advance'.padStart(10)}${'reach final'.padStart(13)}`);
-    for (const b of rows) {
-      const flag = b.advance < res.advance14 * 0.85 ? '   <-- underperforms' : '';
-      console.log(`  ${b.build.padEnd(12)}${(100 * b.n / total).toFixed(1).padStart(7)}%`
-        + `${(100 * b.advance).toFixed(1).padStart(9)}%${(100 * b.reachFinal).toFixed(2).padStart(12)}%${flag}`);
-    }
-  }
-
-
   }
 
   console.log('\nNote: absolute rates are not calibrated to the real contest (the other 11');
-  console.log('seats are ADP bots). The V1-vs-V2 delta under identical conditions is the signal.\n');
+  console.log('seats are ADP bots, and so is the final field). The V1-vs-V2 delta under');
+  console.log('identical conditions is the signal.\n');
 }
 
-main();
+if (require.main === module) main();
+
+// Exported so sibling tools (tools/sitngo-ev.js) can reuse the simulator instead of
+// re-implementing a second, slightly-different copy of it.
+module.exports = {
+  loadData, buildScoringContext, assignTruth, drawWeekScores, toFastRoster,
+  scoreRoster, simulateDraft, mulberry32, gauss, ROUNDS, NUM_TEAMS, POS,
+};
