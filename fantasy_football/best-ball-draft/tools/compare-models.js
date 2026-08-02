@@ -45,6 +45,40 @@ const V2 = require(path.join(ROOT, 'static', 'recommender-v2.js'));
 
 const NUM_TEAMS = 12;
 
+// ── Prize structure ──────────────────────────────────────────────────────────
+// Advance rate is only a proxy, and a poor one: it scores reaching the final the
+// same as winning it, when essentially all the money is in week 17. Expected
+// dollars is the objective that actually matters.
+//
+// Approximate DraftKings Best Ball Millionaire structure. Weeks 15 and 16 pay a
+// consolation to teams that fail to advance; week 17 is a single large field where
+// the payout curve is brutally top-heavy.
+const PAYOUT_WK15_CONSOLATION = 35;    // fails to advance out of week 15
+const PAYOUT_WK16_CONSOLATION = 125;   // fails to advance out of week 16
+const FINAL_FIELD_SIZE = 1089;         // teams contesting week 17
+
+// Placement payouts in the final, as [topFraction, prize]. Interpolated between
+// breakpoints. Sourced from published Millionaire payout tables; exact figures vary
+// by contest, so treat the shape as the signal rather than any single number.
+const FINAL_PAYOUTS = [
+  [1 / FINAL_FIELD_SIZE, 1000000],
+  [2 / FINAL_FIELD_SIZE,  150750],
+  [3 / FINAL_FIELD_SIZE,  100000],
+  [5 / FINAL_FIELD_SIZE,   50000],
+  [10 / FINAL_FIELD_SIZE,  20000],
+  [15 / FINAL_FIELD_SIZE,  12000],
+  [50 / FINAL_FIELD_SIZE,   3000],
+  [150 / FINAL_FIELD_SIZE,  1000],
+  [400 / FINAL_FIELD_SIZE,   400],
+  [1.0,                      200],
+];
+
+// Prize for finishing at `frac` through the final field (0 = won it).
+function finalPayout(frac) {
+  for (const [cut, prize] of FINAL_PAYOUTS) if (frac <= cut) return prize;
+  return 0;
+}
+
 // Weekly starting slots per position, used to define "the startable tier" a breakout
 // lands in. Mirrors the recommender's lineup shape.
 const STARTABLE = { QB: 1.0, RB: 2.3, WR: 3.6, TE: 1.1 };
@@ -373,6 +407,7 @@ function evaluate(model, opts) {
   const stats = {
     advance14: 0, win15: 0, win16: 0, win17: 0,
     reachFinal: 0, accPoints: 0, wk17Points: 0, n: 0,
+    ev: 0, finalistScores: [],
     posCounts: { QB: 0, RB: 0, WR: 0, TE: 0 },
     stackedPasscatchers: 0, playoffPartners: 0,
     // Advance rate bucketed by the roster construction that produced it. The public
@@ -429,6 +464,13 @@ function evaluate(model, opts) {
       if (w17) stats.win17++;
       // Full tournament path: survive weeks 1-14, then win 15 and 16 to reach the final.
       if (advanced && w15 && w16) { stats.reachFinal++; bucket.fin++; }
+
+      // ── Expected dollars ─────────────────────────────────────────────────
+      // Consolations are small and near-certain; the final is enormous and rare.
+      // Reporting only advance rate hides which of those a model is buying.
+      if (advanced && !w15) stats.ev += PAYOUT_WK15_CONSOLATION;
+      else if (advanced && w15 && !w16) stats.ev += PAYOUT_WK16_CONSOLATION;
+      else if (advanced && w15 && w16) stats.finalistScores.push(wk[17][slot]);
     }
   }
 
@@ -436,6 +478,9 @@ function evaluate(model, opts) {
   const totalPlayers = drafts * ROUNDS || 1;
   return {
     advance14:  stats.advance14 / n,
+    ev:         stats.ev,          // consolations only; final EV added after both models run
+    finalistScores: stats.finalistScores,
+    seasons:    n,
     win15:      stats.win15 / n,
     win16:      stats.win16 / n,
     win17:      stats.win17 / n,
@@ -566,6 +611,63 @@ function main() {
     const v1 = evaluate('v1', o);
     const v2 = evaluate('v2', o);
     report(truth, v1, v2, o);
+  // ── Expected dollars ───────────────────────────────────────────────────────
+  // A finalist's prize depends on where his week-17 score lands among the ~1,089
+  // teams contesting the final. Those teams are pod winners, which is precisely the
+  // population collected here — so both models' finalist scores are pooled to form
+  // the field, and each finalist is placed against it.
+  //
+  // Pooling matters: scoring a model's finalists against only its own finalists
+  // would grade each on a different curve and make them incomparable.
+  {
+    const field = [...v1.finalistScores, ...v2.finalistScores].sort((a, b) => b - a);
+    // Expected fraction of a 1,089-team final this score would finish above.
+    //
+    // Continuity-corrected as (rank + 0.5) / n rather than rank / n. Without it the
+    // single best sampled finalist maps to fraction 0 and collects the jackpot
+    // outright — and with only a few hundred finalists sampled that one hit is worth
+    // ~$116 per entry, which is larger than every other effect combined. A sample of
+    // n finalists cannot resolve a 1-in-1089 outcome, and pretending otherwise turns
+    // the whole EV comparison into a coin flip on who got the lucky season.
+    const placeFrac = (score) => {
+      if (!field.length) return 1;
+      let lo = 0, hi = field.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (field[mid] > score) lo = mid + 1; else hi = mid; }
+      return (lo + 0.5) / field.length;
+    };
+    const JACKPOT = FINAL_PAYOUTS[0][1];
+    for (const res of [v1, v2]) {
+      let finalEv = 0, finalEvNoJp = 0, jackpots = 0;
+      for (const sc of res.finalistScores) {
+        const prize = finalPayout(placeFrac(sc));
+        finalEv += prize;
+        if (prize >= JACKPOT) { jackpots++; finalEvNoJp += FINAL_PAYOUTS[1][1]; }
+        else finalEvNoJp += prize;
+      }
+      res.jackpots = jackpots;
+      res.evNoJackpot = res.seasons ? (res.ev + finalEvNoJp) / res.seasons : 0;
+      res.evTotal      = (res.ev + finalEv) / res.seasons;   // dollars per entry
+      res.evFinalShare = res.seasons ? finalEv / res.seasons : 0;
+      res.evConsolation = res.seasons ? res.ev / res.seasons : 0;
+    }
+    const d = v2.evTotal - v1.evTotal;
+    const pct = v1.evTotal ? (d / v1.evTotal) * 100 : 0;
+    console.log('\nExpected value per entry (approx DK Millionaire payouts)');
+    console.log(`  ${'source'.padEnd(24)}${'V1'.padStart(10)}${'V2'.padStart(12)}${'delta'.padStart(12)}`);
+    const row = (label, a, b) => console.log(
+      `  ${label.padEnd(24)}${('$' + a.toFixed(2)).padStart(10)}${('$' + b.toFixed(2)).padStart(12)}`
+      + `${((b - a >= 0 ? '+$' : '-$') + Math.abs(b - a).toFixed(2)).padStart(12)}`);
+    row('wk15/16 consolations', v1.evConsolation, v2.evConsolation);
+    row('week 17 final', v1.evFinalShare, v2.evFinalShare);
+    row('TOTAL', v1.evTotal, v2.evTotal);
+    row('TOTAL (jackpot capped)', v1.evNoJackpot, v2.evNoJackpot);
+    console.log(`  ${'as % of V1'.padEnd(24)}${''.padStart(10)}${''.padStart(12)}${((pct >= 0 ? '+' : '') + pct.toFixed(1) + '%').padStart(12)}`);
+    console.log(`  finalists sampled: V1 ${v1.finalistScores.length}, V2 ${v2.finalistScores.length}`
+      + ` | jackpot hits: V1 ${v1.jackpots}, V2 ${v2.jackpots}`);
+    console.log('  NOTE: the top tier is 1-in-1089. Unless finalists number in the thousands,');
+    console.log('  read the jackpot-capped row — the uncapped one turns on single lucky seasons.');
+  }
+
   // Construction table. Ordered by frequency so the builds a model actually relies on
   // are visible, not just whichever happened to score well in a small sample.
   for (const [label, res] of [['V1', v1], ['V2', v2]]) {
