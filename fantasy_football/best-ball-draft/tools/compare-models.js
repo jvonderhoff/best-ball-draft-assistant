@@ -152,8 +152,14 @@ const FLEX_OK  = POS.map(p => p !== 'QB');
 // This is what makes stacking mathematically worthwhile in the simulation.
 const TEAM_LOADING = { QB: 0.75, WR: 0.65, TE: 0.60, RB: 0.35 };
 const LOAD = POS.map(p => TEAM_LOADING[p]);
-const TEAM_FACTOR_CV = 0.35;
-const GAME_FACTOR_CV = 0.22;   // shared by both teams in a playoff-week game
+
+// These two set the ceiling on what correlation can possibly be worth: they are the
+// entire reason a stack outscores two unrelated players. They were assumed, not
+// measured, so every conclusion about V2_CORRELATION_WEIGHT is conditional on them
+// and a constant tuned at one setting may be fitted to the simulator's tails rather
+// than to football. Overridable so that can be tested rather than argued about.
+const TEAM_FACTOR_CV = process.env.SIM_TEAM_CV ? parseFloat(process.env.SIM_TEAM_CV) : 0.35;
+const GAME_FACTOR_CV = process.env.SIM_GAME_CV ? parseFloat(process.env.SIM_GAME_CV) : 0.22;
 
 const T_SIGMA = Math.sqrt(Math.log(1 + TEAM_FACTOR_CV ** 2));
 const G_SIGMA = Math.sqrt(Math.log(1 + GAME_FACTOR_CV ** 2));
@@ -525,20 +531,24 @@ function remainingPicksForSlot(fromPick, slot, numTeams) {
   return out;
 }
 
-// `modelSlot < 0` runs an all-bot draft, which is how the final's field is built.
+// `modelBySlot` is one entry per seat: null for an ADP bot, 'v1' or 'v2' for a seat
+// drafted by that recommender. An all-null array is a pure bot pod, which is how the
+// final's field used to be built in full.
+//
 // `numTeams` is a parameter only so the Sit & Go tool can run 3- and 6-team drafts;
 // both recommenders are internally hardcoded to a 12-team league, which is itself
 // one of the findings there.
-function simulateDraft(players, modelSlot, model, rng, numTeams = NUM_TEAMS) {
+function simulateDraft(players, modelBySlot, rng, numTeams = NUM_TEAMS) {
   const available = players.filter(p => p._eff).sort((a, b) => a.adp - b.adp);
   const pool      = available.slice();
   const rosters   = Array.from({ length: numTeams }, () => []);
 
   for (let pick = 1; pick <= numTeams * ROUNDS; pick++) {
     const slot = snakeSlot(pick, numTeams);
+    const model = modelBySlot[slot] || null;
     let chosen;
 
-    if (slot === modelSlot) {
+    if (model) {
       const myTeam   = rosters[slot];
       const nextPick = nextPickForSlot(pick + 1, slot, numTeams);
 
@@ -623,12 +633,45 @@ function rankOf(arr, i) {
 // team-seasons per world. The field is also drawn from ADP bots, so it is a field
 // of ordinary drafters that got hot, not of sharp ones.
 
-function buildFieldPods(players, nPods, seed) {
-  const pods = [];
-  for (let i = 0; i < nPods; i++) {
-    const rosters = simulateDraft(players, -1, null, mulberry32(seed + i * 104729));
-    pods.push(rosters.map(toFastRoster));
+// `sharpSeats` of each pod's 12 seats are drafted by a recommender instead of an ADP
+// bot, alternating V1 and V2 so the field is not a monoculture — a field of nothing
+// but V2 rosters would penalise V2 specifically, by making it duplicate itself.
+//
+// This is the expensive part of the harness (~5ms per model pick), so the result is
+// cached to disk keyed by everything that affects it. Sweeps then pay for it once.
+function buildFieldPods(players, nPods, seed, sharpSeats = 0) {
+  const cacheDir  = path.join(__dirname, '.field-cache');
+  const cacheFile = path.join(cacheDir, `pods-${nPods}-${sharpSeats}-${seed}.json`);
+  const byId = new Map(players.map(p => [p.id, p]));
+
+  if (fs.existsSync(cacheFile)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+      if (raw.nPods === nPods && raw.sharpSeats === sharpSeats && raw.seed === seed) {
+        return raw.pods.map(pod => pod.map(ids => toFastRoster(
+          ids.map(id => byId.get(id)).filter(Boolean))));
+      }
+    } catch { /* fall through and rebuild */ }
   }
+
+  const pods = [], serial = [];
+  for (let i = 0; i < nPods; i++) {
+    const modelBySlot = new Array(NUM_TEAMS).fill(null);
+    // Spread the sharp seats around the snake rather than clustering them at the top.
+    for (let k = 0; k < sharpSeats; k++) {
+      const slot = Math.floor((k * NUM_TEAMS) / Math.max(1, sharpSeats) + (i % NUM_TEAMS)) % NUM_TEAMS;
+      modelBySlot[slot] = (i + k) % 2 === 0 ? 'v2' : 'v1';
+    }
+    const rosters = simulateDraft(players, modelBySlot, mulberry32(seed + i * 104729));
+    pods.push(rosters.map(toFastRoster));
+    serial.push(rosters.map(r => r.map(p => p.id)));
+  }
+
+  try {
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(cacheFile, JSON.stringify({ nPods, sharpSeats, seed, pods: serial }));
+  } catch { /* cache is an optimisation, not a requirement */ }
+
   return pods;
 }
 
@@ -769,7 +812,9 @@ function evaluate(model, opts) {
     assignTruth(players, truth, rng, ctx);
 
     const slot    = d % NUM_TEAMS;
-    const rosters = simulateDraft(players, slot, model, mulberry32(seed + 1));
+    const modelBySlot = new Array(NUM_TEAMS).fill(null);
+    modelBySlot[slot] = model;
+    const rosters = simulateDraft(players, modelBySlot, mulberry32(seed + 1));
     const mine    = rosters[slot];
     const fast    = rosters.map(toFastRoster);
 
@@ -871,7 +916,7 @@ function report(truth, v1, v2, opts) {
   console.log(`\n${'='.repeat(74)}`);
   console.log(`TRUTH SCENARIO: ${truth === 'proj' ? 'projections (flatters V2 — see caveat)' : 'market/ADP-implied (neutral)'}`);
   console.log(`${opts.drafts} drafts x ${opts.seasons} seasons = ${opts.drafts * opts.seasons} team-seasons per model`);
-  console.log(`Final: ${opts.field.rosters.length + 1} teams sampled from ${opts.field.candidates} bot rosters `
+  console.log(`Final: ${opts.field.rosters.length + 1} teams sampled from ${opts.field.candidates} candidate rosters `
             + `by qualification odds\n       (field sits at the ${(100 * opts.field.fieldStrength).toFixed(1)}th percentile of that population)`);
   console.log('='.repeat(74));
 
@@ -1026,10 +1071,12 @@ function main() {
   };
   const fieldPods   = parseInt(arg('field-pods', '900'), 10);
   const fieldWorlds = parseInt(arg('field-worlds', '120'), 10);
+  const fieldSharp  = parseInt(arg('field-sharp', '0'), 10);
 
   const t0 = Date.now();
-  const pods = buildFieldPods(players, fieldPods, 555001);
-  console.log(`Built ${fieldPods} bot pods (${fieldPods * NUM_TEAMS} candidate rosters) in ${((Date.now() - t0) / 1000).toFixed(1)}s.`);
+  const pods = buildFieldPods(players, fieldPods, 555001, fieldSharp);
+  console.log(`Built ${fieldPods} field pods (${fieldPods * NUM_TEAMS} candidate rosters, `
+            + `${fieldSharp}/${NUM_TEAMS} seats model-drafted) in ${((Date.now() - t0) / 1000).toFixed(1)}s.`);
 
   const scenarios = args.includes('--truth')
     ? [arg('truth', 'market')]

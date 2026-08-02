@@ -122,16 +122,17 @@ Replaced with one-step VONA, which is the correct pairwise-swap criterion.
     three phases* (`F^11` to win a knockout week, `F^11 + 11·F^10·(1−F)` for top-2 of
     12), not the best 1,088. A field with the luck squeezed out is far too strong,
     and would understate exactly the high-variance strategies this is meant to judge.
-- **The 11 opponents draft to noisy ADP — and so does the entire final field.** This
-  is now the load-bearing limitation, and it got *worse*, not better: bot softness
-  used to cost you a 12-team pod, and now it sets the whole 1,089-team room. Absolute
-  EV is wildly inflated (a good roster wins a bot final far too often). **Read the
-  delta, never the level.** No leverage or uniqueness modelling either.
-- **How much stacking can pay is capped by `TEAM_FACTOR_CV = 0.35` and
-  `GAME_FACTOR_CV = 0.22`** in the simulator's own weather model. If real team-weeks
-  have fatter tails than lognormal at those CVs, the harness still understates
-  correlation — and no amount of field-size fixing touches that. Unlike the old gap
-  this is one tunable pair, so it can be stress-tested rather than argued about.
+- **The 11 opponents draft to noisy ADP.** The final field no longer has to:
+  `--field-sharp K` drafts K of each field pod's 12 seats with a recommender,
+  alternating V1/V2 so the field is not a monoculture (an all-V2 field would penalise
+  V2 specifically by making it duplicate itself). Pods are cached under
+  `tools/.field-cache/`. Measured at K = 0/3/6 — see §5.3. Absolute EV is still
+  inflated and there is still no leverage or uniqueness modelling. **Read the delta,
+  never the level.**
+- **How much stacking can pay is capped by `TEAM_FACTOR_CV` and `GAME_FACTOR_CV`**
+  in the simulator's own weather model. Overridable via `SIM_TEAM_CV` / `SIM_GAME_CV`
+  and stress-tested across ±40% — §5.3. The answer did not move, which retires this
+  as a threat to the `V2_CORRELATION_WEIGHT` result.
 - **Bots have a lineup floor** (`BOT_MINIMUMS`, 1/2/3/1). Pure-ADP bots would finish
   drafts with zero quarterbacks — QB median ADP is ~116 — and score a structural zero
   at that slot every week. Barely matters at 12 teams; it completely invalidated the
@@ -260,6 +261,55 @@ accumulation matters more. Payouts inside each final are modelled as a power law
 (`--final-alpha`, `--final-paid`) because DK does not publish tables for the smaller
 contests — direction is trustworthy, exact crossovers are not.
 
+### 5.3 Two robustness checks that both came out against the prediction
+
+**Weather.** `SIM_TEAM_CV` / `SIM_GAME_CV` set the ceiling on what correlation can be
+worth, and were assumed rather than measured — so the 0.35 result might have been
+fitted to the simulator's tails. Swept ±40% against `V2_CORR` 0.20 / 0.35 / 0.70:
+
+| Weather | metric | 0.20 | **0.35** | 0.70 |
+|---|---|---|---|---|
+| 0.24 / 0.15 | reach final | 1.43% | **1.71%** | 1.40% |
+| 0.35 / 0.22 | reach final | 1.44% | **1.70%** | 1.46% |
+| 0.50 / 0.32 | reach final | 1.42% | **1.66%** | 1.38% |
+| 0.24 / 0.15 | 18-team EV | 2,062 | **2,880** | 2,349 |
+| 0.35 / 0.22 | 18-team EV | 2,212 | **3,109** | 2,571 |
+| 0.50 / 0.32 | 18-team EV | 1,897 | **2,573** | 2,304 |
+
+Nine comparisons, 0.35 first in all nine. **The constant is not an artefact of the
+assumed weather**, and calibrating those CVs against real NFL data is no longer
+urgent. The prediction going in was that fatter tails would push the optimum up.
+
+*The exception, stated because it is consistent rather than significant:* at the
+1,089-team final, 0.70 edges 0.35 at all three weather settings (292/206, 180/178,
+134/113). Each cell turns on <20 outright wins and the jackpot-capped EV swings on
+6-15 events, so this is a hint that Millionaire-sized finals want more than 0.35 —
+not a finding. Settling it needs ~10x the team-seasons aimed only at that column.
+
+**A sharper field.** The whole 1,089-team room was ADP bots, which was the last
+structural excuse for not trusting the numbers. At K = 0/3/6 model-drafted seats per
+field pod (EV in ppm; advance rate and reach-final are identical across all three, as
+they must be — the field only exists in week 17):
+
+| K | 18-team V1 | 18-team V2 | Δ | 229 Δ | V1 capped EV | V2 capped EV |
+|---|---|---|---|---|---|---|
+| 0 | 2,844 | 3,109 | +9.3% | +15.2% | $94.79 | $140.84 |
+| 3 | 2,449 | 2,932 | +19.7% | +24.2% | $88.97 | $106.90 |
+| 6 | 2,406 | 3,084 | +28.2% | +34.0% | $79.52 | $115.70 |
+
+A tougher room costs everybody — both models finish worse in the final (V1 top 27.4%
+→ 28.8%, V2 24.8% → 26.2%) and both lose absolute EV. But **V1 degrades far faster
+than V2** (−15% vs −1% at 18 teams), so V2's edge *widens* as the field sharpens.
+The prediction going in was that it would compress, on the theory that most of V2's
+margin was beating bots. It was not.
+
+Two caveats. The sharp seats are V1 and V2 themselves, so this shows the edge is not
+an artefact of bot softness — it says nothing about whether V2 beats real humans, who
+draft like neither model. And the `fieldStrength` percentile readout is measured
+*within* the candidate pool, so it cannot detect the pool getting stronger (51.6 →
+53.0 across K); the real evidence the field toughened is that both models' finishes
+and EV fell.
+
 ---
 
 ## 6. Data pipeline
@@ -329,17 +379,17 @@ accordingly (clamped 0.70–1.45). Improved advance rate +31.0% → +35.4%.
 
 ## 9. Open questions, highest value first
 
-1. **Sharpen the field.** *(Was: "make the final field size real" — done, §5/§5.1.
-   It did not move the correlation answer.)* The final is now the right size and
-   shape but is drafted by ADP bots, which is what every remaining inflated number
-   traces back to. The concrete version: draft some fraction of the field with V1/V2
-   themselves rather than bots. Costed at ~1.2s per 12-seat model pod, so a fully
-   sharp 1,088-team field is ~110s of one-time build — affordable, just not free.
-   **Best remaining guess at where the harness still lies to us.**
-2. **Stress-test the weather model.** `TEAM_FACTOR_CV` / `GAME_FACTOR_CV` set the
-   ceiling on what stacking can possibly be worth, and they were assumed, not
-   measured. Re-run the §5.1 sweep at higher CVs: if the optimum moves up, the
-   constant was fitted to the simulator's tails rather than to football.
+1. **Resolve the 1,089-team column.** The one place the evidence is not clean: at
+   Millionaire-sized finals, `V2_CORR` 0.70 edges 0.35 at all three weather settings
+   (§5.3), consistently but on <20 outright wins per cell. Everything smaller says
+   0.35. Needs ~10x the team-seasons aimed only at that column — nothing else in the
+   report requires the extra compute, so run it narrow rather than re-running sweeps.
+   **The only live threat to a constant this project relies on.**
+2. **A field that drafts like neither model.** §5.3 retired bot-softness as an
+   explanation for V2's edge — sharpening the field *widened* it. But the sharp seats
+   are V1 and V2 themselves, so nothing here speaks to whether V2 beats real humans,
+   who draft like neither. Closing this needs actual DK draft exports as field
+   rosters, not more simulation.
 3. **Yahoo** — blocked on app registration at developer.yahoo.com needing Fantasy
    Sports read permission. Error is `"This application is not authorized to perform
    this action"`, which is app-level. Code side (scope, token persistence, Python

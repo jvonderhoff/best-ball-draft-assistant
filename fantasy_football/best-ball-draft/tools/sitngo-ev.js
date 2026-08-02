@@ -72,7 +72,9 @@ function main() {
       H.assignTruth(players, truth, H.mulberry32(seed), ctx);
 
       const slot    = d % N;
-      const rosters = H.simulateDraft(players, slot, model, H.mulberry32(seed + 1), N);
+      const modelBySlot = new Array(N).fill(null);
+      modelBySlot[slot] = model;
+      const rosters = H.simulateDraft(players, modelBySlot, H.mulberry32(seed + 1), N);
       const fast    = rosters.map(H.toFastRoster);
       let dWins = 0;
 

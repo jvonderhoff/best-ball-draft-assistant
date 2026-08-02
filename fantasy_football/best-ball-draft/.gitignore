@@ -13,3 +13,4 @@ tools/replay-draft.json
 # Local backups taken before data refreshes
 drafts.db.bak-*
 app/data/player_cache.json.bak-*
+tools/.field-cache/
