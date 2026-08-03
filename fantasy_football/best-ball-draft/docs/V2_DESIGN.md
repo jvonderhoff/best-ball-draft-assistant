@@ -169,6 +169,35 @@ Forcing a single round does nothing — the model rebalances and lands on the sa
 shape (an RB forced at round 8 gave 3-5-9-3 against a 2-5-9-4 baseline, the same
 five backs). The target has to be forced, not a pick.
 
+**Waiting does not buy cheap backs.** Forcing an RB-light start (no RB through R6,
+n=250) and sweeping the target: no floor 24.36% advance, RB≥4 +1.36 ±1.61, RB≥5
+−1.00 ±1.53, RB≥6 −3.02 ±1.30, RB≥7 **−7.12 ±1.46**. Monotonically worse, and the
+light start itself costs ~5.5pp against unrestricted V2. So extra backs are never a
+gain — the conditional gradient runs from bad to *very* bad, not from good to bad.
+An earlier read of the naturally-occurring light bucket (n=14) suggested the
+opposite and was noise.
+
+**QB is the mirror image, and the board says why.** Same rig, `--pos QB`:
+
+| Arm | avg QB | Δ advance (normal) | Δ advance (QB-light) |
+|---|---|---|---|
+| QB ≥ 2 | 2.38 | +0.79 ±1.06 | +0.77 ±1.40 |
+| **QB ≥ 3** | 3.00 | **+1.16 ±1.31** | **+1.17 ±1.42** |
+| QB ≥ 4 | 4.00 | **−2.69 ±1.23** | −0.83 ±1.36 |
+
+Three quarterbacks beats V2's natural 2.41 — replicated to two decimals across two
+independent runs, though each alone is only ~0.85 SE. And a 4th costs 2.2 SE at
+normal timing but is near-free if you waited, which is the conditional effect that
+RB refused to show. §8 is the reason: QB is flat QB2→QB24 then cliffs, so a late 3rd
+is nearly as good as the 2nd, while RB supply hits zero after pick 144 and a late
+5th is a body. **Flat-then-cliff rewards waiting; evaporation punishes it.**
+
+Untested: "2 early QBs, skip the 3rd" — only 10 of 250 drafts take 2 QBs by R9, so
+it needs a forced *early* start (the mirror of `posBan`). Watch also that reach-final
+is positive for all three QB floors in the light branch (+0.163/+0.205/+0.174),
+including the arm whose advance rate is negative — spare QBs may be cheap
+knockout-week upside, at ~1.2 SE.
+
 **The construction table is correlation, not causation.** V2 ends with 4 TEs when a
 draft has *already* gone badly and the board is barren — the 4th TE is a symptom.
 Forcing the shape just makes a worse pick at that moment.
