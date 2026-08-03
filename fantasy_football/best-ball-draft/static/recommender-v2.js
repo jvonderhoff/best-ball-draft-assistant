@@ -668,10 +668,18 @@ function v2SamePlayoffGame(p1, p2, week) {
 // Returns { regular, playoff, notes }
 function v2CorrelationValue(player, myTeam) {
   const notes = [];
-  if (!v2HasRealTeam(player) || !player._eff) return { regular: 0, playoff: 0, notes };
+  if (!v2HasRealTeam(player) || !player._eff) {
+    return { regular: 0, playoff: 0, playoffTeam: 0, playoffGame: 0, notes };
+  }
 
   let regular = 0;
-  let playoff = 0;
+  // Split by source. Both are playoff-weighted correlation, but they are different
+  // bets and the UI used to report them under one "Playoff game stack" label — which
+  // reads as an opposing-game shootout even when the contribution was two receivers
+  // on the same team. That mattered: the breakdown is what gets eyeballed to sanity
+  // check a pick, and it was naming the wrong reason.
+  let playoffTeam = 0;   // same-team correlation, present in all three weeks
+  let playoffGame = 0;   // both sides of one specific playoff game
   const sdMe = player._eff.sd;
 
   const sameTeam = myTeam.filter(m => v2HasRealTeam(m) && m.team === player.team && m._eff);
@@ -696,7 +704,7 @@ function v2CorrelationValue(player, myTeam) {
   const pair = (rho, partner, label) => {
     const v = rho * Math.min(sdMe, partner._eff.sd) * V2_CORRELATION_WEIGHT;
     regular += v;
-    playoff += v * V2_PLAYOFF_STACK_MULTIPLIER;
+    playoffTeam += v * V2_PLAYOFF_STACK_MULTIPLIER;
     notes.push(`${label} ${partner.name.split(' ').pop()}`);
     return v;
   };
@@ -720,7 +728,7 @@ function v2CorrelationValue(player, myTeam) {
       for (const c of myCatch) {
         const v = V2_CORRELATION.passCatcherPair * Math.min(sdMe, c._eff.sd) * V2_CORRELATION_WEIGHT;
         regular += v;
-        playoff += v * V2_PLAYOFF_STACK_MULTIPLIER;
+        playoffTeam += v * V2_PLAYOFF_STACK_MULTIPLIER;
       }
       if (!myQBs.length && myCatch.length) notes.push(`${player.team} receiver room`);
     }
@@ -758,7 +766,7 @@ function v2CorrelationValue(player, myTeam) {
     for (const partner of partners) {
       if (stackPartners >= V2_MAX_STACK_PARTNERS) break;
       stackPartners++;
-      playoff += V2_CORRELATION.opposingGame
+      playoffGame += V2_CORRELATION.opposingGame
                * Math.min(sdMe, partner._eff.sd)
                * V2_CORRELATION_WEIGHT
                * V2_PLAYOFF_STACK_MULTIPLIER
@@ -769,7 +777,8 @@ function v2CorrelationValue(player, myTeam) {
     }
   }
 
-  return { regular, playoff, notes };
+  // `playoff` stays the sum so existing callers keep working unchanged.
+  return { regular, playoff: playoffTeam + playoffGame, playoffTeam, playoffGame, notes };
 }
 
 // How much of a running back's knockout-week value survives when you already own a
@@ -1136,9 +1145,13 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
     score += add(V2_W_ACCUMULATION * corr.regular * corrFit, 'Correlation',
                  corr.notes.join(' · ') + fitNote);
   }
-  if (corr.playoff) {
-    score += add(V2_W_PLAYOFF * corr.playoff * corrFit, 'Playoff game stack',
-                 corr.notes.join(' · ') + fitNote);
+  if (corr.playoffTeam) {
+    score += add(V2_W_PLAYOFF * corr.playoffTeam * corrFit, 'Playoff correlation (same team)',
+                 `same team in all 3 knockout weeks · x${V2_PLAYOFF_STACK_MULTIPLIER} playoff weight` + fitNote);
+  }
+  if (corr.playoffGame) {
+    score += add(V2_W_PLAYOFF * corr.playoffGame * corrFit, 'Playoff game stack',
+                 corr.notes.filter(n => /^Wk\d/.test(n)).join(' · ') + fitNote);
   }
 
   // Unsigned free agent: no known team, so no concrete stack — but an expected one.
