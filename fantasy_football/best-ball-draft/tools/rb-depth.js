@@ -39,9 +39,25 @@ function main() {
 
   const drafts    = parseInt(arg('drafts', '150'), 10);
   const seasons   = parseInt(arg('seasons', '250'), 10);
-  const fromRound = parseInt(arg('from-round', '7'), 10);
   const truth     = arg('truth', 'market');
   const model     = arg('model', 'v2');
+
+  // Position-general. "Early" has to mean something different per position — the
+  // median ADP of the top 36 is RB 44 and WR 37 but QB 116 and TE 149, so a
+  // round-4 quarterback essentially never happens and a round-6 window would
+  // classify every draft as QB-light.
+  const POS_DEFAULTS = {
+    RB: { early: 6,  from: 7,  ban: 6,  floors: [5, 6] },
+    WR: { early: 6,  from: 7,  ban: 6,  floors: [9, 10] },
+    QB: { early: 9,  from: 10, ban: 10, floors: [2, 3, 4] },
+    TE: { early: 10, from: 11, ban: 10, floors: [3, 4, 5] },
+  };
+  const pos = (arg('pos', 'RB') || 'RB').toUpperCase();
+  const dflt = POS_DEFAULTS[pos] || POS_DEFAULTS.RB;
+  const earlyWindow = parseInt(arg('early-window', String(dflt.early)), 10);
+  const fromRound   = parseInt(arg('from-round', String(dflt.from)), 10);
+  const banThrough  = parseInt(arg('ban-through', String(dflt.ban)), 10);
+  const floors      = (arg('floors', dflt.floors.join(',')) || '').split(',').map(Number);
 
   const players = H.loadData();
   const ctx     = H.buildScoringContext(players);
@@ -51,23 +67,33 @@ function main() {
   // weekly slots on their own; late backs are lottery tickets, and you need more
   // tickets. A fixed floor cannot express that, and averaging over both situations
   // can hide a real effect in either direction.
-  const earlyRB = myTeam => myTeam.filter(p => p.pos === 'RB' && p.round <= 6).length;
+  const earlyAt = myTeam => myTeam.filter(p => p.pos === pos && p.round <= earlyWindow).length;
   const capitalAware = myTeam => {
-    const e = earlyRB(myTeam);
-    if (e <= 1) return 7;   // waited on RB — stockpile tickets
-    if (e === 2) return 5;
-    return 4;               // spent early capital — no floor needed
+    const e = earlyAt(myTeam);
+    if (e >= 2) return floors[0];                              // spent early capital
+    if (e === 1) return floors[Math.min(1, floors.length - 1)];
+    return floors[floors.length - 1];                          // waited — carry more
   };
 
-  const arms = [
-    { name: 'baseline',   opts: {} },
-    { name: 'RB >= 5',    opts: { posFloor: { pos: 'RB', count: 5, fromRound } } },
-    { name: 'RB >= 6',    opts: { posFloor: { pos: 'RB', count: 6, fromRound } } },
-    { name: 'capital-aware', opts: { posFloor: { pos: 'RB', count: capitalAware, fromRound } } },
+  // --light manufactures the RB-light start V2 will not choose on its own, then asks
+  // the only question that matters in that branch: given you waited, how many?
+  const light = args.includes('--light');
+  const ban   = light ? { posBan: { pos, throughRound: banThrough } } : {};
+
+  const arms = light ? [
+    { name: `light, no floor`, opts: { ...ban } },
+    ...floors.map(c => ({ name: `light, ${pos}>=${c}`,
+                          opts: { ...ban, posFloor: { pos, count: c, fromRound } } })),
+  ] : [
+    { name: 'baseline', opts: {} },
+    ...floors.map(c => ({ name: `${pos} >= ${c}`,
+                          opts: { posFloor: { pos, count: c, fromRound } } })),
+    { name: 'capital-aware', opts: { posFloor: { pos, count: capitalAware, fromRound } } },
   ];
 
   console.log(`${model.toUpperCase()}, truth ${truth}, ${drafts} drafts x ${seasons} seasons, `
-            + `RB floor enforced from round ${fromRound}.`);
+            + `${pos} floor from round ${fromRound}, early window R1-${earlyWindow}`
+            + (light ? `, ${pos} banned through R${banThrough}.` : '.'));
   console.log('Paired: every arm sees the same draft seed, the same opponents and the');
   console.log('same weekly player scores. Only the roster differs.\n');
 
@@ -84,8 +110,8 @@ function main() {
     for (const a of arms) {
       const rosters = H.simulateDraft(players, bySlot, H.mulberry32(seed + 1), NUM, a.opts);
       a.fast = rosters.map(H.toFastRoster);
-      a.rb  += rosters[slot].filter(p => p.pos === 'RB').length;
-      a.earlyRB.push(rosters[slot].filter(p => p.pos === 'RB' && p.round <= 6).length);
+      a.rb  += rosters[slot].filter(p => p.pos === pos).length;
+      a.earlyRB.push(rosters[slot].filter(p => p.pos === pos && p.round <= earlyWindow).length);
       a.adv = 0; a.fin = 0;
     }
 
@@ -121,7 +147,7 @@ function main() {
     return Math.sqrt(xs.reduce((s, v) => s + (v - m) ** 2, 0) / (xs.length - 1) / xs.length);
   };
 
-  console.log(`${'arm'.padEnd(12)}${'avg RB'.padStart(8)}${'advance'.padStart(10)}${'reach final'.padStart(13)}`);
+  console.log(`${'arm'.padEnd(12)}${('avg ' + pos).padStart(8)}${'advance'.padStart(10)}${'reach final'.padStart(13)}`);
   console.log('-'.repeat(43));
   for (const a of arms) {
     console.log(`${a.name.padEnd(12)}${(a.rb / drafts).toFixed(2).padStart(8)}`
@@ -145,8 +171,8 @@ function main() {
   }
   // Split by how much early capital went into RB. If the right target depends on
   // that, the paired difference should have opposite signs across these buckets.
-  console.log('\nPaired Δ advance vs baseline, split by early (R1-6) RB capital');
-  console.log(`${'arm'.padEnd(15)}${'0-1 early'.padStart(15)}${'2 early'.padStart(15)}${'3+ early'.padStart(15)}`);
+  console.log(`\nPaired Δ advance vs baseline, split by early (R1-${earlyWindow}) ${pos} capital`);
+  console.log(`${'arm'.padEnd(16)}${'0-1 early'.padStart(15)}${'2 early'.padStart(15)}${'3+ early'.padStart(15)}`);
   console.log('-'.repeat(60));
   for (const a of arms.slice(1)) {
     const cells = [[0, 1], [2, 2], [3, 99]].map(([lo, hi]) => {
@@ -156,7 +182,7 @@ function main() {
       const m = 100 * mean(ds), s2 = 100 * se(ds);
       return `${m >= 0 ? '+' : ''}${m.toFixed(2)} ±${s2.toFixed(2)} (${idx.length})`.padStart(15);
     });
-    console.log(`${a.name.padEnd(15)}${cells.join('')}`);
+    console.log(`${a.name.padEnd(16)}${cells.join('')}`);
   }
 
   console.log('\n± is one standard error of the PAIRED difference across drafts.');

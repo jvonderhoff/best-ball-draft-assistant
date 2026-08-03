@@ -609,6 +609,12 @@ function simulateDraft(players, modelBySlot, rng, numTeams = NUM_TEAMS, opts = {
       const round = Math.floor((pick - 1) / numTeams) + 1;
       let force = (opts.forcePos && round === opts.forceRound) ? opts.forcePos : null;
 
+      // `posBan` forbids a position before a given round. Needed because V2 almost
+      // never goes RB-light on its own — only 14 of 300 drafts took <=1 back in the
+      // first six rounds — so the branch where "wait and stockpile" would pay cannot
+      // be measured without manufacturing it.
+      const ban = (opts.posBan && round <= opts.posBan.throughRound) ? opts.posBan.pos : null;
+
       // Positional floor. Forcing a single round does nothing useful — the model
       // simply rebalances later and lands on the same shape (verified: forcing an RB
       // at round 8 produced 3-5-9-3 against a 2-5-9-4 baseline, the same 5 backs).
@@ -623,7 +629,7 @@ function simulateDraft(players, modelBySlot, rng, numTeams = NUM_TEAMS, opts = {
           ? opts.posFloor.count(myTeam) : opts.posFloor.count;
         if (have < want) force = opts.posFloor.pos;
       }
-      const want  = force ? 60 : 1;
+      const want  = (force || ban) ? 60 : 1;
 
       let recs;
       if (model === 'v1') {
@@ -632,8 +638,20 @@ function simulateDraft(players, modelBySlot, rng, numTeams = NUM_TEAMS, opts = {
         const myPicks = remainingPicksForSlot(pick + 1, slot, numTeams);
         recs = V2.getTopRecommendationsV2(pool, myTeam, pick, want, nextPick, myPicks, players);
       }
-      const pick0 = force ? (recs.find(r => r.player.pos === force) || recs[0]) : recs[0];
-      chosen = pick0 ? pick0.player : pool[0];
+      let cands = ban ? recs.filter(r => r.player.pos !== ban) : recs;
+      if (!cands.length) cands = recs;
+
+      if (force) {
+        // A forced position may not appear in the top `want` at all — V2 penalises a
+        // 4th QB by 3.0 ppw, which buries every remaining one far below rank 60. A
+        // floor that silently fails to bind would report "4 QBs is the same as 3"
+        // when it never drafted a 4th, so fall through to the board itself.
+        const hit = cands.find(r => r.player.pos === force);
+        chosen = hit ? hit.player
+                     : (pool.find(p => p.pos === force) || (cands[0] && cands[0].player) || pool[0]);
+      } else {
+        chosen = cands[0] ? cands[0].player : pool[0];
+      }
     } else {
       chosen = botPick(pool, rosters[slot], rng, ROUNDS - rosters[slot].length);
     }
