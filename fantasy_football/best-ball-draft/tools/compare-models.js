@@ -613,9 +613,15 @@ function simulateDraft(players, modelBySlot, rng, numTeams = NUM_TEAMS, opts = {
       // simply rebalances later and lands on the same shape (verified: forcing an RB
       // at round 8 produced 3-5-9-3 against a 2-5-9-4 baseline, the same 5 backs).
       // To ask "what does carrying N cost me" the TARGET has to be forced, not a pick.
+      // `count` may be a function of the roster so far, which is what makes a
+      // CAPITAL-AWARE policy expressible: "if I waited on RB, carry more bodies;
+      // if I spent early picks there, carry fewer." A fixed floor cannot say that,
+      // and averaging over both situations can hide a real conditional effect.
       if (opts.posFloor && round >= opts.posFloor.fromRound) {
         const have = myTeam.filter(p => p.pos === opts.posFloor.pos).length;
-        if (have < opts.posFloor.count) force = opts.posFloor.pos;
+        const want = typeof opts.posFloor.count === 'function'
+          ? opts.posFloor.count(myTeam) : opts.posFloor.count;
+        if (have < want) force = opts.posFloor.pos;
       }
       const want  = force ? 60 : 1;
 

@@ -46,10 +46,24 @@ function main() {
   const players = H.loadData();
   const ctx     = H.buildScoringContext(players);
 
+  // Capital-aware target: how many backs you end up wanting depends on how many
+  // early picks you already spent there. Early backs are reliable and cover the 2.3
+  // weekly slots on their own; late backs are lottery tickets, and you need more
+  // tickets. A fixed floor cannot express that, and averaging over both situations
+  // can hide a real effect in either direction.
+  const earlyRB = myTeam => myTeam.filter(p => p.pos === 'RB' && p.round <= 6).length;
+  const capitalAware = myTeam => {
+    const e = earlyRB(myTeam);
+    if (e <= 1) return 7;   // waited on RB — stockpile tickets
+    if (e === 2) return 5;
+    return 4;               // spent early capital — no floor needed
+  };
+
   const arms = [
-    { name: 'baseline',  opts: {} },
-    { name: 'RB >= 5',   opts: { posFloor: { pos: 'RB', count: 5, fromRound } } },
-    { name: 'RB >= 6',   opts: { posFloor: { pos: 'RB', count: 6, fromRound } } },
+    { name: 'baseline',   opts: {} },
+    { name: 'RB >= 5',    opts: { posFloor: { pos: 'RB', count: 5, fromRound } } },
+    { name: 'RB >= 6',    opts: { posFloor: { pos: 'RB', count: 6, fromRound } } },
+    { name: 'capital-aware', opts: { posFloor: { pos: 'RB', count: capitalAware, fromRound } } },
   ];
 
   console.log(`${model.toUpperCase()}, truth ${truth}, ${drafts} drafts x ${seasons} seasons, `
@@ -57,7 +71,7 @@ function main() {
   console.log('Paired: every arm sees the same draft seed, the same opponents and the');
   console.log('same weekly player scores. Only the roster differs.\n');
 
-  for (const a of arms) { a.rb = 0; a.perDraft = []; }
+  for (const a of arms) { a.rb = 0; a.perDraft = []; a.earlyRB = []; }
 
   for (let d = 0; d < drafts; d++) {
     const seed = 660000 + d * 7919;
@@ -71,6 +85,7 @@ function main() {
       const rosters = H.simulateDraft(players, bySlot, H.mulberry32(seed + 1), NUM, a.opts);
       a.fast = rosters.map(H.toFastRoster);
       a.rb  += rosters[slot].filter(p => p.pos === 'RB').length;
+      a.earlyRB.push(rosters[slot].filter(p => p.pos === 'RB' && p.round <= 6).length);
       a.adv = 0; a.fin = 0;
     }
 
@@ -128,6 +143,22 @@ function main() {
     };
     console.log(`${a.name.padEnd(12)}${fmt(dAdv, 2).padStart(14)}${fmt(dFin, 3).padStart(18)}`);
   }
+  // Split by how much early capital went into RB. If the right target depends on
+  // that, the paired difference should have opposite signs across these buckets.
+  console.log('\nPaired Δ advance vs baseline, split by early (R1-6) RB capital');
+  console.log(`${'arm'.padEnd(15)}${'0-1 early'.padStart(15)}${'2 early'.padStart(15)}${'3+ early'.padStart(15)}`);
+  console.log('-'.repeat(60));
+  for (const a of arms.slice(1)) {
+    const cells = [[0, 1], [2, 2], [3, 99]].map(([lo, hi]) => {
+      const idx = arms[0].earlyRB.map((e, i) => (e >= lo && e <= hi) ? i : -1).filter(i => i >= 0);
+      if (idx.length < 8) return `n=${idx.length}`.padStart(15);
+      const ds = idx.map(i => a.perDraft[i].adv - arms[0].perDraft[i].adv);
+      const m = 100 * mean(ds), s2 = 100 * se(ds);
+      return `${m >= 0 ? '+' : ''}${m.toFixed(2)} ±${s2.toFixed(2)} (${idx.length})`.padStart(15);
+    });
+    console.log(`${a.name.padEnd(15)}${cells.join('')}`);
+  }
+
   console.log('\n± is one standard error of the PAIRED difference across drafts.');
   console.log('A result inside ~2 SE of zero is not a result.');
 }
