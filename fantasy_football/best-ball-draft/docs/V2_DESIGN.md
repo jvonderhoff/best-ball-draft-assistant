@@ -138,6 +138,37 @@ advance while 3-5-8-4 rose 12.0% → 28.4%. Both cannot be an injury effect. Any
 read off this table at bucket level is a draw from that noise. Settling 4-vs-5 RB
 needs a controlled test — same seed, force one extra RB, identical season draws.
 
+**Settled by controlled test instead** (`tools/rb-depth.js`, 250 drafts x 250
+seasons). Each seed is played three times — baseline, RB floor 5, RB floor 6 — with
+the same bots, board, truth and *the same weekly player scores*, so the arms differ
+only in roster composition and the comparison is paired.
+
+| Arm | avg RB | advance | Δ paired | reach final | Δ paired |
+|---|---|---|---|---|---|
+| baseline | 4.65 | 30.20% | — | 1.483% | — |
+| RB ≥ 5 | 5.01 | 29.89% | **−0.31 ±1.89pp** | 1.328% | −0.155 ±0.197pp |
+| RB ≥ 6 | 6.00 | 25.44% | **−4.77 ±1.83pp** | 1.029% | −0.454 ±0.194pp |
+
+**A 5th back is free; a 6th costs you.** −0.31pp against ±1.89 is nothing (and it is
++0.89 ±1.75 with injuries off — a coin flip either way), so a drafter who prefers
+five is not paying for the preference. Six is −4.77pp at 2.6 SE, which is real.
+
+**Injuries made extra backs slightly worse, not better** (RB≥5: +0.89 → −0.31;
+RB≥6: −2.86 → −4.77), though that shift is itself inside noise. The slot maths is
+why: WR starts **3.6** weekly against RB's **2.3**, so thinning receivers to thicken
+backs increases fragility where it costs most. RBs do get hurt more (avail 0.82 vs
+0.86) and it is not enough to overcome starting 1.3 more of the other.
+
+Note reach-final is negative in **all four** floor cells (−0.155, −0.454, −0.187,
+−0.354). Individually 1-2.3 SE, but four consistent negatives is a pattern, and
+reach-final is the metric that pays. Read a 5th back as "free or very nearly", not
+"free". Caveat: this is the policy *commit to N by round 7*; a floor from round 12
+buys different and worse players (`--from-round`, untested).
+
+Forcing a single round does nothing — the model rebalances and lands on the same
+shape (an RB forced at round 8 gave 3-5-9-3 against a 2-5-9-4 baseline, the same
+five backs). The target has to be forced, not a pick.
+
 **The construction table is correlation, not causation.** V2 ends with 4 TEs when a
 draft has *already* gone badly and the board is barren — the 4th TE is a symptom.
 Forcing the shape just makes a worse pick at that moment.

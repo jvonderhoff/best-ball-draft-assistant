@@ -588,7 +588,11 @@ function remainingPicksForSlot(fromPick, slot, numTeams) {
 // `numTeams` is a parameter only so the Sit & Go tool can run 3- and 6-team drafts;
 // both recommenders are internally hardcoded to a 12-team league, which is itself
 // one of the findings there.
-function simulateDraft(players, modelBySlot, rng, numTeams = NUM_TEAMS) {
+// `opts.forceRound` / `opts.forcePos`: at that round the model seat takes the best
+// available player of that position instead of its top overall pick. This is the only
+// way to ask a counterfactual ("what if I'd taken a 5th RB there?") rather than
+// reading roster shape off drafts that happened to go that way — see tools/rb-depth.js.
+function simulateDraft(players, modelBySlot, rng, numTeams = NUM_TEAMS, opts = {}) {
   const available = players.filter(p => p._eff).sort((a, b) => a.adp - b.adp);
   const pool      = available.slice();
   const rosters   = Array.from({ length: numTeams }, () => []);
@@ -602,14 +606,28 @@ function simulateDraft(players, modelBySlot, rng, numTeams = NUM_TEAMS) {
       const myTeam   = rosters[slot];
       const nextPick = nextPickForSlot(pick + 1, slot, numTeams);
 
+      const round = Math.floor((pick - 1) / numTeams) + 1;
+      let force = (opts.forcePos && round === opts.forceRound) ? opts.forcePos : null;
+
+      // Positional floor. Forcing a single round does nothing useful — the model
+      // simply rebalances later and lands on the same shape (verified: forcing an RB
+      // at round 8 produced 3-5-9-3 against a 2-5-9-4 baseline, the same 5 backs).
+      // To ask "what does carrying N cost me" the TARGET has to be forced, not a pick.
+      if (opts.posFloor && round >= opts.posFloor.fromRound) {
+        const have = myTeam.filter(p => p.pos === opts.posFloor.pos).length;
+        if (have < opts.posFloor.count) force = opts.posFloor.pos;
+      }
+      const want  = force ? 60 : 1;
+
+      let recs;
       if (model === 'v1') {
-        const recs = V1.getTopRecommendations(pool, myTeam, pick, 'heavy', 1, nextPick);
-        chosen = recs.length ? recs[0].player : pool[0];
+        recs = V1.getTopRecommendations(pool, myTeam, pick, 'heavy', want, nextPick);
       } else {
         const myPicks = remainingPicksForSlot(pick + 1, slot, numTeams);
-        const recs = V2.getTopRecommendationsV2(pool, myTeam, pick, 1, nextPick, myPicks, players);
-        chosen = recs.length ? recs[0].player : pool[0];
+        recs = V2.getTopRecommendationsV2(pool, myTeam, pick, want, nextPick, myPicks, players);
       }
+      const pick0 = force ? (recs.find(r => r.player.pos === force) || recs[0]) : recs[0];
+      chosen = pick0 ? pick0.player : pool[0];
     } else {
       chosen = botPick(pool, rosters[slot], rng, ROUNDS - rosters[slot].length);
     }
