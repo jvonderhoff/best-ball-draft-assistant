@@ -139,6 +139,36 @@ const STARTABLE = { QB: 1.0, RB: 2.3, WR: 3.6, TE: 1.1 };
 // holds at one breakout rate is not a conclusion.
 const BREAKOUT_BASE = process.env.SIM_BREAKOUT ? parseFloat(process.env.SIM_BREAKOUT) : 0.14;
 const BUST_BASE     = process.env.SIM_BUST     ? parseFloat(process.env.SIM_BUST)     : 0.14;
+
+// ── In-season absence ────────────────────────────────────────────────────────
+// Until this existed the only things that zeroed a player were a bye week and a
+// missing playoff game, so nobody was ever hurt and roster depth had no value the
+// simulator could see. That is not a small omission: covering injuries is most of
+// why you carry a 5th running back, and the harness was structurally incapable of
+// pricing it — the same shape of blindness the 12-team-pod final had toward stacking.
+//
+// Modelled as ONE CONTIGUOUS WINDOW rather than independent weekly coin flips.
+// Scattered single missed weeks are easy to absorb; what actually hurts is losing a
+// back for five straight weeks, and depth is what covers that. Independent draws
+// would match the mean and completely miss the clustering that gives depth its value.
+//
+// Calibrated off `_eff.avail` — P(active in a non-bye week), which is
+// `1 - POS_INJURY_RATE[pos]` from app/projections.py (QB .12 / RB .18 / WR .14 /
+// TE .15) unless the projection itself forecasts a short season. Expected weeks
+// missed is (1 - avail) * 17, so P(injured at all) = that over the mean duration.
+const SIM_INJURIES = process.env.SIM_INJURIES !== '0';
+const INJURY_MEAN_WEEKS = process.env.SIM_INJURY_WEEKS ? parseFloat(process.env.SIM_INJURY_WEEKS) : 6.0;
+
+// A window starting in week 15 cannot cost six weeks, so naive `expectedOut / mean`
+// undershoots the target by ~17%. With a uniform start and exponential duration the
+// expected TRUNCATED length is (m/17) * sum_{k=1..17} (1 - e^{-k/m}), which is exact
+// and re-derives itself if the mean duration is retuned.
+const INJURY_EFFECTIVE_WEEKS = (() => {
+  const m = INJURY_MEAN_WEEKS;
+  let s = 0;
+  for (let k = 1; k <= 17; k++) s += 1 - Math.exp(-k / m);
+  return (m / 17) * s;
+})();
 const ROUNDS    = 20;
 
 // Weekly lineup: 1 QB, 2 RB, 3 WR, 1 TE, 1 FLEX (RB/WR/TE)
@@ -236,6 +266,8 @@ function buildScoringContext(players) {
     bye:   new Int32Array(n),
     game:  { 15: new Int32Array(n), 16: new Int32Array(n), 17: new Int32Array(n) },
     mean:  new Float64Array(n),
+    missFrom: new Int32Array(n),
+    missTo:   new Int32Array(n),
     idioReg: new Float64Array(n),
     idioPo:  new Float64Array(n),
     scores:  new Float64Array(n),
@@ -345,13 +377,14 @@ function drawWeekScores(ctx, week, rng) {
     }
   }
 
-  const { scores, mean, pos, team, bye, n } = ctx;
+  const { scores, mean, pos, team, bye, n, missFrom, missTo } = ctx;
   const gameW = playoff ? ctx.game[week] : null;
   const sig = playoff ? ctx.idioPo : ctx.idioReg;
 
   for (let i = 0; i < n; i++) {
     const m = mean[i];
     if (m <= 0 || bye[i] === week) { scores[i] = 0; continue; }
+    if (week >= missFrom[i] && week <= missTo[i]) { scores[i] = 0; continue; }
     const k = pos[i];
     let f = teamPow[k][team[i] < 0 ? nTeams : team[i]];
     if (playoff) {
@@ -460,6 +493,23 @@ function assignTruth(players, mode, rng, ctx) {
     }
 
     p._true = { mean, cv: p._eff.sd / Math.max(p._eff.mean, 0.01) };
+
+    // Injury window for this season, drawn once per world per player.
+    const si = p._si;
+    if (si === undefined) continue;
+    ctx.missFrom[si] = 0; ctx.missTo[si] = -1;
+    if (SIM_INJURIES) {
+      const avail = p._eff.avail ?? 1;
+      const expectedOut = (1 - avail) * 17;
+      const pHurt = Math.min(0.95, expectedOut / INJURY_EFFECTIVE_WEEKS);
+      if (rng() < pHurt) {
+        // Exponential duration: most injuries are short, a few end the season.
+        const dur   = Math.max(1, Math.round(-INJURY_MEAN_WEEKS * Math.log(1 - rng() * 0.999)));  // exponential
+        const start = 1 + Math.floor(rng() * 17);
+        ctx.missFrom[si] = start;
+        ctx.missTo[si]   = Math.min(17, start + dur - 1);
+      }
+    }
   }
   compileTruth(ctx);
 }

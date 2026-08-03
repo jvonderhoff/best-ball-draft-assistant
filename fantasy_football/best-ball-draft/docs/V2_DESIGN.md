@@ -130,6 +130,14 @@ underperform. But:
 - Soft `V2_OVER_TARGET_COST` → moved shape toward 3-6-8-3 exactly as intended while
   advance fell monotonically (0.0→+31.0%, 0.25→+24.4%, 0.50→+17.6%).
 
+**The construction table cannot settle roster-count questions — it is too noisy.**
+Buckets hold 21-58 distinct rosters, and season draws within a bucket are correlated
+because they share those rosters. Turning injuries on, with the *same* rosters and
+seeds, moved the two 5-RB builds in opposite directions: 2-5-9-4 fell 34.0% → 28.9%
+advance while 3-5-8-4 rose 12.0% → 28.4%. Both cannot be an injury effect. Anything
+read off this table at bucket level is a draw from that noise. Settling 4-vs-5 RB
+needs a controlled test — same seed, force one extra RB, identical season draws.
+
 **The construction table is correlation, not causation.** V2 ends with 4 TEs when a
 draft has *already* gone badly and the board is barren — the 4th TE is a symptom.
 Forcing the shape just makes a worse pick at that moment.
@@ -174,6 +182,16 @@ Replaced with one-step VONA, which is the correct pairwise-swap criterion.
   in the simulator's own weather model. Overridable via `SIM_TEAM_CV` / `SIM_GAME_CV`
   and stress-tested across ±40% — §5.3. The answer did not move, which retires this
   as a threat to the `V2_CORRELATION_WEIGHT` result.
+- **In-season absence is now modelled** (`SIM_INJURIES`, on by default). Until it
+  existed the only things that zeroed a player were a bye and a missing playoff game,
+  so nobody was ever hurt and depth had no value the simulator could see — which made
+  it structurally incapable of pricing the 4th-vs-5th RB question. Drawn as ONE
+  CONTIGUOUS WINDOW per season, not independent weekly flips: scattered single weeks
+  are absorbed easily, and losing a back for five straight is what depth actually
+  covers. Calibrated off `_eff.avail` (RB 3.13 weeks simulated vs 3.06 expected, 73%
+  injured, mean 4.3 weeks). **Every table dated before this was computed in a world
+  without injuries and is optimistic** — reach-final fell 1.73% → 1.59% for V2 and
+  1.63% → 1.38% for V1, capped EV $143.76 → $94.69 and $96.92 → $73.33.
 - **Bots have a lineup floor** (`BOT_MINIMUMS`, 1/2/3/1). Pure-ADP bots would finish
   drafts with zero quarterbacks — QB median ADP is ~116 — and score a structural zero
   at that slot every week. Barely matters at 12 teams; it completely invalidated the
