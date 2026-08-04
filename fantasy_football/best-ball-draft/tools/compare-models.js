@@ -613,7 +613,16 @@ function simulateDraft(players, modelBySlot, rng, numTeams = NUM_TEAMS, opts = {
       // never goes RB-light on its own — only 14 of 300 drafts took <=1 back in the
       // first six rounds — so the branch where "wait and stockpile" would pay cannot
       // be measured without manufacturing it.
-      const ban = (opts.posBan && round <= opts.posBan.throughRound) ? opts.posBan.pos : null;
+      let ban = (opts.posBan && round <= opts.posBan.throughRound) ? opts.posBan.pos : null;
+
+      // `posCap` is the mirror of posFloor: never exceed N at a position. Needed to
+      // ask "would fewer be better?", which a floor cannot express — and that is the
+      // open TE question (§4: three attempts to force fewer TEs all measured worse,
+      // but none of them was a clean paired test).
+      if (opts.posCap) {
+        const held = myTeam.filter(p => p.pos === opts.posCap.pos).length;
+        if (held >= opts.posCap.count) ban = opts.posCap.pos;
+      }
 
       // Positional floor. Forcing a single round does nothing useful — the model
       // simply rebalances later and lands on the same shape (verified: forcing an RB

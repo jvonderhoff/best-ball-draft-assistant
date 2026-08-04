@@ -47,17 +47,18 @@ function main() {
   // round-4 quarterback essentially never happens and a round-6 window would
   // classify every draft as QB-light.
   const POS_DEFAULTS = {
-    RB: { early: 6,  from: 7,  ban: 6,  floors: [5, 6] },
-    WR: { early: 6,  from: 7,  ban: 6,  floors: [9, 10] },
-    QB: { early: 9,  from: 10, ban: 10, floors: [2, 3, 4] },
-    TE: { early: 10, from: 11, ban: 10, floors: [3, 4, 5] },
+    RB: { early: 6,  from: 7,  ban: 6,  floors: [5, 6],   caps: [] },
+    WR: { early: 6,  from: 7,  ban: 6,  floors: [10, 11], caps: [8, 7] },
+    QB: { early: 9,  from: 10, ban: 10, floors: [2, 3, 4], caps: [] },
+    TE: { early: 10, from: 11, ban: 10, floors: [5],      caps: [3, 2] },
   };
   const pos = (arg('pos', 'RB') || 'RB').toUpperCase();
   const dflt = POS_DEFAULTS[pos] || POS_DEFAULTS.RB;
   const earlyWindow = parseInt(arg('early-window', String(dflt.early)), 10);
   const fromRound   = parseInt(arg('from-round', String(dflt.from)), 10);
   const banThrough  = parseInt(arg('ban-through', String(dflt.ban)), 10);
-  const floors      = (arg('floors', dflt.floors.join(',')) || '').split(',').map(Number);
+  const floors      = (arg('floors', dflt.floors.join(',')) || '').split(',').filter(Boolean).map(Number);
+  const caps        = (arg('caps', dflt.caps ? dflt.caps.join(',') : '') || '').split(',').filter(Boolean).map(Number);
 
   const players = H.loadData();
   const ctx     = H.buildScoringContext(players);
@@ -88,6 +89,7 @@ function main() {
     { name: 'baseline', opts: {} },
     ...floors.map(c => ({ name: `${pos} >= ${c}`,
                           opts: { posFloor: { pos, count: c, fromRound } } })),
+    ...caps.map(c => ({ name: `${pos} <= ${c}`, opts: { posCap: { pos, count: c } } })),
     { name: 'capital-aware', opts: { posFloor: { pos, count: capitalAware, fromRound } } },
   ];
 
