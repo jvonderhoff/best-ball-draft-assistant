@@ -170,6 +170,28 @@ const V2_DIVERSITY_FLOOR = 0.40;
 // at 5, 80% at 20.
 const V2_DIVERSITY_CONFIDENCE_K = 5;
 
+// ── Supply exhaustion ────────────────────────────────────────────────────────
+// One-step VONA prices how much WORSE the next body at a position gets if you wait.
+// It cannot price running OUT of them. Those are different risks, and on a real board
+// only the second one separates positions: from pick 79 to 138 the best available
+// falls 10.2 -> 7.5 ppg at RB and 11.4 -> 8.5 at WR, which is nearly identical decay.
+// What differs is the count — 10 usable RBs become 1 by pick 114, while 19 usable WRs
+// are still 8.
+//
+// §4 records a "need-scaled replacement horizon" that failed at this. It moved the
+// VONA horizon, which is a QUALITY lever, and scaled it by bodies-still-wanted, so WR
+// got the largest adjustment purely for having the largest target — backwards. This
+// keys on the SUPPLY-TO-NEED RATIO instead: WR has a big target and a big pool, so it
+// reads as comfortable, while RB's small pool against a similar need does not.
+//
+// Off by default. Plumbed to be swept against the harness before it earns a value.
+const V2_EXHAUSTION_WEIGHT = _v2env.V2_EXHAUST ? parseFloat(_v2env.V2_EXHAUST) : 0.0;
+
+// Bodies actually worth having, from the §5.4 paired tests — deliberately NOT
+// V2_ROSTER_TARGETS, whose RB:6 measured -4.97 ±1.66pp against a 5-back baseline.
+// Using the old targets here would encode a known-wrong goal into a new feature.
+const V2_EXHAUSTION_TARGETS = { QB: 3, RB: 5, WR: 8, TE: 3 };
+
 // Cost per body once a position reaches its modal-build target, escalating beyond it.
 // Swept against the harness rather than assumed; see v2StructuralPenalty.
 const V2_OVER_TARGET_COST = _v2env.V2_OVERCOST ? parseFloat(_v2env.V2_OVERCOST) : 0.0;
@@ -942,6 +964,74 @@ function v2DiversityCost(player, ctx) {
   };
 }
 
+// Urgency from a position's pool running dry before you can fill it. Returns points
+// per week, to be added. Cached per position on the context — it depends on the board
+// and roster, not on the individual candidate.
+function v2ExhaustionUrgency(pos, available, myTeam, ctx) {
+  if (!V2_EXHAUSTION_WEIGHT || !ctx) return { premium: 0, note: null };
+  if (ctx.exhaustion && ctx.exhaustion[pos] !== undefined) return ctx.exhaustion[pos];
+
+  const out = (v) => { if (ctx.exhaustion) ctx.exhaustion[pos] = v; return v; };
+
+  const picks = ctx.myPicks;
+  if (!picks || !picks.length) return out({ premium: 0, note: null });
+
+  const owned = myTeam.filter(p => p.pos === pos && p._eff).length;
+  const need  = Math.max(0, (V2_EXHAUSTION_TARGETS[pos] || 1) - owned);
+  if (need <= 0) return out({ premium: 0, note: null });
+
+  // "Usable" is the league-wide startable bar — the (slots x 12)-th best player at the
+  // position in the FULL universe, not in what is left on the board.
+  //
+  // This differs deliberately from the VOR baseline, which indexes into the available
+  // pool so it self-adjusts as the draft runs down. That is right for pricing value
+  // and fatal here: a bar that falls as fast as the supply means a position can never
+  // run out by construction. Measured on a real mid-draft board it made RB's premium
+  // exactly 0.000 while RB was visibly the scarcest thing left.
+  const depth = Math.max(1, Math.round((V2_STARTER_SLOTS[pos] || 1) * V2_NUM_TEAMS));
+  const univ = (ctx.universe && ctx.universe.length) ? ctx.universe : available;
+  const univAtPos = univ
+    .filter(p => p.pos === pos && p._eff)
+    .sort((a, b) => b._eff.mean - a._eff.mean);
+  if (!univAtPos.length) return out({ premium: 0, note: null });
+  const replMean = univAtPos[Math.min(depth, univAtPos.length - 1)]._eff.mean;
+
+  const atPos = available
+    .filter(p => p.pos === pos && p._eff)
+    .sort((a, b) => b._eff.mean - a._eff.mean);
+  if (!atPos.length) return out({ premium: 0, note: null });
+
+  // How many usable bodies can I expect to ACQUIRE across my remaining picks?
+  //
+  // Not "how many survive to my Nth pick" — that was the first version and it walked
+  // straight back into §4's trap. A larger `need` pushes the target pick further out,
+  // almost nothing survives that far, so every high-need position saturated at the
+  // maximum premium and the term stopped discriminating: QB 0.915, RB 0.992, WR 0.960.
+  //
+  // You acquire at most one body per pick, so the right sum is over picks: at each of
+  // the next `need` picks, the chance that at least one usable body is still there.
+  const run = (ctx.run && ctx.run[pos]) || 1;
+  let acquirable = 0;
+  for (let i = 0; i < need && i < picks.length; i++) {
+    let cnt = 0;
+    for (const p of atPos) {
+      if (p._eff.mean < replMean) break;
+      cnt += v2SurvivalProb(p, picks[i], run);
+      if (cnt >= 1) break;
+    }
+    acquirable += Math.min(1, cnt);
+  }
+
+  const shortfall = Math.max(0, need - acquirable) / need;   // 0 comfortable, 1 nothing left
+  if (shortfall <= 0.001) return out({ premium: 0, note: null });
+
+  return out({
+    premium: V2_EXHAUSTION_WEIGHT * shortfall,
+    note: `can expect ~${acquirable.toFixed(1)} more startable ${pos} across your next `
+        + `${Math.min(need, picks.length)} picks, need ${need}`,
+  });
+}
+
 function v2StructuralPenalty(player, myTeam) {
   const pos   = player.pos;
   const have  = myTeam.filter(p => p.pos === pos).length;
@@ -1012,6 +1102,7 @@ function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = n
   const ctx = {
     nextMyPick, myPickNumber, myPicks,
     replAccum: {}, replSpike: {}, barCache: {}, typicalSd: {}, horizon: {}, replDepth: {},
+    exhaustion: {}, universe: universe || null,
     maxAdp: 250, teamSchedules: {},
     run: v2PositionalRun(universe, available, myPickNumber),
     // Portfolio state: absent in the harness and on a first draft, which is why every
@@ -1173,6 +1264,9 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   const div = v2DiversityCost(player, ctx);
   if (div.penalty) score += add(-div.penalty, 'Over-exposed', div.note);
 
+  const exh = v2ExhaustionUrgency(pos, available, myTeam, ctx);
+  if (exh.premium) score += add(exh.premium, 'Supply running out', exh.note);
+
   // ── Market value ───────────────────────────────────────────────────────────
   // Unlike V1 this uses realAdp, so it measures "the market let him fall to me"
   // rather than re-counting your own board (which already set the projection).
@@ -1298,7 +1392,7 @@ if (typeof module !== 'undefined' && module.exports) {
     v2AttachEffective, v2MarginalGain, v2SurvivalProb, v2PositionGain, v2OrderStatMoments,
     v2ExpectedBestSurvivor, v2CorrelationValue, v2FreeAgentSignProb, v2PlayoffAvailability,
     v2PositionalRun,
-    v2BackfieldSpikeDiscount, v2DiversityCost,
+    v2BackfieldSpikeDiscount, v2DiversityCost, v2ExhaustionUrgency,
     V2_DRAFT_ROUNDS, V2_ROSTER_TARGETS, V2_STARTER_SLOTS,
   };
 }
