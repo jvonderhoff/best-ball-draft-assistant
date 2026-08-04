@@ -130,6 +130,12 @@ underperform. But:
 - Soft `V2_OVER_TARGET_COST` → moved shape toward 3-6-8-3 exactly as intended while
   advance fell monotonically (0.0→+31.0%, 0.25→+24.4%, 0.50→+17.6%).
 
+**Correction (paired test): capping TE at 3 is roughly free, −0.93 ±0.62pp.** The
+three attempts above all changed the *scoring function*, which changes the whole
+draft; denying only the 4th tight end on the same seed and weather costs nothing
+measurable. TE:4 is incidental, not load-bearing. TE≥5 (−4.00 ±1.38) and TE≤2
+(−3.96 ±0.77) are both genuinely bad, so 3 or 4 is a free choice.
+
 **The construction table cannot settle roster-count questions — it is too noisy.**
 Buckets hold 21-58 distinct rosters, and season draws within a bucket are correlated
 because they share those rosters. Turning injuries on, with the *same* rosters and
@@ -428,6 +434,33 @@ draft like neither model. And the `fieldStrength` percentile readout is measured
 *within* the candidate pool, so it cannot detect the pool getting stronger (51.6 →
 53.0 across K); the real evidence the field toughened is that both models' finishes
 and EV fell.
+
+### 5.4 Roster counts, measured one position at a time
+
+`tools/rb-depth.js --pos {QB|RB|WR|TE}`, paired on seed and weather, 200-300 drafts.
+Δ advance vs V2's own baseline:
+
+| Position | baseline | one more | two more | one fewer | two fewer |
+|---|---|---|---|---|---|
+| QB | 2.41 | **+1.16 ±1.31** | −2.69 ±1.23 | +0.79 ±1.06 | — |
+| RB | 4.64 | −0.31 ±1.89 | −4.97 ±1.66 | — | — |
+| WR | 9.03 | −5.22 ±1.84 | −10.35 ±1.64 | −0.56 ±0.40 | −0.78 ±0.66 |
+| TE | 3.90 | −4.00 ±1.38 | — | −0.93 ±0.62 | −3.96 ±0.77 |
+
+**Caps are cheap, floors are expensive, and that is mechanical.** With 20 fixed
+spots a cap says "not more here" and the model reallocates optimally; a floor forces
+a pick it did not want. Every "≤" result lands near free and every "≥" result costs.
+Read that as the model already spending well rather than as a fact about positions —
+the interesting question is never "how many WRs" but where the freed pick goes.
+
+**A 3-5-8-4 build is available at roughly zero measured cost** (QB +1.16, RB −0.31,
+WR −0.56, TE −0.93), which is worth knowing because it is the modal human build and
+V2 does not naturally produce it. Caveat: each constraint was measured in isolation,
+and individually-free costs need not stay free when stacked. The rig cannot yet
+express simultaneous multi-position constraints.
+
+Ignore the `capital-aware` rows at WR and TE — the encoding degenerated into a
+duplicate of the floor arm (WR −5.28 against WR≥10's −5.22) and measured nothing.
 
 ---
 
