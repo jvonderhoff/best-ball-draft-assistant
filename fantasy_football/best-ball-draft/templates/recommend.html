@@ -1401,12 +1401,27 @@ function renderPlayerList() {
     const scoreStr = (!isTaken && score != null) ? score.toFixed(1) : '';
     const wk17col  = p.week17 && myTeams.has(p.week17) ? 'var(--green)' : 'var(--muted)';
     const byeStr   = p.bye ? ` · bye ${p.bye}` : '';
+
+    // Portfolio exposure. Colour-coded against the same 40% floor V2's diversity cost
+    // uses, so what you see and what the recommender charges for agree.
+    const ex   = EXPOSURE && EXPOSURE[p.id];
+    const rate = ex ? (ex.exposure_rate ?? 0) : 0;
+    const expStr = (!TOTAL_DRAFTS || !ex) ? '—' : Math.round(rate * 100) + '%';
+    const expCol = !ex ? 'var(--muted2)'
+                 : rate >= 0.40 ? 'var(--red, #ef5350)'
+                 : rate >= 0.25 ? 'var(--yellow, #ffb74d)'
+                 : 'var(--muted)';
+    const expTitle = ex
+      ? `${ex.times_drafted} of your ${TOTAL_DRAFTS} drafts`
+        + (rate >= 0.40 ? ' — V2 is charging a diversity cost' : '')
+      : (TOTAL_DRAFTS ? `none of your ${TOTAL_DRAFTS} drafts` : 'no draft history yet');
     return `<tr class="player-row ${isTaken?'taken':''} ${isStack?'stack':''}"
         data-id="${p.id}" data-pos="${p.pos}">
       <td class="pt-score">${scoreStr}</td>
       <td class="pt-num">${Math.round(p.adp)||'—'}</td>
       <td class="pt-num" style="color:${cr!=null?'var(--accent)':'var(--muted2)'}">${cr!=null?'#'+cr:'—'}</td>
       <td><span class="p-pos ${p.pos}">${p.pos}</span><span class="pt-name">${p.name}${isQBStack?' ⚡':''}</span><span class="pt-sub"> · ${p.team}${byeStr}</span>${badge}</td>
+      <td class="pt-num" style="color:${expCol};font-size:0.75em" title="${expTitle}">${expStr}</td>
       <td style="text-align:center;color:${wk17col};font-size:0.75em">${p.week17||'—'}</td>
     </tr>`;
   }).join('');
@@ -1417,6 +1432,7 @@ function renderPlayerList() {
       <th class="th-c">ADP</th>
       <th class="th-c">Rank</th>
       <th>Player</th>
+      <th class="th-c" title="Share of your drafts containing this player">Exp</th>
       <th class="th-c">Wk17</th>
     </tr></thead>
     <tbody>${rows}</tbody>

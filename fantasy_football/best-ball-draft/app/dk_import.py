@@ -124,19 +124,40 @@ def import_many(items, min_picks=DEFAULT_MIN_PICKS):
     return results
 
 
-def import_completed_contests(min_picks=DEFAULT_MIN_PICKS, include_incomplete=False):
-    """Discover the user's contests via My Contests, then board-import the completed ones.
+def import_completed_contests(min_picks=DEFAULT_MIN_PICKS, include_incomplete=False,
+                              min_picks_incomplete=1):
+    """Discover the user's contests via My Contests, then board-import them.
 
     This is the primary History sync: discovery yields contest_id + entry_id for
     every entered contest (live and finished), and the board path preserves real
     pick numbers and draft position — unlike the lineup-roster path. Completed =
-    a populated LineupId; in-progress drafts are skipped unless include_incomplete.
+    a populated LineupId.
+
+    In-progress drafts need their own threshold. DEFAULT_MIN_PICKS is a completeness
+    check — 18 of your 20 picks — which by definition rejects a draft you are still
+    in, so a single min_picks would silently import none of them. They are imported
+    under `min_picks_incomplete` instead, which is what makes exposure reflect drafts
+    you have not finished yet.
+
+    Re-importing is safe and is how these self-heal: save_draft updates in place on
+    dk_draft_id and replaces the roster, so a draft imported at pick 7 is completed by
+    the next sync rather than left stale.
     """
     from app.data.api_fetcher import fetch_my_dk_contests
     contests = fetch_my_dk_contests()
-    targets = [c for c in contests if include_incomplete or c.get('lineup_id')]
-    items = [{'id': c['contest_id'], 'entry_id': c['entry_id'], 'name': c['name'],
-              'entry_fee': c.get('entry_fee')} for c in targets]
-    return import_many(items, min_picks=min_picks)
+
+    def _items(cs):
+        return [{'id': c['contest_id'], 'entry_id': c['entry_id'], 'name': c['name'],
+                 'entry_fee': c.get('entry_fee')} for c in cs]
+
+    done = [c for c in contests if c.get('lineup_id')]
+    results = import_many(_items(done), min_picks=min_picks)
+
+    if include_incomplete:
+        live = [c for c in contests if not c.get('lineup_id')]
+        if live:
+            results += import_many(_items(live), min_picks=min_picks_incomplete)
+
+    return results
 
 

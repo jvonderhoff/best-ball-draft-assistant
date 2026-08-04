@@ -163,6 +163,7 @@ def sync_drafts_from_dk():
       { "ids": ["...", "..."] }     several, or
       {}                            all known saved draft IDs
       { "min_picks": 18 }           completeness threshold
+      { "include_incomplete": true} also pull drafts still in progress (default on)
     Works for past drafts AND a freshly-finished one — same path either way.
     Requires DK cookies + a cached user GUID on this instance.
     """
@@ -180,7 +181,14 @@ def sync_drafts_from_dk():
                   'name': (_saved_draft_ids.get(i) or {}).get('name')} for i in ids]
         results = import_many(items, min_picks=min_picks)
     else:
-        results = import_completed_contests(min_picks=min_picks)
+        # In-progress drafts count too: the drafts you are mid-way through are exactly
+        # the ones whose exposure should be steering the pick you are about to make.
+        # They re-import cleanly (save_draft updates in place), so a draft pulled at
+        # pick 7 is completed by the next sync.
+        results = import_completed_contests(
+            min_picks=min_picks,
+            include_incomplete=bool(data.get('include_incomplete', True)),
+        )
 
     imported = sum(1 for r in results if r['status'] == 'imported')
     updated = sum(1 for r in results if r['status'] == 'updated')
