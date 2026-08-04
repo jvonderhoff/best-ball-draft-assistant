@@ -136,6 +136,28 @@ draft; denying only the 4th tight end on the same seed and weather costs nothing
 measurable. TE:4 is incidental, not load-bearing. TE≥5 (−4.00 ±1.38) and TE≤2
 (−3.96 ±0.77) are both genuinely bad, so 3 or 4 is a free choice.
 
+**Supply-exhaustion urgency (`V2_EXHAUSTION_WEIGHT`, 3rd attempt at this, worse).**
+Priced a position's pool running dry rather than merely getting worse — supply against
+need, deliberately avoiding the need-scaling that sank the horizon version. It worked
+mechanically: at 2.0 the roster shape lands on 3.00-5.03-8.35-3.61, almost exactly the
+"free" build of §5.4. It also lost money at every setting.
+
+| `V2_EXHAUST` | reach final | top-15 | capped EV | 18-team EV |
+|---|---|---|---|---|
+| **0.0** | **+15.1%** | **+28.9%** | **$94.69** | **2356** |
+| 0.5 | −2.4% | +4.4% | $68.02 | 2066 |
+| 1.0 | −6.6% | −20.0% | $51.38 | 1892 |
+| 2.0 | +3.4% | −17.8% | $65.03 | 2124 |
+
+**This corrects §5.4.** Those four counts were each measured in isolation and each read
+free; reaching all of them at once costs ~$30/entry. Either the composite shape is
+genuinely worse, or a premium applied at *every* pick distorts ordering in a way that
+rarely-binding floors do not — this run cannot separate those. Left plumbed at 0.0
+behind `V2_EXHAUST`.
+
+Three mechanisms have now failed to force roster shape. §4's original reading holds:
+the shapes are symptoms, and making the model chase them costs more than they are worth.
+
 **The construction table cannot settle roster-count questions — it is too noisy.**
 Buckets hold 21-58 distinct rosters, and season draws within a bucket are correlated
 because they share those rosters. Turning injuries on, with the *same* rosters and
@@ -453,11 +475,11 @@ a pick it did not want. Every "≤" result lands near free and every "≥" resul
 Read that as the model already spending well rather than as a fact about positions —
 the interesting question is never "how many WRs" but where the freed pick goes.
 
-**A 3-5-8-4 build is available at roughly zero measured cost** (QB +1.16, RB −0.31,
-WR −0.56, TE −0.93), which is worth knowing because it is the modal human build and
-V2 does not naturally produce it. Caveat: each constraint was measured in isolation,
-and individually-free costs need not stay free when stacked. The rig cannot yet
-express simultaneous multi-position constraints.
+**A 3-5-8-4 build looked available at roughly zero measured cost** (QB +1.16, RB −0.31,
+WR −0.56, TE −0.93), — but see §4. That caveat about measuring
+in isolation turned out to be load-bearing: a mechanism that reaches all four counts
+at once costs ~$30/entry. Read these as four separate one-at-a-time results, not as a
+build recommendation.
 
 Ignore the `capital-aware` rows at WR and TE — the encoding degenerated into a
 duplicate of the floor arm (WR −5.28 against WR≥10's −5.22) and measured nothing.
