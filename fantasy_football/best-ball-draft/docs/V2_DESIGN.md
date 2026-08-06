@@ -236,6 +236,38 @@ Swept against the *upgraded* simulator (which does model role change): 0.0→+25
 0.5→+18.2%, 0.8→+17.9%, 1.3→+20.5%. Disagreement does raise breakout odds, but not
 enough to pay for the projection quality given up. Left off, behind `V2_BREAKOUT`.
 
+**Modelling individual opponents (dropped before it was built).** The idea: derive
+each seat's roster from `pick_number` (seat is pure arithmetic in a snake) and weight
+survival by what the specific drafters picking before your next turn actually need,
+rather than by one room-wide run factor. Prompted by a real draft where seat 1 took
+two QBs across picks 72-73 and cost the user Jayden Daniels at pick 71.
+
+It splits into two halves and both fail:
+
+*The deterministic half is already implemented.* `v2SurvivalProb` is a function of
+`(targetPick − adp)`, and targetPick IS your next pick — so "two picks happen before I
+pick again" is fully priced. It gave Daniels a 43% survival to pick 74 (20% with a
+QB run on), which is correct. Knowing those two picks belong to one seat changes
+neither term in the formula. Seat structure adds nothing.
+
+*The behavioural half failed its first test case.* The tempting theory is that a
+drafter at the wall consolidates on scarce positions, because his next turn is 23
+picks away. On this board he had 11 QBs above 15 ppg still waiting at pick 96, best
+17.5 — roughly 0.2 ppg given up by waiting. Nothing forced the double-QB, so the
+structure did not predict it and the user's read (that he would take one) was sound.
+
+It is also unmeasurable here: the harness's bots draft to noisy ADP with only a
+lineup floor, so "seat 1 needs a QB" is never true in an exploitable way. Validating
+it would need bots that pursue builds, which is a larger change to the simulator than
+to the recommender and would make them less like the opponents everything else was
+measured against.
+
+**The rule that survives needs no opponent read at all:** when two candidates are
+inside the noise band (~0.2 ppw), take the one whose position runs out first. That is
+decidable from the board alone. Note `v2ExhaustionUrgency` already encodes exactly
+that rule and lost money at every swept setting — so the right heuristic for a human
+by eye is not yet one that measures better than V2's default.
+
 **Need-scaled replacement horizon.** Scaling the VONA horizon by bodies still needed
 silently handed WR (largest target) the lowest replacement level and highest VONA at
 every pick. Slot attribution showed +71 pts at WR against −82 at RB and −28 at QB.
