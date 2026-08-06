@@ -184,8 +184,20 @@ const V2_DIVERSITY_CONFIDENCE_K = 5;
 // keys on the SUPPLY-TO-NEED RATIO instead: WR has a big target and a big pool, so it
 // reads as comfortable, while RB's small pool against a similar need does not.
 //
-// Off by default. Plumbed to be swept against the harness before it earns a value.
-const V2_EXHAUSTION_WEIGHT = _v2env.V2_EXHAUST ? parseFloat(_v2env.V2_EXHAUST) : 0.0;
+// Per position, because the evidence is not uniform. Applied to all four at once this
+// lost money at every setting (§4). But QB >= 3 is the single measured IMPROVEMENT in
+// the §5.4 roster-count table (+1.16 ±1.31, replicated at +1.17), and V2 leaves 60% of
+// drafts with fewer than three quarterbacks — median QB1 round 8, QB2 round 12, QB3
+// round 16. So the knob is per-position and swept separately rather than globally.
+//
+// V2_EXHAUST sets all four; V2_EXHAUST_QB and friends override one.
+const _exhaustBase = _v2env.V2_EXHAUST ? parseFloat(_v2env.V2_EXHAUST) : 0.0;
+const V2_EXHAUSTION_WEIGHT = {
+  QB: _v2env.V2_EXHAUST_QB ? parseFloat(_v2env.V2_EXHAUST_QB) : _exhaustBase,
+  RB: _v2env.V2_EXHAUST_RB ? parseFloat(_v2env.V2_EXHAUST_RB) : _exhaustBase,
+  WR: _v2env.V2_EXHAUST_WR ? parseFloat(_v2env.V2_EXHAUST_WR) : _exhaustBase,
+  TE: _v2env.V2_EXHAUST_TE ? parseFloat(_v2env.V2_EXHAUST_TE) : _exhaustBase,
+};
 
 // Bodies actually worth having, from the §5.4 paired tests — deliberately NOT
 // V2_ROSTER_TARGETS, whose RB:6 measured -4.97 ±1.66pp against a 5-back baseline.
@@ -968,7 +980,8 @@ function v2DiversityCost(player, ctx) {
 // per week, to be added. Cached per position on the context — it depends on the board
 // and roster, not on the individual candidate.
 function v2ExhaustionUrgency(pos, available, myTeam, ctx) {
-  if (!V2_EXHAUSTION_WEIGHT || !ctx) return { premium: 0, note: null };
+  const weight = (V2_EXHAUSTION_WEIGHT && V2_EXHAUSTION_WEIGHT[pos]) || 0;
+  if (!weight || !ctx) return { premium: 0, note: null };
   if (ctx.exhaustion && ctx.exhaustion[pos] !== undefined) return ctx.exhaustion[pos];
 
   const out = (v) => { if (ctx.exhaustion) ctx.exhaustion[pos] = v; return v; };
@@ -1026,7 +1039,7 @@ function v2ExhaustionUrgency(pos, available, myTeam, ctx) {
   if (shortfall <= 0.001) return out({ premium: 0, note: null });
 
   return out({
-    premium: V2_EXHAUSTION_WEIGHT * shortfall,
+    premium: weight * shortfall,
     note: `can expect ~${acquirable.toFixed(1)} more startable ${pos} across your next `
         + `${Math.min(need, picks.length)} picks, need ${need}`,
   });
