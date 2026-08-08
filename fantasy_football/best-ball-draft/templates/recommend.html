@@ -172,6 +172,22 @@
     .taken-by.opp  { background: var(--opp-bg); color: var(--muted); }
 
     /* ── Roster ── */
+    /* Supply grid: expected startable bodies left at each of your remaining picks. */
+    .supply-panel { background: var(--card); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+    .supply-head { display: flex; align-items: center; gap: 6px; padding: 8px 10px; cursor: pointer; user-select: none;
+                   font-size: 0.7em; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .supply-head:hover { color: var(--accent); }
+    .supply-chev { display: inline-block; transition: transform 0.15s; }
+    .supply-panel.open .supply-chev { transform: rotate(90deg); }
+    .supply-sub { margin-left: auto; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--muted2); }
+    .supply-body { display: none; padding: 0 10px 10px; }
+    .supply-panel.open .supply-body { display: block; }
+    .supply-table { width: 100%; border-collapse: collapse; font-size: 0.78em; }
+    .supply-table th { font-weight: 600; color: var(--muted); text-align: right; padding: 3px 6px; font-size: 0.9em; }
+    .supply-table th.sp-pos { text-align: left; }
+    .supply-table td { text-align: right; padding: 3px 6px; font-variant-numeric: tabular-nums; }
+    .supply-table td.sp-pos { text-align: left; font-weight: 700; }
+    .supply-note { margin-top: 6px; font-size: 0.68em; color: var(--muted2); line-height: 1.4; }
     .needs-row { display: flex; gap: 8px; margin-bottom: 12px; }
     .need-box { flex: 1; background: var(--card); border-radius: 6px; padding: 8px; text-align: center; }
     .need-box .need-pos { font-size: 0.65em; font-weight: 700; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; }
@@ -491,6 +507,13 @@
 
 <!-- ── Picks Tab ── -->
 <div id="tab-picks" class="tab-panel">
+  <div class="supply-panel" id="supplyPanel">
+    <div class="supply-head" id="supplyToggle">
+      <span class="supply-chev">▸</span><span>Supply left</span>
+      <span class="supply-sub" id="supplySub"></span>
+    </div>
+    <div class="supply-body" id="supplyBody"></div>
+  </div>
   <div class="search-wrap">
     <span class="search-icon">🔍</span>
     <input type="text" id="searchInput" placeholder="Search player name or team…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
@@ -1332,6 +1355,79 @@ async function loadExposure() {
   } catch { /* no history, no diversification */ }
 }
 
+// ── Supply grid ────────────────────────────────────────────────────────────────
+// Expected STARTABLE bodies still on the board when each of your remaining picks
+// arrives. Every input is already computed elsewhere in the app — this only surfaces
+// arithmetic V2 does internally and then discards.
+//
+// Deliberately an expected count (summed survival probabilities) rather than "players
+// whose ADP is past that pick". A player at ADP 70 is on the board now and very
+// unlikely to reach pick 84; counting him whole overstates supply badly. On a real
+// mid-draft board the two methods differed by 5x at RB.
+const SUPPLY_KEY = 'bba_supply_open';
+const SUPPLY_COLS = 4;
+
+function renderSupplyGrid() {
+  const body = document.getElementById('supplyBody');
+  const sub  = document.getElementById('supplySub');
+  if (!body) return;
+
+  if (!v2Ready || typeof v2SurvivalProb !== 'function') {
+    body.innerHTML = '<div class="supply-note">Needs V2 projections — unavailable.</div>';
+    if (sub) sub.textContent = '';
+    return;
+  }
+
+  const myPos = settings.myPosition, nTeams = settings.numTeams;
+  const from  = isMyTurn(state.overallPick, nTeams, myPos)
+    ? state.overallPick + 1 : state.overallPick;
+  const picks = v2RemainingPicks(from, nTeams, myPos).slice(0, SUPPLY_COLS * 2)
+    .filter((_, i) => i % 2 === 0).slice(0, SUPPLY_COLS);
+  if (!picks.length) { body.innerHTML = '<div class="supply-note">No picks left.</div>'; return; }
+
+  const available = PLAYERS.filter(p => p._eff && !state.takenIds.has(p.id));
+  const run = v2PositionalRun(PLAYERS, available, state.overallPick) || {};
+
+  // Startable bar: the (slots x teams)-th best at the position across the WHOLE pool,
+  // not what is left. A bar indexed into the remaining board falls as fast as supply
+  // does, so nothing could ever run out.
+  const rows = ['QB', 'RB', 'WR', 'TE'].map(pos => {
+    const slots = (typeof V2_STARTER_SLOTS !== 'undefined' ? V2_STARTER_SLOTS[pos] : 1) || 1;
+    const univ = PLAYERS.filter(p => p._eff && p.pos === pos).sort((a, b) => b._eff.mean - a._eff.mean);
+    if (!univ.length) return null;
+    const bar = univ[Math.min(Math.round(slots * nTeams), univ.length - 1)]._eff.mean;
+    const usable = available.filter(p => p.pos === pos && p._eff.mean >= bar);
+    const cells = picks.map(pk => {
+      let n = 0;
+      for (const p of usable) n += v2SurvivalProb(p, pk, run[pos] || 1);
+      return n;
+    });
+    return { pos, bar, cells };
+  }).filter(Boolean);
+
+  const colour = v => v < 1 ? 'var(--red, #ef5350)' : v < 2.5 ? 'var(--yellow, #ffb74d)' : 'var(--text)';
+  body.innerHTML = `<table class="supply-table">
+    <thead><tr><th class="sp-pos">pos</th>${picks.map(p => `<th>pk ${p}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r => `<tr>
+      <td class="sp-pos">${r.pos}<span style="font-weight:400;color:var(--muted2)"> ≥${r.bar.toFixed(1)}</span></td>
+      ${r.cells.map(v => `<td style="color:${colour(v)}">${v.toFixed(1)}</td>`).join('')}
+    </tr>`).join('')}</tbody></table>
+    <div class="supply-note">Expected <b>startable</b> players still available when each pick arrives.
+      Uses the live board and this room's pace${
+        Object.keys(run).some(k => Math.abs(run[k] - 1) > 0.02)
+          ? ' (' + ['QB','RB','WR','TE'].filter(k => Math.abs((run[k]||1) - 1) > 0.02)
+              .map(k => k + ' ×' + (run[k]).toFixed(2)).join(', ') + ')' : ''
+      }. Red under 1 — that position is gone by then.</div>`;
+
+  if (sub) {
+    // Threshold is "fewer than two startable left at your NEXT pick" — i.e. this may be
+    // the last one you get. 1.5 was too strict: it stayed silent at RB 1.9, which is
+    // exactly the situation the header exists to surface.
+    const tight = rows.filter(r => r.cells[0] < 2).map(r => r.pos);
+    sub.textContent = tight.length ? tight.join(', ') + ' running out' : '';
+  }
+}
+
 // ── Player list ────────────────────────────────────────────────────────────────
 let searchQuery = '', posFilter = 'ALL', stackFilterOn = false, selectedPlayer = null;
 
@@ -1362,6 +1458,7 @@ function getVisiblePlayers() {
 }
 
 function renderPlayerList() {
+  renderSupplyGrid();
   const myTurn = isMyTurn(state.overallPick, settings.numTeams, settings.myPosition);
   const pickForScore = myTurn
     ? state.overallPick
@@ -1464,6 +1561,19 @@ function setSortMode(mode) {
   document.getElementById('sortScoreBtn').classList.toggle('active', mode === 'score');
   renderPlayerList();
 }
+// Supply grid: collapsed by default, remembers its state.
+(function initSupplyPanel() {
+  const panel  = document.getElementById('supplyPanel');
+  const toggle = document.getElementById('supplyToggle');
+  if (!panel || !toggle) return;
+  if (localStorage.getItem(SUPPLY_KEY) === '1') panel.classList.add('open');
+  toggle.addEventListener('click', () => {
+    panel.classList.toggle('open');
+    localStorage.setItem(SUPPLY_KEY, panel.classList.contains('open') ? '1' : '0');
+    if (panel.classList.contains('open')) renderSupplyGrid();
+  });
+})();
+
 document.getElementById('sortAdpBtn').addEventListener('click', () => setSortMode('adp'));
 document.getElementById('sortRankBtn').addEventListener('click', () => setSortMode('rank'));
 document.getElementById('sortScoreBtn').addEventListener('click', () => setSortMode('score'));
