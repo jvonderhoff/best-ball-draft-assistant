@@ -46,7 +46,7 @@ Baseline is **65% VOR** (vs the last startable player, `slots × 12`) **+ 35% VO
 
 | Constant | Value | Basis |
 |---|---|---|
-| `V2_MARKET_PULL` | **5.0** | Swept. 0.25→−143 pts, 2.5→−41, 4.0→+22, 5.0→+30, 8.0→+36. Set mid-range, not at the sampled max, to avoid fitting the simulator. **The single most important constant.** |
+| `V2_MARKET_PULL` | **8.0** | Re-swept against the rebuilt harness: interior maximum at 8.0 in **both** truth scenarios (12.0 falls back in each). market $94.69→$114.61 capped EV, proj $192.84→$208.17. Survives `truth=proj` because it is a *price* term (`fell = pick − adp`), not a valuation one. Costs a custom board 2pp of influence (51%→49%). Was 5.0, set mid-range against the old harness. **The single most important constant.** |
 | `V2_CUSTOM_RANK_WEIGHT` | **0.55** | Judgement, not measured. Board comes from a best-ball specialist; Sleeper/ESPN publish generic redraft projections that know nothing about spike weeks or playoff schedule. Effective shares: board ~52%, projections ~41%, ECR ~6%. |
 | `V2_TIMING_WEIGHT` | 0.35 | VONA as a tilt on VOR. Pure VONA stockpiles whichever position degrades fastest. |
 | `V2_W_ACCUMULATION / PLAYOFF` | **0.40 / 0.60** | Swept 100/0 → 40/60; roster shape barely moved (RB 4.06–4.14 throughout), so this is *not* the allocation lever it looks like. Re-swept across contest sizes (§5.2): best or tied-best at 3 of 4. Pushing toward spike is badly wrong for large finals. |

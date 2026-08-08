@@ -254,12 +254,29 @@ const V2_VALUE_FIT_FLOOR = 0.20;
 // starved running backs.  The bias kept moving because the slot math has no anchor
 // telling it what a position is worth in the aggregate.  ADP is that anchor.
 //
-// Swept against the slot-attribution harness, weeks 1-14 points versus V1:
-//   0.25 -> -143    1.0 -> -80    2.5 -> -41    4.0 -> +22    5.0 -> +30    8.0 -> +36
-// Anything from ~4 upward wins; the differences across that range are inside the
-// harness's noise, so this is set mid-range rather than at the sampled maximum, to
-// avoid fitting the simulator.
-const V2_MARKET_PULL = _v2env.V2_MKT ? parseFloat(_v2env.V2_MKT) : 5.0;
+// Originally swept against the slot-attribution harness (weeks 1-14 points vs V1:
+// 0.25 -> -143, 1.0 -> -80, 2.5 -> -41, 4.0 -> +22, 5.0 -> +30, 8.0 -> +36). That run
+// was monotonic to the edge of what was tested and the gaps looked like noise, so it
+// was set mid-range at 5.0 rather than at the sampled maximum.
+//
+// Re-swept against the rebuilt harness (real 1,089-team final, injuries, shared
+// weather) and 8.0 is now a clear INTERIOR maximum — 12.0 falls back — in BOTH truth
+// scenarios, on both capped EV and contest-size EV:
+//
+//   truth=market   2.5 $83.23 / 1774   5.0 $94.69 / 2356   8.0 $114.61 / 3109   12.0 $96.05 / 2479
+//   truth=proj     2.5 $129.23/ 3976   5.0 $192.84/ 4632   8.0 $208.17/ 5091   12.0 $141.11/ 4162
+//
+// Four independent confirmations of the same peak. Worth stressing WHY it survives
+// `truth=proj`, where projections are the answer key and anchoring on ADP should drag
+// the model away from the truth: this is a PRICE term, not a valuation one. It scores
+// `fell = myPickNumber - adp`, so it is buying players below market rather than
+// asserting the market knows who is good. Surplus in draft capital is real whoever
+// turns out to be right about the player.
+//
+// It also does not crowd out a custom board: raising 5.0 -> 8.0 moved a real 384-player
+// board from changing 51% of V2's top-10 slots to 49%. Who is good and what to pay for
+// him are separable, and this constant only touches the second.
+const V2_MARKET_PULL = _v2env.V2_MKT ? parseFloat(_v2env.V2_MKT) : 8.0;
 
 // ADP noise.  Players do not come off the board exactly at ADP; the spread grows
 // roughly proportionally as you get deeper into the draft.
