@@ -417,8 +417,35 @@ def refresh_projections():
 
 @app.route('/api/projections/meta', methods=['GET'])
 def get_projections_meta():
-    meta = projections_meta()
-    return jsonify(meta or {'count': 0, 'last_updated': None})
+    """Freshness of the projections V2 actually scores with.
+
+    This used to report the `player_projections` table alone, which is fed by the
+    FantasyPros season scraper — a source §6 records as dead (paywalled to a
+    10-per-position teaser). So it answered "0 projections, last updated never" while
+    458 ESPN rows and a full blended cache sat behind it. Reporting nothing is worse
+    than reporting nothing exists, because it looks like an outage rather than an
+    unused table.
+
+    Now leads with the blended cache — Sleeper + ESPN + ECR + props — and keeps the
+    per-source counts underneath so a genuinely empty source is still visible.
+    """
+    from app.projections import cache_meta
+    out = cache_meta()
+
+    try:
+        from app.database import get_raw_projections, get_all_props
+        out['sources'] = {
+            'espn':          len(get_raw_projections() or []),
+            'props':         len(get_all_props() or []),
+            'fantasypros':   (projections_meta() or {}).get('count', 0),
+        }
+    except Exception as e:
+        out['sources_error'] = str(e)
+
+    # Kept so anything already reading these keys does not break.
+    fp = projections_meta() or {'count': 0, 'last_updated': None}
+    out.setdefault('last_updated', fp.get('last_updated'))
+    return jsonify(out)
 
 
 # ── Yahoo Fantasy OAuth ───────────────────────────────────────────────────────

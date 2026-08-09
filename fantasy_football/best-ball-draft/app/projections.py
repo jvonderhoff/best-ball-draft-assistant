@@ -313,6 +313,31 @@ def _build(force_refresh: bool = False) -> list:
     return out
 
 
+def cache_meta() -> dict:
+    """Freshness of the blended projection cache, WITHOUT triggering a rebuild.
+
+    Deliberately reads the file directly rather than calling get_projections(), which
+    would refetch Sleeper/ESPN whenever the TTL had lapsed — a meta endpoint that
+    costs ~20s and hammers upstream every time it is polled is worse than none.
+    """
+    try:
+        with open(CACHE_PATH) as f:
+            cached = json.load(f)
+    except Exception:
+        return {'count': 0, 'generated_at': None, 'age_hours': None,
+                'stale': True, 'ttl_hours': CACHE_TTL / 3600}
+
+    gen = cached.get('generated_at') or 0
+    age = (time.time() - gen) if gen else None
+    return {
+        'count':       len(cached.get('players') or []),
+        'generated_at': gen or None,
+        'age_hours':   round(age / 3600, 1) if age is not None else None,
+        'stale':       (age is None) or (age >= CACHE_TTL),
+        'ttl_hours':   CACHE_TTL / 3600,
+    }
+
+
 def get_projections(force_refresh: bool = False) -> dict:
     """
     Return {'players': [...], 'generated_at': ts, 'stale': bool}.
