@@ -432,15 +432,23 @@ def get_projections_meta():
     from app.projections import cache_meta
     out = cache_meta()
 
-    try:
-        from app.database import get_raw_projections, get_all_props
-        out['sources'] = {
-            'espn':          len(get_raw_projections() or []),
-            'props':         len(get_all_props() or []),
-            'fantasypros':   (projections_meta() or {}).get('count', 0),
-        }
-    except Exception as e:
-        out['sources_error'] = str(e)
+    # Count the tables directly, the way /api/stores/status does.
+    #
+    # The obvious helpers are both wrong for this: get_raw_projections() reads
+    # `player_projections`, which is the dead FantasyPros table rather than ESPN, and
+    # get_all_props() returns {book: {player: ...}} so len() counts BOOKS (2), not
+    # props (467). Using them reported espn=0 / props=2 against a store holding
+    # 458 and 467 — the exact class of wrong-table reporting this endpoint was fixed
+    # to stop doing.
+    out['sources'] = {}
+    with _db() as conn:
+        for key, table in (('espn', 'espn_projections'),
+                           ('props', 'player_props'),
+                           ('fantasypros', 'player_projections')):
+            try:
+                out['sources'][key] = conn.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0]
+            except Exception as e:
+                out['sources'][key] = f'error: {e}'
 
     # Kept so anything already reading these keys does not break.
     fp = projections_meta() or {'count': 0, 'last_updated': None}
