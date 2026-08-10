@@ -1888,10 +1888,60 @@ def recommend_page():
     return render_template('recommend.html')
 
 
+_players_refresh_running = False
+_players_refresh_lock = threading.Lock()
+
+
+def _maybe_refresh_players_async():
+    """Kick off a DK player/ADP refresh if the cache has gone stale. Never blocks."""
+    global _players_refresh_running
+    try:
+        from app.data.api_fetcher import cache_is_stale
+        if not cache_is_stale():
+            return
+    except Exception:
+        return
+
+    with _players_refresh_lock:
+        if _players_refresh_running:
+            return
+        _players_refresh_running = True
+
+    def _work():
+        global _players_refresh_running
+        try:
+            from app.data.api_fetcher import fetch_players
+            from app.database import refresh_players as db_refresh_players
+            players = fetch_players(force_refresh=True)
+            if players:
+                db_refresh_players(players)
+                _load_players_index()
+                app.logger.info(f'[players] auto-refreshed {len(players)} from DK')
+        except Exception as e:
+            app.logger.warning(f'[players] auto-refresh failed, serving cache: {e!r}')
+        finally:
+            with _players_refresh_lock:
+                _players_refresh_running = False
+
+    threading.Thread(target=_work, daemon=True).start()
+
+
 @app.route('/api/players', methods=['GET'])
 def get_players():
     """Return all players — from player_cache.json, then DB, then legacy players.js."""
     import re
+    # ADP goes stale and nothing was refreshing it. There is no TTL on fetch_players,
+    # this handler never called it anyway, and player_cache.json is committed — so a
+    # deploy restores the snapshot in git and silently reverts any manual refresh.
+    # Measured: prod served ADP 13 spots stale on one player and 12 players short,
+    # through four deploys in a day.
+    #
+    # Refreshed in a daemon thread rather than inline: the cache exists precisely so a
+    # cold process does not block the draft page on a slow upstream fetch, and blocking
+    # here would undo that at the worst moment. Serve what we have, refresh behind it,
+    # next load is current.
+    _maybe_refresh_players_async()
+
     # Primary: player_cache.json (written by fetch_players, fast)
     from app.data.api_fetcher import CACHE_PATH as cache_path
     try:

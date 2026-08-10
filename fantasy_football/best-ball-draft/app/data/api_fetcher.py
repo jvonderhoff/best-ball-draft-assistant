@@ -88,6 +88,33 @@ PLAYOFF_SCHEDULE_2026 = {
 
 # ── Cache helpers ──────────────────────────────────────────────────────────────
 
+# How long DK ADP stays good enough to serve. Matches the projection cache so the two
+# halves of a player's valuation do not drift apart by days.
+PLAYER_CACHE_TTL = 6 * 60 * 60
+
+
+def cache_age_seconds():
+    """Age of the on-disk player cache, or None if unknown.
+
+    Deliberately reads an embedded `fetched_at` rather than the file mtime. The cache
+    is committed to git, so on Render a deploy checks it out fresh and mtime reports
+    it as seconds old when the ADP inside is weeks stale — the exact failure this is
+    meant to catch. A cache without the field is treated as unknown age, i.e. stale.
+    """
+    try:
+        with open(CACHE_PATH) as f:
+            data = json.load(f)
+    except Exception:
+        return None
+    ts = data.get('fetched_at') if isinstance(data, dict) else None
+    return (time.time() - ts) if ts else None
+
+
+def cache_is_stale():
+    age = cache_age_seconds()
+    return age is None or age >= PLAYER_CACHE_TTL
+
+
 def _load_cache():
     try:
         with open(CACHE_PATH) as f:
@@ -99,7 +126,7 @@ def _load_cache():
 
 def _save_cache(players, season):
     with open(CACHE_PATH, 'w') as f:
-        json.dump({'season': season, 'players': players}, f)
+        json.dump({'season': season, 'players': players, 'fetched_at': time.time()}, f)
 
 
 # ── DraftKings CSV parsers ─────────────────────────────────────────────────────
