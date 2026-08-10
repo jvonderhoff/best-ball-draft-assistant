@@ -1,0 +1,117 @@
+# CLAUDE.md
+
+DraftKings Best Ball draft assistant. Flask + vanilla JS + Postgres, deployed on Render.
+
+**Read `docs/V2_DESIGN.md` before changing the recommender.** It documents the model, the
+evidence behind every constant, and — most importantly — §4, the dead ends. This file
+covers only the operational things that live nowhere else.
+
+## Running it
+
+```bash
+./run.sh                      # port 8000, --no-reload
+```
+
+**Flask runs with `--no-reload`. Restart the server after editing a template**, or you
+will test the old page and believe your change did nothing. The browser caches it too —
+if a restart isn't enough, load with a cache-busting query string.
+
+`asset()` cache-busts static files by mtime. Never hand-maintain `?v=N`; doing so once
+had browsers running scoring code from before several fixes, silently.
+
+No test suite. Verification is by running the thing: the harness for model changes, the
+app in a browser for UI changes.
+
+## Deployment
+
+Render, auto-deploys from `master`, usually live in 45–120s.
+
+**The filesystem is ephemeral.** SQLite is wiped on every deploy and on idle spin-down.
+Anything that must survive lives in Postgres (`DATABASE_URL`): `rankings_store`,
+`drafts_store`, `projections_store`, `kv_store_external`.
+
+**`/api/stores/status` is the only endpoint that reads Postgres directly.** Every other
+endpoint reports the local SQLite, so a warm instance looks healthy whether persistence
+is working or not. Check it after any deploy that touches storage.
+
+`app/data/player_cache.json` is committed **on purpose** — `_seed_players_if_empty` needs
+it to populate a cold database. It looks like a build artifact. It isn't. Don't gitignore
+it.
+
+## Data pipeline
+
+| Source | Refresh |
+|---|---|
+| DK player pool / ADP | automatic, 6h TTL, background thread on `GET /api/players` |
+| Sleeper + ESPN + FantasyPros ECR | automatic, 6h TTL, rebuilt on request |
+| DK / Underdog props | **manual** — `python3 tools/push-props.py` |
+| Custom rankings board | manual, and correctly so — it's the user's opinion |
+
+**DK blocks Render's datacenter IPs for props only.** The player pool fetches fine from
+prod (verified). Props must be pushed from a residential connection.
+
+`/api/projections/refresh` calls the FantasyPros *season* scraper, which is dead —
+paywalled to a 10-per-position teaser. It is not the path that feeds the model.
+
+Name matching lives in `app/data/names.py`. DK says "Nick Singleton"/"Kenneth Gainwell";
+every projection source says "Nicholas"/"Kenny". Unmatched players fall through to an
+ADP-implied estimate and get scored as generic bodies — check this first when a player's
+valuation looks absurd.
+
+## The harness
+
+`tools/compare-models.js` — V1 vs V2 through complete simulated drafts and seasons.
+
+- **Always read `--truth market`.** `proj` grades V2 against its own answer key.
+- **Absolute numbers are meaningless.** Opponents are ADP bots and so is the 1,089-team
+  final field, so EV levels are wildly inflated. Read model-vs-model deltas only. Never
+  quote an EV figure as a real-world result.
+- `tools/rb-depth.js --pos {QB|RB|WR|TE}` — paired counterfactuals for roster counts.
+  Paired on seed *and* weather, which is what makes it able to resolve effects the
+  construction table cannot.
+- `tools/sitngo-ev.js` — the winner-take-all Sit & Go contests, a different game.
+
+## Working agreements
+
+**V1 stays the primary column in `/recommend`; V2 shows alongside.** Do not swap the
+default. §9 records why: three real V2 errors were caught by eye in its first day
+(stale FA team, name mismatch, inflated stack), and the side-by-side is what catches
+them. V2 is the model under development, not yet the model in charge.
+
+**Commit freely; ask before pushing.** Local commits need no permission. Pushing to
+`master` auto-deploys to production, so that needs a yes — including when a change
+feels routine.
+
+**Tune advice for large-field tournaments and mid-size single-entry contests.** The
+Millionaire and Play-Action (~1,089 and ~458-team finals) are where V2's build is worth
+the most — measured +40% over V1 at the largest, against +4–9% at small ones. Bubble
+Screen and Huddle (18–41 team finals) are the lowest-rake, structurally softest field,
+because single entry means nobody is running twenty correlated rosters against you.
+Sit & Gos and satellite qualifiers are not the target; don't optimise for them.
+
+**Yahoo is still wanted.** Blocked on app registration at developer.yahoo.com needing
+Fantasy Sports read permission — the error is app-level, not code. Scope, token
+persistence and Python 3.9 compatibility are all done. Keep it in §9.
+
+## How this codebase decides things
+
+This matters more than any individual convention.
+
+**Constants are swept before they ship, not reasoned into place.** Every value in §2 of
+the design doc carries its evidence. Where a constant is judgement rather than
+measurement, it says so.
+
+**§4 exists so failed ideas are not retried.** Three separate mechanisms for forcing
+roster shape have now measured worse. The instinct to "improve" the model by adding a
+heuristic is usually wrong here, and there is a written record of why.
+
+**Features whose benefit the harness cannot measure ship off or flagged.** Portfolio
+diversification and supply-exhaustion urgency are both plumbed behind env vars because
+the simulator has no way to price them. Prefer that over shipping on theory.
+
+**When a measurement contradicts intuition, the doc records the contradiction** rather
+than the flattering reading. Several entries exist specifically to correct earlier
+conclusions that turned out to be noise.
+
+Comments explain *why*, at length, especially for anything non-obvious or previously
+wrong. Match that density — this codebase is written to be picked up cold.
