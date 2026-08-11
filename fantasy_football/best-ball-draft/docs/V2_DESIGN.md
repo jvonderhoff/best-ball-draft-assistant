@@ -236,6 +236,34 @@ Swept against the *upgraded* simulator (which does model role change): 0.0→+25
 0.5→+18.2%, 0.8→+17.9%, 1.3→+20.5%. Disagreement does raise breakout odds, but not
 enough to pay for the projection quality given up. Left off, behind `V2_BREAKOUT`.
 
+**Known defect, unfixed: `sd` does not follow the blend.** `ceiling = blended +
+1.2816 x sd`, but `sd` comes from the projection pipeline as `raw_ppg x POS_SCORING_CV`
+— computed *before* ECR and the custom board move the mean. So the ceiling/mean ratio,
+which should be a constant `1 + 1.2816 x CV` per position (WR 1.897), actually ranges
+**1.739–2.164** at WR.
+
+Practical effect: rank a player up on your board and his mean rises while his SD does
+not, so his ceiling rises *less than proportionally* and his spike value is understated
+against someone who reached the same mean through projections. Since
+`V2_CUSTOM_RANK_WEIGHT` is 0.55, this bites hardest exactly where the user has most
+influence. One-line fix (`sd = blended * CV[pos]` after blending) — not made, because
+it changes scoring and was found late.
+
+Note also that ceiling carries **no per-player upside information**: it is a fixed
+multiple of the mean within a position, so two WRs projecting the same get identical
+ceilings whether one is a boom/bust deep threat or a possession receiver. The only
+per-player variance signal is `disagreement`, and `V2_BREAKOUT_SD_GAIN` is 0.0.
+
+**QB marginal gain is not broken — do not re-investigate.** Prompted by V2 leaving 60%
+of drafts short of three quarterbacks (median QB1 round 8, QB2 12, QB3 16). Checked the
+closed form against a 400k-draw Monte Carlo using the model's own assumptions: ratios
+1.00 / 1.06 / 1.01 / 0.93 at 0/1/2/3 QBs owned. The maths is sound. Absence is handled
+correctly too — an absent player contributes 0 and stays in the sort, so "all my QBs are
+out" correctly gives a bar of zero. At the real decision point (pick 150, roster
+2-3-6-1) the best QB sat 1.9 ppw behind a needed TE, which is a wide gap, not a
+near-miss. Read together with §5.4's +1.16 ±1.31, the likeliest reading is that the QB
+finding is noise and 2.4 QBs is correct.
+
 **Modelling individual opponents (dropped before it was built).** The idea: derive
 each seat's roster from `pick_number` (seat is pure arithmetic in a snake) and weight
 survival by what the specific drafters picking before your next turn actually need,
@@ -605,14 +633,24 @@ accordingly (clamped 0.70–1.45). Improved advance rate +31.0% → +35.4%.
    summed across entries, and P(at least one extreme finish) is the thing
    diversification buys). That makes the benefit measurable and would settle whether
    1.0 is right, too high, or far too low. Until then the constant is judgement.
-4. **Yahoo** — blocked on app registration at developer.yahoo.com needing Fantasy
+4. **A `--truth board` scenario, to bound the custom-rank weight.**
+   `V2_CUSTOM_RANK_WEIGHT = 0.55` is the largest input to valuation and the only major
+   constant still marked "judgement, not measured" — and it is **unmeasurable as things
+   stand**, because neither truth scenario has the user's board as the answer key.
+   Raising it always measures worse by construction, not on merit. A third scenario
+   deriving true ability from the custom rankings would not prove the board is good
+   (it is circular that way), but it would answer the decision-relevant question: *if*
+   the board is right, how much is V2 leaving on the table at 0.55? "0.8 gains 2%" and
+   "0.8 gains 25%" are different worlds and the user is the one who knows how much to
+   trust the source. Turns an unanswerable argument into a number.
+5. **Yahoo** — blocked on app registration at developer.yahoo.com needing Fantasy
    Sports read permission. Error is `"This application is not authorized to perform
    this action"`, which is app-level. Code side (scope, token persistence, Python
    3.9 compat) is done.
-5. **Flex modelling** — TE gets a fixed 10% flex share against a 2nd-best-TE bar
+6. **Flex modelling** — TE gets a fixed 10% flex share against a 2nd-best-TE bar
    rather than a true cross-positional contest. Known approximation; the obvious fix
    measured *worse* (§4).
-6. **V2 is not the default.** `/recommend` shows V1 and V2 side by side; V1 still
+7. **V2 is not the default.** `/recommend` shows V1 and V2 side by side; V1 still
    drives nothing-changed behaviour. Swapping outright is premature — three real
    errors in V2 were caught by eye in its first day (stale FA team, name mismatch,
    inflated stack).
