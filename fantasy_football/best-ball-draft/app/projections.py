@@ -275,6 +275,27 @@ def _build(force_refresh: bool = False) -> list:
         bonus   = _dk_bonus_points(p, games, scale)
         proj_dk = ppr + bonus
 
+        # How a player earns his points, not just how many.
+        #
+        # A back who catches 70 balls shares scoring EVENTS with his quarterback — a
+        # receiving touchdown pays the QB 4 and the RB 6 on the same play — while a
+        # goal-line grinder shares almost nothing, and the run-heavy weeks that make
+        # him are the weeks his QB throws 22 times.  The recommender priced both with
+        # one flat correlation constant because this signal never reached it.  Across
+        # the 2026 RB pool the share runs 14.7% (Henry) to 70.3% (Justice Hill),
+        # median 36.9%, so the constant was averaging over a five-fold spread.
+        #
+        # Computed from Sleeper's components against Sleeper's OWN total rather than
+        # the blended consensus: the components and the denominator have to share a
+        # basis or the ratio is meaningless.  `scale` is deliberately not applied for
+        # the same reason — it cancels.
+        rec_share = None
+        if sleeper_ppr > 0:
+            rec_pts = ((p.get('proj_rec')    or 0) * COMPONENT_POINTS['rec']
+                       + (p.get('proj_rec_yd') or 0) * COMPONENT_POINTS['rec_yd']
+                       + (p.get('proj_rec_td') or 0) * COMPONENT_POINTS['rec_td'])
+            rec_share = round(max(0.0, min(1.0, rec_pts / sleeper_ppr)), 3)
+
         ppg = proj_dk / games
         sd  = ppg * POS_SCORING_CV[pos]
 
@@ -294,6 +315,10 @@ def _build(force_refresh: bool = False) -> list:
             # position prior unless the projection itself forecasts a short season
             # (a known injury or suspension), in which case that governs.
             'avail':       round(min(games / MAX_GAMES, 1 - POS_INJURY_RATE[pos]), 3),
+            # Share of projected points earned through the passing game. None when
+            # Sleeper has no component projection for him, which the recommender
+            # treats as "unknown" rather than "zero" — see v2CorrelationValue.
+            'rec_share':   rec_share,
             # Expert disagreement, normalised against the player's own draft position.
             # A standard deviation of 30 means something very different at ECR 20 than
             # at ECR 200, so it is expressed relative to where he is ranked.

@@ -53,12 +53,13 @@ Baseline is **65% VOR** (vs the last startable player, `slots × 12`) **+ 35% VO
 | `V2_CORRELATION_WEIGHT` | **0.35** | Swept against a real 1,089-team final (§5). Interior maximum, and the curve is steeply asymmetric — see §5.1. |
 | `V2_DIVERSITY_WEIGHT` | **1.0** | Portfolio diversification cost, §3.1. Sized against board spread, not guessed. **Benefit is unmeasurable in this harness** — see §9. |
 | `V2_BACKFIELD_DISCOUNT` | 0.80 | Judgement. Retained spike value: backup behind a R1 workhorse 38%, two mid-round committee backs 73%. |
+| `V2_QB_RB_REC` | **0.0 (off)** | Splits QB↔own-RB correlation into a rushing channel (0.02, no playoff weight — opposed game script) and a receiving one (0.30, playoff-weighted — a receiving TD pays QB 4 and RB 6 on the *same play*). Replaces a flat 0.06 applied across a pool running 14.7%→70.3% receiving, median 36.9%. **Off because the harness cannot grade it**, not because it lost: `TEAM_LOADING` is per position, so the simulator contains no receiving backs. See §9. |
 | `V2_VALUE_FIT_REF / FLOOR` | 0.50 / 0.20 | Roster-fit scaling, applied in three places (§3). |
 | `V2_BREAKOUT_SD_GAIN` | **0.0 (off)** | Fully plumbed, doesn't earn its place. See §4. |
 | `V2_OVER_TARGET_COST` | **0.0 (off)** | Roster-shape forcing. See §4. |
 
 All are overridable via env (`V2_MKT`, `V2_RANKW`, `V2_CORR`, `V2_BREAKOUT`,
-`V2_OVERCOST`, `V2_TIMING`, `V2_W_ACC`, `V2_W_PO`) for sweeping.
+`V2_OVERCOST`, `V2_TIMING`, `V2_W_ACC`, `V2_W_PO`, `V2_QB_RB_REC`) for sweeping.
 
 ---
 
@@ -643,14 +644,25 @@ accordingly (clamped 0.70–1.45). Improved advance rate +31.0% → +35.4%.
    the board is right, how much is V2 leaving on the table at 0.55? "0.8 gains 2%" and
    "0.8 gains 25%" are different worlds and the user is the one who knows how much to
    trust the source. Turns an unanswerable argument into a number.
-5. **Yahoo** — blocked on app registration at developer.yahoo.com needing Fantasy
+5. **Per-player team loading, to price the QB↔RB receiving channel.**
+   `TEAM_LOADING` in the harness is per POSITION — RB 0.35 for every back — so the
+   simulator's truth contains no pass-catching backs. `V2_QB_RB_REC` (§2) is
+   therefore unmeasurable in exactly the way §3 and §4 are: a sweep would run, print
+   confident numbers, and be scoring a distinction the truth model does not contain.
+   The build is small: derive each player's loading from the same `rec_share` the
+   recommender now reads, so a 55%-receiving back loads toward the QB's 0.75 and a
+   goal-line grinder stays near 0.35. Worth stressing what that would and would not
+   settle — it makes the *shape* of the effect measurable, but the loading curve is
+   still assumed, so it cannot tell you 0.30 is the right receiving coefficient. It
+   can tell you whether discriminating between backs at all beats not doing so.
+6. **Yahoo** — blocked on app registration at developer.yahoo.com needing Fantasy
    Sports read permission. Error is `"This application is not authorized to perform
    this action"`, which is app-level. Code side (scope, token persistence, Python
    3.9 compat) is done.
-6. **Flex modelling** — TE gets a fixed 10% flex share against a 2nd-best-TE bar
+7. **Flex modelling** — TE gets a fixed 10% flex share against a 2nd-best-TE bar
    rather than a true cross-positional contest. Known approximation; the obvious fix
    measured *worse* (§4).
-7. **V2 is not the default.** `/recommend` shows V1 and V2 side by side; V1 still
+8. **V2 is not the default.** `/recommend` shows V1 and V2 side by side; V1 still
    drives nothing-changed behaviour. Swapping outright is premature — three real
    errors in V2 were caught by eye in its first day (stale FA team, name mismatch,
    inflated stack).

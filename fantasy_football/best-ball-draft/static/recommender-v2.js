@@ -125,6 +125,46 @@ const V2_CORRELATION = {
 // Every source is explicit that you should not reach far to complete a stack.
 const V2_CORRELATION_WEIGHT = _v2env.V2_CORR ? parseFloat(_v2env.V2_CORR) : 0.35;
 
+// ── QB <-> his own running back, split by how the back scores ────────────────
+//
+// `V2_CORRELATION.qbRb` above is one number for every back on the board, and that
+// is the problem this replaces. A back's relationship with his quarterback runs
+// through two channels that point in OPPOSITE directions in a knockout week:
+//
+//   Rushing   negative game script. The week the QB throws for 400 is the week the
+//             back gets 11 carries. Volume correlation over a season is real, a
+//             simultaneous spike is not — this is the reasoning that (correctly)
+//             kept qbRb out of the playoff term.
+//   Receiving a shared scoring EVENT. A receiving touchdown pays the quarterback 4
+//             and the back 6 on the same play. There is no game script to net out:
+//             it is the same mechanism as a QB-to-WR stack, just with a smaller
+//             per-target payoff, which is why the coefficient sits below
+//             qbPassCatcher's 0.42 rather than at it.
+//
+// The 2026 pool runs 14.7% receiving (Henry) to 70.3% (Justice Hill), median 36.9%.
+// A flat 0.06 gives Christian McCaffrey — 70 catches, 4 receiving TDs — exactly the
+// credit it gives a goal-line grinder, and denies both the playoff weight that the
+// receiving half genuinely earns.
+//
+// DEFAULTS TO OFF, and the reason is the harness rather than the argument. The
+// simulator's `TEAM_LOADING` is per POSITION (RB 0.35 flat), so every back in it
+// loads on his team's week identically — there are no receiving backs in the truth
+// model at all. A sweep would return noise wearing the costume of a result. Pricing
+// this honestly needs per-player loading driven by the same receiving share, which
+// is a change to the simulator's truth, not to the recommender. See §9.
+//
+// V2_QB_RB_REC blends: 0.0 is exactly today's flat behaviour, 1.0 is fully
+// share-driven. Anything between is a partial move, for sweeping once §9 lands.
+const V2_QB_RB_REC = _v2env.V2_QB_RB_REC ? parseFloat(_v2env.V2_QB_RB_REC) : 0.0;
+
+// Per-channel coefficients. Judgement, and marked as such: they are read off the
+// mechanism (shared scoring event vs. opposed game script), not measured, and the
+// harness cannot currently measure them. The rushing figure is deliberately near
+// zero rather than negative — the season-long volume correlation is positive, it
+// just does not survive into a single-week spike.
+const V2_CORRELATION_QB_RB_RUSH = 0.02;
+const V2_CORRELATION_QB_RB_REC  = 0.30;
+
 // Correlation is only paid on the first 3 pass-catchers tied to one QB.  Past
 // QB + 3, you are guaranteeing wasted roster spots on most weeks.
 const V2_MAX_STACK_PARTNERS = 3;
@@ -437,7 +477,7 @@ function v2AttachEffective(players, projMap, opts = {}) {
     const curve = curves[pos];
     const proj  = p._proj;
 
-    let mean, sd, sources, avail = 1, disagree = 0;
+    let mean, sd, sources, avail = 1, disagree = 0, recShare = null;
 
     if (proj && proj.ppg > 0) {
       mean    = proj.ppg;
@@ -445,6 +485,10 @@ function v2AttachEffective(players, projMap, opts = {}) {
       sources = proj.sources || 1;
       avail   = proj.avail ?? 1;
       disagree = proj.disagreement ?? 0;
+      // May be absent on a projection cache built before this field existed, which
+      // is why every consumer treats null as "unknown" and falls back rather than
+      // reading it as a back who never catches the ball.
+      recShare = proj.rec_share ?? null;
     } else {
       // No projection — estimate from where the market ranks him at his position.
       const list    = adpRankByPos[pos] || [];
@@ -487,6 +531,7 @@ function v2AttachEffective(players, projMap, opts = {}) {
       ecrWeight: wUsed,
       customRanked: customPts != null,
       projected: !!(proj && proj.ppg > 0),
+      recShare: recShare,
     };
   }
 
@@ -792,12 +837,41 @@ function v2CorrelationValue(player, myTeam) {
     }
   }
 
-  // A back paired with his own QB is the one same-team combination that does NOT get
-  // playoff weight. The week a quarterback goes nuclear is a pass-heavy week, which
-  // is usually not his running back's big week — the volume correlation is real over
-  // a season but the spike correlation is not.
+  // A back paired with his own QB, split by how he actually scores. See the
+  // V2_QB_RB_REC block above for the mechanism and for why it ships off.
+  //
+  // With the feature off this is the long-standing behaviour verbatim: one flat
+  // coefficient, credited to `regular` only, never to the playoff term — the week a
+  // quarterback goes nuclear is a pass-heavy week, which is usually not his running
+  // back's big week.
+  //
+  // With it on, only the RECEIVING channel earns playoff weight. That is the whole
+  // point: a shared touchdown is a simultaneous spike, a 25-carry game is not, so
+  // crediting the pairing as a unit would smuggle the rushing half into a term it
+  // has no claim on.
   if (player.pos === 'RB' && myQBs.length) {
-    regular += V2_CORRELATION.qbRb * Math.min(sdMe, myQBs[0]._eff.sd) * V2_CORRELATION_WEIGHT;
+    const qb    = myQBs[0];
+    const minSd = Math.min(sdMe, qb._eff.sd);
+    const flat  = V2_CORRELATION.qbRb * minSd * V2_CORRELATION_WEIGHT;
+    const share = player._eff.recShare;
+    const last  = qb.name.split(' ').pop();
+
+    if (V2_QB_RB_REC > 0 && share != null) {
+      const w     = Math.max(0, Math.min(1, V2_QB_RB_REC));
+      const vRush = V2_CORRELATION_QB_RB_RUSH * (1 - share) * minSd * V2_CORRELATION_WEIGHT;
+      const vRec  = V2_CORRELATION_QB_RB_REC  * share       * minSd * V2_CORRELATION_WEIGHT;
+
+      regular     += flat * (1 - w) + (vRush + vRec) * w;
+      playoffTeam += vRec * w * V2_PLAYOFF_STACK_MULTIPLIER;
+      notes.push(`w/ QB ${last} · ${Math.round(share * 100)}% receiving`);
+    } else {
+      regular += flat;
+      // Noted even when the credit is tiny. It was previously silent — the only
+      // same-team pairing in the model that produced no breakdown line at all — so
+      // there was no way to eyeball whether it was doing anything, which is exactly
+      // the check the side-by-side with V1 exists to make possible.
+      notes.push(`w/ QB ${last}`);
+    }
   }
 
   // Playoff game stacks — both sides of one week 15/16/17 game.  Weighted far
