@@ -91,20 +91,27 @@ const V2_SPIKE_Z = 1.0;
 // splits on is one some experts already think is a starter. It widens the SPIKE term
 // only. Accumulation is left alone deliberately — disagreement says the outcome is
 // uncertain, not that the fourteen-week expectation is higher.
-// DEFAULTS TO OFF. The plumbing is complete and the reasoning above holds, but the
-// only test available argues against it: swept against the harness, advance rate over
-// V1 falls monotonically — 0.0 gives +40.6%, 0.8 gives +34.8%, 1.6 gives +30.7%.
+// DEFAULTS TO OFF, and unlike most of the off-by-default features here, this one has
+// now been measured properly rather than being unmeasurable.
 //
-// That result is not trustworthy either. tools/compare-models.js draws each player's
-// true mean from the projection curve with lognormal noise and sets cv = sd/mean, so
-// no simulated player ever becomes better than his projection implies. There is no
-// regime change in the truth model, which means it is scoring a bet on breakouts in a
-// world where breakouts cannot happen — the only available outcome is a penalty for
-// deviating from projection-optimal picks.
+// The first sweep was worthless and this comment used to quote it: the simulator drew
+// every player's true mean from the projection curve with lognormal noise, so no
+// simulated player could ever become better than his projection implied. It was
+// scoring a bet on breakouts in a world where breakouts could not happen, and the only
+// available outcome was a penalty. That defect is fixed — the truth model rolls a real
+// regime change now, with probability rising in the same disagreement signal this
+// constant keys on.
 //
-// So the feature is unvalidated in both directions and left off rather than shipped on
-// theory alone. Settling it needs breakout events in the simulator's truth model; then
-// this constant can be swept honestly. Set V2_BREAKOUT to experiment.
+// Swept twice against the fixed simulator, and the two runs DISAGREE about the shape
+// near zero: one has 0.5 costing badly, the other has 0.4 gaining half a point, on
+// projection caches rebuilt a few days apart. Both agree 1.6 is bad. The honest
+// conclusion is not "0.4 is optimal" but "the effect is smaller than the variation a
+// routine data refresh introduces", which is a reason to leave it off that the earlier
+// version of this comment could not have given. Full tables in §4.
+//
+// Watch for one trap if you re-run it: capped EV peaked at 0.8 on ~16 outright final
+// wins against ~9, while every high-count metric put 0.8 below off. Read `Top 15 of the
+// final` over `finals won`. Set V2_BREAKOUT to experiment.
 const V2_BREAKOUT_SD_GAIN = _v2env.V2_BREAKOUT ? parseFloat(_v2env.V2_BREAKOUT) : 0.0;
 
 // Chance a given player is on bye in a given week of the 14-week accumulation phase.

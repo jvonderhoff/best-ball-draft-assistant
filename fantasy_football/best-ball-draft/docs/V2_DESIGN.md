@@ -55,7 +55,7 @@ Baseline is **65% VOR** (vs the last startable player, `slots × 12`) **+ 35% VO
 | `V2_BACKFIELD_DISCOUNT` | 0.80 | Judgement. Retained spike value: backup behind a R1 workhorse 38%, two mid-round committee backs 73%. |
 | `V2_QB_RB_REC` | **0.0 (off)** | Splits QB↔own-RB correlation into a rushing channel (0.02, no playoff weight — opposed game script) and a receiving one (0.30, playoff-weighted — a receiving TD pays QB 4 and RB 6 on the *same play*). Replaces a flat 0.06 applied across a pool running 14.7%→70.3% receiving, median 36.9%. **Off because the harness cannot grade it**, not because it lost: `TEAM_LOADING` is per position, so the simulator contains no receiving backs. See §9. |
 | `V2_VALUE_FIT_REF / FLOOR` | 0.50 / 0.20 | Roster-fit scaling, applied in three places (§3). |
-| `V2_BREAKOUT_SD_GAIN` | **0.0 (off)** | Fully plumbed, doesn't earn its place. See §4. |
+| `V2_BREAKOUT_SD_GAIN` | **0.0 (off)** | Fully plumbed. Swept twice against the fixed simulator; the two runs disagree about the shape near zero and agree 1.6 is bad. Effect is smaller than the variation a routine projection refresh introduces. See §4. |
 | `V2_OVER_TARGET_COST` | **0.0 (off)** | Roster-shape forcing. See §4. |
 
 All are overridable via env (`V2_MKT`, `V2_RANKW`, `V2_CORR`, `V2_BREAKOUT`,
@@ -236,6 +236,34 @@ experts) is plumbed end to end and normalised by rank. Widens the spike term onl
 Swept against the *upgraded* simulator (which does model role change): 0.0→+25.4%,
 0.5→+18.2%, 0.8→+17.9%, 1.3→+20.5%. Disagreement does raise breakout odds, but not
 enough to pay for the projection quality given up. Left off, behind `V2_BREAKOUT`.
+
+*Replication attempt, 2026-08-11, and it did not replicate.* Re-swept at 0.0/0.4/0.8/1.6
+on a projection cache rebuilt from Sleeper that day, 400 drafts x 200 seasons,
+`truth=market`, identical `baseSeed` across arms (V1 came back bit-identical at
+$160.78 in all four, confirming only V2 moved). V2 absolute:
+
+| | 0.0 | 0.4 | 0.8 | 1.6 |
+|---|---|---|---|---|
+| Top-2 of 12 | 33.22% | **33.74%** | 32.72% | 31.75% |
+| Reach final | 1.57% | **1.59%** | 1.53% | 1.46% |
+| Top 15 of final | 0.1575% | **0.1588%** | 0.1512% | 0.1250% |
+| capped EV | $107.60 | $109.00 | **$110.60** | $99.61 |
+| finals won | 9 | 11 | **16** | 12 |
+
+Three things worth keeping. **One:** 1.6 is bad in both sweeps, so the high end is
+settled. **Two:** the capped-EV maximum at 0.8 is a mirage — it rests on 16 outright
+wins against 9, the same jackpot-noise channel §9.1 warns about, and every high-count
+metric puts 0.8 *below* off. Read `Top 15 of the final` (~121 events) rather than
+`finals won` (~16) when they disagree, which they do here. **Three:** the shape near
+zero is not stable. The earlier sweep has 0.5 costing 7pp of relative advance; this one
+has 0.4 gaining half a point. Different projection caches, so not strictly comparable —
+which is the actual result: **the effect is smaller than the run-to-run variation from a
+routine data refresh.** Stays off, now for a measured reason rather than an assumed one.
+
+Anything that reopens this should be a *paired* test in the `tools/rb-depth.js` style —
+same seed, same weather, one arm with the gain and one without — because a half-point
+unpaired difference is exactly the size that harness was built to resolve and this one
+cannot.
 
 **Known defect, unfixed: `sd` does not follow the blend.** `ceiling = blended +
 1.2816 x sd`, but `sd` comes from the projection pipeline as `raw_ppg x POS_SCORING_CV`
