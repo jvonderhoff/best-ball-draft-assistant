@@ -54,6 +54,32 @@ def init_external() -> None:
         conn.close()
 
 
+# Did THIS boot succeed in replacing the local cache from the durable store?
+#
+#   None   not attempted (no DATABASE_URL, or init hasn't run)
+#   True   the local player_rankings table mirrors the external one
+#   False  the external store could not be read; local holds whatever
+#          rankings_seed.json provided, which is a committed bootstrap file
+#          that can be months old
+#
+# This is load-bearing rather than diagnostic. save_rankings() below receives the
+# FULL board with custom_rank=None for anything unranked, and turns those Nones
+# into DELETEs. Saving from an unhydrated cache would therefore delete every
+# ranking the seed file happens not to contain — silently, and from the only
+# durable copy. Observed live: external held 422 rankings while local served the
+# 356-entry June seed, so one Save would have destroyed 69 of them.
+_hydrated = None
+
+
+def hydration_state():
+    return _hydrated
+
+
+def mark_hydrated(ok: bool) -> None:
+    global _hydrated
+    _hydrated = ok
+
+
 def load_rankings():
     """Return [{player_id, custom_rank, notes}] from the external store.
 

@@ -248,7 +248,12 @@ def save_rankings_route():
     # save_rankings writes the local cache AND write-throughs to the durable
     # external store (DATABASE_URL), which is what survives spin-downs/deploys.
     from app import rankings_store
-    count = save_rankings(rankings)
+    from app.database import RankingsNotHydrated
+    try:
+        count = save_rankings(rankings)
+    except RankingsNotHydrated as e:
+        # 409 rather than 500: the request is fine, the server's state is not.
+        return jsonify({'ok': False, 'error': str(e), 'not_hydrated': True}), 409
     where = 'DB + external store' if rankings_store.external_enabled() else 'local DB only (no DATABASE_URL)'
     app.logger.info(f'[rankings/save] saved {count} rankings -> {where}')
     return jsonify({'ok': True, 'saved': count})
@@ -2085,6 +2090,28 @@ def stores_status():
         'kv_store':         'UNREACHABLE' if kv is None else len(kv),
         'player_rankings':  'UNREACHABLE' if ranks is None else len(ranks),
     }
+
+    # Whether the LIVE board actually came from the durable store this boot.
+    #
+    # The counts above are not enough, and that is exactly how this hid: a boot
+    # that failed to hydrate leaves the June seed serving as the live board, but
+    # by the time anyone calls this endpoint the external store has woken up and
+    # reports a healthy 422. Both columns look fine while every V2 valuation is
+    # blending a months-old board at 55% weight.
+    state = rankings_store.hydration_state()
+    out['rankings_hydrated'] = state
+    local_ranks = out['local'].get('player_rankings')
+    if state is False:
+        out['rankings_warning'] = (
+            'LOCAL RANKINGS ARE THE rankings_seed.json BOOTSTRAP, NOT YOUR BOARD. '
+            'Saving rankings is blocked. Restart while the external store is reachable.'
+        )
+    elif state is True and isinstance(local_ranks, int) and isinstance(out['external'].get('player_rankings'), int) \
+            and local_ranks != out['external']['player_rankings']:
+        out['rankings_warning'] = (
+            f'hydrated this boot but local ({local_ranks}) != external '
+            f'({out["external"]["player_rankings"]}) — cache drifted since boot'
+        )
     return jsonify(out)
 
 

@@ -1,7 +1,11 @@
 from __future__ import annotations
 import sqlite3
 import json
+import logging
 import os
+import time
+
+_log = logging.getLogger('app')
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'drafts.db')
 _DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
@@ -200,9 +204,37 @@ def _hydrate_external_rankings(conn):
         return
     try:
         rankings_store.init_external()
-        ext = rankings_store.load_rankings()
+
+        # Retry before giving up. Neon and friends suspend an idle compute, and
+        # the first connection after a deploy has to wake it — routinely longer
+        # than the 10s connect_timeout. A single attempt therefore fails on
+        # exactly the boot that matters most, the one right after a deploy, when
+        # the ephemeral filesystem has just been wiped.
+        #
+        # The old behaviour on that path was to return silently and leave the
+        # June bootstrap seed serving as the live board, at 55% weight in every
+        # V2 valuation, with /api/stores/status reporting the external store as
+        # healthy because by then the compute had woken up. Observed in
+        # production: local 353 rankings against 422 durable ones, unnoticed
+        # across at least two deploys.
+        ext = None
+        for attempt in range(4):
+            ext = rankings_store.load_rankings()
+            if ext is not None:
+                break
+            if attempt < 3:
+                time.sleep(2 ** attempt * 3)   # 3s, 6s, 12s
+
         if ext is None:
-            return  # store unreachable — keep local cache, don't wipe it
+            # Loud, and recorded. The flag is what stops save_rankings writing
+            # deletes from a cache we know is stale — see rankings_store.
+            rankings_store.mark_hydrated(False)
+            _log.error(
+                '[rankings-store] UNREACHABLE after 4 attempts — local rankings are the '
+                'rankings_seed.json bootstrap, NOT your board. Saving rankings is blocked '
+                'until a boot hydrates successfully.'
+            )
+            return  # keep local cache, don't wipe it
         if not ext:
             # First run: external is empty. Seed it from the local bootstrap so
             # we don't lose the committed rankings_seed.json set.
@@ -215,6 +247,7 @@ def _hydrate_external_rankings(conn):
             ]
             if seed:
                 rankings_store.save_rankings(seed)
+            rankings_store.mark_hydrated(True)
             return
         # External has data — it wins. Replace the local cache wholesale.
         conn.execute("DELETE FROM player_rankings")
@@ -223,9 +256,11 @@ def _hydrate_external_rankings(conn):
             "VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
             [(r['player_id'], r['custom_rank'], r.get('notes', '')) for r in ext]
         )
+        rankings_store.mark_hydrated(True)
+        _log.info(f'[rankings-store] hydrated {len(ext)} rankings from the durable store')
     except Exception as e:
-        import logging
-        logging.getLogger('app').warning(f'[rankings-store] hydrate failed: {e!r}')
+        rankings_store.mark_hydrated(False)
+        _log.error(f'[rankings-store] hydrate failed, local rankings may be the seed file: {e!r}')
 
 
 def _hydrate_external_kv(conn):
@@ -755,11 +790,39 @@ def get_rankings():
         return [dict(r) for r in rows]
 
 
+class RankingsNotHydrated(RuntimeError):
+    """Raised instead of saving a board derived from the bootstrap seed file."""
+
+
 def save_rankings(rankings):
     """
     Upsert a list of {player_id, custom_rank, notes} dicts.
     rankings with custom_rank=None are deleted (unranked).
+
+    Refuses outright when this boot never hydrated from the durable store. The
+    caller sends the FULL board with custom_rank=None for every unranked player,
+    and the external writer turns those Nones into DELETEs — so saving from a
+    cache that is really the rankings_seed.json bootstrap would delete every
+    ranking the seed happens not to contain, from the only durable copy.
+
+    Not hypothetical: production served the 356-entry June seed while the durable
+    store held 422, so one Save would have destroyed 69 real rankings. Refusing
+    the write is recoverable; that is not. Checked BEFORE the local write so a
+    refused save changes nothing at all.
     """
+    from app import rankings_store
+    if rankings_store.external_enabled() and rankings_store.hydration_state() is False:
+        _log.error(
+            '[rankings-store] REFUSING save: this boot never hydrated from the durable store, '
+            'so the local cache is the seed file. Saving would delete durable rankings. '
+            'Restart once the external store is reachable, then save again.'
+        )
+        raise RankingsNotHydrated(
+            'Rankings were not loaded from the durable store on this boot, so the board '
+            'shown is the bootstrap seed file. Saving now would delete your real rankings. '
+            'Restart the service and try again.'
+        )
+
     with get_db() as conn:
         for r in rankings:
             pid  = r.get('player_id')
@@ -779,12 +842,11 @@ def save_rankings(rankings):
                         updated_at  = CURRENT_TIMESTAMP
                 """, (pid, int(rank), notes))
     # Write through to the durable external store so the edit survives the next
-    # ephemeral-filesystem reset. No-op when DATABASE_URL is unset.
+    # ephemeral-filesystem reset. No-op when DATABASE_URL is unset. The
+    # not-hydrated case was already refused above, before anything was written.
     try:
-        from app import rankings_store
         if rankings_store.external_enabled():
             rankings_store.save_rankings(rankings)
     except Exception as e:
-        import logging
-        logging.getLogger('app').warning(f'[rankings-store] write-through failed: {e!r}')
+        _log.warning(f'[rankings-store] write-through failed: {e!r}')
     return len(rankings)
