@@ -1766,6 +1766,29 @@ function renderRecs() {
   let recsV2 = [];
   if (v2Ready) {
     try {
+      // Re-link the roster to the live player objects before scoring.
+      //
+      // `state.myTeam` holds spread COPIES taken at pick time (`{ ...player }`), and
+      // the whole state round-trips through sessionStorage on every save. `_eff` —
+      // the mean/sd/ceiling v2AttachEffective computes — does not reliably survive
+      // that, so after a page reload the roster arrives with no `_eff` at all.
+      //
+      // Every V2 function that reads the roster gates on `_eff`: the slot bars in
+      // v2OrderStatMoments, stack detection in v2CorrelationValue, the backfield
+      // discount, the bye penalty. A roster whose entries have lost it is therefore
+      // not "partly scored" — it is silently treated as EMPTY. Observed live in
+      // draft 193379107: Drake Maye lost the 1.53 ppw stack with his own WR1 and
+      // fell behind Joe Burrow, with `v2Ready` true and nothing logged.
+      //
+      // Cheap enough to do unconditionally (one Map over ~420 players per render),
+      // and unconditional is the point — anything conditional re-introduces the
+      // ordering assumption that broke this.
+      const _liveById = new Map(PLAYERS.map(p => [p.id, p]));
+      for (const m of state.myTeam) {
+        const live = _liveById.get(m.id);
+        if (live && live._eff) m._eff = live._eff;
+      }
+
       const myPicks = v2RemainingPicks(pickForRec + 1, settings.numTeams, settings.myPosition);
       recsV2 = getTopRecommendationsV2(available, state.myTeam, pickForRec, 40,
                                        nextMyPick, myPicks, PLAYERS,
