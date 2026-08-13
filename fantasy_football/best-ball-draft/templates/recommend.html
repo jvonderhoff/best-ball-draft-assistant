@@ -677,6 +677,8 @@ let settings = loadSettings();
 // is the page used during a live draft and a broken projection feed must never cost
 // a pick.
 let v2Ready = false, v2Error = '';
+// Roster players V2 cannot see this render. Recomputed in renderRecs.
+let v2Unmatched = [];
 async function loadV2Projections() {
   try {
     const r = await fetch('/api/projections-v2');
@@ -1764,6 +1766,7 @@ function renderRecs() {
   // Ranked deeper than shown so a V1 pick outside V2's visible rows still resolves
   // to a real number rather than a dash.
   let recsV2 = [];
+  v2Unmatched = [];   // never show a stale list from a previous render
   if (v2Ready) {
     try {
       // Re-link the roster to the live player objects before scoring.
@@ -1788,6 +1791,17 @@ function renderRecs() {
         const live = _liveById.get(m.id);
         if (live && live._eff) m._eff = live._eff;
       }
+
+      // Whatever the re-link could not resolve is invisible to V2, and silence
+      // here is worse than noise — V2 then thinks the slot is emptier than it is
+      // and overvalues that position for the rest of the draft. Same failure the
+      // re-link above fixes, different cause: a pick whose id is not in the pool
+      // at all (a feed change, or the name drift names.py exists to handle)
+      // cannot be resolved by any amount of re-linking.
+      //
+      // sandbox.html has carried this banner for a while. The draft page — the
+      // one where a missing player actually costs a pick — did not.
+      v2Unmatched = state.myTeam.filter(m => !m._eff);
 
       const myPicks = v2RemainingPicks(pickForRec + 1, settings.numTeams, settings.myPosition);
       recsV2 = getTopRecommendationsV2(available, state.myTeam, pickForRec, 40,
@@ -1856,6 +1870,14 @@ function renderRecs() {
     </div>`;
   }).join('');
 
+  const unmatchedHTML = v2Unmatched.length
+    ? `<div class="cmp-warn" style="border:1px solid var(--orange);border-radius:6px;padding:8px 10px;margin-bottom:8px">
+         ⚠ ${v2Unmatched.length} roster player${v2Unmatched.length > 1 ? 's' : ''} not matched to the pool —
+         V2 is scoring as if ${v2Unmatched.length > 1 ? 'they are' : 'he is'} not on your roster:
+         <b>${v2Unmatched.map(p => p.name).join(', ')}</b>
+       </div>`
+    : '';
+
   const v2CardsHTML = !v2Ready
     ? `<div class="cmp-warn">V2 unavailable — ${v2Error || 'no projections'}. V1 is unaffected.</div>`
     : !recsV2.length
@@ -1889,7 +1911,7 @@ function renderRecs() {
          <div><div class="cmp-col-hdr"><span class="cmp-badge v1">V1</span>
               <span class="cmp-sub">ADP × multipliers</span></div>${v1CardsHTML}</div>
          <div><div class="cmp-col-hdr"><span class="cmp-badge v2">V2</span>
-              <span class="cmp-sub">projections · pts/week</span></div>${v2CardsHTML}</div>
+              <span class="cmp-sub">projections · pts/week</span></div>${unmatchedHTML}${v2CardsHTML}</div>
        </div>`;
 }
 
