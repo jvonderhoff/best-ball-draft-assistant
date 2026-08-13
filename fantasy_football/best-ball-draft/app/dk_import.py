@@ -5,10 +5,16 @@ One core path serves two callers:
   • POST /api/drafts/sync-from-dk — pull a freshly-finished draft on demand
 
 DK's board endpoint returns every team's picks tagged with whether they're
-yours (username set when the slot's userKey matches your GUID). We keep only
-your picks, enrich ADP + playoff weeks from the local players table (DK doesn't
-return those), and hand them to save_draft — which write-throughs to the durable
+yours (username set when the slot's userKey matches your GUID). Every pick is
+enriched with ADP + playoff weeks from the local players table (DK doesn't
+return those) and handed to save_draft — which write-throughs to the durable
 external store (Neon) just like a normal import.
+
+By default only your picks are kept, because exposure, the History page and the
+extension export all mean "my roster" by "picks". Pass include_opponents=True to
+retain all twelve seats, which is what the harness needs to build a final field
+out of real rosters instead of ADP bots (§9.2); the `mine` flag on each pick is
+what keeps the two uses apart downstream.
 
 Requires working DK auth: cookies + a cached user GUID. Without the GUID, DK
 picks can't be attributed to you, so nothing imports.
@@ -43,17 +49,25 @@ def players_by_name():
     return out
 
 
-def build_my_picks(raw_picks, name_map):
-    """Filter a DK board to your picks and enrich into save_draft's pick shape.
+def build_my_picks(raw_picks, name_map, include_opponents=False):
+    """Enrich a DK board into save_draft's pick shape.
 
     Pure/testable: takes the raw DK pick list + a name→enrichment map.
     Your picks are the ones DK tagged with a non-empty username (userKey matched
-    your GUID). Returns picks sorted by overall pick number.
+    your GUID); each output pick carries `mine` accordingly. Returns picks sorted
+    by overall pick number.
+
+    include_opponents=True keeps all twelve seats. DK hands us the whole board on
+    every pull and we discarded eleven twelfths of it — roughly 220 picks per
+    draft — which is the only reason the harness has to build its 1,089-team
+    final field out of ADP bots instead of real rosters (§9.2). Off by default:
+    exposure, the History page and the extension export all mean "my roster" by
+    "picks", and every one of them would be wrong on a full board.
     """
-    mine = [p for p in raw_picks if p.get('username')]
-    mine.sort(key=lambda p: p.get('pick_number') or 0)
+    picks = raw_picks if include_opponents else [p for p in raw_picks if p.get('username')]
+    picks = sorted(picks, key=lambda p: p.get('pick_number') or 0)
     out = []
-    for p in mine:
+    for p in picks:
         enr = name_map.get(_norm(p.get('player_name', ''))) or {}
         did = p.get('draftable_id')
         out.append({
@@ -63,15 +77,19 @@ def build_my_picks(raw_picks, name_map):
             'team':        enr.get('team') or p.get('team', ''),
             'adp':         enr.get('adp') or 0,
             'pick_number': p.get('pick_number'),
+            'round':       p.get('round'),
             'week15':      enr.get('week15'),
             'week16':      enr.get('week16'),
             'week17':      enr.get('week17'),
+            # DK sets username only on slots whose userKey matched your GUID.
+            'mine':        bool(p.get('username')),
         })
     return out
 
 
 def import_one_draft(contest_id, entry_id=None, name=None, entry_fee=None,
-                     min_picks=DEFAULT_MIN_PICKS, name_map=None, fetch_fn=None):
+                     min_picks=DEFAULT_MIN_PICKS, name_map=None, fetch_fn=None,
+                     include_opponents=False):
     """Pull one draft from DK and save it. Returns a result dict.
 
     status ∈ {imported, duplicate, incomplete, no_picks, error}
@@ -87,10 +105,15 @@ def import_one_draft(contest_id, entry_id=None, name=None, entry_fee=None,
 
         if name_map is None:
             name_map = players_by_name()
-        my_picks = build_my_picks(result.get('picks', []), name_map)
-        if len(my_picks) < min_picks:
-            return {'contest_id': contest_id, 'status': 'incomplete', 'my_picks': len(my_picks),
-                    'reason': f'{len(my_picks)} of your picks (< {min_picks}); draft not complete'}
+        all_picks = build_my_picks(result.get('picks', []), name_map,
+                                   include_opponents=include_opponents)
+        # Completeness is still judged on YOUR picks: a full board with only 4 of
+        # your slots filled is an in-progress draft, however many rows it has.
+        mine_n = sum(1 for p in all_picks if p.get('mine'))
+        if mine_n < min_picks:
+            return {'contest_id': contest_id, 'status': 'incomplete', 'my_picks': mine_n,
+                    'reason': f'{mine_n} of your picks (< {min_picks}); draft not complete'}
+        my_picks = all_picks
 
         from app.database import save_draft
         saved_id, created = save_draft(
@@ -103,16 +126,16 @@ def import_one_draft(contest_id, entry_id=None, name=None, entry_fee=None,
             drafted_at=(result.get('drafted_at') or '')[:10] or None,  # YYYY-MM-DD, drop time
         )
         if not created:
-            return {'contest_id': contest_id, 'status': 'updated', 'my_picks': len(my_picks),
-                    'reason': 'refreshed fee/date/picks'}
-        return {'contest_id': contest_id, 'status': 'imported', 'my_picks': len(my_picks),
-                'draft_id': saved_id}
+            return {'contest_id': contest_id, 'status': 'updated', 'my_picks': mine_n,
+                    'total_picks': len(my_picks), 'reason': 'refreshed fee/date/picks'}
+        return {'contest_id': contest_id, 'status': 'imported', 'my_picks': mine_n,
+                'total_picks': len(my_picks), 'draft_id': saved_id}
     except Exception as e:
         _log.warning(f'[dk-import] {contest_id} failed: {e!r}')
         return {'contest_id': contest_id, 'status': 'error', 'my_picks': 0, 'reason': repr(e)}
 
 
-def import_many(items, min_picks=DEFAULT_MIN_PICKS):
+def import_many(items, min_picks=DEFAULT_MIN_PICKS, include_opponents=False):
     """items: iterable of {id, entry_id?, name?, entry_fee?}. Imports each; returns result list."""
     name_map = players_by_name()
     results = []
@@ -120,6 +143,7 @@ def import_many(items, min_picks=DEFAULT_MIN_PICKS):
         results.append(import_one_draft(
             it.get('id'), entry_id=it.get('entry_id'), name=it.get('name'),
             entry_fee=it.get('entry_fee'), min_picks=min_picks, name_map=name_map,
+            include_opponents=include_opponents,
         ))
     return results
 

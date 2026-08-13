@@ -61,8 +61,15 @@ def init_external() -> None:
                     round       integer,
                     week15      text,
                     week16      text,
-                    week17      text
+                    week17      text,
+                    mine        boolean DEFAULT true
                 )
+            """)
+            # Additive migration for stores created before opponent seats were
+            # retained. Existing rows are all yours, so the default backfills.
+            cur.execute("""
+                ALTER TABLE draft_picks
+                ADD COLUMN IF NOT EXISTS mine boolean DEFAULT true
             """)
     finally:
         conn.close()
@@ -82,7 +89,8 @@ def load_drafts():
                            FROM drafts ORDER BY created_at""")
             drafts = cur.fetchall()
             cur.execute("""SELECT dk_draft_id, player_id, player_name, pos, team, adp,
-                                  pick_number, round, week15, week16, week17
+                                  pick_number, round, week15, week16, week17,
+                                  COALESCE(mine, true)
                            FROM draft_picks ORDER BY pick_number""")
             picks = cur.fetchall()
     except Exception as e:
@@ -97,6 +105,10 @@ def load_drafts():
             'player_id': p[1], 'player_name': p[2], 'pos': p[3], 'team': p[4],
             'adp': p[5], 'pick_number': p[6], 'round': p[7],
             'week15': p[8], 'week16': p[9], 'week17': p[10],
+            # Must be carried, not dropped: hydration replays these rows into the
+            # local cache, and a lost flag would re-mark every opponent seat as
+            # yours on the next boot — inflating exposure straight into V2.
+            'mine': p[11],
         })
     return [{
         'dk_draft_id': d[0], 'num_teams': d[1], 'my_position': d[2],
@@ -109,7 +121,9 @@ def save_draft(dk_draft_id, num_teams, my_position, contest, entry_fee, drafted_
     """Upsert one draft and replace its picks. No-op without a dk_draft_id.
 
     `picks` are import-shaped dicts (id/name/...) — the same list save_draft in
-    database.py receives — so round is recomputed here as enumerate index + 1."""
+    database.py receives. `round` is taken from the pick when present, falling
+    back to the enumerate index for sources that omit it; `mine` defaults to
+    true so callers that only ever pass your own picks need no change."""
     if not dk_draft_id:
         return
     conn = _conn()
@@ -135,14 +149,18 @@ def save_draft(dk_draft_id, num_teams, my_position, contest, entry_fee, drafted_
                      p.get('id') or p.get('player_id'),
                      p.get('name') or p.get('player_name'),
                      p.get('pos'), p.get('team'), p.get('adp', 0),
-                     p.get('pick_number'), i + 1,
-                     p.get('week15'), p.get('week16'), p.get('week17'))
+                     p.get('pick_number'),
+                     # Real round when the source has it; the enumerate index is
+                     # only correct while a draft holds your ~20 picks alone.
+                     p.get('round') or (i + 1),
+                     p.get('week15'), p.get('week16'), p.get('week17'),
+                     bool(p.get('mine', True)))
                     for i, p in enumerate(picks)
                 ]
                 execute_values(cur, """
                     INSERT INTO draft_picks
                         (dk_draft_id, player_id, player_name, pos, team, adp,
-                         pick_number, round, week15, week16, week17)
+                         pick_number, round, week15, week16, week17, mine)
                     VALUES %s
                 """, rows)
     except Exception as e:

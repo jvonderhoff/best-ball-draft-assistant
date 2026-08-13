@@ -64,7 +64,8 @@ def init_db():
                 round       INTEGER,
                 week15      TEXT,
                 week16      TEXT,
-                week17      TEXT
+                week17      TEXT,
+                mine        INTEGER DEFAULT 1
             );
 
             CREATE TABLE IF NOT EXISTS player_projections (
@@ -143,6 +144,16 @@ def init_db():
         for col in ('week15', 'week16', 'week17'):
             if col not in pick_cols:
                 conn.execute(f"ALTER TABLE draft_picks ADD COLUMN {col} TEXT")
+        # Which seat made this pick. History used to hold ONLY your picks, so every
+        # existing row is yours and DEFAULT 1 backfills correctly.
+        #
+        # This has to exist before opponent seats can be stored at all: get_exposure
+        # counts draft_picks rows against the draft count, and exposure feeds V2's
+        # diversification cost. Storing twelve rosters without distinguishing them
+        # would report you at ~12x your real exposure and silently tax every player
+        # you actually own.
+        if 'mine' not in pick_cols:
+            conn.execute("ALTER TABLE draft_picks ADD COLUMN mine INTEGER DEFAULT 1")
         _seed_rankings_if_empty(conn)
         _seed_players_if_empty(conn)
         _hydrate_external_rankings(conn)
@@ -383,7 +394,8 @@ def _hydrate_external_drafts(conn):
             ).fetchall()
             for d in rows:
                 picks = conn.execute(
-                    "SELECT player_id, player_name, pos, team, adp, pick_number, week15, week16, week17 "
+                    "SELECT player_id, player_name, pos, team, adp, pick_number, round, "
+                    "week15, week16, week17, COALESCE(mine, 1) AS mine "
                     "FROM draft_picks WHERE draft_id=? ORDER BY pick_number", (d['id'],)
                 ).fetchall()
                 drafts_store.save_draft(
@@ -391,7 +403,9 @@ def _hydrate_external_drafts(conn):
                     d['entry_fee'], d['drafted_at'],
                     [{'id': p['player_id'], 'name': p['player_name'], 'pos': p['pos'],
                       'team': p['team'], 'adp': p['adp'], 'pick_number': p['pick_number'],
-                      'week15': p['week15'], 'week16': p['week16'], 'week17': p['week17']}
+                      'round': p['round'],
+                      'week15': p['week15'], 'week16': p['week16'], 'week17': p['week17'],
+                      'mine': bool(p['mine'])}
                      for p in picks]
                 )
             return
@@ -407,11 +421,17 @@ def _hydrate_external_drafts(conn):
             )
             local_id = cur.lastrowid
             conn.executemany(
-                "INSERT INTO draft_picks (draft_id, player_id, player_name, pos, team, adp, pick_number, round, week15, week16, week17) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO draft_picks (draft_id, player_id, player_name, pos, team, adp, pick_number, round, week15, week16, week17, mine) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                # `mine` must survive the round trip. This runs on every boot, so
+                # dropping it would re-mark all twelve seats as yours each restart
+                # and inflate exposure into V2's diversification cost. Same reason
+                # `round` is taken from the row rather than the index — on a full
+                # board the index runs 1..240.
                 [(local_id, p.get('player_id'), p.get('player_name'), p.get('pos'), p.get('team'),
-                  p.get('adp'), p.get('pick_number'), idx + 1,
-                  p.get('week15'), p.get('week16'), p.get('week17'))
+                  p.get('adp'), p.get('pick_number'), p.get('round') or (idx + 1),
+                  p.get('week15'), p.get('week16'), p.get('week17'),
+                  1 if p.get('mine', True) else 0)
                  for idx, p in enumerate(d.get('picks', []))]
             )
     except Exception as e:
@@ -420,12 +440,25 @@ def _hydrate_external_drafts(conn):
 
 
 def _insert_picks(conn, draft_id, picks):
+    # `round` prefers the value on the pick and falls back to the loop index.
+    #
+    # The fallback was the only behaviour, which is right exactly while a draft
+    # holds nothing but YOUR ~20 picks in order — your Nth pick is round N. It
+    # becomes nonsense the moment opponent seats are stored too, where the 240
+    # rows of a full board would be numbered 1..240. DK already supplies the real
+    # round per pick; the index is kept only for the extension import path, which
+    # does not.
+    #
+    # `mine` defaults to 1 so every existing caller — all of which pass your picks
+    # only — keeps working untouched.
     conn.executemany(
-        "INSERT INTO draft_picks (draft_id, player_id, player_name, pos, team, adp, pick_number, round, week15, week16, week17) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO draft_picks (draft_id, player_id, player_name, pos, team, adp, pick_number, round, week15, week16, week17, mine) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         [
-            (draft_id, p['id'], p['name'], p['pos'], p['team'], p.get('adp', 0), p.get('pick_number'), i + 1,
-             p.get('week15'), p.get('week16'), p.get('week17'))
+            (draft_id, p['id'], p['name'], p['pos'], p['team'], p.get('adp', 0), p.get('pick_number'),
+             p.get('round') or (i + 1),
+             p.get('week15'), p.get('week16'), p.get('week17'),
+             1 if p.get('mine', True) else 0)
             for i, p in enumerate(picks)
         ]
     )
@@ -533,15 +566,27 @@ def get_players():
                 for r in rows]
 
 
-def get_all_drafts():
+def get_all_drafts(include_opponents=False):
+    """Saved drafts with their picks.
+
+    include_opponents=True returns every seat's picks, which is what the harness
+    needs to build a field of real rosters. Default is your picks only, matching
+    what every existing caller expects.
+    """
     with get_db() as conn:
         drafts = conn.execute(
             "SELECT * FROM drafts ORDER BY created_at DESC"
         ).fetchall()
         result = []
         for d in drafts:
+            # Your picks only by default. Every existing consumer — the History
+            # page, exposure, the extension export — means "my roster" by "picks",
+            # and would render a full 240-row board as though you had drafted all
+            # of it. Opponent seats are opt-in, for the harness field builder.
             picks = conn.execute(
-                "SELECT * FROM draft_picks WHERE draft_id=? ORDER BY pick_number",
+                "SELECT * FROM draft_picks WHERE draft_id=?"
+                + ("" if include_opponents else " AND COALESCE(mine, 1) = 1")
+                + " ORDER BY pick_number",
                 (d['id'],)
             ).fetchall()
             result.append({**dict(d), 'picks': [dict(p) for p in picks]})
@@ -554,10 +599,17 @@ def get_exposure():
         if total == 0:
             return {'total_drafts': 0, 'players': {}}
 
+        # YOUR picks only. Exposure answers "how many of my entries is he on",
+        # which is what V2's diversification cost prices — counting opponents
+        # would report ~12x and tax every player you actually own.
+        #
+        # COALESCE for rows written before the column existed: those predate any
+        # opponent seats being stored, so they are all yours.
         rows = conn.execute("""
             SELECT player_id, player_name, pos, team,
                    COUNT(*) AS times_drafted
             FROM draft_picks
+            WHERE COALESCE(mine, 1) = 1
             GROUP BY player_id
             ORDER BY times_drafted DESC
         """).fetchall()
