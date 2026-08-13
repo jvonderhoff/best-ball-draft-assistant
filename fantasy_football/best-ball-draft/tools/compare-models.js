@@ -776,6 +776,45 @@ function buildFieldPods(players, nPods, seed, sharpSeats = 0) {
   return pods;
 }
 
+// Real DK rosters, exported by tools/export-real-rosters.py, as extra candidates.
+//
+// §9.2 names the ADP-bot field as the harness's biggest structural weakness, and
+// §5.3 is why it matters rather than being a caveat: sharpening the field WIDENED
+// V2's edge instead of narrowing it, so field quality changes the answer. Bots
+// draft like neither model and neither do humans, but only one of those is the
+// thing being simulated.
+//
+// These go in as ordinary candidates, NOT as guaranteed field members. That is the
+// point: selectFinalField weights every candidate by its estimated chance of
+// surviving the same three phases, then samples. A real roster that would rarely
+// reach a final should rarely appear in one, exactly like a bot roster. Forcing
+// them in would build a field of teams that did not qualify.
+//
+// Returns [] when the file is absent, so the harness runs unchanged without it.
+function loadRealRosters(players, pathOverride) {
+  const file = pathOverride || path.join(__dirname, '.field-cache', 'real-rosters.json');
+  if (!fs.existsSync(file)) return { rosters: [], sourceDrafts: 0, dropped: 0 };
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    console.log(`  WARNING: could not read ${file} (${e.message}) — continuing with bots only.`);
+    return { rosters: [], sourceDrafts: 0, dropped: 0 };
+  }
+  const byId = new Map(players.map(p => [p.id, p]));
+  const out = [];
+  let dropped = 0;
+  for (const ids of (raw.rosters || [])) {
+    const roster = ids.map(id => byId.get(id)).filter(Boolean);
+    // A roster that lost players to pool churn is a different team from the one
+    // that was drafted, and a thin one scores badly for reasons that have nothing
+    // to do with how it was built.
+    if (roster.length < 18) { dropped++; continue; }
+    out.push(roster);
+  }
+  return { rosters: out, sourceDrafts: raw.source_drafts || 0, dropped };
+}
+
 // Percentile of every candidate within the population, as `out[i] = F(vals[i])`.
 function cdfRanks(vals, srt, out, n) {
   srt.set(vals);
@@ -1178,6 +1217,21 @@ function main() {
   const pods = buildFieldPods(players, fieldPods, 555001, fieldSharp);
   console.log(`Built ${fieldPods} field pods (${fieldPods * NUM_TEAMS} candidate rosters, `
             + `${fieldSharp}/${NUM_TEAMS} seats model-drafted) in ${((Date.now() - t0) / 1000).toFixed(1)}s.`);
+
+  // Real DK rosters join the candidate pool, if they have been exported.
+  // `--no-real-field` runs bots-only, which is what every result recorded in the
+  // design doc was measured against — keep it available for comparison.
+  if (!args.includes('--no-real-field')) {
+    const real = loadRealRosters(players, arg('real-field', null));
+    if (real.rosters.length) {
+      pods.push(real.rosters.map(toFastRoster));
+      const share = 100 * real.rosters.length / (fieldPods * NUM_TEAMS + real.rosters.length);
+      console.log(`Added ${real.rosters.length} REAL rosters from ${real.sourceDrafts} DK drafts `
+                + `(${share.toFixed(1)}% of candidates`
+                + (real.dropped ? `, ${real.dropped} dropped as too thin` : '') + ').');
+      console.log('  They are candidates, not guaranteed entrants — same survival weighting as bots.');
+    }
+  }
 
   const scenarios = args.includes('--truth')
     ? [arg('truth', 'market')]
