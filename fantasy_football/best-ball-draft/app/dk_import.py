@@ -149,7 +149,7 @@ def import_many(items, min_picks=DEFAULT_MIN_PICKS, include_opponents=False):
 
 
 def import_completed_contests(min_picks=DEFAULT_MIN_PICKS, include_incomplete=False,
-                              min_picks_incomplete=1):
+                              min_picks_incomplete=1, include_opponents=False):
     """Discover the user's contests via My Contests, then board-import them.
 
     This is the primary History sync: discovery yields contest_id + entry_id for
@@ -175,12 +175,14 @@ def import_completed_contests(min_picks=DEFAULT_MIN_PICKS, include_incomplete=Fa
                  'entry_fee': c.get('entry_fee')} for c in cs]
 
     done = [c for c in contests if c.get('lineup_id')]
-    results = import_many(_items(done), min_picks=min_picks)
+    results = import_many(_items(done), min_picks=min_picks,
+                          include_opponents=include_opponents)
 
     if include_incomplete:
         live = [c for c in contests if not c.get('lineup_id')]
         if live:
-            results += import_many(_items(live), min_picks=min_picks_incomplete)
+            results += import_many(_items(live), min_picks=min_picks_incomplete,
+                                   include_opponents=include_opponents)
 
     return results
 

@@ -58,6 +58,11 @@ def main():
     ap.add_argument('--ids', nargs='*', help='specific DK draft/contest IDs')
     ap.add_argument('--guid', help='DK user GUID (if the cached file is missing)')
     ap.add_argument('--min-picks', type=int, default=18, help='min of your picks to count as complete')
+    ap.add_argument('--include-opponents', action='store_true',
+                    help='keep all 12 seats, not just yours — needed for the harness '
+                         'field of real rosters (tools/export-real-rosters.py). '
+                         'Your own picks are unaffected; exposure and History still '
+                         'filter to them via the `mine` flag.')
     args = ap.parse_args()
 
     from app.database import init_db
@@ -76,13 +81,15 @@ def main():
         print(f'Importing {len(items)} draft(s) by ID from DK '
               f'(GUID {guid[:8]}…, persist={persist})\n')
         from app.dk_import import import_many
-        results = import_many(items, min_picks=args.min_picks)
+        results = import_many(items, min_picks=args.min_picks,
+                              include_opponents=args.include_opponents)
     else:
         # Default: discover contests via My Contests and board-import the completed
         # ones (preserves real pick numbers + draft position).
         print(f'Discovering completed drafts from My Contests (persist={persist})\n')
         from app.dk_import import import_completed_contests
-        results = import_completed_contests(min_picks=args.min_picks)
+        results = import_completed_contests(min_picks=args.min_picks,
+                                            include_opponents=args.include_opponents)
 
     counts = {}
     for r in results:

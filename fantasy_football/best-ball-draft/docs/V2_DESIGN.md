@@ -648,11 +648,44 @@ accordingly (clamped 0.70–1.45). Improved advance rate +31.0% → +35.4%.
    0.35. Needs ~10x the team-seasons aimed only at that column — nothing else in the
    report requires the extra compute, so run it narrow rather than re-running sweeps.
    **The only live threat to a constant this project relies on.**
-2. **A field that drafts like neither model.** §5.3 retired bot-softness as an
-   explanation for V2's edge — sharpening the field *widened* it. But the sharp seats
-   are V1 and V2 themselves, so nothing here speaks to whether V2 beats real humans,
-   who draft like neither. Closing this needs actual DK draft exports as field
-   rosters, not more simulation.
+2. **A field that drafts like neither model — BUILT, blocked on volume.** §5.3
+   retired bot-softness as an explanation for V2's edge (sharpening the field
+   *widened* it), but the sharp seats are V1 and V2 themselves, so nothing there
+   speaks to whether V2 beats real humans.
+
+   The pipeline now exists. DK returns all twelve seats on every board pull and the
+   importer used to discard eleven of them; `--include-opponents` retains them,
+   `tools/export-real-rosters.py` writes them out, and `compare-models.js` folds them
+   into the candidate pool. They enter as candidates, not guaranteed entrants, so
+   `selectFinalField` weights them by survival propensity exactly like bots — a real
+   roster that would rarely reach a final rarely appears in one. Your own seat is
+   excluded by default; a field partly made of your rosters measures you against the
+   one opponent your edge cannot be estimated against.
+
+   **First run, 21 backfilled boards → 231 real rosters, and it changed nothing:**
+
+   | | bots only | +231 real |
+   |---|---|---|
+   | candidates | 10,800 | 11,031 |
+   | field strength | 51.5th pctile | 51.4th |
+   | V2 capped EV over V1 | +$52.35 | +$52.30 |
+
+   That is the correct result for a 2.1% share, not evidence about real drafters. The
+   number worth keeping is **field strength barely moving** — real rosters and ADP
+   bots score near-identically on the simulator's own survival measure. Weakly
+   evidenced at this share, but it is the first direct comparison available, and it
+   is mild support for §5.3's finding that bot-softness was never the explanation.
+
+   **What volume this actually needs, since it is not obvious.** The field samples
+   1,088 from the candidate pool, so the pool must stay *much* larger than 1,088 for
+   propensity weighting to select anything — at 10,800 it takes roughly the best
+   tenth. Lowering `--field-pods` to raise the real share therefore breaks the method
+   rather than strengthening it: at `--field-pods 90` the pool is 1,311 and nearly
+   every roster gets in regardless of merit. So the real share has to grow from the
+   numerator. A quarter of the pool means ~3,600 rosters, which is **~330 completed
+   boards** at 11 usable seats each. 21 today. Re-run the backfill as slow drafts
+   finish; this becomes a real test somewhere in the low hundreds of drafts, not
+   before.
 3. **A portfolio harness, to price diversification's benefit.** §3.1 ships a cost
    with no measured return, which is exactly the position `V2_CORRELATION_WEIGHT` was
    in before the final field was built — and it failed for the same structural reason:
