@@ -496,11 +496,26 @@ def refresh_players(players):
                p.get('ecr_rank'), p.get('ecr_std'),
                p.get('week15'), p.get('week16'), p.get('week17'))
               for p in players])
-        # Remove rankings for players no longer in the pool
-        conn.execute("""
-            DELETE FROM player_rankings
-            WHERE player_id NOT IN (SELECT player_id FROM players)
-        """)
+        # Deliberately does NOT prune rankings for players missing from this pool.
+        #
+        # It used to: `DELETE FROM player_rankings WHERE player_id NOT IN
+        # (SELECT player_id FROM players)`. That is destructive on the strength of
+        # one transient snapshot, and it runs on the automatic 6-hourly refresh, so
+        # a single short or partial DK response silently deletes real rankings.
+        #
+        # Worse, it deleted from the LOCAL cache only, leaving the durable store
+        # intact and the two out of sync. The next Save then reconciled them the
+        # wrong way round: the frontend posts the full board from the local view,
+        # so every pruned player goes up as custom_rank=None, which the external
+        # writer turns into a DELETE. A local prune therefore became a permanent
+        # durable deletion via an unrelated user action. Measured in production:
+        # 422 rankings hydrated at boot, 388 half an hour later.
+        #
+        # Orphans are harmless. get_rankings LEFT JOINs from players, so a ranking
+        # whose player is not in the pool simply never appears; it costs a row. And
+        # players do come back — bye-week churn, practice-squad call-ups, a pool
+        # refetched mid-update. Keeping the ranking means it still applies if he
+        # does, instead of the board quietly forgetting an opinion you set.
     return len(players)
 
 
