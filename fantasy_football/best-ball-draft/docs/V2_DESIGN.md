@@ -54,7 +54,7 @@ Baseline is **65% VOR** (vs the last startable player, `slots × 12`) **+ 35% VO
 | `V2_DIVERSITY_WEIGHT` | **1.0** | Portfolio diversification cost, §3.1. Sized against board spread, not guessed. **Benefit is unmeasurable in this harness** — see §9. |
 | `V2_BACKFIELD_DISCOUNT` | 0.80 | Judgement. Retained spike value: backup behind a R1 workhorse 38%, two mid-round committee backs 73%. |
 | `V2_QB_RB_REC` | **0.0 (off)** | Splits QB↔own-RB correlation into a rushing channel (0.02, no playoff weight — opposed game script) and a receiving one (0.30, playoff-weighted — a receiving TD pays QB 4 and RB 6 on the *same play*). Replaces a flat 0.06 applied across a pool running 14.7%→70.3% receiving, median 36.9%. **Measured and it LOSES** — −$1.10/−$2.97/−$3.60 across three seeds once both directions of the pairing are credited. Same shape, worse players in it. See §4. |
-| `SIM_LOAD_SPREAD` | **0.0 (off)** | *Harness*, not model. Per-player team loading from `rec_share`, centred on each position's median so the average is unchanged and only the spread is new. At 1.0 the RB pool runs 0.144 (Henry) to 0.897 (Vaki) against a flat 0.350. Turning it on moves *V1* by 4.4%, which is the scale to keep in mind when reading anything measured with it on. |
+| `SIM_LOAD_SPREAD` | **0.0 (off)** | *Harness*, not model. Per-player team loading from `rec_share`, centred on each position's median so the average is unchanged and only the spread is new. At 1.0 the RB pool runs 0.144 (Henry) to 0.897 (Vaki) against a flat 0.350. Turning it on moves *V1* by 4.4%, which is the scale to keep in mind when reading anything measured with it on. **It is a running-back instrument only** — QBs are all 0.000 and TEs are all ~1.000 (55 of 67 exactly at the median), so it is inert everywhere but RB and, weakly, WR. §9.5. |
 | `V2_VALUE_FIT_REF / FLOOR` | 0.50 / 0.20 | Roster-fit scaling, applied in three places (§3). |
 | `V2_BREAKOUT_SD_GAIN` | **0.0 (off)** | Fully plumbed. Swept twice against the fixed simulator; the two runs disagree about the shape near zero and agree 1.6 is bad. Effect is smaller than the variation a routine projection refresh introduces. See §4. |
 | `V2_OVER_TARGET_COST` | **0.0 (off)** | Roster-shape forcing. See §4. |
@@ -140,6 +140,13 @@ three attempts above all changed the *scoring function*, which changes the whole
 draft; denying only the 4th tight end on the same seed and weather costs nothing
 measurable. TE:4 is incidental, not load-bearing. TE≥5 (−4.00 ±1.38) and TE≤2
 (−3.96 ±0.77) are both genuinely bad, so 3 or 4 is a free choice.
+
+**Re-measured at 500 drafts across two seed bases (2026-08-13): −1.52 ±0.42pp.**
+Small, but no longer "nothing measurable" — it is 3.6 SE from zero where the
+original single-seed run was 1.5. The conclusion is unchanged in the way that
+matters (TE≥5 −5.66 ±1.01 and TE≤2 −4.79 ±0.53 are 3x worse), so 3 or 4 remains
+the choice; the 4th tight end is just mildly positive rather than exactly free.
+Read the earlier −0.93 as the same effect under-resolved, not as a contradiction.
 
 **Supply-exhaustion urgency (`V2_EXHAUSTION_WEIGHT`, 3rd attempt at this, worse).**
 Priced a position's pool running dry rather than merely getting worse — supply against
@@ -627,6 +634,15 @@ and EV fell.
 | RB | 4.64 | −0.31 ±1.89 | −4.97 ±1.66 | — | — |
 | WR | 9.03 | −5.22 ±1.84 | −10.35 ±1.64 | −0.56 ±0.40 | −0.78 ±0.66 |
 | TE | 3.90 | −4.00 ±1.38 | — | −0.93 ±0.62 | −3.96 ±0.77 |
+| TE *(500 drafts, 2 seeds)* | 3.94 | **−5.66 ±1.01** | — | **−1.52 ±0.42** | **−4.79 ±0.53** |
+
+The TE row is given twice deliberately. Every other row here is one seed base at
+200-300 drafts; the re-measured TE row is 500 drafts across two, and it moved every
+cell — one more went −4.00 → −5.66, one fewer −0.93 → −1.52. Nothing about tight
+ends changed between the runs (see §9.5: it was a spread-off/spread-on test and the
+spread turned out to be inert for TEs). **The single-seed rows above are therefore
+softer than their ± bars imply, and the ordering they establish is worth more than
+the levels.**
 
 **Caps are cheap, floors are expensive, and that is mechanical.** With 20 fixed
 spots a cap says "not more here" and the model reallocates optimally; a floor forces
@@ -790,11 +806,44 @@ accordingly (clamped 0.70–1.45). Improved advance rate +31.0% → +35.4%.
    arbitrary per-player number, and with the spread off the output is identical to
    the cent on EV (0.01pp on rates, from float reassociation).
 
-   **What is still open is TIGHT ENDS.** §4's finding that TE:4 is roughly free
-   (−0.93 ±0.62pp) was measured with every tight end loading identically at 0.60, and
-   a receiving TE and a blocking TE are not the same object. Re-running that paired
-   test with the spread on is cheap and is the obvious next use of this — it bears
-   directly on the roster shape V2 actually produces.
+   **The TIGHT END re-run is done, and it retired the question rather than
+   answering it.** 500 drafts per arm, two seed bases, spread off vs on:
+
+   | arm | spread OFF | spread ON | Δ |
+   |---|---|---|---|
+   | TE ≥ 5 | −5.66 ±1.01pp | −5.65 ±1.00pp | +0.01 |
+   | TE ≤ 3 | −1.52 ±0.42pp | −1.48 ±0.42pp | +0.04 |
+   | TE ≤ 2 | −4.79 ±0.53pp | −4.78 ±0.52pp | +0.01 |
+
+   **This is not evidence that tight end role does not matter. It is evidence that
+   `rec_share` cannot express tight end role.** The metric is receiving points over
+   TOTAL points, and a tight end earns ~all of his points receiving whether he runs
+   120 routes or blocks on early downs — the pool is min 0.789, median 1.000, and
+   **55 of 67 tight ends sit exactly at the median, so their loading offset is
+   exactly zero.** Four move at all; one is draftable (TE19, −0.052). The premise
+   behind this open thread was wrong: turning the spread on does not put a blocking
+   tight end in the simulator, because the difference between a blocking TE and a
+   receiving TE is *volume*, which already lives in his projected mean. It worked
+   for running backs precisely because rushing and receiving split an RB's points
+   and nothing splits a TE's.
+
+   **If this gets picked up again, the metric to use is share of his own team's
+   receiving points**, not share of his own. Derivable from the existing cache
+   (`ppg * rec_share`, summed per team) and it has real spread: TEs run 0.006 to
+   0.294, and 0.114 (Gesicki) to 0.294 (Bowers) among draftable ones. Caveat before
+   anyone spends a day on it — that number is strongly confounded with ppg, since a
+   team's receiving pie is roughly fixed, so much of it would re-encode "good tight
+   ends are good", which valuation already has. The independent signal is the
+   residual: a big share of a bad offense vs a modest share of a great one.
+
+   **Side finding, and it generalises past tight ends: paired differences are far
+   more seed-dependent than the ± bars suggest.** TE≥5 measured −4.07 ±1.36 at one
+   seed base and −7.25 ±1.49 at another — 4+ SE apart, on 250 drafts each. The
+   printed ± is the spread *within* one set of draft seeds and says nothing about
+   which seeds you drew. §5's ±$2 replication rule should be read as applying to
+   these pp figures too. `tools/rb-depth.js --seed-base` now exists for exactly
+   this; before it, re-running the tool reproduced the identical 150 drafts and
+   "replication" was meaningless.
 
    Standing caveat, unchanged: this makes the *shape* of an effect measurable, but
    the loading curve is assumed, so it cannot tell you 0.30 is the right receiving

@@ -28,6 +28,13 @@
 // Usage:
 //   node tools/rb-depth.js
 //   node tools/rb-depth.js --drafts 150 --seasons 250 --from-round 7
+//   node tools/rb-depth.js --pos TE --seed-base 730000     # replicate at a 2nd seed
+//
+// --seed-base exists because the design doc's own rule — replicate anything near the
+// noise floor at a second seed before believing it — was not executable here. The
+// draft seeds were hardcoded, so re-running this tool reproduced the same 150 drafts
+// exactly and "replication" meant nothing. Pairing is unaffected: every arm within a
+// run still shares the seed, which is what the error bar is built on.
 
 const H = require('./compare-models.js');
 
@@ -41,6 +48,7 @@ function main() {
   const seasons   = parseInt(arg('seasons', '250'), 10);
   const truth     = arg('truth', 'market');
   const model     = arg('model', 'v2');
+  const seedBase  = parseInt(arg('seed-base', '660000'), 10);
 
   // Position-general. "Early" has to mean something different per position — the
   // median ADP of the top 36 is RB 44 and WR 37 but QB 116 and TE 149, so a
@@ -96,13 +104,14 @@ function main() {
   console.log(`${model.toUpperCase()}, truth ${truth}, ${drafts} drafts x ${seasons} seasons, `
             + `${pos} floor from round ${fromRound}, early window R1-${earlyWindow}`
             + (light ? `, ${pos} banned through R${banThrough}.` : '.'));
+  console.log(`seed base ${seedBase}, SIM_LOAD_SPREAD ${process.env.SIM_LOAD_SPREAD || '0 (off)'}.`);
   console.log('Paired: every arm sees the same draft seed, the same opponents and the');
   console.log('same weekly player scores. Only the roster differs.\n');
 
   for (const a of arms) { a.rb = 0; a.perDraft = []; a.earlyRB = []; }
 
   for (let d = 0; d < drafts; d++) {
-    const seed = 660000 + d * 7919;
+    const seed = seedBase + d * 7919;
     H.assignTruth(players, truth, H.mulberry32(seed), ctx);
 
     const slot = d % NUM;
