@@ -837,15 +837,8 @@ function v2CorrelationValue(player, myTeam) {
     }
   }
 
-  if (player.pos === 'QB') {
-    // Bring-back: you already own this QB's pass-catchers.
-    for (const c of myCatch.slice(0, V2_MAX_STACK_PARTNERS)) {
-      pair(V2_CORRELATION.qbPassCatcher, c, 'completes stack w/');
-    }
-  }
-
-  // A back paired with his own QB, split by how he actually scores. See the
-  // V2_QB_RB_REC block above for the mechanism and for why it ships off.
+  // A quarterback and his own running back, split by how the back actually scores.
+  // See the V2_QB_RB_REC block above for the mechanism.
   //
   // With the feature off this is the long-standing behaviour verbatim: one flat
   // coefficient, credited to `regular` only, never to the playoff term — the week a
@@ -856,29 +849,66 @@ function v2CorrelationValue(player, myTeam) {
   // point: a shared touchdown is a simultaneous spike, a 25-carry game is not, so
   // crediting the pairing as a unit would smuggle the rushing half into a term it
   // has no claim on.
-  if (player.pos === 'RB' && myQBs.length) {
-    const qb    = myQBs[0];
-    const minSd = Math.min(sdMe, qb._eff.sd);
+  //
+  // One helper, used from BOTH directions, so they cannot drift apart. That symmetry
+  // is not tidiness — it was the bug. This term used to be credited only when
+  // evaluating an RB against a rostered QB, while the QB branch below looked at
+  // `myCatch` (WR/TE only) and could not see a rostered back at all. V2 drafts backs
+  // early and quarterbacks around round 8, so the direction that actually arises in a
+  // draft — "I own the back, is his QB worth taking?" — earned nothing, and a sweep
+  // of this constant measured only the rare direction and correctly found nothing.
+  const qbRbChannels = (rb, qb) => {
+    const minSd = Math.min(rb._eff.sd, qb._eff.sd);
     const flat  = V2_CORRELATION.qbRb * minSd * V2_CORRELATION_WEIGHT;
-    const share = player._eff.recShare;
-    const last  = qb.name.split(' ').pop();
-
-    if (V2_QB_RB_REC > 0 && share != null) {
-      const w     = Math.max(0, Math.min(1, V2_QB_RB_REC));
-      const vRush = V2_CORRELATION_QB_RB_RUSH * (1 - share) * minSd * V2_CORRELATION_WEIGHT;
-      const vRec  = V2_CORRELATION_QB_RB_REC  * share       * minSd * V2_CORRELATION_WEIGHT;
-
-      regular     += flat * (1 - w) + (vRush + vRec) * w;
-      playoffTeam += vRec * w * V2_PLAYOFF_STACK_MULTIPLIER;
-      notes.push(`w/ QB ${last} · ${Math.round(share * 100)}% receiving`);
-    } else {
-      regular += flat;
-      // Noted even when the credit is tiny. It was previously silent — the only
-      // same-team pairing in the model that produced no breakdown line at all — so
-      // there was no way to eyeball whether it was doing anything, which is exactly
-      // the check the side-by-side with V1 exists to make possible.
-      notes.push(`w/ QB ${last}`);
+    const share = rb._eff.recShare;
+    if (!(V2_QB_RB_REC > 0) || share == null) {
+      return { regular: flat, playoffTeam: 0, share: null };
     }
+    const w     = Math.max(0, Math.min(1, V2_QB_RB_REC));
+    const vRush = V2_CORRELATION_QB_RB_RUSH * (1 - share) * minSd * V2_CORRELATION_WEIGHT;
+    const vRec  = V2_CORRELATION_QB_RB_REC  * share       * minSd * V2_CORRELATION_WEIGHT;
+    return {
+      regular:     flat * (1 - w) + (vRush + vRec) * w,
+      playoffTeam: vRec * w * V2_PLAYOFF_STACK_MULTIPLIER,
+      share,
+    };
+  };
+
+  if (player.pos === 'QB') {
+    // Bring-back: you already own this QB's pass-catchers.
+    for (const c of myCatch.slice(0, V2_MAX_STACK_PARTNERS)) {
+      pair(V2_CORRELATION.qbPassCatcher, c, 'completes stack w/');
+    }
+    // ...and his running back, if you own one. Only the best of them — a second back
+    // from the same backfield adds almost nothing (they rarely play together, which
+    // is the same reason v2BackfieldSpikeDiscount exists) and would double-count one
+    // bet.
+    const myRbs = sameTeam.filter(m => m.pos === 'RB');
+    if (myRbs.length) {
+      const rb = myRbs.reduce((a, b) => (a._eff.mean >= b._eff.mean ? a : b));
+      const ch = qbRbChannels(rb, player);
+      regular     += ch.regular;
+      playoffTeam += ch.playoffTeam;
+      const last = rb.name.split(' ').pop();
+      notes.push(ch.share != null
+        ? `completes RB stack w/ ${last} · ${Math.round(ch.share * 100)}% receiving`
+        : `completes RB stack w/ ${last}`);
+    }
+  }
+
+  if (player.pos === 'RB' && myQBs.length) {
+    const qb = myQBs[0];
+    const ch = qbRbChannels(player, qb);
+    regular     += ch.regular;
+    playoffTeam += ch.playoffTeam;
+    const last = qb.name.split(' ').pop();
+    // Noted even when the credit is tiny. It was previously silent — the only
+    // same-team pairing in the model that produced no breakdown line at all — so
+    // there was no way to eyeball whether it was doing anything, which is exactly
+    // the check the side-by-side with V1 exists to make possible.
+    notes.push(ch.share != null
+      ? `w/ QB ${last} · ${Math.round(ch.share * 100)}% receiving`
+      : `w/ QB ${last}`);
   }
 
   // Playoff game stacks — both sides of one week 15/16/17 game.  Weighted far

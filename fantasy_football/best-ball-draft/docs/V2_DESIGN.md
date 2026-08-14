@@ -53,7 +53,7 @@ Baseline is **65% VOR** (vs the last startable player, `slots × 12`) **+ 35% VO
 | `V2_CORRELATION_WEIGHT` | **0.35** | Swept against a real 1,089-team final (§5). Interior maximum, and the curve is steeply asymmetric — see §5.1. |
 | `V2_DIVERSITY_WEIGHT` | **1.0** | Portfolio diversification cost, §3.1. Sized against board spread, not guessed. **Benefit is unmeasurable in this harness** — see §9. |
 | `V2_BACKFIELD_DISCOUNT` | 0.80 | Judgement. Retained spike value: backup behind a R1 workhorse 38%, two mid-round committee backs 73%. |
-| `V2_QB_RB_REC` | **0.0 (off)** | Splits QB↔own-RB correlation into a rushing channel (0.02, no playoff weight — opposed game script) and a receiving one (0.30, playoff-weighted — a receiving TD pays QB 4 and RB 6 on the *same play*). Replaces a flat 0.06 applied across a pool running 14.7%→70.3% receiving, median 36.9%. **Now measured and it does not replicate** — see §4. The blocker is gone (`SIM_LOAD_SPREAD` gives the simulator per-player loading), so this is off on evidence rather than for want of a test. |
+| `V2_QB_RB_REC` | **0.0 (off)** | Splits QB↔own-RB correlation into a rushing channel (0.02, no playoff weight — opposed game script) and a receiving one (0.30, playoff-weighted — a receiving TD pays QB 4 and RB 6 on the *same play*). Replaces a flat 0.06 applied across a pool running 14.7%→70.3% receiving, median 36.9%. **Measured and it LOSES** — −$1.10/−$2.97/−$3.60 across three seeds once both directions of the pairing are credited. Same shape, worse players in it. See §4. |
 | `SIM_LOAD_SPREAD` | **0.0 (off)** | *Harness*, not model. Per-player team loading from `rec_share`, centred on each position's median so the average is unchanged and only the spread is new. At 1.0 the RB pool runs 0.144 (Henry) to 0.897 (Vaki) against a flat 0.350. Turning it on moves *V1* by 4.4%, which is the scale to keep in mind when reading anything measured with it on. |
 | `V2_VALUE_FIT_REF / FLOOR` | 0.50 / 0.20 | Roster-fit scaling, applied in three places (§3). |
 | `V2_BREAKOUT_SD_GAIN` | **0.0 (off)** | Fully plumbed. Swept twice against the fixed simulator; the two runs disagree about the shape near zero and agree 1.6 is bad. Effect is smaller than the variation a routine projection refresh introduces. See §4. |
@@ -277,35 +277,41 @@ running 14.7% to 70.3% receiving. Implemented as two channels, with only the rec
 half earning playoff weight.
 
 Ungradeable at first — `TEAM_LOADING` was per position, so the simulator held no
-receiving backs. `SIM_LOAD_SPREAD` fixed that (§9.5, now built), and the test ran.
+receiving backs. `SIM_LOAD_SPREAD` fixed that (§9.5) and the test ran.
 
-**It does not replicate.** `truth=market`, 400x200, spread at 1.0, paired on seed:
+**The first test was invalid, and the reason is the more useful finding.** The term was
+credited only when evaluating an RB against a rostered QB; the QB branch looked at
+`myCatch` — WR/TE only — and could not see a rostered back at all. V2 drafts backs
+early and quarterbacks around round 8, so the direction that actually arises in a
+draft ("I own the back, is his QB worth taking?") earned nothing. The sweep measured
+the rare direction and found noise: +$2.38 / −$0.25 / +$0.01 across three seeds. That
+result said nothing about the idea.
+
+Both directions now share one helper so they cannot drift apart. Re-swept, paired on
+seed, spread at 1.0:
 
 | seed | Q=0.0 | Q=1.0 | diff |
 |---|---|---|---|
-| 20260730 | +$49.11 | +$51.49 | **+2.38** |
-| 77712345 | +$26.89 | +$26.64 | **−0.25** |
-| 31415926 | +$14.20 | +$14.21 | **+0.01** |
+| 20260730 | $49.08 | $47.98 | **−1.10** |
+| 77712345 | $26.81 | $23.84 | **−2.97** |
+| 31415926 | $14.17 | $10.57 | **−3.60** |
 
-The sign flips; the first seed was the flattering run. Three further things are worth
-keeping, because they explain *why* rather than just recording the null.
+**Same sign at every seed, and past the ±$2 noise floor at two of three. It loses.**
 
-**At half strength it changed nothing at all** — `Q=0.5` came back bit-identical to
-`Q=0.0` on every metric. The term fires 64 times per draft and loses every one.
+The mechanism is worth recording because it is not the obvious one. Roster shape barely
+moves (QB 2.53 → 2.54, RB 4.55 → 4.57), so this is not the model buying quarterbacks it
+should not. It keeps the same shape and substitutes *worse players into it* to collect a
+correlation bonus that does not pay for the value given up — which is the same lesson as
+§5.1's steeply asymmetric correlation curve, arriving from a different direction.
 
-**The reason is structural, not a sizing problem.** V2 takes its first quarterback
-around round 8, and by then the backs from that team are gone or unattractive, so the
-pairing is mostly evaluated when it can no longer be acted on. Raising the coefficient
-does not fix that; it would just overpay on the rare occasion the pairing survives.
+Left off. The football argument may still be right; what is settled is that acting on it
+costs money in this harness, and that the earlier null was measuring the wrong direction.
 
-**The assumption introduced to enable the test moves more than the thing tested.**
-Switching the loading spread on shifted *V1* — which cannot see this feature — by
-4.4%, against a Q effect of 2.4% at its most flattering seed. When that is the ratio,
-the honest reading is that the measurement is dominated by its own scaffolding.
-
-Left off. The mechanism may well be real in football; what is settled is that this
-harness cannot show it paying, and that the failure is about *when the pairing is
-available* rather than about how much it is worth.
+**The symmetry fix itself ships**, separately from the constant. Correlation does not
+care which of the two players you happen to be scoring, so the one-way credit was a bug
+independent of `V2_QB_RB_REC`. At the shipped default (Q=0.0) it costs −$0.03 / −$0.08 /
+−$0.03 — consistently negative, an order of magnitude below the noise floor, i.e. free —
+and it makes a QB's card show `completes RB stack w/ …`, which it never did.
 
 **Known defect, unfixed: `sd` does not follow the blend.** `ceiling = blended +
 1.2816 x sd`, but `sd` comes from the projection pipeline as `raw_ppg x POS_SCORING_CV`
