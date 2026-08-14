@@ -34,6 +34,21 @@ Anything that must survive lives in Postgres (`DATABASE_URL`): `rankings_store`,
 endpoint reports the local SQLite, so a warm instance looks healthy whether persistence
 is working or not. Check it after any deploy that touches storage.
 
+**Read `rankings_hydrated` there, not just the counts.** Counts were not enough and that
+is exactly how a two-month-old board went unnoticed: a boot that fails to reach Postgres
+leaves `rankings_seed.json` — a *committed* bootstrap file — serving as the live board,
+at `V2_CUSTOM_RANK_WEIGHT` 0.55 of every valuation. By the time anyone calls the status
+endpoint the database has woken up and reports a healthy count, so both columns look
+fine. `rankings_hydrated: false` means the live board is the seed file; saving rankings
+is then blocked (409), because the frontend posts the whole board and unranked players
+go up as deletes — one Save from an unhydrated cache would have destroyed 69 real
+rankings. A `rankings_warning` also appears whenever local and durable drift apart
+after a good boot.
+
+**The lesson generalises past rankings.** Three bugs this session were silent in the same
+way: plausible numbers, no errors, nothing logged. Prefer failing loudly and recording
+whether a thing actually happened over inferring it from a count that looks right.
+
 `app/data/player_cache.json` is committed **on purpose** — `_seed_players_if_empty` needs
 it to populate a cold database. It looks like a build artifact. It isn't. Don't gitignore
 it.
@@ -70,6 +85,33 @@ valuation looks absurd.
   Paired on seed *and* weather, which is what makes it able to resolve effects the
   construction table cannot.
 - `tools/sitngo-ev.js` — the winner-take-all Sit & Go contests, a different game.
+
+**The noise floor is ±$2 on a paired difference. Replicate anything smaller with
+`--seed` before believing it.** Absolute EV swings 3.5x on the seed alone ($49 / $27 /
+$14 for the same comparison), which is why the rule above says never to quote a level.
+Paired differences are far tighter, but not infinitely so — see §5 of the design doc.
+Two results this session survived only because they were re-run at a second seed, and
+one confident write-up had to be retracted.
+
+**Real opponent rosters (the §9.2 field) live only on this machine.** Deliberately:
+Render has no use for opponent seats and DK blocks its IPs anyway. The chain is
+
+```bash
+xargs python3 import_dk_history.py --include-opponents --ids < ids.txt
+python3 tools/export-real-rosters.py     # -> tools/.field-cache/ (gitignored)
+```
+
+where `ids.txt` is one DK draft id per line, from `.saved_drafts.json`. Both the
+database and the export are gitignored and regenerable, so losing them costs a re-run
+and nothing else. `compare-models.js` picks the export up automatically;
+`--no-real-field` reproduces a bots-only run. Re-run as slow drafts finish — only
+*completed* boards import, and this needs to be in the low hundreds before it can
+measure anything (21 today, ~2% of the candidate pool).
+
+**`--include-opponents` is off by default and must stay that way for normal imports.**
+Exposure, the History page and the extension export all mean "my roster" by "picks".
+A full board is kept apart from your own picks by the `mine` column, which every one
+of those paths filters on.
 
 ## Working agreements
 
