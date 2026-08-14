@@ -4,7 +4,7 @@ Shared player-name normalization for cross-source matching.
 Every data source spells players differently.  DraftKings supplies the player pool;
 Sleeper, ESPN and FantasyPros supply the projections and rankings we match onto it.
 Punctuation and generational suffixes were already handled, but the sources also
-disagree on given names — DraftKings says "Nick Singleton" and "Kenneth Gainwell"
+disagree on given names — DraftKings said "Nick Singleton" and "Kenneth Gainwell"
 while all three projection sources say "Nicholas Singleton" and "Kenny Gainwell".
 
 That mismatch is expensive and silent: an unmatched player falls through to V2's
@@ -14,6 +14,16 @@ at ADP 97 — a round-8 pick valued on nothing.
 
 Canonicalising nicknames to their formal form fixes both directions at once, since
 the same function normalizes both sides of every lookup.
+
+That "both directions" is not a nicety, and there is now a case to prove it.  The
+2026-08-12 pool refresh had DraftKings switch to "Kenny Gainwell" — the projection
+sources' spelling, the one this module was written to translate away from — and the
+match survived untouched, because both spellings reduce to "kenneth gainwell" no
+matter which side they arrive on.  The same refresh brought "A.J. Dillon" ->
+"AJ Dillon" (punctuation) and "Ted Hurst" -> "Ted Hurst III" (suffix), both likewise
+absorbed.  A source can therefore rename a player into or out of any of these forms
+without anyone noticing, which is the intended behaviour: resist the temptation to
+"simplify" this by normalising only the incoming projection side.
 """
 import re
 

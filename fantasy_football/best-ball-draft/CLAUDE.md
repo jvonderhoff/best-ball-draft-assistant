@@ -68,10 +68,18 @@ prod (verified). Props must be pushed from a residential connection.
 `/api/projections/refresh` calls the FantasyPros *season* scraper, which is dead —
 paywalled to a 10-per-position teaser. It is not the path that feeds the model.
 
-Name matching lives in `app/data/names.py`. DK says "Nick Singleton"/"Kenneth Gainwell";
-every projection source says "Nicholas"/"Kenny". Unmatched players fall through to an
-ADP-implied estimate and get scored as generic bodies — check this first when a player's
-valuation looks absurd.
+Name matching lives in `app/data/names.py`. DK says "Nick Singleton" where every
+projection source says "Nicholas". Unmatched players fall through to an ADP-implied
+estimate and get scored as generic bodies — check this first when a player's valuation
+looks absurd.
+
+**Don't fix a mismatch by special-casing one side.** `normalize_name` runs on *both*
+sides of every lookup, and that symmetry is load-bearing rather than tidy. The
+2026-08-12 pool refresh had DK change "Kenneth Gainwell" to "Kenny Gainwell" — the
+exact spelling the alias was written to translate *away* from, on a round-8 back —
+and nothing broke, because both spellings normalise to the same key either way. The
+same refresh brought "A.J. Dillon" → "AJ Dillon" and "Ted Hurst" → "Ted Hurst III",
+also absorbed. A one-directional fix would have silently un-matched all three.
 
 ## The harness
 
