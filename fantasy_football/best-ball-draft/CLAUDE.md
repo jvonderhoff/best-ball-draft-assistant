@@ -34,6 +34,15 @@ Anything that must survive lives in Postgres (`DATABASE_URL`): `rankings_store`,
 endpoint reports the local SQLite, so a warm instance looks healthy whether persistence
 is working or not. Check it after any deploy that touches storage.
 
+**A 200 does not mean your deploy landed.** The old instance keeps serving the whole
+time the new one builds, and it answers every health check perfectly — because it *is*
+healthy, it is just the previous code. Polling `until curl … 200` therefore returns
+instantly and proves nothing, which is a way to "verify" a deploy that has not started.
+Poll for something only the NEW build serves: a string added to a template
+(`curl -s $HOST/analysis | grep -q col-groups`), or a field only the new code emits.
+Same lesson as `rankings_hydrated` — check that the thing happened, do not infer it
+from a signal that looks the same either way.
+
 **Read `rankings_hydrated` there, not just the counts.** Counts were not enough and that
 is exactly how a two-month-old board went unnoticed: a boot that fails to reach Postgres
 leaves `rankings_seed.json` — a *committed* bootstrap file — serving as the live board,
