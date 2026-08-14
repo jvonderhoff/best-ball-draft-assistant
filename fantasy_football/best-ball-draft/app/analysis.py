@@ -12,6 +12,10 @@ import re
 import requests
 from app.database import get_db, get_all_props, get_raw_projections, get_yahoo_projections, get_espn_projections
 from app.data.betting_fetcher import props_to_fantasy_pts
+# Static team -> 2026 bye week. Lives in the DK fetcher because that is where the
+# pool is enriched; the players TABLE has no bye column, so reading the constant
+# directly is what avoids a schema migration for a display-only field.
+from app.data.api_fetcher import BYE_WEEKS_2026
 
 SLEEPER_STATS_URL       = 'https://api.sleeper.app/v1/stats/nfl/regular/2025'
 SLEEPER_PLAYERS_URL     = 'https://api.sleeper.app/v1/players/nfl'
@@ -84,6 +88,15 @@ def _build_sleeper_lookup(stats, meta):
             'pass_td':     int(s.get('pass_td') or 0),
             'pass_int':    int(s.get('pass_int') or 0),
             'pos_rank':    int(s.get('pos_rank_half_ppr') or 999),
+            # Raw opportunity inputs. Carried through untouched so the derived
+            # share metrics in _attach_opportunity have something to divide, and
+            # so the underlying counts stay inspectable when a share looks wrong.
+            'rec_tgt':     int(s.get('rec_tgt')     or 0),
+            'rec_air_yd':  int(s.get('rec_air_yd')  or 0),
+            'rec_rz_tgt':  int(s.get('rec_rz_tgt')  or 0),
+            'rush_att':    int(s.get('rush_att')    or 0),
+            'rush_rz_att': int(s.get('rush_rz_att') or 0),
+            'rec_drop':    int(s.get('rec_drop')    or 0),
         }
         # If a name appears twice, keep the higher-scoring one
         if name_key not in lookup or obj['pts_ppr'] > lookup[name_key]['pts_ppr']:
@@ -98,6 +111,218 @@ def _playoff_score(player: dict) -> float:
     Having all three weeks = 1.0, two = 0.67, one = 0.33, none = 0.
     """
     return sum(1 for w in ('week15', 'week16', 'week17') if player.get(w)) / 3.0
+
+
+# ── Opportunity, regression and context ───────────────────────────────────────
+#
+# Everything below is derived from the SAME two Sleeper calls the module already
+# makes.  No new source, no scraping, nothing that can be blocked by IP — the raw
+# fields were simply being dropped on the floor.
+#
+# Read all of it as 2025 ACTUALS.  These describe the role a player held last
+# season; they are not a 2026 forecast, and rookies and team-changers have none.
+# Their value is as a cross-check on the projection columns: a projection that
+# disagrees with an established role is either an insight or an error, and this is
+# what lets you tell which.
+
+def _team_totals(stats: dict, meta: dict) -> dict:
+    """
+    Per-team 2025 totals for the denominators of every share metric.
+
+    Summed over EVERY skill player Sleeper has on the team, deliberately not over
+    the DK pool: a share has to be denominated in the whole offence or it inflates
+    for teams whose depth is undrafted.  Sleeper does publish team-level rows, but
+    summing players keeps numerator and denominator on one basis — the same reason
+    `rec_share` in app/projections.py divides by Sleeper's own total.
+    """
+    totals = {}
+    for pid, m in meta.items():
+        team = m.get('team')
+        if not team or m.get('position') not in SKILL_POSITIONS:
+            continue
+        s = stats.get(pid)
+        if not s:
+            continue
+        t = totals.setdefault(team, {'tgt': 0.0, 'air_yd': 0.0, 'rush_att': 0.0,
+                                     'rz_tgt': 0.0, 'rz_att': 0.0})
+        t['tgt']      += float(s.get('rec_tgt')     or 0)
+        t['air_yd']   += float(s.get('rec_air_yd')  or 0)
+        t['rush_att'] += float(s.get('rush_att')    or 0)
+        t['rz_tgt']   += float(s.get('rec_rz_tgt')  or 0)
+        t['rz_att']   += float(s.get('rush_rz_att') or 0)
+    return totals
+
+
+def _build_context_lookup(meta: dict) -> dict:
+    """
+    name_key -> {age, years_exp, depth_chart_order, injury_status}.
+
+    Built from the FULL meta rather than from the stats lookup, which drops anyone
+    under 10 points last season.  Rookies are exactly the players with no stats and
+    exactly the players whose age and depth-chart slot you most want to see, so
+    reusing the stats-filtered map here would blank the useful cases.
+    """
+    out = {}
+    for pid, m in meta.items():
+        if m.get('position') not in SKILL_POSITIONS:
+            continue
+        key = _normalize(m.get('full_name') or m.get('search_full_name') or '')
+        if not key or key in out:
+            continue
+        out[key] = {
+            'age':          m.get('age'),
+            'years_exp':    m.get('years_exp'),
+            'depth_order':  m.get('depth_chart_order'),
+            # Sleeper leaves this None for healthy players; '' would render as a
+            # blank cell that looks like missing data rather than good news.
+            'injury':       m.get('injury_status') or None,
+        }
+    return out
+
+
+def _league_td_rates(stats: dict, meta: dict) -> tuple:
+    """
+    League-wide touchdowns per red-zone target and per red-zone carry, measured
+    from this season's data rather than hardcoded.
+
+    Constants in this project get measured where measuring is possible (see
+    CLAUDE.md), and this one is free to measure: the same rows that supply a
+    player's red-zone usage supply the league rate to price it against.  It also
+    means the number self-corrects if the league's scoring environment moves,
+    which a literal copied off an article would not.
+    """
+    rz_tgt = rz_att = rec_td = rush_td = 0.0
+    for pid, m in meta.items():
+        if m.get('position') not in SKILL_POSITIONS:
+            continue
+        s = stats.get(pid)
+        if not s:
+            continue
+        rz_tgt  += float(s.get('rec_rz_tgt')  or 0)
+        rz_att  += float(s.get('rush_rz_att') or 0)
+        rec_td  += float(s.get('rec_td')      or 0)
+        rush_td += float(s.get('rush_td')     or 0)
+    # Fall back to roughly league-average rates if a fetch came back empty, so a
+    # bad API day degrades to approximate numbers instead of dividing by zero.
+    per_tgt = (rec_td  / rz_tgt) if rz_tgt > 0 else 0.20
+    per_att = (rush_td / rz_att) if rz_att > 0 else 0.12
+    return per_tgt, per_att
+
+
+def _attach_opportunity(players: list, team_tot: dict, ctx_lookup: dict,
+                        td_per_rz_tgt: float, td_per_rz_att: float) -> None:
+    """
+    Attach share, efficiency, red-zone and context columns to each player in place.
+
+    NO aDOT AND NO WOPR HERE, DELIBERATELY, AND DO NOT ADD THEM FROM THIS SOURCE.
+    Both are defined on *intended* air yards — how far downfield a throw was aimed,
+    counted on every target including incompletions.  Sleeper's `rec_air_yd` is
+    COMPLETED air yards: receiving yards minus yards after catch, on catches only.
+    Checked rather than assumed — across the 122 players with 50+ targets in 2025,
+    `rec_air_yd` exceeds `rec_yd` exactly ZERO times, which cannot happen for an
+    intended-air-yards figure (a receiver targeted 20 yards downfield 100 times has
+    ~2,000 intended air yards and nowhere near that many receiving yards).
+
+    Dividing completed air yards by targets therefore does not give aDOT; it gives a
+    number contaminated by catch rate and quarterback accuracy that lands about half
+    where aDOT should (Ja'Marr Chase 4.2 against a real aDOT near 9).  Publishing it
+    under the name "aDOT" would be worse than omitting it, because the reader would
+    compare it against every other site's aDOT and quietly conclude the player had
+    changed role.  Same for WOPR, whose air-yards term is intended by definition.
+
+    What IS honest from this data: target share (a target is a target), completed
+    air yards per reception, catch rate, and the red-zone counts.  Real aDOT/WOPR
+    need play-by-play — nflfastR publishes `air_yards` per play, free — which is a
+    new pipeline rather than a new column.
+    """
+    for p in players:
+        # No 2025 stat row means a rookie or a player who did not register — every
+        # column below has to read "—", NOT zero.  A 0.0% target share renders as a
+        # measurement ("he played and got nothing") when the truth is an absence of
+        # data, and the players it would libel are exactly the rookies whose ADP is
+        # most speculative.  Same reason `rec_share` treats null as unknown rather
+        # than as a back who never catches the ball.
+        has_2025 = p.get('sleeper_id') is not None
+
+        # Receiving opportunity is a PASS CATCHER's metric. Without this gate a
+        # quarterback with one trick-play reception for −9 yards posts an AY/Rec of
+        # −9.0, and the leaderboard of "catches furthest behind the line" fills up
+        # with Mahomes and Rodgers. There is no such thing as a QB's target share.
+        is_catcher = p.get('pos') in ('RB', 'WR', 'TE')
+
+        # Rate stats need a sample. Ten targets is a floor against the same class of
+        # noise one rung down: a backup with 3 targets and 3 catches is not a 100%
+        # catch-rate receiver, and sorting by that column should not hand him the
+        # top of it. Counting stats (targets, red-zone looks) are shown unfiltered
+        # because a count of 3 is honestly a count of 3.
+        MIN_TGT = 10
+
+        tot = team_tot.get(p.get('team')) or {}
+        tgt   = float(p.get('rec_tgt')     or 0)
+        air   = float(p.get('rec_air_yd')  or 0)
+        rec   = float(p.get('rec')         or 0)
+        catch_tot = float(tot.get('tgt')    or 0)
+        air_tot   = float(tot.get('air_yd') or 0)
+
+        # Gated on the player having targets, not just on the denominator existing.
+        # A quarterback's target share is not 0% — it is undefined, and printing a
+        # zero in that cell puts a number where there is no concept.
+        ok = has_2025 and is_catcher and tgt >= MIN_TGT
+        tgt_share = (tgt / catch_tot) if (ok and catch_tot > 0) else None
+
+        # THE headline opportunity number, and the one metric here that is exactly
+        # what it says: share of his own offence's targets. Volume is the most
+        # persistent thing about a pass catcher year to year — far more so than
+        # efficiency — which is why this belongs next to the projections.
+        p['tgt_share'] = round(100 * tgt_share, 1) if tgt_share is not None else None
+
+        # NO air-yards SHARE, and this is a second, separate reason from the aDOT
+        # one above. Completed air yards go NEGATIVE for a player whose catches
+        # happen behind the line of scrimmage — De'Von Achane ran −12.8% of his
+        # team's, which is correct arithmetic and a meaningless share, since a
+        # share needs a non-negative numerator to be a share at all. Per-reception
+        # the same negative number is fine and in fact informative, so that is the
+        # form kept.
+
+        # Completed air yards per RECEPTION — how far downfield his catches
+        # actually happen. Divided by receptions, not targets, because the
+        # numerator only counts caught balls; per-target would mix a
+        # catches-only numerator with an all-targets denominator and mean nothing.
+        p['ay_per_rec'] = round(air / rec, 1) if (ok and rec > 0) else None
+        p['catch_rate'] = round(100 * rec / tgt, 1) if ok else None
+        # The raw count behind the share, shown because a share hides its own
+        # sample size — 20% of a team that threw 400 times is not 20% of one that
+        # threw 700, and the reader deserves to see which.
+        p['tgt'] = int(tgt) if (has_2025 and is_catcher) else None
+
+        # ── Red zone and touchdown regression ─────────────────────────────────
+        rz_tgt = float(p.get('rec_rz_tgt')  or 0)
+        rz_att = float(p.get('rush_rz_att') or 0)
+        p['rz_tgt'] = int(rz_tgt) if has_2025 else None
+        p['rz_att'] = int(rz_att) if has_2025 else None
+        p['rz_opp'] = int(rz_tgt + rz_att) if has_2025 else None
+
+        # Expected TDs from red-zone usage, against what he actually scored.
+        # POSITIVE td_delta = outscored his usage, a regression-DOWN candidate
+        # (sell); negative = the usage was there and the touchdowns were not
+        # (buy).  This is a statement about last season's luck, not a forecast —
+        # it flags where the market may be pricing variance as skill.
+        actual_td = float(p.get('rec_td') or 0) + float(p.get('rush_td') or 0)
+        if has_2025 and rz_tgt + rz_att > 0:
+            xtd = rz_tgt * td_per_rz_tgt + rz_att * td_per_rz_att
+            p['xtd']      = round(xtd, 1)
+            p['td_delta'] = round(actual_td - xtd, 1)
+        else:
+            p['xtd'] = None
+            p['td_delta'] = None
+
+        # ── Context ───────────────────────────────────────────────────────────
+        c = ctx_lookup.get(_normalize(p['name'])) or {}
+        p['age']         = c.get('age')
+        p['years_exp']   = c.get('years_exp')
+        p['depth_order'] = c.get('depth_order')
+        p['injury']      = c.get('injury')
+        p['bye']         = BYE_WEEKS_2026.get(p.get('team')) or None
 
 
 def get_analysis_data(force_refresh: bool = False):
@@ -138,7 +363,17 @@ def get_analysis_data(force_refresh: bool = False):
                 'rush_yd': 0, 'rush_td': 0, 'rec_yd': 0, 'rec_td': 0,
                 'rec': 0, 'pass_yd': 0, 'pass_td': 0, 'pass_int': 0,
                 'pos_rank': 999,
+                'rec_tgt': 0, 'rec_air_yd': 0, 'rec_rz_tgt': 0,
+                'rush_att': 0, 'rush_rz_att': 0, 'rec_drop': 0,
             })
+
+    # ── Opportunity, red-zone regression and context (2025 actuals) ───────────
+    # Placed here, straight after the actuals are matched, because every input it
+    # needs is a 2025 stat and none of it depends on any projection source.
+    team_tot   = _team_totals(stats, meta)
+    ctx_lookup = _build_context_lookup(meta)
+    td_per_rz_tgt, td_per_rz_att = _league_td_rates(stats, meta)
+    _attach_opportunity(players, team_tot, ctx_lookup, td_per_rz_tgt, td_per_rz_att)
 
     # ── Match 2026 projections by Sleeper player ID ───────────────────────────
     # Build a name → sleeper_id map from the full meta (includes players with

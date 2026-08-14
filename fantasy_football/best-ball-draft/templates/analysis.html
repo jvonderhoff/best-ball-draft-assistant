@@ -59,6 +59,19 @@
     .stat-chip strong { color: var(--accent); }
 
     /* ── Table ── */
+    /* Collapsible column groups. Chips rather than a menu so the current shape of
+       the table is readable without opening anything. */
+    .col-groups { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; align-items: center; }
+    .col-group {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 6px; padding: 4px 10px; font-size: 0.78em; cursor: pointer;
+      font-family: inherit; display: inline-flex; align-items: center; gap: 5px;
+    }
+    .col-group:hover { color: var(--text); border-color: #4a6080; }
+    .col-group.active { border-color: var(--accent); color: var(--accent); background: var(--selected); }
+    .col-group.locked { cursor: default; opacity: 0.65; }
+    .cg-n { font-size: 0.85em; opacity: 0.6; }
+
     .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
     /* Freeze rank + player name columns when scrolling horizontally */
     th.sticky, td.sticky {
@@ -176,6 +189,7 @@
     <button class="pos-tab" data-pos="WR">WR</button>
     <button class="pos-tab" data-pos="TE">TE</button>
   </div>
+  <div class="col-groups" id="col-groups"></div>
   <div class="table-wrap">
       <div class="loading" id="loading">
         <div class="spinner"></div>
@@ -184,44 +198,7 @@
       <div class="error-msg" id="error-msg" style="display:none"></div>
       <table id="analysis-table" style="display:none">
       <thead>
-        <tr>
-          <th data-col="custom_rank" class="sticky sticky-rank" title="Your personal rank from the Rankings page">My Rank <span class="sort-arrow"></span></th>
-          <th data-col="name" class="sticky sticky-name">Player</th>
-          <th data-col="pos">Pos</th>
-          <th data-col="tier">Tier</th>
-          <th data-col="adp" class="sorted">DK ADP <span class="sort-arrow">▼</span></th>
-          <th data-col="consensus_rank" title="Positional consensus rank from FP + Sleeper (QB1, RB7, WR12…). Sorted by rank within position.">Consensus <span class="sort-arrow"></span></th>
-          <th data-col="consensus_ppr" title="Average of FantasyPros and Sleeper projected PPR points">Avg PPR <span class="sort-arrow"></span></th>
-          <th data-col="proj_pts_ppr" title="Sleeper 2026 projected full-PPR season points">SL PPR <span class="sort-arrow"></span></th>
-          <th data-col="fp_pts_ppr" title="FantasyPros 2026 PPR consensus season projection">FP PPR <span class="sort-arrow"></span></th>
-          <th data-col="yahoo_pts_ppr" title="Yahoo Fantasy 2026 projected PPR season points">YH PPR <span class="sort-arrow"></span></th>
-          <th data-col="pts_ppr" title="2025 actual full-PPR points">2025 PPR <span class="sort-arrow"></span></th>
-          <th data-col="gp">GP <span class="sort-arrow"></span></th>
-          <th data-col="trajectory" title="% change from 2025 actual PPR to 2026 consensus projection. Green = trending up (breakout), red = trending down (bust risk). NEW = rookie or no 2025 data.">Traj <span class="sort-arrow"></span></th>
-          <th data-col="pos_z" title="FP PPR points normalised within position (z-score). Shows how elite this player is vs peers at the same position. +2 = top of position, -1 = below average.">Pos Z <span class="sort-arrow"></span></th>
-          <th data-col="upside" title="Best-ball upside score (0–100). Combines: position volatility (40%) + FP vs Sleeper disagreement (30%) + upward trajectory (30%). Higher = more boom potential.">Upside <span class="sort-arrow"></span></th>
-          <th data-col="proj_rec_yd" title="Sleeper 2026 projected receiving yards">SL RecYd <span class="sort-arrow"></span></th>
-          <th data-col="proj_rush_yd" title="Sleeper 2026 projected rushing yards">SL RuYd <span class="sort-arrow"></span></th>
-          <th data-col="proj_pass_yd" title="Sleeper 2026 projected passing yards">SL PaYd <span class="sort-arrow"></span></th>
-          <th style="border-left:2px solid #4a235a" data-col="dk_prop_ppr" title="Full-PPR points implied by DK Sportsbook prop lines">DK PPR <span class="sort-arrow"></span></th>
-          <th data-col="dk_prop_adp_delta" title="DK ADP vs DK prop-implied rank. + = market too low (buy)">DK Δ <span class="sort-arrow"></span></th>
-          <th data-col="dk_rush_yd" title="DK season rushing yards O/U">DK RuYd <span class="sort-arrow"></span></th>
-          <th data-col="dk_rec_yd" title="DK season receiving yards O/U">DK RecYd <span class="sort-arrow"></span></th>
-          <th data-col="dk_rec" title="DK season receptions O/U">DK Rec <span class="sort-arrow"></span></th>
-          <th data-col="dk_rush_td" title="DK season rushing TDs O/U">DK RuTD <span class="sort-arrow"></span></th>
-          <th data-col="dk_rec_td" title="DK season receiving TDs O/U">DK RecTD <span class="sort-arrow"></span></th>
-          <th data-col="dk_pass_yd" title="DK season passing yards O/U">DK PaYd <span class="sort-arrow"></span></th>
-          <th data-col="dk_pass_td" title="DK season passing TDs O/U">DK PaTD <span class="sort-arrow"></span></th>
-          <th style="border-left:2px solid #1a3a5c" data-col="ud_prop_ppr" title="Full-PPR points implied by Underdog Fantasy prop lines">UD PPR <span class="sort-arrow"></span></th>
-          <th data-col="ud_prop_adp_delta" title="DK ADP vs Underdog prop-implied rank. + = market too low (buy)">UD Δ <span class="sort-arrow"></span></th>
-          <th data-col="ud_rush_yd" title="Underdog season rushing yards O/U">UD RuYd <span class="sort-arrow"></span></th>
-          <th data-col="ud_rec_yd" title="Underdog season receiving yards O/U">UD RecYd <span class="sort-arrow"></span></th>
-          <th data-col="ud_rec" title="Underdog season receptions O/U">UD Rec <span class="sort-arrow"></span></th>
-          <th data-col="ud_rush_td" title="Underdog season rushing TDs O/U">UD RuTD <span class="sort-arrow"></span></th>
-          <th data-col="ud_rec_td" title="Underdog season receiving TDs O/U">UD RecTD <span class="sort-arrow"></span></th>
-          <th data-col="ud_pass_yd" title="Underdog season passing yards O/U">UD PaYd <span class="sort-arrow"></span></th>
-          <th data-col="ud_pass_td" title="Underdog season passing TDs O/U">UD PaTD <span class="sort-arrow"></span></th>
-        </tr>
+        <tr id="thead-row"></tr>
       </thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -236,7 +213,19 @@ let sortDir = 1;   // 1 = asc, -1 = desc
 let activePos = '';
 let searchQ = '';
 
-// ── Prop helpers ──────────────────────────────────────────────────────────────
+// ── Column model ──────────────────────────────────────────────────────────────
+//
+// ONE definition per column, driving BOTH the header and the body. The table used
+// to hand-maintain a <th> list and a parallel <td> template literal, which meant
+// every insertion had to be made twice in the right position — the same class of
+// hand-maintained parallel structure that the asset() cache-buster exists to
+// avoid. At 50+ columns across 8 groups that drift is a certainty, not a risk.
+//
+// key    sort key on the player object (also the localStorage/DOM id)
+// group  which collapsible block it belongs to
+// label  header text; title = tooltip
+// asc    true if a LOW value is good, so first click sorts ascending
+// render (p) -> innerHTML of the cell
 
 function propLine(val) {
   if (val == null) return '<span class="no-data">—</span>';
@@ -250,30 +239,209 @@ function deltaCell(val) {
   return '<span class="delta delta-zero">0</span>';
 }
 
-function propCols(p) {
-  const dkPPR = p.dk_prop_ppr != null ? `<strong style="color:#ce93d8">${p.dk_prop_ppr}</strong>` : '<span class="no-data">—</span>';
-  const udPPR = p.ud_prop_ppr != null ? `<strong style="color:#90caf9">${p.ud_prop_ppr}</strong>` : '<span class="no-data">—</span>';
+const NO = '<span class="no-data">—</span>';
+const num = (v, dp) => (v == null ? NO : (dp == null ? v : Number(v).toFixed(dp)));
 
-  return `
-    <td style="border-left:2px solid #4a235a">${dkPPR}</td>
-    <td>${deltaCell(p.dk_prop_adp_delta)}</td>
-    <td>${propLine(p.dk_rush_yd)}</td>
-    <td>${propLine(p.dk_rec_yd)}</td>
-    <td>${propLine(p.dk_rec)}</td>
-    <td>${propLine(p.dk_rush_td)}</td>
-    <td>${propLine(p.dk_rec_td)}</td>
-    <td>${propLine(p.dk_pass_yd)}</td>
-    <td>${propLine(p.dk_pass_td)}</td>
-    <td style="border-left:2px solid #1a3a5c">${udPPR}</td>
-    <td>${deltaCell(p.ud_prop_adp_delta)}</td>
-    <td>${propLine(p.ud_rush_yd)}</td>
-    <td>${propLine(p.ud_rec_yd)}</td>
-    <td>${propLine(p.ud_rec)}</td>
-    <td>${propLine(p.ud_rush_td)}</td>
-    <td>${propLine(p.ud_rec_td)}</td>
-    <td>${propLine(p.ud_pass_yd)}</td>
-    <td>${propLine(p.ud_pass_td)}</td>
-  `;
+// Signed value where POSITIVE is the good/buy direction.
+function signed(v, dp, invert) {
+  if (v == null) return NO;
+  const good = invert ? v < 0 : v > 0;
+  const cls = v === 0 ? 'delta-zero' : good ? 'delta-pos' : 'delta-neg';
+  const s = Number(v).toFixed(dp == null ? 0 : dp);
+  return `<span class="delta ${cls}">${v > 0 ? '+' : ''}${s}</span>`;
+}
+
+const GROUPS = [
+  { id: 'core',    label: 'Core',        locked: true  },
+  { id: 'proj',    label: 'Projections', open: true    },
+  { id: 'opp',     label: 'Opportunity', open: true    },
+  { id: 'rz',      label: 'Red zone',    open: false   },
+  { id: 'ctx',     label: 'Context',     open: false   },
+  { id: 'score',   label: 'Scores',      open: false   },
+  { id: 'dk',      label: 'DK props',    open: false   },
+  { id: 'ud',      label: 'UD props',    open: false   },
+];
+
+const COLUMNS = [
+  // ── Core ──────────────────────────────────────────────────────────────────
+  { key: 'custom_rank', group: 'core', label: 'My Rank', asc: true,
+    title: 'Your personal rank from the Rankings page',
+    cls: 'sticky sticky-rank',
+    render: p => `<span style="color:${p.custom_rank ? 'var(--accent)' : 'var(--muted)'};font-weight:${p.custom_rank ? '700' : '400'}">${p.custom_rank ?? '—'}</span>` },
+  { key: 'name', group: 'core', label: 'Player', asc: true, cls: 'sticky sticky-name',
+    render: p => `<span style="font-weight:600;color:var(--text)">${p.name}</span>`
+               + `<span style="color:var(--muted);font-size:0.82em;margin-left:5px">${p.team}</span>` },
+  { key: 'pos',  group: 'core', label: 'Pos', asc: true,
+    render: p => `<span class="pos pos-${p.pos}">${p.pos}</span>` },
+  { key: 'tier', group: 'core', label: 'Tier',
+    render: p => `<span class="tier tier-${p.tier.replace(' ','')}">${p.tier}</span>` },
+  { key: 'adp',  group: 'core', label: 'DK ADP', asc: true,
+    render: p => `<span style="color:var(--muted)">${p.adp ?? '—'}</span>` },
+
+  // ── Projections ───────────────────────────────────────────────────────────
+  { key: 'consensus_rank', group: 'proj', label: 'Consensus', asc: true,
+    title: 'Positional consensus rank from FP + Sleeper (QB1, RB7, WR12…)',
+    render: p => p.consensus_label ? `<span style="color:var(--text);font-weight:700">${p.consensus_label}</span>` : NO },
+  { key: 'consensus_ppr', group: 'proj', label: 'Avg PPR',
+    title: 'Average of the available PPR point sources',
+    render: p => p.consensus_ppr > 0 ? `<span style="color:var(--accent);font-weight:700">${p.consensus_ppr}</span>` : NO },
+  { key: 'proj_pts_ppr', group: 'proj', label: 'SL PPR', title: 'Sleeper 2026 projected full-PPR season points',
+    render: p => p.proj_pts_ppr > 0 ? `<strong style="color:#b0bec5">${p.proj_pts_ppr}</strong>` : NO },
+  { key: 'fp_pts_ppr', group: 'proj', label: 'FP PPR', title: 'FantasyPros 2026 PPR consensus season projection',
+    render: p => p.fp_pts_ppr > 0 ? `<strong style="color:var(--green)">${p.fp_pts_ppr}</strong>` : NO },
+  { key: 'yahoo_pts_ppr', group: 'proj', label: 'YH PPR', title: 'Yahoo Fantasy 2026 projected PPR season points',
+    render: p => p.yahoo_pts_ppr > 0 ? `<strong style="color:#7986cb">${p.yahoo_pts_ppr}</strong>`
+              : p.yahoo_rank ? `<span style="color:#9fa8da;font-size:0.85em">${p.pos}${p.yahoo_rank}</span>` : NO },
+  { key: 'pts_ppr', group: 'proj', label: '2025 PPR', title: '2025 actual full-PPR points',
+    render: p => p.pts_ppr > 0 ? `<strong>${p.pts_ppr}</strong>` : NO },
+  { key: 'gp', group: 'proj', label: 'GP', title: '2025 games played',
+    render: p => p.pts_ppr > 0 ? p.gp : NO },
+  { key: 'trajectory', group: 'proj', label: 'Traj',
+    title: '% change from 2025 actual PPR to 2026 consensus projection. NEW = rookie or no 2025 data.',
+    render: p => {
+      if (p.trajectory == null) return p.consensus_ppr > 0 ? '<span style="color:var(--muted);font-size:0.8em">NEW</span>' : NO;
+      const up = p.trajectory >= 0;
+      return `<span style="color:${up ? 'var(--green)' : 'var(--red)'};font-weight:600">${up ? '↑' : '↓'} ${Math.abs(p.trajectory)}%</span>`;
+    } },
+  { key: 'pos_z', group: 'proj', label: 'Pos Z',
+    title: 'FP PPR points normalised within position (z-score). +2 = top of position, -1 = below average.',
+    render: p => p.pos_z != null
+      ? `<span style="color:${p.pos_z >= 1 ? 'var(--green)' : p.pos_z <= -1 ? 'var(--red)' : 'var(--text)'};font-weight:600">${p.pos_z > 0 ? '+' : ''}${p.pos_z}</span>` : NO },
+  { key: 'upside', group: 'proj', label: 'Upside',
+    title: 'Best-ball upside score (0–100): position volatility 40% + source disagreement 30% + trajectory 30%.',
+    render: p => `<span style="color:var(--accent);font-weight:600">${p.upside}</span>` },
+  { key: 'proj_rec_yd',  group: 'proj', label: 'SL RecYd', title: 'Sleeper 2026 projected receiving yards',
+    render: p => p.proj_pts_ppr > 0 && p.proj_rec_yd ? p.proj_rec_yd.toLocaleString() : NO },
+  { key: 'proj_rush_yd', group: 'proj', label: 'SL RuYd', title: 'Sleeper 2026 projected rushing yards',
+    render: p => p.proj_pts_ppr > 0 && p.proj_rush_yd ? p.proj_rush_yd.toLocaleString() : NO },
+  { key: 'proj_pass_yd', group: 'proj', label: 'SL PaYd', title: 'Sleeper 2026 projected passing yards',
+    render: p => p.proj_pts_ppr > 0 && p.proj_pass_yd ? p.proj_pass_yd.toLocaleString() : NO },
+
+  // ── Opportunity (2025 actuals) ────────────────────────────────────────────
+  { key: 'tgt', group: 'opp', label: 'Tgt', title: '2025 targets. The raw count behind the share.',
+    render: p => num(p.tgt) },
+  { key: 'tgt_share', group: 'opp', label: 'Tgt%',
+    title: 'Share of his own team’s 2025 targets. The most persistent opportunity signal available — volume carries year to year far better than efficiency. Needs 10+ targets; pass catchers only.',
+    render: p => p.tgt_share == null ? NO
+      : `<span style="color:${p.tgt_share >= 25 ? 'var(--green)' : p.tgt_share >= 15 ? 'var(--text)' : 'var(--muted)'};font-weight:600">${p.tgt_share}%</span>` },
+  { key: 'ay_per_rec', group: 'opp', label: 'AY/Rec',
+    title: 'Completed air yards per reception — how far downfield his catches happen. NOT aDOT: Sleeper reports completed air yards (receiving yards minus YAC), not intended, so true aDOT is not computable from this source. Negative means he catches behind the line.',
+    render: p => p.ay_per_rec == null ? NO
+      : `<span style="color:${p.ay_per_rec < 0 ? 'var(--muted)' : 'var(--text)'}">${p.ay_per_rec}</span>` },
+  { key: 'catch_rate', group: 'opp', label: 'Catch%', title: 'Receptions / targets, 2025. Needs 10+ targets.',
+    render: p => p.catch_rate == null ? NO : `${p.catch_rate}%` },
+
+  // ── Red zone / TD regression ──────────────────────────────────────────────
+  { key: 'rz_tgt', group: 'rz', label: 'RZ Tgt', title: '2025 red-zone targets', render: p => num(p.rz_tgt) },
+  { key: 'rz_att', group: 'rz', label: 'RZ Att', title: '2025 red-zone carries', render: p => num(p.rz_att) },
+  { key: 'xtd', group: 'rz', label: 'xTD',
+    title: 'Expected TDs from red-zone usage, priced at the league-wide TD rate per red-zone target and per red-zone carry (measured from this season, not hardcoded).',
+    render: p => num(p.xtd, 1) },
+  { key: 'td_delta', group: 'rz', label: 'ΔTD',
+    title: 'Actual TDs minus expected. POSITIVE = outscored his usage, a regression-down candidate (sell). NEGATIVE = the usage was there and the touchdowns were not (buy). A statement about last season’s luck, not a forecast.',
+    render: p => signed(p.td_delta, 1, true) },
+
+  // ── Context ───────────────────────────────────────────────────────────────
+  { key: 'age', group: 'ctx', label: 'Age', asc: true, title: 'Age per Sleeper',
+    render: p => num(p.age) },
+  { key: 'years_exp', group: 'ctx', label: 'Exp', asc: true, title: 'NFL seasons of experience. 0 = rookie.',
+    render: p => p.years_exp == null ? NO : (p.years_exp === 0 ? '<span style="color:var(--accent);font-weight:600">R</span>' : p.years_exp) },
+  { key: 'depth_order', group: 'ctx', label: 'Depth', asc: true, title: 'Depth-chart order at his position per Sleeper. 1 = starter.',
+    render: p => num(p.depth_order) },
+  { key: 'bye', group: 'ctx', label: 'Bye', asc: true, title: '2026 bye week',
+    render: p => num(p.bye) },
+  { key: 'injury', group: 'ctx', label: 'Status', asc: true, title: 'Sleeper injury designation; blank means no designation.',
+    render: p => p.injury ? `<span style="color:var(--red);font-size:0.85em">${p.injury}</span>` : NO },
+
+  // ── Scores (already computed server-side) ─────────────────────────────────
+  { key: 'value_delta', group: 'score', label: 'Value Δ',
+    title: 'DK ADP minus our consensus-based rank. POSITIVE = the market is drafting him later than the consensus says (value).',
+    render: p => signed(p.value_delta) },
+  { key: 'composite', group: 'score', label: 'Comp',
+    title: 'Composite: projection 45% + ADP 30% + durability 15% + playoff schedule 10%. Drives the Tier badge.',
+    render: p => num(p.composite, 1) },
+  { key: 'durability', group: 'score', label: 'Dur', title: '2025 games played as a share of 17.',
+    render: p => num(p.durability, 0) },
+  { key: 'schedule_score', group: 'score', label: 'Sched',
+    title: 'Share of weeks 15–17 with a game scheduled. NOTE: this only checks a game EXISTS (it is a bye detector); it does not weigh opponent strength.',
+    render: p => num(p.schedule_score, 0) },
+];
+
+// DK / UD prop columns are mechanical repeats, so they are generated rather than
+// typed out twice — the two books expose an identical market shape.
+for (const [book, label] of [['dk', 'DK'], ['ud', 'UD']]) {
+  COLUMNS.push({ key: `${book}_prop_ppr`, group: book, label: `${label} PPR`,
+    title: `Full-PPR points implied by ${label} prop lines`,
+    render: p => p[`${book}_prop_ppr`] != null
+      ? `<strong style="color:${book === 'dk' ? '#ce93d8' : '#90caf9'}">${p[`${book}_prop_ppr`]}</strong>` : NO });
+  COLUMNS.push({ key: `${book}_prop_adp_delta`, group: book, label: `${label} Δ`,
+    title: `DK ADP vs ${label} prop-implied rank. + = market too low (buy)`,
+    render: p => deltaCell(p[`${book}_prop_adp_delta`]) });
+  for (const [k, lbl] of [['rush_yd','RuYd'],['rec_yd','RecYd'],['rec','Rec'],
+                          ['rush_td','RuTD'],['rec_td','RecTD'],['pass_yd','PaYd'],['pass_td','PaTD']]) {
+    COLUMNS.push({ key: `${book}_${k}`, group: book, label: `${label} ${lbl}`,
+      title: `${label} season ${lbl} O/U`, render: p => propLine(p[`${book}_${k}`]) });
+  }
+}
+
+// ── Group visibility ──────────────────────────────────────────────────────────
+
+const GROUP_KEY = 'bb-analysis-groups';
+let openGroups = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(GROUP_KEY));
+    if (saved && typeof saved === 'object') return saved;
+  } catch (e) { /* corrupt or absent — fall through to defaults */ }
+  return Object.fromEntries(GROUPS.map(g => [g.id, !!g.open]));
+})();
+
+function isOpen(gid) {
+  const g = GROUPS.find(x => x.id === gid);
+  return g && (g.locked || openGroups[gid]);
+}
+
+function visibleColumns() {
+  return COLUMNS.filter(c => isOpen(c.group));
+}
+
+function renderGroupBar() {
+  document.getElementById('col-groups').innerHTML = GROUPS.map(g => {
+    const n = COLUMNS.filter(c => c.group === g.id).length;
+    if (g.locked) return `<span class="col-group locked">${g.label} <span class="cg-n">${n}</span></span>`;
+    return `<button class="col-group${openGroups[g.id] ? ' active' : ''}" data-group="${g.id}">`
+         + `${openGroups[g.id] ? '▾' : '▸'} ${g.label} <span class="cg-n">${n}</span></button>`;
+  }).join('');
+  document.querySelectorAll('#col-groups .col-group[data-group]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const gid = btn.dataset.group;
+      openGroups[gid] = !openGroups[gid];
+      localStorage.setItem(GROUP_KEY, JSON.stringify(openGroups));
+      // Sorting by a column that just went away would leave the table ordered by
+      // something invisible, which reads as a bug. Fall back to ADP.
+      if (!visibleColumns().some(c => c.key === sortCol)) { sortCol = 'adp'; sortDir = 1; }
+      renderGroupBar();
+      renderHead();
+      renderTable();
+    });
+  });
+}
+
+function renderHead() {
+  document.getElementById('thead-row').innerHTML = visibleColumns().map(c => {
+    const sorted = c.key === sortCol;
+    return `<th data-col="${c.key}" class="${c.cls || ''}${sorted ? ' sorted' : ''}"`
+         + `${c.title ? ` title="${c.title.replace(/"/g, '&quot;')}"` : ''}>`
+         + `${c.label} <span class="sort-arrow">${sorted ? (sortDir === 1 ? '▼' : '▲') : ''}</span></th>`;
+  }).join('');
+  document.querySelectorAll('#thead-row th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (sortCol === col) sortDir *= -1;
+      else { sortCol = col; sortDir = (COLUMNS.find(c => c.key === col) || {}).asc ? 1 : -1; }
+      renderHead();
+      renderTable();
+    });
+  });
 }
 
 // ── Fetch betting lines ───────────────────────────────────────────────────────
@@ -345,10 +513,15 @@ function renderTable() {
     return true;
   });
 
-  // Sort
+  // Missing values sort to the BOTTOM in either direction, rather than counting as
+  // zero. Half these columns are legitimately null for rookies and quarterbacks,
+  // and letting those float to the top of a "best target share" sort would bury
+  // the players actually being ranked.
   rows.sort((a, b) => {
-    let av = a[sortCol] ?? (sortDir === 1 ? Infinity : -Infinity);
-    let bv = b[sortCol] ?? (sortDir === 1 ? Infinity : -Infinity);
+    let av = a[sortCol], bv = b[sortCol];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
     if (typeof av === 'string') av = av.toLowerCase();
     if (typeof bv === 'string') bv = bv.toLowerCase();
     return av < bv ? -sortDir : av > bv ? sortDir : 0;
@@ -364,96 +537,11 @@ function renderTable() {
   document.getElementById('analysis-table').style.display = '';
   document.getElementById('empty-msg').style.display = 'none';
 
-  tbody.innerHTML = rows.map((p, i) => {
-    const delta = p.value_delta;
-    let deltaStr, deltaCls;
-    if (delta > 0)       { deltaStr = `+${delta}`; deltaCls = 'delta-pos'; }
-    else if (delta < 0)  { deltaStr = `${delta}`;  deltaCls = 'delta-neg'; }
-    else                 { deltaStr = '—';           deltaCls = 'delta-zero'; }
-
-    const hasStats = p.pts_ppr > 0;
-
-    const barColor = (val) => {
-      if (val >= 70) return '#4caf50';
-      if (val >= 40) return '#4fc3f7';
-      if (val >= 20) return '#ff9800';
-      return '#546e7a';
-    };
-
-    const miniBar = (val, max = 100, color) => {
-      const w = Math.round(Math.min(val, max) / max * 60);
-      return `<div class="score-bar" style="width:${w}px;background:${color || barColor(val)}"></div>`;
-    };
-
-    const statCell = (val, fallback = '—') => val ? val.toLocaleString() : `<span class="no-data">${fallback}</span>`;
-
-    // Market delta display
-    const md = p.market_delta;
-    let mdStr, mdCls;
-    if (md == null)      { mdStr = '—';      mdCls = 'delta-zero'; }
-    else if (md > 0)     { mdStr = `+${md}`; mdCls = 'delta-pos'; }   // market too low — buy
-    else if (md < 0)     { mdStr = `${md}`;  mdCls = 'delta-neg'; }   // market too high — sell
-    else                 { mdStr = '0';       mdCls = 'delta-zero'; }
-
-    const hasProj = p.proj_pts_ppr > 0;
-
-    return `
-      <tr>
-        <td class="sticky sticky-rank" style="color:${p.custom_rank ? 'var(--accent)' : 'var(--muted)'};font-weight:${p.custom_rank ? '700' : '400'}">${p.custom_rank ?? '<span class="no-data">—</span>'}</td>
-        <td class="sticky sticky-name">
-          <span style="font-weight:600;color:var(--text)">${p.name}</span>
-          <span style="color:var(--muted);font-size:0.82em;margin-left:5px">${p.team}</span>
-        </td>
-        <td><span class="pos pos-${p.pos}">${p.pos}</span></td>
-        <td><span class="tier tier-${p.tier.replace(' ','')}">${p.tier}</span></td>
-        <td style="color:var(--muted)">${p.adp ?? '—'}</td>
-        <td style="color:var(--text);font-weight:700">${p.consensus_label ?? '<span class="no-data">—</span>'}</td>
-        <td style="color:var(--accent);font-weight:700">${p.consensus_ppr > 0 ? p.consensus_ppr : '<span class="no-data">—</span>'}</td>
-        <td>${hasProj ? `<strong style="color:#b0bec5">${p.proj_pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
-        <td>${p.fp_pts_ppr > 0 ? `<strong style="color:var(--green)">${p.fp_pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
-        <td>${p.yahoo_pts_ppr > 0 ? `<strong style="color:#7986cb">${p.yahoo_pts_ppr}</strong>` : p.yahoo_rank ? `<span style="color:#9fa8da;font-size:0.85em">${p.pos}${p.yahoo_rank}</span>` : '<span class="no-data">—</span>'}</td>
-        <td>${hasStats ? `<strong>${p.pts_ppr}</strong>` : '<span class="no-data">—</span>'}</td>
-        <td>${hasStats ? p.gp : '<span class="no-data">—</span>'}</td>
-        <td>${(() => {
-          if (p.trajectory == null) return p.consensus_ppr > 0 ? '<span style="color:var(--muted);font-size:0.8em">NEW</span>' : '<span class="no-data">—</span>';
-          const up = p.trajectory >= 0;
-          const arrow = up ? '↑' : '↓';
-          const color = up ? 'var(--green)' : 'var(--red)';
-          return `<span style="color:${color};font-weight:600">${arrow} ${Math.abs(p.trajectory)}%</span>`;
-        })()}</td>
-        <td>${p.pos_z != null ? `<span style="color:${p.pos_z >= 1 ? 'var(--green)' : p.pos_z <= -1 ? 'var(--red)' : 'var(--text)'};font-weight:600">${p.pos_z > 0 ? '+' : ''}${p.pos_z}</span>` : '<span class="no-data">—</span>'}</td>
-        <td style="color:var(--accent);font-weight:600">${p.upside}</td>
-        <td>${hasProj && p.proj_rec_yd  ? p.proj_rec_yd.toLocaleString()  : '<span class="no-data">—</span>'}</td>
-        <td>${hasProj && p.proj_rush_yd ? p.proj_rush_yd.toLocaleString() : '<span class="no-data">—</span>'}</td>
-        <td>${hasProj && p.proj_pass_yd ? p.proj_pass_yd.toLocaleString() : '<span class="no-data">—</span>'}</td>
-        ${propCols(p)}
-      </tr>
-    `;
-  }).join('');
+  const cols = visibleColumns();
+  tbody.innerHTML = rows.map(p =>
+    '<tr>' + cols.map(c => `<td class="${c.cls || ''}">${c.render(p)}</td>`).join('') + '</tr>'
+  ).join('');
 }
-
-// ── Sorting ───────────────────────────────────────────────────────────────────
-
-document.querySelectorAll('th[data-col]').forEach(th => {
-  th.addEventListener('click', () => {
-    const col = th.dataset.col;
-    if (sortCol === col) {
-      sortDir *= -1;
-    } else {
-      sortCol = col;
-      sortDir = col === 'adp' || col === 'custom_rank' || col === 'proj_rank' || col === 'consensus_rank' || col === 'fp_rank' ? 1 : -1;
-    }
-    document.querySelectorAll('th[data-col]').forEach(t => {
-      t.classList.remove('sorted');
-      const arrow = t.querySelector('.sort-arrow');
-      if (arrow) arrow.textContent = '';
-    });
-    th.classList.add('sorted');
-    const arrow = th.querySelector('.sort-arrow');
-    if (arrow) arrow.textContent = sortDir === 1 ? '▼' : '▲';
-    renderTable();
-  });
-});
 
 // ── Position tabs (stats view) ────────────────────────────────────────────────
 
@@ -475,6 +563,8 @@ document.getElementById('search').addEventListener('input', e => {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+renderGroupBar();
+renderHead();
 loadData();
 </script>
 </body>
