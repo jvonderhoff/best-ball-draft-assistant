@@ -53,13 +53,17 @@ Baseline is **65% VOR** (vs the last startable player, `slots × 12`) **+ 35% VO
 | `V2_CORRELATION_WEIGHT` | **0.35** | Swept against a real 1,089-team final (§5). Interior maximum, and the curve is steeply asymmetric — see §5.1. |
 | `V2_DIVERSITY_WEIGHT` | **1.0** | Portfolio diversification cost, §3.1. Sized against board spread, not guessed. **Benefit is unmeasurable in this harness** — see §9. |
 | `V2_BACKFIELD_DISCOUNT` | 0.80 | Judgement. Retained spike value: backup behind a R1 workhorse 38%, two mid-round committee backs 73%. |
-| `V2_QB_RB_REC` | **0.0 (off)** | Splits QB↔own-RB correlation into a rushing channel (0.02, no playoff weight — opposed game script) and a receiving one (0.30, playoff-weighted — a receiving TD pays QB 4 and RB 6 on the *same play*). Replaces a flat 0.06 applied across a pool running 14.7%→70.3% receiving, median 36.9%. **Off because the harness cannot grade it**, not because it lost: `TEAM_LOADING` is per position, so the simulator contains no receiving backs. See §9. |
+| `V2_QB_RB_REC` | **0.0 (off)** | Splits QB↔own-RB correlation into a rushing channel (0.02, no playoff weight — opposed game script) and a receiving one (0.30, playoff-weighted — a receiving TD pays QB 4 and RB 6 on the *same play*). Replaces a flat 0.06 applied across a pool running 14.7%→70.3% receiving, median 36.9%. **Now measured and it does not replicate** — see §4. The blocker is gone (`SIM_LOAD_SPREAD` gives the simulator per-player loading), so this is off on evidence rather than for want of a test. |
+| `SIM_LOAD_SPREAD` | **0.0 (off)** | *Harness*, not model. Per-player team loading from `rec_share`, centred on each position's median so the average is unchanged and only the spread is new. At 1.0 the RB pool runs 0.144 (Henry) to 0.897 (Vaki) against a flat 0.350. Turning it on moves *V1* by 4.4%, which is the scale to keep in mind when reading anything measured with it on. |
 | `V2_VALUE_FIT_REF / FLOOR` | 0.50 / 0.20 | Roster-fit scaling, applied in three places (§3). |
 | `V2_BREAKOUT_SD_GAIN` | **0.0 (off)** | Fully plumbed. Swept twice against the fixed simulator; the two runs disagree about the shape near zero and agree 1.6 is bad. Effect is smaller than the variation a routine projection refresh introduces. See §4. |
 | `V2_OVER_TARGET_COST` | **0.0 (off)** | Roster-shape forcing. See §4. |
 
 All are overridable via env (`V2_MKT`, `V2_RANKW`, `V2_CORR`, `V2_BREAKOUT`,
 `V2_OVERCOST`, `V2_TIMING`, `V2_W_ACC`, `V2_W_PO`, `V2_QB_RB_REC`) for sweeping.
+Harness-side knobs are env too (`SIM_TEAM_CV`, `SIM_GAME_CV`, `SIM_BREAKOUT`,
+`SIM_BUST`, `SIM_LOAD_SPREAD`); `--seed` is a CLI flag and exists for replication —
+see the noise floor in §5.
 
 ---
 
@@ -265,6 +269,44 @@ same seed, same weather, one arm with the gain and one without — because a hal
 unpaired difference is exactly the size that harness was built to resolve and this one
 cannot.
 
+**QB↔own-RB correlation scaled by receiving share (`V2_QB_RB_REC`).** The argument is
+the best one available for any correlation term here: a receiving touchdown pays the
+quarterback 4 and the back 6 *on the same play*, so unlike the rushing channel there
+is no opposed game script to net out, and a flat 0.06 was being applied across a pool
+running 14.7% to 70.3% receiving. Implemented as two channels, with only the receiving
+half earning playoff weight.
+
+Ungradeable at first — `TEAM_LOADING` was per position, so the simulator held no
+receiving backs. `SIM_LOAD_SPREAD` fixed that (§9.5, now built), and the test ran.
+
+**It does not replicate.** `truth=market`, 400x200, spread at 1.0, paired on seed:
+
+| seed | Q=0.0 | Q=1.0 | diff |
+|---|---|---|---|
+| 20260730 | +$49.11 | +$51.49 | **+2.38** |
+| 77712345 | +$26.89 | +$26.64 | **−0.25** |
+| 31415926 | +$14.20 | +$14.21 | **+0.01** |
+
+The sign flips; the first seed was the flattering run. Three further things are worth
+keeping, because they explain *why* rather than just recording the null.
+
+**At half strength it changed nothing at all** — `Q=0.5` came back bit-identical to
+`Q=0.0` on every metric. The term fires 64 times per draft and loses every one.
+
+**The reason is structural, not a sizing problem.** V2 takes its first quarterback
+around round 8, and by then the backs from that team are gone or unattractive, so the
+pairing is mostly evaluated when it can no longer be acted on. Raising the coefficient
+does not fix that; it would just overpay on the rare occasion the pairing survives.
+
+**The assumption introduced to enable the test moves more than the thing tested.**
+Switching the loading spread on shifted *V1* — which cannot see this feature — by
+4.4%, against a Q effect of 2.4% at its most flattering seed. When that is the ratio,
+the honest reading is that the measurement is dominated by its own scaffolding.
+
+Left off. The mechanism may well be real in football; what is settled is that this
+harness cannot show it paying, and that the failure is about *when the pairing is
+available* rather than about how much it is worth.
+
 **Known defect, unfixed: `sd` does not follow the blend.** `ceiling = blended +
 1.2816 x sd`, but `sd` comes from the projection pipeline as `raw_ppg x POS_SCORING_CV`
 — computed *before* ECR and the custom board move the mean. So the ceiling/mean ratio,
@@ -336,6 +378,28 @@ Replaced with one-step VONA, which is the correct pairwise-swap criterion.
 
 `tools/compare-models.js`. Two truth scenarios; **always read `market` (neutral)** —
 `proj` grades V2 against its own answer key and is an upper bound only.
+
+**Seed variance is far larger than anything you are likely to be measuring, and it
+was never quantified until now.** Same board, same 400x200 = 80,000 team-seasons per
+arm, `truth=market`, only `--seed` different:
+
+| seed | V2 capped-EV edge over V1 |
+|---|---|
+| 20260730 | +$49.11 |
+| 77712345 | +$26.89 |
+| 31415926 | +$14.20 |
+
+A **3.5x spread on the headline number**. This does not invalidate the sweeps, and
+the reason is worth being precise about rather than panicking: every sweep in this
+doc is *paired* — one seed, one set of worlds, only the constant differs — and a
+paired difference is enormously tighter than the absolute level. The measured noise
+floor on a paired difference is about **±$2** (see §4's QB-RB entry, where a +$2.38
+became −$0.25 at another seed). So `V2_MARKET_PULL`'s $83 -> $114 spread survives
+comfortably; a $2 result does not exist.
+
+Two rules follow. **Never quote an absolute EV figure** — CLAUDE.md already says
+this, and now there is a number behind it. **Replicate any paired difference under
+~$5 at a second seed before believing it**, which `--seed` exists for.
 
 - **Week 17 is now a real final.** ~1,089 teams, one common realisation, top-heavy
   payouts. Two changes made it work:
@@ -705,17 +769,31 @@ accordingly (clamped 0.70–1.45). Improved advance rate +31.0% → +35.4%.
    the board is right, how much is V2 leaving on the table at 0.55? "0.8 gains 2%" and
    "0.8 gains 25%" are different worlds and the user is the one who knows how much to
    trust the source. Turns an unanswerable argument into a number.
-5. **Per-player team loading, to price the QB↔RB receiving channel.**
-   `TEAM_LOADING` in the harness is per POSITION — RB 0.35 for every back — so the
-   simulator's truth contains no pass-catching backs. `V2_QB_RB_REC` (§2) is
-   therefore unmeasurable in exactly the way §3 and §4 are: a sweep would run, print
-   confident numbers, and be scoring a distinction the truth model does not contain.
-   The build is small: derive each player's loading from the same `rec_share` the
-   recommender now reads, so a 55%-receiving back loads toward the QB's 0.75 and a
-   goal-line grinder stays near 0.35. Worth stressing what that would and would not
-   settle — it makes the *shape* of the effect measurable, but the loading curve is
-   still assumed, so it cannot tell you 0.30 is the right receiving coefficient. It
-   can tell you whether discriminating between backs at all beats not doing so.
+5. **Per-player team loading — BUILT, and it answered its question.**
+   `SIM_LOAD_SPREAD` gives each player a loading derived from `rec_share`, centred on
+   his position's median so the average is unchanged and only the spread is new. The
+   simulator now contains receiving backs (RB pool 0.144 to 0.897 at spread 1.0,
+   against a flat 0.350 before). The QB↔RB question it was built for is settled in
+   §4: measured, and it does not replicate.
+
+   Implementation note worth keeping, because it removed a constraint rather than
+   working around one. Loading *had* to be per-position because `drawWeekScores`
+   precomputed `teamRaw ** load` in four small tables. The factors are lognormal, so
+   `teamRaw ** load` is `exp(load * teamLog)` — which folds into the single `exp`
+   each player's score already pays for. No `Math.pow` anywhere now, loading is an
+   arbitrary per-player number, and with the spread off the output is identical to
+   the cent on EV (0.01pp on rates, from float reassociation).
+
+   **What is still open is TIGHT ENDS.** §4's finding that TE:4 is roughly free
+   (−0.93 ±0.62pp) was measured with every tight end loading identically at 0.60, and
+   a receiving TE and a blocking TE are not the same object. Re-running that paired
+   test with the spread on is cheap and is the obvious next use of this — it bears
+   directly on the roster shape V2 actually produces.
+
+   Standing caveat, unchanged: this makes the *shape* of an effect measurable, but
+   the loading curve is assumed, so it cannot tell you 0.30 is the right receiving
+   coefficient. And turning it on moves V1 by 4.4%, which is larger than most things
+   being measured with it.
 6. **Yahoo** — blocked on app registration at developer.yahoo.com needing Fantasy
    Sports read permission. Error is `"This application is not authorized to perform
    this action"`, which is app-level. Code side (scope, token persistence, Python

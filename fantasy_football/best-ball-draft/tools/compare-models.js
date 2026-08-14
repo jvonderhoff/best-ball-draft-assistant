@@ -191,6 +191,15 @@ const LOAD = POS.map(p => TEAM_LOADING[p]);
 const TEAM_FACTOR_CV = process.env.SIM_TEAM_CV ? parseFloat(process.env.SIM_TEAM_CV) : 0.35;
 const GAME_FACTOR_CV = process.env.SIM_GAME_CV ? parseFloat(process.env.SIM_GAME_CV) : 0.22;
 
+// How far a player's team loading moves from his position's constant, per unit of
+// receiving share above/below that position's median. See buildScoringContext.
+//
+// DEFAULTS TO 0 — the simulator behaves exactly as before unless asked otherwise,
+// because every constant in §2 was swept against the flat version. At 1.0 the 2026
+// RB pool spans roughly 0.13 of loading between a pure rusher and a pass-catching
+// back, which is the difference V2_QB_RB_REC claims to be worth pricing.
+const SIM_LOAD_SPREAD = process.env.SIM_LOAD_SPREAD ? parseFloat(process.env.SIM_LOAD_SPREAD) : 0.0;
+
 const T_SIGMA = Math.sqrt(Math.log(1 + TEAM_FACTOR_CV ** 2));
 const G_SIGMA = Math.sqrt(Math.log(1 + GAME_FACTOR_CV ** 2));
 
@@ -303,13 +312,64 @@ function buildScoringContext(players) {
     ctx.nGames[wk] = gameIdx.size;
   }
 
-  // Per-week scratch: one extra slot on each factor array holds 1.0, so a player
-  // with no team (index -1) needs no branch.
+  // Per-week scratch, in LOG space. One extra slot holds 0 (= a factor of 1), so a
+  // player with no team (index -1) needs no branch.
+  //
+  // Previously these held teamRaw[t] ** load precomputed per POSITION, which is why
+  // loading had to be a per-position constant — four exponents, four small tables.
+  // Working in logs removes that constraint for free: the factors are lognormal, so
+  // `teamRaw ** load` is `exp(load * teamLog)`, and that term folds into the single
+  // exp each player's score already pays for. Mathematically identical, no Math.pow
+  // anywhere, and loading becomes an arbitrary per-player number.
   const maxGames = Math.max(ctx.nGames[15], ctx.nGames[16], ctx.nGames[17]);
-  ctx.teamPow = POS.map(() => new Float64Array(ctx.nTeams + 1));
-  ctx.gamePow = POS.map(() => new Float64Array(maxGames + 1));
-  ctx.teamRaw = new Float64Array(ctx.nTeams);
-  ctx.gameRaw = new Float64Array(maxGames);
+  ctx.teamLog = new Float64Array(ctx.nTeams + 1);
+  ctx.gameLog = new Float64Array(maxGames + 1);
+
+  // ── Per-player team loading ────────────────────────────────────────────────
+  // How much of a player's week rides on his team's week. Was TEAM_LOADING[pos]
+  // flat, which meant the simulator contained no receiving backs: McCaffrey and a
+  // goal-line grinder loaded identically, so a QB<->own-RB correlation could not
+  // vary between them and V2_QB_RB_REC was ungradeable by construction (§9.5).
+  //
+  // Driven by the same `rec_share` the recommender reads, and deliberately
+  // CENTRED: each player is offset from his position's constant by his distance
+  // from that position's MEDIAN share, so the typical player keeps the loading the
+  // §2 constants were swept against and the only new thing in the model is the
+  // spread — which is exactly the variable under test. Raising the average instead
+  // would have moved every correlation in the simulator at once and confounded the
+  // answer with a global strength change.
+  //
+  // Centring on the median rather than the mean leaves a small upward drift in the
+  // mean, because rec_share is right-skewed: at SIM_LOAD_SPREAD=1 the RB pool goes
+  // from a flat 0.350 to a mean of 0.372 (range 0.144 Henry to 0.897 Vaki). Median
+  // is still the right anchor — the mean is dragged by a handful of third-down
+  // backs whose share is high precisely because their rushing volume is tiny — but
+  // the residual drift is real and any result here rides on it being small.
+  //
+  // SIM_LOAD_SPREAD = 0 reproduces the old behaviour exactly.
+  const medShare = {};
+  for (const pos of POS) {
+    const v = scored.filter(p => p.pos === pos && p._eff.recShare != null)
+                    .map(p => p._eff.recShare).sort((a, b) => a - b);
+    medShare[pos] = v.length ? v[v.length >> 1] : null;
+  }
+  ctx.load = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const p = scored[i];
+    const base = LOAD[ctx.pos[i]];
+    const med = medShare[p.pos];
+    let load = base;
+    if (SIM_LOAD_SPREAD && med != null && p._eff.recShare != null) {
+      load = base + SIM_LOAD_SPREAD * (p._eff.recShare - med);
+    }
+    // Hard ceiling from the variance budget, not taste: compileTruth subtracts
+    // (T*load)^2 + (G*load)^2 from the player's total log-variance, and past this
+    // point that goes negative and the floor there silently INFLATES him instead.
+    // Low-CV positions are the tight ones — a 0.38-CV quarterback caps near 0.91.
+    const total = Math.log(1 + (p._eff.sd / Math.max(p._eff.mean, 0.01)) ** 2);
+    const cap = 0.98 * Math.sqrt(Math.max(0, total - 0.02) / (T_SIGMA ** 2 + G_SIGMA ** 2));
+    ctx.load[i] = Math.max(0, Math.min(load, cap));
+  }
 
   // Static inputs to the truth model: the projected-points curve per position, and
   // each player's rank on the ADP board. Neither depends on the world being drawn,
@@ -342,7 +402,10 @@ function compileTruth(ctx) {
     const p = ctx.players[i];
     if (!p._true) { ctx.mean[i] = 0; continue; }
     ctx.mean[i] = p._true.mean;
-    const load = LOAD[ctx.pos[i]];
+    // The player's OWN loading, so the variance budget matches the factor actually
+    // applied in drawWeekScores. Reading the position constant here while applying
+    // a per-player one there would leak shared variance into the total.
+    const load = ctx.load[i];
     const total = Math.log(1 + p._true.cv ** 2);
     const tSig2 = (T_SIGMA * load) ** 2;
     const gSig2 = (G_SIGMA * load) ** 2;
@@ -355,29 +418,24 @@ function compileTruth(ctx) {
 // valid until the next call.
 function drawWeekScores(ctx, week, rng) {
   const playoff = week >= 15;
-  const { teamRaw, gameRaw, teamPow, gamePow, nTeams } = ctx;
+  const { teamLog, gameLog, nTeams } = ctx;
 
+  // Draw the shared factors once per week, as LOGS. Same draws as before — the
+  // identical gauss() sequence in the identical order, which is what keeps a seed
+  // reproducing the same season it always did.
   for (let t = 0; t < nTeams; t++) {
-    teamRaw[t] = Math.exp(gauss(rng) * T_SIGMA - T_SIGMA * T_SIGMA / 2);
+    teamLog[t] = gauss(rng) * T_SIGMA - T_SIGMA * T_SIGMA / 2;
   }
-  for (let k = 0; k < 4; k++) {
-    const arr = teamPow[k], load = LOAD[k];
-    for (let t = 0; t < nTeams; t++) arr[t] = Math.pow(teamRaw[t], load);
-    arr[nTeams] = 1;
-  }
+  teamLog[nTeams] = 0;   // no team => factor 1
 
   const nG = playoff ? ctx.nGames[week] : 0;
   if (playoff) {
     for (let g = 0; g < nG; g++) {
-      gameRaw[g] = Math.exp(gauss(rng) * G_SIGMA - G_SIGMA * G_SIGMA / 2);
-    }
-    for (let k = 0; k < 4; k++) {
-      const arr = gamePow[k], load = LOAD[k];
-      for (let g = 0; g < nG; g++) arr[g] = Math.pow(gameRaw[g], load);
+      gameLog[g] = gauss(rng) * G_SIGMA - G_SIGMA * G_SIGMA / 2;
     }
   }
 
-  const { scores, mean, pos, team, bye, n, missFrom, missTo } = ctx;
+  const { scores, mean, load, team, bye, n, missFrom, missTo } = ctx;
   const gameW = playoff ? ctx.game[week] : null;
   const sig = playoff ? ctx.idioPo : ctx.idioReg;
 
@@ -385,17 +443,20 @@ function drawWeekScores(ctx, week, rng) {
     const m = mean[i];
     if (m <= 0 || bye[i] === week) { scores[i] = 0; continue; }
     if (week >= missFrom[i] && week <= missTo[i]) { scores[i] = 0; continue; }
-    const k = pos[i];
-    let f = teamPow[k][team[i] < 0 ? nTeams : team[i]];
+    const li = load[i];
+    // exp(load*teamLog + load*gameLog + idio) — the two shared factors raised to
+    // this player's own loading, folded into the one exp his idiosyncratic draw
+    // already needed. Was teamPow[pos][t] * gamePow[pos][g] * exp(idio).
+    let e = li * teamLog[team[i] < 0 ? nTeams : team[i]];
     if (playoff) {
       const g = gameW[i];
       // No game scheduled in a knockout week means no points, which is the whole
       // reason playoff schedule shows up in the recommender at all.
       if (g < 0) { scores[i] = 0; continue; }
-      f *= gamePow[k][g];
+      e += li * gameLog[g];
     }
     const s = sig[i];
-    scores[i] = m * f * Math.exp(gauss(rng) * s - s * s / 2);
+    scores[i] = m * Math.exp(e + gauss(rng) * s - s * s / 2);
   }
   return scores;
 }
@@ -1204,7 +1265,12 @@ function main() {
   const opts = {
     drafts:  parseInt(arg('drafts', '400'), 10),
     seasons: parseInt(arg('seasons', '200'), 10),
-    baseSeed: 20260730,
+    // Fixed by default so a run is reproducible and V1 comes back bit-identical
+    // across arms — that equality is the check that only the model under test
+    // moved. --seed exists to REPLICATE: a constant that looks like it earns its
+    // place at one seed and not at another has not earned it, and several entries
+    // in §4 exist because a single flattering run was believed.
+    baseSeed: parseInt(arg('seed', '20260730'), 10),
     players, ctx,
     finalAlpha: parseFloat(arg('final-alpha', '1.7')),
     finalPaid:  parseFloat(arg('final-paid', '0.367')),
