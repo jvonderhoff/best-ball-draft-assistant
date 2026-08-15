@@ -1,4 +1,8 @@
-#!/Users/jvonderhoff/opt/anaconda3/bin/python3
+#!/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/.venv/bin/python
+# ^ Absolute, and it has to be. Firefox launches this native messaging host directly,
+# not through a shell, so there is no PATH to fall back on and no venv activation.
+# Was anaconda's python3 until 2026-08-14; when anaconda was removed the extension
+# would have started failing to write with nothing in any log the app owns.
 """
 Native messaging host for the Best Ball Draft Assistant extension.
 Firefox launches this on-demand; it reads one JSON message from stdin,

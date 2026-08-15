@@ -12,4 +12,8 @@ echo ""
 export PYTHONPATH="${PWD}:${PYTHONPATH}"
 
 # Run Flask app (using port 8000 as port 5000 is occupied by system service)
-python -m flask -A app.app run --debug --no-reload --host 0.0.0.0 --port 8000
+# Use the project venv explicitly rather than whatever `python` happens to resolve to.
+# This was a bare `python` until 2026-08-14, which meant it ran against whichever
+# interpreter came first on PATH — anaconda's 3.9, with the dependencies installed
+# globally rather than in a venv.
+.venv/bin/python -m flask -A app.app run --debug --no-reload --host 0.0.0.0 --port 8000
