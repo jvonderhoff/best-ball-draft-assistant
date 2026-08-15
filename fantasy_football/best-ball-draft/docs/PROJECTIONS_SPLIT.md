@@ -1,5 +1,8 @@
 # Splitting projections out of the draft app
 
+**Status: design note, nothing built.** See `PROJECTIONS_APP_ARCHITECTURE.md` for
+the new app's own internals; this file covers only the contract between the two.
+
 **Status: design note, nothing built.** Written 2026-08-14 while deciding whether
 analysis and projections should become their own app. Records the contract, the seam
 and the failure modes, so the decision does not have to be re-derived later.
