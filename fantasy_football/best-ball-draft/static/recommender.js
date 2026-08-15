@@ -418,11 +418,13 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
   if (stackIntensity !== 'off' && capNeedForWait <= 0) {
     const { mult: waitMult, buffer } = waitabilityInfo(player, myPickNumber, nextMyPick);
     if (waitMult < 0.999) {
-      apply(waitMult, 'Draft window', `likely avail next pick (ADP ${player.adp} vs next pick ${nextMyPick}, +${Math.round(buffer)} cushion)`);
+      // Label reads realAdp because waitabilityInfo() computed the discount from it —
+      // printing `adp` here showed your rank next to a number derived from the market.
+      apply(waitMult, 'Draft window', `likely avail next pick (ADP ${player.realAdp ?? player.adp} vs next pick ${nextMyPick}, +${Math.round(buffer)} cushion)`);
     }
   }
 
-  // Value-steal boost / reach penalty: compares ADP to current overall pick.
+  // Value-steal boost / reach penalty: compares MARKET ADP to the current pick.
   // Normalised by round (floored at 3) so early gaps carry more weight.
   //
   // BOOST: player fell past ADP  →  ×(1 + gap/round × 0.20), capped +60%
@@ -431,15 +433,31 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
   //
   // PENALTY: reaching ahead of ADP  →  ×(1 − gap/round × 0.10), capped at ×0.30
   //   R1 reach=3  → ×0.90  |  R4 reach=10 → ×0.75  |  R8 reach=15 → ×0.81
-  const valueGap = myPickNumber - (player.adp || myPickNumber);
+  //
+  // `realAdp`, not `adp`, and this is the whole point of the term. With the custom
+  // board on, applyCustomRanks() SUBSTITUTES your rank into `adp` and moves the
+  // market value to `realAdp` — so reading `adp` here asked "did he fall past where
+  // *I* ranked him", which is not a fact about the world. Your opinion is already
+  // fully expressed in `adpValue` at the top of this function; counting it again
+  // here charged you twice for one view. Measured before the fix on the 2026-08-15
+  // board: moving one player from rank 164 to 120 took his V1 score 8.0 → 16.0,
+  // because the base rose 1.36x AND the steal bonus jumped +9% → +60% (capped) —
+  // while the market had not moved at all (real ADP 169, going on schedule).
+  //
+  // Two other sites in this file already got this right — waitabilityInfo() and the
+  // QB bring-back window both use `realAdp ?? adp` — so this was an inconsistency
+  // rather than a decision. Keep all three reading the market: "will he last?" and
+  // "did the room let him slide?" are questions about the room, not about you.
+  const marketAdp = player.realAdp ?? player.adp;
+  const valueGap = myPickNumber - (marketAdp || myPickNumber);
   const effectiveRound = Math.max(userRound, 3);
   if (valueGap > 0) {
     const stealCap = pos === 'QB' ? 0.20 : 0.60;
     const m = 1 + Math.min((valueGap / effectiveRound) * 0.20, stealCap);
-    apply(m, 'Value steal', `fell ${Math.round(valueGap)} picks (ADP ${player.adp} at pick ${myPickNumber})`);
+    apply(m, 'Value steal', `fell ${Math.round(valueGap)} picks (ADP ${marketAdp} at pick ${myPickNumber})`);
   } else if (valueGap < 0) {
     const penalty = Math.min(((-valueGap) / effectiveRound) * 0.10, 0.70);
-    apply(1 - penalty, 'Reach penalty', `${Math.round(-valueGap)} picks early (ADP ${player.adp} at pick ${myPickNumber})`);
+    apply(1 - penalty, 'Reach penalty', `${Math.round(-valueGap)} picks early (ADP ${marketAdp} at pick ${myPickNumber})`);
   }
 
   return adpValue * mult;
@@ -460,7 +478,11 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
     const val = calculateValue(p, myPickNumber, myTeam, stackIntensity, nextMyPick, pool, bd);
     const baseScore = 1000 / (p.adp || 1);
 
-    const gap        = myPickNumber - (p.adp || myPickNumber);
+    // Market ADP, matching the scoring term it narrates. This drives the
+    // "🔥 N picks of value" / "⚠️ reaching N picks early" badge, so reading `adp`
+    // made the badge describe your own board while the score it sits next to was
+    // computed from the market — the label and the number disagreeing on screen.
+    const gap        = myPickNumber - ((p.realAdp ?? p.adp) || myPickNumber);
     const pRound     = myTeam.length + 1;
     const pGapThresh = Math.max(2, pRound);
     const pcCount    = passCatcherCount(p.team, myTeam);
@@ -487,7 +509,11 @@ function getTopRecommendations(available, myTeam, myPickNumber, stackIntensity =
     // Bring-back window urgency signal
     if (p.pos === 'QB' && pcCount > 0 && nextMyPick != null) {
       const windowSize = Math.max(1, nextMyPick - myPickNumber);
-      const adpGap     = Math.max(0, (p.adp || myPickNumber) - myPickNumber);
+      // Survival is a question about the room, so it reads the market — and this is
+      // the badge for the bring-back multiplier at the top of calculateValue, which
+      // has always used `realAdp`. They disagreed with the board on: the card could
+      // say "grab now" off your rank while the score priced him as safe, or vice versa.
+      const adpGap     = Math.max(0, ((p.realAdp ?? p.adp) || myPickNumber) - myPickNumber);
       if (adpGap < windowSize) {
         reason = reason ? `${reason} · ⚠ grab now — likely gone by next pick` : `⚠ grab now — likely gone by next pick`;
       }
