@@ -2,6 +2,11 @@
 
 DraftKings Best Ball draft assistant. Flask + vanilla JS + Postgres, deployed on Render.
 
+`docs/PROJECTIONS_SPLIT.md` is a design note, not a plan of record: moving analysis and
+projections into their own app to keep this one lite. Read it before adding anything new
+to `app/analysis.py` — the contract it documents (V2 consumes six fields; V1 consumes
+`adp` alone) is worth knowing whether or not the split ever happens.
+
 **Read `docs/V2_DESIGN.md` before changing the recommender.** It documents the model, the
 evidence behind every constant, and — most importantly — §4, the dead ends. This file
 covers only the operational things that live nowhere else.
