@@ -320,18 +320,42 @@ independent of `V2_QB_RB_REC`. At the shipped default (Q=0.0) it costs −$0.03 
 −$0.03 — consistently negative, an order of magnitude below the noise floor, i.e. free —
 and it makes a QB's card show `completes RB stack w/ …`, which it never did.
 
-**Known defect, unfixed: `sd` does not follow the blend.** `ceiling = blended +
-1.2816 x sd`, but `sd` comes from the projection pipeline as `raw_ppg x POS_SCORING_CV`
-— computed *before* ECR and the custom board move the mean. So the ceiling/mean ratio,
-which should be a constant `1 + 1.2816 x CV` per position (WR 1.897), actually ranges
+**`sd` now follows the blend — fixed 2026-08-15.** Previously `ceiling = blended +
+1.2816 x sd` while `sd` came from the projection pipeline as `raw_ppg x POS_SCORING_CV`
+— computed *before* ECR and the custom board moved the mean. So the ceiling/mean ratio,
+which should be a constant `1 + 1.2816 x CV` per position (WR 1.897), actually ranged
 **1.739–2.164** at WR.
 
-Practical effect: rank a player up on your board and his mean rises while his SD does
-not, so his ceiling rises *less than proportionally* and his spike value is understated
+Practical effect: rank a player up on your board and his mean rose while his SD did
+not, so his ceiling rose *less than proportionally* and his spike value was understated
 against someone who reached the same mean through projections. Since
-`V2_CUSTOM_RANK_WEIGHT` is 0.55, this bites hardest exactly where the user has most
-influence. One-line fix (`sd = blended * CV[pos]` after blending) — not made, because
-it changes scoring and was found late.
+`V2_CUSTOM_RANK_WEIGHT` is 0.55, that bit hardest exactly where the user has most
+influence.
+
+The fix is `sd = blended * cv` after both blends, where `cv` is recovered as
+`proj.sd / proj.ppg` rather than hardcoded — the pipeline builds `sd` as
+`ppg x POS_SCORING_CV`, so that ratio IS the constant, and deriving it keeps one source
+of truth against a server-side retune. Payload rounding puts <0.6% error on the
+recovered CV above 2 ppg, all of it on players nobody drafts.
+
+**Measured +$3.28 mean / +$4.34 median, four seeds, `--truth market`:** −0.51, +4.96,
++3.95, +4.73. Positive and past the ±$2 floor at three of four; the fourth is a wash
+inside the floor. **No seed measures a loss.** Roster shape barely moves
+(2.54/4.59/8.88/3.99 → 2.55/4.57/8.91/3.98).
+
+**This is a lower bound, and the reason matters:** `compare-models.js` calls
+`v2AttachEffective(players, projMap, {})` — an empty `customRankMap` — so the simulator
+never exercises the 0.55 custom-board weight, i.e. the exact path where the defect was
+worst. What was measured is the ECR path (0.15/0.30) plus the unprojected branch.
+
+Beyond `ceiling`, `sd` also gates every correlation term via
+`Math.min(sdMe, partner._eff.sd)`, so the fix raises stack credit for anyone the board
+ranks above his projection. Live case (Jaydon Blue, RB, DAL): ceiling 5.84 → 6.70,
+week-17 game-stack value 0.49 → 0.70, both +43%.
+
+**Measuring it at all required fixing the harness first — see §5.5.** The first sweep
+was invalid and said so out loud: V1's EV moved between arms ($73.41 → $76.17) despite
+V1 being untouched.
 
 Note also that ceiling carries **no per-player upside information**: it is a fixed
 multiple of the mean within a position, so two WRs projecting the same get identical
@@ -658,6 +682,50 @@ build recommendation.
 
 Ignore the `capital-aware` rows at WR and TE — the encoding degenerated into a
 duplicate of the floor arm (WR −5.28 against WR≥10's −5.22) and measured nothing.
+
+### 5.5 The answer key is built from the model under test
+
+**Found 2026-08-15, while trying to measure the `sd` fix in §4.** The harness derives
+each player's TRUE week-to-week volatility from the recommender's own belief:
+
+```js
+p._true = { mean, cv: p._eff.sd / Math.max(p._eff.mean, 0.01) };   // ~line 556
+const total = Math.log(1 + (p._eff.sd / Math.max(p._eff.mean, 0.01)) ** 2);  // ~line 369
+```
+
+So `_eff.sd` is doing double duty: what V2 believes, *and* the spread the simulator
+draws outcomes from. Change it and you change the world, not just the model.
+
+**The tell is the control failing.** A fixed `--seed` is supposed to make V1 come back
+bit-identical across arms — that equality is the whole check that only the model under
+test moved. On the first `sd` sweep it did not: V1's capped EV went $73.41 → $76.17 at
+one seed and $60.82 → $57.64 at another, while V2 moved by a similar magnitude in the
+opposite direction and flipped sign between seeds. Every number in that run was the
+world wobbling.
+
+**Always read the V1 column as a control.** It costs nothing and it is the only thing
+that distinguishes "my change did something" from "I moved the answer key".
+
+The §4 result was obtained with a throwaway patch deriving true volatility from the raw
+projection instead, which made V1 bit-identical across all four seeds:
+
+```js
+function _trueCv(p) {
+  const pr = p._proj;
+  if (pr && pr.ppg > 0 && pr.sd > 0) return pr.sd / pr.ppg;
+  return 0.70 / 0.92;   // unprojected bodies carry the wider spread
+}
+```
+
+**That patch was NOT committed, deliberately.** Adopting it shifts the simulated world
+for every comparison, so every EV level already recorded in this document would move
+and none of them would remain comparable to a new run. It is the right fix in principle
+— an answer key must not be a function of the thing it grades — but it is a re-baselining
+decision, not a bug fix, and it should be made deliberately and all at once.
+
+Note the scope: `ctx.curves` (and therefore market truth) is built from `_eff.mean`, so
+this contaminates **any** change touching `_eff.mean` or `_eff.sd`, not just `sd`.
+Changes that only affect pick *selection* are unaffected.
 
 ---
 

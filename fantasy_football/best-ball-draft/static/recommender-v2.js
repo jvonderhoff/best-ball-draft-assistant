@@ -484,11 +484,23 @@ function v2AttachEffective(players, projMap, opts = {}) {
     const curve = curves[pos];
     const proj  = p._proj;
 
-    let mean, sd, sources, avail = 1, disagree = 0, recShare = null;
+    let mean, sd, cv, sources, avail = 1, disagree = 0, recShare = null;
 
     if (proj && proj.ppg > 0) {
       mean    = proj.ppg;
       sd      = proj.sd;
+      // The scoring CV for this position, recovered from the payload rather than
+      // duplicated here.  The projection pipeline builds sd as `ppg x POS_SCORING_CV`
+      // (app/projections.py), so the ratio IS that constant.  Deriving it keeps one
+      // source of truth: a hardcoded copy in this file would silently drift the day
+      // someone retunes the server-side table.
+      //
+      // Both fields arrive rounded to 2dp, so the recovered CV carries a little
+      // rounding noise — but the error is inversely proportional to ppg and is
+      // therefore confined to players nobody drafts.  Measured against the true
+      // constants: max relative error 0.12% above 8 ppg, 0.56% above 2 ppg, and it
+      // only reaches 7% on a WR projected at 0.08 ppg.
+      cv      = proj.sd / proj.ppg;
       sources = proj.sources || 1;
       avail   = proj.avail ?? 1;
       disagree = proj.disagreement ?? 0;
@@ -504,6 +516,10 @@ function v2AttachEffective(players, projMap, opts = {}) {
       if (est == null) { p._eff = null; continue; }
       mean    = est * 0.92;   // unprojected players skew toward the downside
       sd      = est * 0.70;
+      // Deliberately wider than any real position's CV — an unprojected body is
+      // uncertain on top of being weak.  Expressed as a ratio so the blend below
+      // preserves that spread instead of collapsing it onto a projection CV.
+      cv      = 0.70 / 0.92;
       sources = 0;
       avail   = 0.80;         // no projection usually means a fringe/injury-risk body
       disagree = 0.35;        // unprojected bodies are inherently uncertain, not inherently bad
@@ -527,6 +543,29 @@ function v2AttachEffective(players, projMap, opts = {}) {
     if (customPts != null) {
       blended = blended * (1 - V2_CUSTOM_RANK_WEIGHT) + customPts * V2_CUSTOM_RANK_WEIGHT;
     }
+
+    // sd follows the blend.  Until 2026-08-15 it did not: sd stayed at its raw
+    // projection value while ECR and the custom board moved the mean, so the
+    // ceiling/mean ratio — which should be the per-position constant
+    // `1 + 1.2816 x CV` (WR 1.897) — actually ranged 1.739–2.164 at WR.
+    //
+    // The practical cost fell exactly where the user has most influence: rank a
+    // player up and his mean rose while his spread did not, so his ceiling rose
+    // *less* than proportionally and his spike value was understated against
+    // someone who reached the same mean through projections.  With
+    // V2_CUSTOM_RANK_WEIGHT at 0.55 that is a large share of the valuation.
+    //
+    // Worth +$3.28 mean / +$4.34 median across four seeds, `--truth market`, past the
+    // ±$2 floor at three of four and a loss at none — but see §5.5 of the design doc:
+    // the harness passes an empty customRankMap, so that figure prices only the ECR
+    // path and NOT the 0.55 custom-board weight this fix mainly serves.  Measuring it
+    // at all required patching the harness, which builds the simulated world's
+    // volatility from `_eff.sd` — i.e. from the very thing under test.
+    //
+    // sd also gates every correlation term via `Math.min(sdMe, partner._eff.sd)`, so
+    // this raises stack credit too: live case (Jaydon Blue, DAL, with the board on)
+    // week-17 game stack 0.49 -> 0.70, and V2 rank #11 -> #9.
+    sd = blended * cv;
 
     p._eff = {
       mean:    blended,
