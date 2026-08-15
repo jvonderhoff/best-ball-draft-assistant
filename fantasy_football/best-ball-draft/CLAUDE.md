@@ -59,9 +59,30 @@ go up as deletes — one Save from an unhydrated cache would have destroyed 69 r
 rankings. A `rankings_warning` also appears whenever local and durable drift apart
 after a good boot.
 
+**`projections_hydrated` is the same check for V2's inputs**, per dataset
+(`{"espn": …, "props": …}`), with `projections_warning` listing anything wrong. `false`
+means the local table is whatever survived the filesystem wipe — on Render, nothing — so
+V2 silently runs on Sleeper alone: 356 players drop from two projection sources to one
+and the ECR blend doubles from 0.15 to 0.30. Every score shifts, nothing errors. There is
+no seed file behind these tables, so the tell is a local count of 0, which reads
+identically to "not fetched yet"; that ambiguity is why the flag is also on
+`/api/projections/meta`, the endpoint you actually hit when the numbers look off. Unlike
+rankings it does **not** block writes — `save_espn`/`save_props` are pure upserts with no
+delete path, and pushing props is the obvious recovery from a failed hydrate.
+
 **The lesson generalises past rankings.** Three bugs this session were silent in the same
 way: plausible numbers, no errors, nothing logged. Prefer failing loudly and recording
 whether a thing actually happened over inferring it from a count that looks right.
+
+**The stores' `_conn()` must never raise, and this is load-bearing.** Every `load_*`
+documents "None when unreachable", but until 2026-08-14 `psycopg2.connect` sat outside
+the try, so that contract held only for the cheap cases (no `DATABASE_URL`, no psycopg2)
+— a real outage *raised*. Two safety nets were dead as a result, both measured rather
+than argued: the 4-attempt retry in `_hydrate_external_rankings` ran **0 of 4** loads
+against an unreachable store (`init_external` raised first and unwound past the loop),
+and that retry exists precisely for the Neon cold start after a deploy, where connect
+times out; and `/api/stores/status` **500'd** instead of reporting `UNREACHABLE`, so the
+one instrument for "did persistence work" broke exactly when persistence was broken.
 
 `app/data/player_cache.json` is committed **on purpose** — `_seed_players_if_empty` needs
 it to populate a cold database. It looks like a build artifact. It isn't. Don't gitignore

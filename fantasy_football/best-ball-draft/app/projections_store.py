@@ -46,7 +46,13 @@ def _conn():
     except ImportError:
         _log.warning('[projections-store] psycopg2 not installed; external store disabled')
         return None
-    return psycopg2.connect(url, connect_timeout=10)
+    # Never raise — the None-means-unreachable contract every caller here relies
+    # on. See rankings_store._conn for what a raising connect silently broke.
+    try:
+        return psycopg2.connect(url, connect_timeout=10)
+    except Exception as e:
+        _log.warning(f'[projections-store] connect failed: {e!r}')
+        return None
 
 
 def init_external() -> None:
@@ -82,6 +88,44 @@ def init_external() -> None:
         _log.warning(f'[projections-store] init failed: {e!r}')
     finally:
         conn.close()
+
+
+# ── Hydration state ──────────────────────────────────────────────────────────
+#
+# Did THIS boot succeed in replacing the local caches from the durable store?
+# Tracked per dataset, because ESPN projections and props are two independent
+# loads and either can fail on its own.
+#
+#   None   not attempted (no DATABASE_URL, or init hasn't run)
+#   True   the local table mirrors the external one
+#   False  the external store could not be read; local holds whatever survived
+#
+# Why this needs recording rather than inferring: the failure has no symptom.
+# There is no seed file here, so on Render — where the filesystem is wiped every
+# deploy — an unreachable store leaves the local tables simply EMPTY, and V2
+# falls back to Sleeper alone. 356 players drop from two projection sources to
+# one and the ECR blend doubles from 0.15 to 0.30. Every score shifts, nothing
+# errors, nothing is logged, and the numbers stay entirely plausible. By the time
+# anyone calls /api/stores/status the external compute has woken up and reports a
+# healthy count, so the external column looks fine too — the same way the stale
+# rankings board hid for two months.
+#
+# Unlike rankings, this flag does NOT gate writes. save_rankings() has to be
+# blocked when unhydrated because it turns unranked players into DELETEs, so one
+# Save from a stale cache destroys durable data. save_espn()/save_props() are
+# pure upserts with no delete path, and blocking them would break the obvious
+# recovery — pushing props from a residential connection is exactly what you'd
+# want to do after a failed hydrate. So this one is diagnostic on purpose.
+_hydrated = {'espn': None, 'props': None}
+
+
+def hydration_state() -> dict:
+    """{'espn': True|False|None, 'props': …} for this boot. See _hydrated above."""
+    return dict(_hydrated)
+
+
+def mark_hydrated(dataset: str, ok: bool) -> None:
+    _hydrated[dataset] = ok
 
 
 # ── ESPN projections ─────────────────────────────────────────────────────────

@@ -435,6 +435,7 @@ def get_projections_meta():
     per-source counts underneath so a genuinely empty source is still visible.
     """
     from app.projections import cache_meta
+    from app import projections_store
     out = cache_meta()
 
     # Count the tables directly, the way /api/stores/status does.
@@ -454,6 +455,15 @@ def get_projections_meta():
                 out['sources'][key] = conn.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0]
             except Exception as e:
                 out['sources'][key] = f'error: {e}'
+
+    # Whether those two counts came from the durable store this boot, or are just
+    # what happened to survive. Repeated here rather than left to
+    # /api/stores/status because this is the endpoint you actually hit when the
+    # model's numbers look off, and a bare `espn: 0` reads as "ESPN hasn't been
+    # fetched yet" when it can equally mean "Postgres was asleep at boot".
+    # /api/stores/status stays the only endpoint that queries Postgres — this is
+    # in-process state from the boot, no connection involved.
+    out['hydrated'] = projections_store.hydration_state()
 
     # Kept so anything already reading these keys does not break.
     fp = projections_meta() or {'count': 0, 'last_updated': None}
@@ -2112,6 +2122,34 @@ def stores_status():
             f'hydrated this boot but local ({local_ranks}) != external '
             f'({out["external"]["player_rankings"]}) — cache drifted since boot'
         )
+
+    # Same question for V2's projection inputs, and it hides the same way.
+    #
+    # There is no seed file behind espn_projections/player_props, so a boot that
+    # fails to reach Postgres leaves them EMPTY on Render and V2 quietly runs on
+    # Sleeper alone — 356 players drop to one projection source and the ECR blend
+    # doubles. The counts above cannot tell you this happened: by the time anyone
+    # asks, the external compute is awake and reports healthy numbers, exactly as
+    # it did while the June rankings seed was serving as the live board.
+    proj_state = projections_store.hydration_state()
+    out['projections_hydrated'] = proj_state
+    proj_warnings = []
+    for dataset, table in (('espn', 'espn_projections'), ('props', 'player_props')):
+        state = proj_state.get(dataset)
+        local_n, ext_n = out['local'].get(table), out['external'].get(table)
+        if state is False:
+            proj_warnings.append(
+                f'{table} DID NOT HYDRATE this boot — local holds {local_n}, not the '
+                f'durable copy. V2 is scoring on a degraded input set. Restart while '
+                f'the external store is reachable.'
+            )
+        elif state is True and isinstance(local_n, int) and isinstance(ext_n, int) and local_n != ext_n:
+            proj_warnings.append(
+                f'{table} hydrated this boot but local ({local_n}) != external '
+                f'({ext_n}) — cache drifted since boot'
+            )
+    if proj_warnings:
+        out['projections_warning'] = proj_warnings
     return jsonify(out)
 
 

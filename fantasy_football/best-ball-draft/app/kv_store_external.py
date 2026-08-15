@@ -43,7 +43,13 @@ def _conn():
     except ImportError:
         _log.warning('[kv-store] psycopg2 not installed; external store disabled')
         return None
-    return psycopg2.connect(url, connect_timeout=10)
+    # Never raise — the None-means-unreachable contract every caller here relies
+    # on. See rankings_store._conn for what a raising connect silently broke.
+    try:
+        return psycopg2.connect(url, connect_timeout=10)
+    except Exception as e:
+        _log.warning(f'[kv-store] connect failed: {e!r}')
+        return None
 
 
 def init_external() -> None:

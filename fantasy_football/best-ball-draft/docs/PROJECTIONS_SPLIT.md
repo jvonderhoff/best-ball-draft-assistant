@@ -109,8 +109,14 @@ that failure precisely, one layer down.
 
 So:
 
-- `/api/stores/status` must report a `projections_hydrated` alongside
-  `rankings_hydrated` — is the served payload the pushed one, or the bootstrap?
+- ~~`/api/stores/status` must report a `projections_hydrated` alongside
+  `rankings_hydrated` — is the served payload the pushed one, or the bootstrap?~~
+  **Built 2026-08-14, before the split rather than after** — deliberately, while
+  both halves are still in one app and a wrong answer is verifiable end to end.
+  Per dataset (`espn`/`props`), mirrored on `/api/projections/meta`, with the
+  boot-time retry that the rankings hydrate turned out never to have been running
+  (see CLAUDE.md on `_conn()`). When the split happens this becomes the check on
+  the *pushed payload* rather than on two Postgres tables; the shape carries over.
 - Surface `generated_at` age in the UI. `generated_at` and `stale` already exist in
   the payload and are already returned by `/api/projections-v2`; nothing reads them.
 - Prefer a hard refusal over a quiet fallback where a wrong answer is worse than no

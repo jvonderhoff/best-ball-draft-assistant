@@ -322,14 +322,40 @@ def _hydrate_external_projections(conn):
     Same contract as the rankings hydrate: None means the store is unreachable, so
     keep whatever is local rather than wiping it on the strength of an outage. An
     empty store on first run gets seeded from local.
+
+    Both loads retry, and both record whether they succeeded — see the _hydrated
+    comment in projections_store for why the outcome has to be recorded rather
+    than inferred from a row count.
     """
     from app import projections_store as ps
     if not ps.external_enabled():
         return
+
+    def _load_with_retry(loader, label):
+        """Same retry policy as the rankings hydrate above, and for the same reason:
+        Neon and friends suspend an idle compute, and the first connection after a
+        deploy has to wake it — routinely longer than the 10s connect_timeout. A
+        single attempt therefore fails on exactly the boot that matters most, the
+        one right after a deploy, when the ephemeral filesystem has just been wiped.
+        """
+        for attempt in range(4):
+            got = loader()
+            if got is not None:
+                return got
+            if attempt < 3:
+                time.sleep(2 ** attempt * 3)   # 3s, 6s, 12s
+        _log.error(
+            f'[projections-store] {label} UNREACHABLE after 4 attempts — the local '
+            f'table is whatever survived the filesystem wipe, which on Render is '
+            f'nothing. V2 will run on a degraded input set without erroring.'
+        )
+        return None
+
     try:
         ps.init_external()
 
-        ext_espn = ps.load_espn()
+        ext_espn = _load_with_retry(ps.load_espn, 'espn_projections')
+        ps.mark_hydrated('espn', ext_espn is not None)
         if ext_espn is not None:
             if ext_espn:
                 conn.execute("DELETE FROM espn_projections")
@@ -346,7 +372,8 @@ def _hydrate_external_projections(conn):
                 if local:
                     ps.save_espn({r['player_name']: dict(r) for r in local})
 
-        ext_props = ps.load_props()
+        ext_props = _load_with_retry(ps.load_props, 'player_props')
+        ps.mark_hydrated('props', ext_props is not None)
         if ext_props is not None:
             if ext_props:
                 conn.execute("DELETE FROM player_props")
@@ -367,8 +394,12 @@ def _hydrate_external_projections(conn):
                 for book, data in by_book.items():
                     ps.save_props(data, book=book)
     except Exception as e:
-        import logging
-        logging.getLogger('app').warning(f'[projections-store] hydrate failed: {e!r}')
+        # Only the datasets that never got a verdict — an exception while copying
+        # props must not retroactively mark a successful ESPN load as failed.
+        for dataset, state in ps.hydration_state().items():
+            if state is None:
+                ps.mark_hydrated(dataset, False)
+        _log.error(f'[projections-store] hydrate failed, V2 inputs may be incomplete: {e!r}')
 
 
 def _hydrate_external_drafts(conn):

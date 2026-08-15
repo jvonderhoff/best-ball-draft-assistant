@@ -21,6 +21,32 @@ def external_enabled() -> bool:
 
 
 def _conn():
+    """A connection, or None if one can't be had. NEVER raises.
+
+    The None-on-failure contract is what every caller in this file is written
+    against ("returns None when the store isn't configured/reachable"), but until
+    2026-08-14 it only held for the two cheap cases — no DATABASE_URL, no
+    psycopg2. An actual outage went through psycopg2.connect, which RAISES, and
+    the exception unwound out of load_rankings/load_espn/… past callers that
+    believed they were getting None.
+
+    Two things that were supposed to protect against a bad boot were dead as a
+    result, both measured rather than reasoned:
+
+      * the 4-attempt retry in _hydrate_external_rankings ran ZERO loads against
+        an unreachable store — init_external() raised first and the exception
+        went straight to the outer except. That loop exists specifically for the
+        Neon cold start after a deploy, where connect TIMES OUT (10s) rather than
+        succeeding. So the retry was absent from the one boot it was written for.
+
+      * /api/stores/status — the endpoint CLAUDE.md tells you to check after any
+        deploy touching storage — 500s instead of reporting 'UNREACHABLE',
+        because it calls these loaders expecting None. The one instrument for
+        "did persistence work" broke exactly when persistence was broken.
+
+    Hence: catch here, at the single point every caller funnels through, rather
+    than restructuring a dozen try blocks. Logged, so an outage is still visible.
+    """
     url = os.environ.get('DATABASE_URL', '').strip()
     if not url:
         return None
@@ -32,7 +58,11 @@ def _conn():
     except ImportError:
         _log.warning('[rankings-store] psycopg2 not installed; external store disabled')
         return None
-    return psycopg2.connect(url, connect_timeout=10)
+    try:
+        return psycopg2.connect(url, connect_timeout=10)
+    except Exception as e:
+        _log.warning(f'[rankings-store] connect failed: {e!r}')
+        return None
 
 
 def init_external() -> None:
