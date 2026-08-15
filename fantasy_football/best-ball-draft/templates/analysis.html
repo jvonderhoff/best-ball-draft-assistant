@@ -330,12 +330,22 @@ const COLUMNS = [
       : `<span style="color:${p.ay_per_rec < 0 ? 'var(--muted)' : 'var(--text)'}">${p.ay_per_rec}</span>` },
   { key: 'catch_rate', group: 'opp', label: 'Catch%', title: 'Receptions / targets, 2025. Needs 10+ targets.',
     render: p => p.catch_rate == null ? NO : `${p.catch_rate}%` },
+  { key: 'snap_share', group: 'opp', label: 'Snap%',
+    title: 'Share of his team’s offensive snaps in the games he was ACTIVE — how central he was to the offence, not how often he played. A back at 30% snaps with a healthy target share is in a committee. NOT a durability signal: Kyler Murray played 5 games in 2025 and reads 99%, because the denominator only counts those 5. Read it next to Snaps and GP, which are where availability lives. Needs 3+ games; shown for QBs too, where under ~90% means benched or hurt mid-game.',
+    render: p => p.snap_share == null ? NO
+      : `<span style="color:${p.snap_share >= 75 ? 'var(--green)' : p.snap_share >= 45 ? 'var(--text)' : 'var(--muted)'};font-weight:600">${p.snap_share}%</span>` },
+  { key: 'snaps', group: 'opp', label: 'Snaps', title: '2025 offensive snaps. The raw count behind Snap%.',
+    render: p => p.snaps == null ? NO : p.snaps.toLocaleString() },
 
   // ── Red zone / TD regression ──────────────────────────────────────────────
   { key: 'rz_tgt', group: 'rz', label: 'RZ Tgt', title: '2025 red-zone targets', render: p => num(p.rz_tgt) },
   { key: 'rz_att', group: 'rz', label: 'RZ Att', title: '2025 red-zone carries', render: p => num(p.rz_att) },
+  { key: 'rz_tgt_share', group: 'rz', label: 'RZ Tgt%',
+    title: 'Share of his own team’s 2025 red-zone targets. The scoring-opportunity analogue of Tgt%, and it separates two players the plain target share cannot: the receiver who moves the ball between the 20s from the one his offence throws to inside them. Needs 3+ red-zone targets (a season’s league leader sits near 20, so a higher floor would blank most of the pool); pass catchers only.',
+    render: p => p.rz_tgt_share == null ? NO
+      : `<span style="color:${p.rz_tgt_share >= 20 ? 'var(--green)' : p.rz_tgt_share >= 10 ? 'var(--text)' : 'var(--muted)'};font-weight:600">${p.rz_tgt_share}%</span>` },
   { key: 'xtd', group: 'rz', label: 'xTD',
-    title: 'Expected TDs from red-zone usage, priced at the league-wide TD rate per red-zone target and per red-zone carry (measured from this season, not hardcoded).',
+    title: 'Expected TDs from red-zone usage, priced at the league-wide TD rate per red-zone target and per red-zone carry. Averaged over 2021–25 (four committed seasons plus the live one) rather than measured from a single season, so it no longer swings on one year’s scoring environment. The rate is stable — ~7% spread across those five seasons — so this is a small correction, not a large one.',
     render: p => num(p.xtd, 1) },
   { key: 'td_delta', group: 'rz', label: 'ΔTD',
     title: 'Actual TDs minus expected. POSITIVE = outscored his usage, a regression-down candidate (sell). NEGATIVE = the usage was there and the touchdowns were not (buy). A statement about last season’s luck, not a forecast.',

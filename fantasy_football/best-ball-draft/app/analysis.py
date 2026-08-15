@@ -97,6 +97,12 @@ def _build_sleeper_lookup(stats, meta):
             'rush_att':    int(s.get('rush_att')    or 0),
             'rush_rz_att': int(s.get('rush_rz_att') or 0),
             'rec_drop':    int(s.get('rec_drop')    or 0),
+            # Snap counts, and the team total to divide them by. Sleeper puts the
+            # team figure on the PLAYER's own row, so snap share needs no team
+            # aggregation and — unlike every other share here — cannot be thrown
+            # off by which players the denominator happened to sum over.
+            'off_snp':     int(s.get('off_snp')     or 0),
+            'tm_off_snp':  int(s.get('tm_off_snp')  or 0),
         }
         # If a name appears twice, keep the higher-scoring one
         if name_key not in lookup or obj['pts_ppr'] > lookup[name_key]['pts_ppr']:
@@ -180,16 +186,62 @@ def _build_context_lookup(meta: dict) -> dict:
     return out
 
 
+# League TD rates per red-zone opportunity for COMPLETED seasons, measured
+# 2026-08-14 from the same Sleeper endpoint the live season uses.
+#
+#   season: (td_per_rz_tgt, td_per_rz_att)   # sample behind it
+_HISTORICAL_TD_RATES = {
+    2021: (0.3594, 0.2104),   # 2337 rz tgt, 2400 rz att
+    2022: (0.3554, 0.2120),   # 2113 rz tgt, 2297 rz att
+    2023: (0.3748, 0.1950),   # 2012 rz tgt, 2410 rz att
+    2024: (0.3818, 0.2063),   # 2119 rz tgt, 2477 rz att
+}
+#
+# Committed rather than fetched, for two reasons. A completed season's rate is
+# immutable, so re-deriving it on every boot buys nothing; and Render's ephemeral
+# filesystem would re-fetch four ~8MB payloads after every deploy to recompute
+# numbers that cannot have changed.
+#
+# MEASURED ON PLAYER ROWS, EXCLUDING SLEEPER'S `TEAM_*` ROWS. That exclusion is
+# the whole subtlety: /v1/stats returns per-team aggregate rows (TEAM_LAR, …)
+# alongside player rows, and each one duplicates that team's ENTIRE red-zone
+# volume. Summing the endpoint naively double-counts — it inflates league red-zone
+# targets from 2,137 to 4,274. The ratio survives, because numerator and
+# denominator are both doubled, which is exactly why this is easy to get wrong and
+# never notice. Any re-derivation must filter those rows out.
+#
+# Cross-checked against the meta-filtered basis `_league_td_rates` uses below
+# (skill positions present in today's /v1/players): the two agree to within 0.5%
+# in every season, so the choice of basis does not move the constant. The
+# no-TEAM_ basis is the one committed because it stays reproducible as players
+# retire out of the current meta.
+#
+# To extend, run the derivation with the TEAM_ filter and append the season.
+
 def _league_td_rates(stats: dict, meta: dict) -> tuple:
     """
-    League-wide touchdowns per red-zone target and per red-zone carry, measured
-    from this season's data rather than hardcoded.
+    League-wide touchdowns per red-zone target and per red-zone carry: the LIVE
+    season measured from the rows already in hand, averaged with the completed
+    seasons in _HISTORICAL_TD_RATES.
 
     Constants in this project get measured where measuring is possible (see
     CLAUDE.md), and this one is free to measure: the same rows that supply a
-    player's red-zone usage supply the league rate to price it against.  It also
-    means the number self-corrects if the league's scoring environment moves,
-    which a literal copied off an article would not.
+    player's red-zone usage supply the league rate to price it against.
+
+    Multi-year because one season is one season — but the sweep that motivated
+    this ALSO undercut it, and the honest reading is recorded rather than the
+    flattering one. Across 2021-25 the rate per red-zone target ran .3554 .3748
+    .3818 .3795 against .3594, a spread of ~7%, and per red-zone carry ~9%. This
+    is a stable quantity, and 2025 sat near the middle of it, so the blend moves
+    td_per_rz_tgt only .3795 -> .3702 and td_per_rz_att .2069 -> .2061. For a
+    player with 20 red-zone targets and 10 carries that is 9.66 xTD against 9.46
+    — about a fifth of a touchdown.
+
+    So this is worth having for the right reason (xTD no longer swings on one
+    season's scoring environment) and not for the reason it was proposed (2025
+    being unrepresentative — it was not). The column it feeds, ΔTD, is a
+    regression flag where the SIGN and rough size carry the meaning; nothing
+    downstream is sensitive at the third decimal.
     """
     rz_tgt = rz_att = rec_td = rush_td = 0.0
     for pid, m in meta.items():
@@ -202,10 +254,24 @@ def _league_td_rates(stats: dict, meta: dict) -> tuple:
         rz_att  += float(s.get('rush_rz_att') or 0)
         rec_td  += float(s.get('rec_td')      or 0)
         rush_td += float(s.get('rush_td')     or 0)
-    # Fall back to roughly league-average rates if a fetch came back empty, so a
-    # bad API day degrades to approximate numbers instead of dividing by zero.
-    per_tgt = (rec_td  / rz_tgt) if rz_tgt > 0 else 0.20
-    per_att = (rush_td / rz_att) if rz_att > 0 else 0.12
+
+    # Each completed season counts once and the live one counts once — an
+    # unweighted mean over seasons, NOT a pooled ratio over summed volume. A
+    # pooled figure would silently weight by how many red-zone plays a season
+    # happened to contain; the quantity wanted here is "what does a red-zone look
+    # convert at in a typical season".
+    rates = list(_HISTORICAL_TD_RATES.values())
+    if rz_tgt > 0 and rz_att > 0:
+        rates.append((rec_td / rz_tgt, rush_td / rz_att))
+    elif not rates:
+        # Both empty: a bad API day with no history to fall back on. Roughly
+        # league-average literals so xTD degrades to approximate rather than
+        # dividing by zero.
+        return 0.20, 0.12
+    # A live fetch that came back empty simply doesn't vote; the historical mean
+    # stands on its own, which is a better answer than the old 0.20/0.12 literals.
+    per_tgt = sum(r[0] for r in rates) / len(rates)
+    per_att = sum(r[1] for r in rates) / len(rates)
     return per_tgt, per_att
 
 
@@ -302,6 +368,56 @@ def _attach_opportunity(players: list, team_tot: dict, ctx_lookup: dict,
         p['rz_att'] = int(rz_att) if has_2025 else None
         p['rz_opp'] = int(rz_tgt + rz_att) if has_2025 else None
 
+        # Share of his own offence's red-zone TARGETS. The scoring-opportunity
+        # analogue of tgt_share, and it separates two players the plain target
+        # share cannot: the possession receiver who moves the ball between the
+        # 20s from the one his offence actually throws to inside them.
+        #
+        # Gated at 3+ red-zone targets, a much lower floor than MIN_TGT because
+        # the whole population is small — a full season's RZ leader sits near 20,
+        # so a 10-target floor would blank most of the league. Pass catchers
+        # only, same reason as tgt_share: a QB's red-zone target share is not a
+        # concept. Denominator is the team's summed player total, matching
+        # _team_totals rather than Sleeper's TEAM_ rows, so numerator and
+        # denominator stay on one basis.
+        MIN_RZ_TGT = 3
+        rz_tgt_tot = float(tot.get('rz_tgt') or 0)
+        rz_ok = has_2025 and is_catcher and rz_tgt >= MIN_RZ_TGT and rz_tgt_tot > 0
+        p['rz_tgt_share'] = round(100 * rz_tgt / rz_tgt_tot, 1) if rz_ok else None
+
+        # ── Snap share ────────────────────────────────────────────────────────
+        # Percentage of his team's offensive snaps. How big his role was when he
+        # played, which target and carry shares assume rather than measure: a back
+        # at 30% snaps with a healthy target share is in a committee, and the
+        # target share alone cannot tell you that.
+        #
+        # THIS IS NOT AN AVAILABILITY METRIC, and the denominator is why. Sleeper's
+        # `tm_off_snp` counts the team's snaps in the games that PLAYER WAS ACTIVE,
+        # not the season — checked, not assumed: Kyler Murray played 5 games and
+        # carries tm_off_snp 321 against Josh Allen's 1,057 over 17. So a player who
+        # missed twelve games and started the other five reads 99%, correctly and
+        # very misleadingly if you came to the column looking for durability.
+        #
+        # That makes it the right denominator for the question actually being asked
+        # ("how central is he to this offence") and the wrong one for "did he play".
+        # Availability lives in the raw Snaps count and in GP, which is why Snaps is
+        # published alongside rather than folded away — the same reason tgt_share
+        # ships next to its raw count.
+        #
+        # Not gated on position: every offensive player takes snaps, so unlike the
+        # receiving metrics this is meaningful for a QB, where anything under ~90%
+        # means he was benched or hurt mid-game.
+        snp    = float(p.get('off_snp')    or 0)
+        tm_snp = float(p.get('tm_off_snp') or 0)
+        # Games floor, for the reason MIN_TGT exists one metric up: the share is
+        # honest for whatever games it covers, but a one-game 100% would take the
+        # top of the sort off a single afternoon. Three games is a low bar chosen
+        # to exclude the cameo, not to demand a full season.
+        MIN_SNAP_GP = 3
+        snap_ok = has_2025 and tm_snp > 0 and float(p.get('gp') or 0) >= MIN_SNAP_GP
+        p['snap_share'] = round(100 * snp / tm_snp, 1) if snap_ok else None
+        p['snaps']      = int(snp) if (has_2025 and snp > 0) else None
+
         # Expected TDs from red-zone usage, against what he actually scored.
         # POSITIVE td_delta = outscored his usage, a regression-DOWN candidate
         # (sell); negative = the usage was there and the touchdowns were not
@@ -365,6 +481,7 @@ def get_analysis_data(force_refresh: bool = False):
                 'pos_rank': 999,
                 'rec_tgt': 0, 'rec_air_yd': 0, 'rec_rz_tgt': 0,
                 'rush_att': 0, 'rush_rz_att': 0, 'rec_drop': 0,
+                'off_snp': 0, 'tm_off_snp': 0,
             })
 
     # ── Opportunity, red-zone regression and context (2025 actuals) ───────────
