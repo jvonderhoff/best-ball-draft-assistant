@@ -362,6 +362,9 @@ multiple of the mean within a position, so two WRs projecting the same get ident
 ceilings whether one is a boom/bust deep threat or a possession receiver. The only
 per-player variance signal is `disagreement`, and `V2_BREAKOUT_SD_GAIN` is 0.0.
 
+This is a real limitation, not a rounding detail — it is why a handcuff RB cannot be
+priced as one, since "low mean, fat tail" has no representation here. See §9.6.
+
 **QB marginal gain is not broken — do not re-investigate.** Prompted by V2 leaving 60%
 of drafts short of three quarterbacks (median QB1 round 8, QB2 12, QB3 16). Checked the
 closed form against a 400k-draw Monte Carlo using the model's own assumptions: ratios
@@ -917,14 +920,59 @@ accordingly (clamped 0.70–1.45). Improved advance rate +31.0% → +35.4%.
    the loading curve is assumed, so it cannot tell you 0.30 is the right receiving
    coefficient. And turning it on moves V1 by 4.4%, which is larger than most things
    being measured with it.
-6. **Yahoo** — blocked on app registration at developer.yahoo.com needing Fantasy
+6. **Contingent value: the model has no concept of a handcuff.** Raised 2026-08-15
+   from a live case (Jaydon Blue, DAL RB3, ADP 169 against a projection of 45.8).
+
+   **The structural claim, which is not in dispute.** `ceiling` is a fixed multiple
+   of the mean within a position — Blue's 4.8 ceiling is literally `1.743 x 2.74`.
+   So **"low mean, fat tail" is unrepresentable**, and that is precisely the backup-RB
+   profile: his value is not his expected points, it is that one injury converts him
+   into an RB1 for half a season. Best ball is the format where that cashes without
+   any manager action — no waiver claim, no start/sit — which is exactly why the
+   omission matters more here than it would elsewhere.
+
+   `depth_order` is already carried end to end (Sleeper → `analysis.py` → payload) and
+   **the recommender never reads it.** The only backup-aware term is
+   `v2BackfieldSpikeDiscount`, which handles the *reverse* case — you own the starter,
+   should you also take his backup — and applies a penalty.
+
+   **Why §4's breakout result does not settle this.** `V2_BREAKOUT_SD_GAIN` is off
+   because expert disagreement did not pay. But that keys on `rank_std`, a generic and
+   noisy proxy. "Is the direct backup to a workhorse" is a different, far more
+   structured signal, and the sweep never tested it.
+
+   **The strongest argument against, and it is a real one.** `assignTruth` already
+   rolls role changes with probability rising in disagreement *and* headroom — how
+   little the projection expects of a player. Blue is near-maximal on both. So in a
+   simulated world that does hand players of his exact profile RB1 roles, V2 still
+   declines him. Anyone reopening this should explain that first.
+
+   **What it would actually take.** Not a scoring term — a truth model. The simulator
+   grants *generic* breakouts, so a depth-chart-aware term would be graded by a world
+   that cannot see depth charts, and would measure noise either way. The honest
+   sequence is: teach `assignTruth` about inherited roles (starter's injury draw
+   promotes his backup, rather than each player breaking out independently), confirm
+   that changes nothing on its own, and only then test a recommender-side term —
+   paired, `tools/rb-depth.js` style. That is the bulk of the work and it is a harness
+   project, not a model tweak.
+
+   **Weigh against §4's record:** three separate attempts at forcing roster shape and
+   two at breakout modelling have all measured worse. The prior on "add a heuristic so
+   the model likes a player type I like" is bad here. Logged because the *structural*
+   gap is real and independently verifiable, not because the fix is likely to work.
+
+   **The lever that already exists.** The custom board, which is designed for exactly
+   this — information the projections do not have. Measured on the live case with the
+   board on: rank 164 → V2 #9, rank 120 → #5, rank 90 → #2, rank 60 → #1. It works,
+   and it costs nothing to use.
+7. **Yahoo** — blocked on app registration at developer.yahoo.com needing Fantasy
    Sports read permission. Error is `"This application is not authorized to perform
    this action"`, which is app-level. Code side (scope, token persistence, Python
    3.9 compat) is done.
-7. **Flex modelling** — TE gets a fixed 10% flex share against a 2nd-best-TE bar
+8. **Flex modelling** — TE gets a fixed 10% flex share against a 2nd-best-TE bar
    rather than a true cross-positional contest. Known approximation; the obvious fix
    measured *worse* (§4).
-8. **V2 is not the default.** `/recommend` shows V1 and V2 side by side; V1 still
+9. **V2 is not the default.** `/recommend` shows V1 and V2 side by side; V1 still
    drives nothing-changed behaviour. Swapping outright is premature — three real
    errors in V2 were caught by eye in its first day (stale FA team, name mismatch,
    inflated stack).
