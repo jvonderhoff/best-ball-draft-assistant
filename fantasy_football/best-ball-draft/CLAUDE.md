@@ -167,6 +167,22 @@ them. V2 is the model under development, not yet the model in charge.
 `master` auto-deploys to production, so that needs a yes — including when a change
 feels routine.
 
+**`git push` hangs from an agent session unless the keychain helper is bypassed.**
+`credential.helper` is `osxkeychain`, which wants a GUI prompt that never appears in a
+sandboxed process, so the push sits there until it is killed — no error, no output.
+Reads are unaffected (`git ls-remote` returns instantly), which makes it look like a
+network problem rather than an auth one. Use `gh`'s helper instead:
+
+```bash
+GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c credential.helper='!gh auth git-credential' push origin master
+```
+
+**The empty `-c credential.helper=` is the part that matters.** `-c` APPENDS to the
+helper list rather than replacing it, so passing only the `gh` helper leaves osxkeychain
+ahead of it in the chain and the push hangs exactly as before. Clearing the list first is
+what makes the override take. Diagnose with `GIT_TRACE=1`: the tell is a `401` from
+GitHub followed by `run_command: git credential-osxkeychain get` and then silence.
+
 **Tune advice for large-field tournaments and mid-size single-entry contests.** The
 Millionaire and Play-Action (~1,089 and ~458-team finals) are where V2's build is worth
 the most — measured +40% over V1 at the largest, against +4–9% at small ones. Bubble
