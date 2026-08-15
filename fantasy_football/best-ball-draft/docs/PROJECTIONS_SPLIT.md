@@ -1,11 +1,11 @@
 # Splitting projections out of the draft app
 
-**Status: design note, nothing built.** See `PROJECTIONS_APP_ARCHITECTURE.md` for
-the new app's own internals; this file covers only the contract between the two.
-
 **Status: design note, nothing built.** Written 2026-08-14 while deciding whether
 analysis and projections should become their own app. Records the contract, the seam
 and the failure modes, so the decision does not have to be re-derived later.
+
+This file covers only the **contract between the two apps**. See
+`PROJECTIONS_APP_ARCHITECTURE.md` for the new app's own internals.
 
 The goal is a **lite draft app**: DK pool, rankings board, recommender, drafts. Every
 data source, every scraper and every derived metric moves out.
