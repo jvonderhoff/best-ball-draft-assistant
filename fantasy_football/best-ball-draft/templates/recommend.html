@@ -1127,7 +1127,17 @@ function applyDKPickState(data) {
   let changed = false;
 
   for (const pk of picks) {
-    // Prefer direct player_id (server now stores it); fall back to name lookup
+    // Prefer direct player_id (server now stores it); fall back to name lookup.
+    //
+    // The name fallback is the LOAD-BEARING path, not belt-and-braces — do not
+    // remove it as redundant. DK reissues draftable ids per slate, so the id on a
+    // live pick routinely does not exist in the cached player pool: measured
+    // 2026-08-15 on draft 193145794, 7 of one roster's 14 ids were absent while
+    // every name resolved. Without the fallback those picks silently vanish —
+    // `continue` skips them, so they never enter takenIds or myTeam, and every
+    // roster-fit multiplier in both models is then computed against half a roster.
+    // No error, no log, plausible-looking recommendations. Same failure shape as
+    // the normalize_name symmetry in app/data/names.py.
     let player = null;
     if (pk.player_id) {
       player = playersById[pk.player_id] || null;
