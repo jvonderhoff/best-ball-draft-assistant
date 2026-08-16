@@ -567,6 +567,42 @@ scales the same way: +7.9% / +3.6% / +8.8% / **+40%**. Against a ~10-team final 
 two models are near-equivalent — you need a good roster, not an extreme week. **V2's
 whole thesis only cashes in large-field contests.**
 
+> **Superseded 2026-08-16 — the V1-vs-V2 row above no longer reproduces, and the
+> conclusion drawn from it was wrong.** Re-measured at current HEAD, `--truth market`,
+> five seeds on one 427-player pool (20260730 / 0803 / 0804 / 0805 / 0806):
+>
+> | final | 10 | 18 | 45 | 229 | 458 | 1,089 |
+> |---|---|---|---|---|---|---|
+> | median Δ | +48.9% | +54.4% | +67.2% | +60.5% | +49.4% | +28.3% |
+> | mean Δ | +39.6% | +42.7% | +48.8% | +57.0% | +68.1% | +82.2% |
+> | positive at | 5/5 | 5/5 | 5/5 | 4/5 | 5/5 | 4/5 |
+>
+> V2 wins **large** at small finals — +39.6% mean at 10 and +48.8% at 45, against the
+> +7.9% / +3.6% recorded above — and the sign holds at every seed. "The two models are
+> near-equivalent at a ~10-team final" is not true of the current model, and neither is
+> "V2's whole thesis only cashes in large-field contests."
+>
+> **What survives:** the gradient. The edge still grows with field size (+39.6 → +82.2
+> across the means). What was wrong was the *level* at the small end, and therefore the
+> advice — the original row reads as "do not bother with V2 unless you play the
+> Millionaire", which is backwards for anyone in Bubble Screen or Huddle (18–41 team
+> finals, and per CLAUDE.md the softest, lowest-rake field available).
+>
+> **Read the columns by their event counts, not their size.** The small columns carry
+> ~20x the events (0.297% win rate at 18 against 0.015% at 1,089) and are the ones with
+> consistent sign; the 229 and 1,089 columns swing −6% to +211% across seeds, which is
+> the same thinness §9.1 exists to resolve. The most reliable finding here is the one
+> about *small* finals.
+>
+> **Scope: this re-measures V1-vs-V2 only.** `V2_CORR` was not re-swept, so "0.35 wins
+> at every size" and the `V2_W_ACC / V2_W_PO` table below are untouched by this and
+> still stand on their original runs.
+>
+> Why the old row is stale is not mysterious — V2 has had most of §2 and §3 added since
+> it was measured. The lesson is that a *ratio* between two models ages just as badly as
+> an absolute level when only one of them is under development, and this row was being
+> quoted as current guidance a long time after it stopped being true.
+
 The same sweep on `V2_W_ACC / V2_W_PO` — the literal season-vs-big-week dial — does
 show a shift, in the opposite direction to the obvious guess:
 
@@ -685,6 +721,33 @@ build recommendation.
 
 Ignore the `capital-aware` rows at WR and TE — the encoding degenerated into a
 duplicate of the floor arm (WR −5.28 against WR≥10's −5.22) and measured nothing.
+
+### 5.4b Running the app re-baselines the harness, silently
+
+**Found 2026-08-16, by a control failing.** `loadData()` reads
+`app/data/player_cache.json` and `app/data/projection_cache.json` straight off disk.
+Both are rewritten by the *app*: `GET /api/players` checks a 6h TTL and
+`_maybe_refresh_players_async` pulls a fresh DK pool in the background. So merely
+starting the server and loading a page — which is the documented way to verify a UI
+change — can invalidate every harness number produced before it.
+
+It happened mid-session. A run was repeated at an identical seed on identical code and
+V1 moved $76.17 → $68.09, which should be impossible. The cause was not the code:
+
+```
+this morning:  Loaded 420 players, 409 with projections
+after a UI check that hit /api/players:  Loaded 427 players, 414 with projections
+```
+
+**The player count on line 1 of the output is the only tell.** Record it with any
+result you intend to compare against later, and treat runs with different counts as
+different experiments — §4's breakout entry already had to retract a conclusion for
+exactly this reason ("different projection caches, so not strictly comparable").
+
+Two mitigations, both cheap. Run every arm of a comparison inside one script, back to
+back, so a refresh cannot land between them. And prefer comparisons that are *internally*
+paired — V1-vs-V2 within a single run share a pool, a seed and a field, so the
+contest-size table in §5.2 was unaffected by the drift that broke the control.
 
 ### 5.5 The answer key is built from the model under test
 
