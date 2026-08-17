@@ -722,6 +722,18 @@ function xrBadge(otherRank, myRank, label) {
 const STACK_INTENSITY =
   (typeof DEFAULT_STACK_INTENSITY !== 'undefined') ? DEFAULT_STACK_INTENSITY : 'heavy';
 
+// Same treatment, same reason. Roster targets used to be re-typed in three places
+// on this page — the behind-pace warning, the position wave panel and the Roster
+// tab needs row — alongside two more copies inside recommender.js. All five had to
+// agree, and nothing enforced it, so a change in one place would have told the
+// drafter to fill a position the model was not scoring toward.
+//
+// Guarded the same way STACK_INTENSITY is: a stale cached recommender.js that
+// predates the export would otherwise leave this undefined and blank every target
+// on the page mid-draft.
+const ROSTER_TARGETS =
+  (typeof BASE_TARGETS !== 'undefined') ? BASE_TARGETS : { QB: 2, RB: 6, WR: 8, TE: 2 };
+
 function defaultSettings() {
   return { myPosition: 1, numTeams: 12, dkUsername: 'jvonderhoff', diversify: 1 };
 }
@@ -1712,7 +1724,7 @@ function renderRecs() {
 
   // ── Behind-pace allocation warning ────────────────────────────────────────
   // After round 4, flag any position where you have fewer than expected by now.
-  const ALLOC_TARGETS = { QB: 2, RB: 6, WR: 8, TE: 2 };
+  const ALLOC_TARGETS = ROSTER_TARGETS;
   const ALLOC_ROUNDS  = 18;
   const picksMade     = state.myTeam.length;
   let paceWarnHTML = '';
@@ -1738,7 +1750,7 @@ function renderRecs() {
   // Flags players whose ADP is at or below the current pick (going soon).
   const TOTAL_ROUNDS = 20;
   const roundsLeft  = Math.max(1, TOTAL_ROUNDS - userRound);
-  const posTargets  = { QB: 2, RB: 6, WR: 8, TE: 2 };
+  const posTargets  = ROSTER_TARGETS;
   const needs       = getTeamNeeds(state.myTeam);
   const otherNeedsMap = pos => Object.entries(needs).reduce((s, [p, n]) => p !== pos ? s + n : s, 0);
 
@@ -1992,7 +2004,7 @@ function renderRoster() {
   const byPos = { QB: [], RB: [], WR: [], TE: [] };
   state.myTeam.forEach(p => { if (byPos[p.pos]) byPos[p.pos].push(p); });
 
-  const targets = { QB: 2, RB: 6, WR: 8, TE: 2 };
+  const targets = ROSTER_TARGETS;
   document.getElementById('needsRow').innerHTML = ['QB','RB','WR','TE'].map(pos => {
     const have = byPos[pos].length;
     const color = have >= targets[pos] ? 'var(--green)' : have > 0 ? 'var(--accent)' : 'var(--muted)';

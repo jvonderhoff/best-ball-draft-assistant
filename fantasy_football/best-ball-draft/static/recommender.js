@@ -50,9 +50,13 @@ function passCatcherCount(team, myTeam) {
 function getTeamNeeds(myTeam) {
   const counts = {};
   myTeam.forEach(p => { counts[p.pos] = (counts[p.pos] || 0) + 1; });
-  const targets = { QB: 2, RB: 6, WR: 8, TE: 2 };
+  // BASE_TARGETS is declared further down. Safe because this body only runs when
+  // the function is CALLED, long after module evaluation — not because `const` is
+  // hoisted; it is in the temporal dead zone until its initialiser runs, so moving
+  // this call to module top level would throw. Previously this held its own copy of
+  // the same four numbers; see the comment on BASE_TARGETS for why that mattered.
   const needs = {};
-  for (const [pos, target] of Object.entries(targets)) {
+  for (const [pos, target] of Object.entries(BASE_TARGETS)) {
     needs[pos] = Math.max(0, target - (counts[pos] || 0));
   }
   return needs;
@@ -126,8 +130,37 @@ function playoffStackReason(player, myTeam) {
 }
 
 // ── Draft capital allocation ──────────────────────────────────────────────────
+//
 // Base roster targets for an 18-round best-ball draft.
-const BASE_TARGETS  = { QB: 2, RB: 6, WR: 8, TE: 2 };
+//
+// **THE SINGLE SOURCE OF TRUTH for roster targets. Do not re-type these numbers.**
+// Until 2026-08-17 this exact object was hardcoded in five places — here,
+// `getTeamNeeds` above, and three separate spots in `templates/recommend.html`
+// (the behind-pace warning, the position wave panel and the Roster tab needs row).
+// Three of those are user-facing, so a change made in one place would have shown
+// the drafter one target while the model scored against another. That is the same
+// hand-maintained parallel structure the `asset()` cache-buster exists to prevent.
+//
+// **These are MODEL constants, not display.** `capitalAllocationInfo` reads them on
+// every candidate, so changing them changes V1's recommendations — and V1 is the
+// primary column. Sweep before shipping a new value; do not reason one into place.
+//
+// `V1_TARGETS` (Node only) overrides them for harness arms, e.g.
+//     V1_TARGETS=QB:2,RB:5,WR:9,TE:3 node tools/compare-models.js …
+// It has no effect in the browser, where `process` does not exist.
+const _v1env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+const BASE_TARGETS = (() => {
+  const base = { QB: 2, RB: 6, WR: 8, TE: 2 };
+  const spec = _v1env.V1_TARGETS;
+  if (!spec) return base;
+  for (const part of spec.split(',')) {
+    const [pos, n] = part.split(':');
+    if (pos && n != null && base[pos.trim().toUpperCase()] !== undefined) {
+      base[pos.trim().toUpperCase()] = parseInt(n, 10);
+    }
+  }
+  return base;
+})();
 const DRAFT_ROUNDS  = 18;
 // Hard caps on roster size per position — exceeding these always draws a strong penalty.
 const MAX_ROSTER    = { QB: 3, RB: 8, WR: 10, TE: 3 };

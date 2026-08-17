@@ -670,8 +670,14 @@ function renderRosterView() {
 }
 
 // ── Needs strip ───────────────────────────────────────────────────────────────
+// Roster targets come from recommender.js so this page cannot drift from the
+// one the model scores against — the same single-source rule recommend.html
+// follows. Falls back if a stale cached recommender.js predates the export.
+const ROSTER_TARGETS =
+  (typeof BASE_TARGETS !== 'undefined') ? BASE_TARGETS : { QB: 2, RB: 6, WR: 8, TE: 2 };
+
 function renderNeeds(roster) {
-  const targets = { QB: 2, RB: 6, WR: 8, TE: 2 };
+  const targets = ROSTER_TARGETS;
   const counts  = {};
   roster.forEach(p => { counts[p.pos] = (counts[p.pos] || 0) + 1; });
   const el = document.getElementById('needsStrip');
@@ -1010,7 +1016,7 @@ function copyScenario() {
     .map(([pos, ps]) => `  ${pos}: ${ps.map(p => `${p.name} (ADP ${Math.round(p.adp||0)})`).join(', ')}`)
     .join('\n');
 
-  const targets = { QB: 2, RB: 6, WR: 8, TE: 2 };
+  const targets = ROSTER_TARGETS;
   const counts  = {};
   myRoster.forEach(p => { counts[p.pos] = (counts[p.pos] || 0) + 1; });
   const needsLine = Object.entries(targets)
