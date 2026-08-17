@@ -472,7 +472,11 @@ async function loadPlayers() {
       (jd.players || []).forEach(p => { if (p.id) projMapCache[p.id] = p; });
       reattachV2();
       projReady = true;
-      if (jd.stale) projError = 'projections are stale (rebuild failed, serving cache)';
+      // Take the server's wording: since the analysis split `stale` can mean the
+      // local rebuild failed OR that the projections app stopped publishing, and
+      // hardcoding the first one here would name the wrong cause for the second.
+      if (jd.stale || jd.warning)
+        projError = jd.warning || 'projections are stale (rebuild failed, serving cache)';
     } catch (e) {
       projError = e.message || 'failed to load projections';
     }

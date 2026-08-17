@@ -688,7 +688,11 @@ async function loadV2Projections() {
     PLAYERS.forEach(p => { if (p.realAdp == null) p.realAdp = p.adp; });
     v2AttachEffective(PLAYERS, map, { customRankMap: useCustomRankings ? customRankMap : {} });
     v2Ready = true;
-    if (d.stale) v2Error = 'projections stale';
+    // `stale` means two different things since the analysis split, so take the
+    // server's own wording rather than restating it here. On the local fallback it
+    // still means "the rebuild failed, serving cache"; on a pushed payload it means
+    // the projections app has not published in 48h — a completely different fix.
+    if (d.stale || d.warning) v2Error = d.warning || 'projections stale';
   } catch (e) {
     v2Error = e.message || 'projections unavailable';
     v2Ready = false;

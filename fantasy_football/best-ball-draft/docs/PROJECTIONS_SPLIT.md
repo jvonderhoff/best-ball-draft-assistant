@@ -204,6 +204,21 @@ So:
   boot-time retry that the rankings hydrate turned out never to have been running
   (see CLAUDE.md on `_conn()`). When the split happens this becomes the check on
   the *pushed payload* rather than on two Postgres tables; the shape carries over.
+- **`stale` gained a second meaning, and two templates already read it.** On the
+  local fallback it still means "the rebuild failed, serving cache"; on a pushed
+  payload it means the projections app has not published in 48h. `recommend.html`
+  and `sandbox.html` both turn it into a banner, and the sandbox's hardcoded text
+  said "(rebuild failed, serving cache)" — the wrong cause for the new case. Both
+  now take the server's `warning` string and fall back to their old wording.
+
+  `resolve()` deliberately sets **no** warning for "serving local because nothing
+  was pushed". That is a normal state — a fresh install and production before the
+  first publish both look exactly like it — and a banner that is always on during a
+  live draft is one nobody reads. The app also cannot distinguish "nobody has
+  published yet" from "publishing stopped": both are just the absence of a payload.
+  The case it CAN identify, a pushed payload gone stale, is the one that warns.
+  Which path is serving is always in `source`.
+
 - ~~Surface `generated_at` age in the UI.~~ **Done 2026-08-16.** The Analysis page
   carries a bar reading "Draft app is scoring on: your payload · 3h old" / "STALE"
   / "its own fallback build (nothing published)", read from the draft app rather

@@ -465,11 +465,24 @@ def resolve(force_refresh: bool = False, prefer: str = 'auto') -> dict:
         'players':      local['players'],
         'source':       'local',
         'generated_at': local.get('generated_at'),
+        # `stale` keeps its original meaning on this path: the rebuild failed and
+        # this is the cache. Unchanged for every existing caller.
         'stale':        local.get('stale', False),
-        'warning': (
-            'Serving the LOCAL build — no payload has been pushed by the projections '
-            'app. This is the fallback path, not the intended one.'
-        ) if prefer != 'local' else None,
+        # Deliberately NO warning for "serving local because nothing was pushed".
+        #
+        # The draft page turns `warning` into a banner during a live draft, and the
+        # fallback is a perfectly normal state — it is what a fresh install, and
+        # production before the first publish, both look like. A banner that is
+        # always on is a banner nobody reads, and it would be competing for
+        # attention with the one that means something.
+        #
+        # This app also cannot tell "nobody has published yet" from "publishing
+        # stopped": both are simply the absence of a payload. The case it CAN
+        # identify — a pushed payload that has gone stale — is the one that warns.
+        # Which path is serving is always available in `source`, and it is called
+        # out explicitly on /api/stores/status and /api/projections/meta, where an
+        # operator is asking the question rather than drafting.
+        'warning':      None,
     }
 
 
