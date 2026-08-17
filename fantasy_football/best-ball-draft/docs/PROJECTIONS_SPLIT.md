@@ -25,7 +25,7 @@ depends on nothing but the DK pool. It does not consume projections at all.
 | field | what it is | consumed by |
 |---|---|---|
 | `ppg` | per-game mean, DK-adjusted | the mean of every valuation |
-| `sd` | weekly standard deviation | ceiling, spike model |
+| `sd` | weekly standard deviation | ceiling, spike model, **and the per-position CV** |
 | `sources` | how many projection sources agreed | ECR blend weight (§2) |
 | `avail` | P(active in a non-bye week) | availability discount |
 | `disagreement` | expert spread, normalised to draft position | uncertainty |
@@ -34,6 +34,26 @@ depends on nothing but the DK pool. It does not consume projections at all.
 Everything else `analysis.py` computes — all 36+ display columns, the props, the
 opportunity metrics added 2026-08-14 — is either display or an input that has already
 been folded into those six by the time the recommender sees it.
+
+**`sd` gained a second, invisible job on 2026-08-15 — read this before reimplementing
+it.** The recommender now recovers the position's scoring CV as `proj.sd / proj.ppg`
+and uses it to rescale sd after blending (V2_DESIGN §4, "sd now follows the blend"). It
+does that specifically to avoid hardcoding a copy of `POS_SCORING_CV` that would drift
+from the producer. The consequence for this split is a coupling that is easy to miss:
+
+- The producer must keep emitting `sd = ppg × POS_SCORING_CV[pos]`, a **clean per-position
+  constant ratio**. Any per-player volatility model — a genuinely reasonable thing for a
+  projections app to want — silently redefines the recommender's CV, and therefore every
+  ceiling and every correlation term, with no error anywhere.
+- If the new app ever *should* emit per-player sd, that is fine, but the recommender has
+  to stop deriving `cv` from the ratio first, and the two changes have to ship together.
+- The ratio is also the invariant to assert on: `ceiling / mean` must equal
+  `1 + 1.2816 × CV[pos]` for every projected player. Verified in the browser at
+  RB 1.741–1.746, WR 1.893–1.899, TE 1.946–1.951, QB 1.485–1.490. A cheap post-publish
+  check, and the one that would catch this.
+
+Note also that `sd` gates every correlation term via `Math.min(sdMe, partner._eff.sd)`,
+so getting it wrong does not just move ceilings — it moves stack values too.
 
 Delivery is already one endpoint: **`GET /api/projections-v2`**, called by
 `templates/recommend.html` and `templates/sandbox.html`. It returns
