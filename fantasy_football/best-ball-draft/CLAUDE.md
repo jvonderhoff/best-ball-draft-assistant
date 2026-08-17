@@ -27,6 +27,16 @@ had browsers running scoring code from before several fixes, silently.
 No test suite. Verification is by running the thing: the harness for model changes, the
 app in a browser for UI changes.
 
+**Doing both in one session silently invalidates the harness numbers.** `loadData()`
+reads `app/data/player_cache.json` off disk, and the *app* rewrites it — `GET
+/api/players` trips a 6h TTL and refreshes the DK pool in a background thread. So the
+browser check you run to verify a UI change can re-baseline the simulator underneath
+results you already have. Measured 2026-08-16: a rerun at an identical seed on identical
+code moved V1's EV $76.17 → $68.09, because the pool had gone 420 → 427 players between
+them. **The player count on line 1 of the harness output is the only tell** — record it
+with any number you plan to compare later, and run every arm of a comparison inside one
+script so a refresh cannot land mid-experiment. Full note in §5.4b.
+
 ## Deployment
 
 Render, auto-deploys from `master`, usually live in 45–120s.
@@ -96,6 +106,28 @@ it.
 | Sleeper + ESPN + FantasyPros ECR | automatic, 6h TTL, rebuilt on request |
 | DK / Underdog props | **manual** — `python3 tools/push-props.py` |
 | Custom rankings board | manual, and correctly so — it's the user's opinion |
+
+**The board is OFF by default and the flag is per-browser.** `useCustomRankings` reads
+`localStorage['bba_use_custom_ranks'] === 'true'`, so a new browser, a cleared profile,
+incognito, or simply the other device all default to market ADP — and the rankings are
+not even fetched until it is on (`customRankMap` is empty, not merely unused). The only
+indicator is the header button: **★ filled blue = on, ☆ hollow grey = off.** Check it
+before concluding anything about why a player is or is not being recommended; on
+2026-08-15 an entire analysis was written against the wrong mode because the flag was
+read from an automated browser rather than the user's.
+
+When it *is* on, `applyCustomRanks` **substitutes** the rank into `adp` and moves the
+market value to `realAdp`. That is a bigger behavioural change than the 0.55 blend
+weight suggests, because everything downstream reading `adp` is then reading the user's
+opinion. Anything asking "will he last?" or "did the room let him slide?" must read
+`realAdp` — V1 got this wrong in the value-steal term until 2026-08-16 and charged one
+opinion twice (rank 164 → 120 doubled a player's score, 8.3 → 16.7).
+
+**`/api/dk-draft-state/<id>` returns HTTP 200 with zero picks when its cache is cold.**
+It is fed by the BBA Live bookmarklet and expires; the payload then carries
+`needs_bookmarklet` and an `error` string. Check `picks.length` before trusting it —
+scoring an empty board silently produces a confident, completely wrong answer rather
+than an error.
 
 **DK blocks Render's datacenter IPs for props only.** The player pool fetches fine from
 prod (verified). Props must be pushed from a residential connection.
@@ -185,10 +217,18 @@ GitHub followed by `run_command: git credential-osxkeychain get` and then silenc
 
 **Tune advice for large-field tournaments and mid-size single-entry contests.** The
 Millionaire and Play-Action (~1,089 and ~458-team finals) are where V2's build is worth
-the most — measured +40% over V1 at the largest, against +4–9% at small ones. Bubble
-Screen and Huddle (18–41 team finals) are the lowest-rake, structurally softest field,
-because single entry means nobody is running twenty correlated rosters against you.
+the most. Bubble Screen and Huddle (18–41 team finals) are the lowest-rake, structurally
+softest field, because single entry means nobody is running twenty correlated rosters
+against you — **and as of 2026-08-16 that is where the user actually plays.**
 Sit & Gos and satellite qualifiers are not the target; don't optimise for them.
+
+**"V2 only matters in big fields" was wrong — do not repeat it.** This file used to say
+V2 beat V1 by "+4–9% at small ones", from a §5.2 table that had gone stale by most of §2
+and §3 of V2's development. Re-measured 2026-08-16 at five seeds on one pool: **+42.7%
+mean at an 18-team final, +48.8% at 45, positive at 5/5 seeds.** The edge does still grow
+with field size, but V2 is strongly ahead at every size, and the old number was steering
+the user away from the model that helps them most. Corrected in §5.2; read the columns
+there by event count, not by size.
 
 **Yahoo is still wanted.** Blocked on app registration at developer.yahoo.com needing
 Fantasy Sports read permission — the error is app-level, not code. Scope, token
