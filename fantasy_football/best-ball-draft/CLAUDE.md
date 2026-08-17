@@ -2,6 +2,10 @@
 
 DraftKings Best Ball draft assistant. Flask + vanilla JS + Postgres, deployed on Render.
 
+**`docs/STATUS.md` is the map — read it first.** It holds the state of BOTH apps in
+one place, which no single repo does since the split: what is live, what is open, the
+runbook, and the traps that have already cost time.
+
 **The Analysis page and every data source moved out on 2026-08-16.** They live in
 `fantasy_football/projections` now. `docs/PROJECTIONS_SPLIT.md` is the record of what
 moved, what stayed and why; read it before touching projections or analysis. The
