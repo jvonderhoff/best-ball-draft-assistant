@@ -8,6 +8,14 @@ drafts.db
 
 # V2 recommender projection cache (regenerated on demand)
 app/data/projection_cache.json
+
+# Local mirror of the payload pushed by the projections app. Rebuilt at boot from
+# Postgres, so it never needs committing — and deliberately NOT committed: a
+# committed payload file is precisely the shape that let a two-month-old rankings
+# board serve silently as the live one (rankings_seed.json). Without it, a boot that
+# cannot reach Postgres falls back to the local build and SAYS SO in
+# /api/projections-v2's `source`, instead of serving a stale file that looks fine.
+app/data/pushed_payload.json
 tools/replay-draft.json
 
 # Local backups taken before data refreshes

@@ -31,6 +31,28 @@ import time
 CACHE_PATH = os.path.join(os.path.dirname(__file__), 'data', 'projection_cache.json')
 CACHE_TTL  = 6 * 60 * 60   # 6 hours — projections move slowly
 
+# ── The pushed payload ───────────────────────────────────────────────────────
+#
+# As of the analysis split (docs/PROJECTIONS_SPLIT.md) the six fields V2 consumes
+# are computed by the projections app and POSTed to /api/projections/upload. This
+# file is the local mirror of that push: written by the upload endpoint, and
+# rewritten at boot from Postgres, because Render's filesystem does not survive a
+# deploy.
+#
+# The local build below is kept as a FALLBACK and is still exercised — see
+# `resolve()`. It is not dead code and must not be deleted until the two paths
+# have been verified to agree; tools/compare-projection-paths.py is that check.
+PUSHED_PATH = os.path.join(os.path.dirname(__file__), 'data', 'pushed_payload.json')
+
+# How old a pushed payload may get before it is reported stale.
+#
+# JUDGEMENT, not measurement. Season projections genuinely move slowly, so this is
+# not about the numbers decaying — it is the tell for "the publish step silently
+# stopped happening", which is the failure §4 of the split note is entirely about.
+# 48h is short enough to notice within a drafting weekend and long enough not to
+# cry wolf between them.
+PUSHED_STALE_AFTER = 48 * 60 * 60
+
 # Week-to-week coefficient of variation for *fantasy points*, by position.
 # Drives the ceiling estimate. TE is the spikiest scorer relative to its mean
 # (touchdown-dependent), QB the steadiest.
@@ -360,6 +382,94 @@ def cache_meta() -> dict:
         'age_hours':   round(age / 3600, 1) if age is not None else None,
         'stale':       (age is None) or (age >= CACHE_TTL),
         'ttl_hours':   CACHE_TTL / 3600,
+    }
+
+
+def read_pushed() -> dict:
+    """The locally mirrored pushed payload, or {} if there isn't one.
+
+    {} rather than None on every failure path: a corrupt or absent mirror and a
+    never-published payload are the same thing to a caller, which is "there is
+    nothing here to serve". Which of the two it is gets answered by
+    projections_store.hydration_state(), where the distinction actually matters.
+    """
+    try:
+        with open(PUSHED_PATH) as f:
+            payload = json.load(f)
+    except Exception:
+        return {}
+    return payload if payload.get('players') else {}
+
+
+def write_pushed(payload: dict) -> None:
+    """Mirror an accepted push to disk. Raises — the caller reports the failure.
+
+    Deliberately not swallowing errors. The upload endpoint's whole job is to be
+    able to say whether the push landed, and a mirror write that failed quietly
+    would let it answer yes when the next boot will serve nothing.
+    """
+    os.makedirs(os.path.dirname(PUSHED_PATH), exist_ok=True)
+    tmp = PUSHED_PATH + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(payload, f)
+    os.replace(tmp, PUSHED_PATH)   # atomic; a torn write here serves half a pool
+
+
+def payload_meta(payload: dict) -> dict:
+    """Age and staleness of a pushed payload, without touching its contents."""
+    gen = payload.get('generated_at') or 0
+    age = (time.time() - gen) if gen else None
+    return {
+        'generated_at': gen or None,
+        'age_hours':    round(age / 3600, 1) if age is not None else None,
+        'stale':        (age is None) or (age >= PUSHED_STALE_AFTER),
+        'schema_version': payload.get('schema_version'),
+        'source':       payload.get('source'),
+        'count':        len(payload.get('players') or []),
+    }
+
+
+def resolve(force_refresh: bool = False, prefer: str = 'auto') -> dict:
+    """The payload V2 should score with, plus an honest account of where it came from.
+
+    Preference is DETERMINISTIC — a pushed payload wins whenever one exists, no
+    matter how old it is — and that is the important design decision here. The
+    tempting alternative, falling back to the local build once the push goes
+    stale, would mean the model silently changes which code computed its inputs
+    based on a clock. That is precisely the shape of bug this codebase keeps
+    hitting: plausible numbers, no error, nothing logged. Better to serve the
+    stale push and SAY it is stale.
+
+    `prefer='local'` forces the fallback path, which is how the two are compared.
+    """
+    if prefer != 'local':
+        pushed = read_pushed()
+        if pushed:
+            meta = payload_meta(pushed)
+            return {
+                'players':      pushed['players'],
+                'source':       'pushed',
+                'generated_at': meta['generated_at'],
+                'age_hours':    meta['age_hours'],
+                'stale':        meta['stale'],
+                'schema_version': meta['schema_version'],
+                'published_by': pushed.get('source'),
+                'warning': (
+                    f"Pushed projections are {meta['age_hours']}h old — the projections "
+                    f"app may have stopped publishing. Re-run its publish step."
+                ) if meta['stale'] else None,
+            }
+
+    local = get_projections(force_refresh=force_refresh)
+    return {
+        'players':      local['players'],
+        'source':       'local',
+        'generated_at': local.get('generated_at'),
+        'stale':        local.get('stale', False),
+        'warning': (
+            'Serving the LOCAL build — no payload has been pushed by the projections '
+            'app. This is the fallback path, not the intended one.'
+        ) if prefer != 'local' else None,
     }
 
 

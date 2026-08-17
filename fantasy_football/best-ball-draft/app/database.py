@@ -393,6 +393,26 @@ def _hydrate_external_projections(conn):
                     }
                 for book, data in by_book.items():
                     ps.save_props(data, book=book)
+
+        # The pushed six-field payload. Unlike the two above there is no local
+        # table to reconcile — the mirror is a file, and on Render that file is
+        # gone after every deploy, so without this the instance would serve the
+        # LOCAL fallback build while a perfectly good published payload sat in
+        # Postgres. That substitution is silent by construction: both paths return
+        # the same fields for the same players and differ only in the numbers.
+        ext_payload = _load_with_retry(ps.load_payload, 'projections_payload')
+        ps.mark_hydrated('payload', ext_payload is not None)
+        if ext_payload:
+            from app.projections import write_pushed
+            write_pushed({
+                'players':        ext_payload['players'],
+                'schema_version': ext_payload['schema_version'],
+                'generated_at':   ext_payload['generated_at'],
+                'source':         ext_payload['source'],
+            })
+            _log.info(f"[projections-store] payload hydrated: "
+                      f"{len(ext_payload['players'])} players, "
+                      f"schema {ext_payload['schema_version']}")
     except Exception as e:
         # Only the datasets that never got a verdict — an exception while copying
         # props must not retroactively mark a successful ESPN load as failed.

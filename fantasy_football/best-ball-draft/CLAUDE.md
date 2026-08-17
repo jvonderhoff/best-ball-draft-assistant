@@ -2,10 +2,41 @@
 
 DraftKings Best Ball draft assistant. Flask + vanilla JS + Postgres, deployed on Render.
 
-`docs/PROJECTIONS_SPLIT.md` is a design note, not a plan of record: moving analysis and
-projections into their own app to keep this one lite. Read it before adding anything new
-to `app/analysis.py` — the contract it documents (V2 consumes six fields; V1 consumes
-`adp` alone) is worth knowing whether or not the split ever happens.
+**The Analysis page and every data source moved out on 2026-08-16.** They live in
+`fantasy_football/projections` now. `docs/PROJECTIONS_SPLIT.md` is the record of what
+moved, what stayed and why; read it before touching projections or analysis. The
+contract it documents — V2 consumes six fields, V1 consumes `adp` alone — is what
+makes the seam cheap.
+
+```bash
+cd ../projections && .venv/bin/python cli.py analysis-serve   # http://localhost:8100
+```
+
+The analysis app needs THIS app running: it reads the DK pool from `/api/players` and
+the rankings board from `/api/rankings`. It does **not** need to be deployed — it
+pushes the six-field payload to whichever draft app you point it at, which is the same
+local-compute-then-push pattern props already use.
+
+**`app/analysis.py` here is a FROZEN FALLBACK. Edit the projections app instead.**
+Both copies still compute, and they agreed exactly on 2026-08-16 (428 players, all six
+fields). They will drift the moment one is edited alone, and the fallback is what makes
+a bad publish survivable — so a change made in only one place removes the safety net
+without saying so. Deleting this copy is §6 step 4, the one-way door, and has not
+happened.
+
+**Read `source` on `/api/projections-v2` before concluding anything about a V2 number.**
+It says `pushed` or `local` — which code computed the inputs — plus `age_hours`. A
+`local` where you expected `pushed` means the projections app has gone quiet, and
+nothing else says so. `?source=local` forces the fallback, which is how the two are
+compared:
+
+```bash
+cd ../projections && .venv/bin/python cli.py analysis-verify
+```
+
+Publishing needs `BBA_API_KEY`, which lives in `~/.zshrc` — so it is absent from a
+non-interactive agent shell and present in `zsh -ic`. `zsh -lc` is NOT enough; `.zshrc`
+is sourced for interactive shells only.
 
 **Read `docs/V2_DESIGN.md` before changing the recommender.** It documents the model, the
 evidence behind every constant, and — most importantly — §4, the dead ends. This file
@@ -100,12 +131,19 @@ it.
 
 ## Data pipeline
 
-| Source | Refresh |
-|---|---|
-| DK player pool / ADP | automatic, 6h TTL, background thread on `GET /api/players` |
-| Sleeper + ESPN + FantasyPros ECR | automatic, 6h TTL, rebuilt on request |
-| DK / Underdog props | **manual** — `python3 tools/push-props.py` |
-| Custom rankings board | manual, and correctly so — it's the user's opinion |
+| Source | Where | Refresh |
+|---|---|---|
+| DK player pool / ADP | this app | automatic, 6h TTL, background thread on `GET /api/players` |
+| FantasyPros ECR | this app | enriches the pool; stays here |
+| Custom rankings board | this app | manual, and correctly so — it's the user's opinion |
+| Sleeper / ESPN / Yahoo / props | **projections app** | buttons on the Analysis page, or its CLI |
+| The six-field V2 payload | **projections app** | `cli.py analysis-publish --no-dry-run` |
+
+`tools/push-props.py` still works and still pushes straight into this app's store,
+which is what the FROZEN fallback build reads. The Analysis page's prop buttons write
+the projections app's store, which is what the published payload reads. **They are
+different stores now** — pushing props here does not change what V2 scores with unless
+you also publish.
 
 **The board is OFF by default and the flag is per-browser.** `useCustomRankings` reads
 `localStorage['bba_use_custom_ranks'] === 'true'`, so a new browser, a cleared profile,

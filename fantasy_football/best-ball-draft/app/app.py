@@ -434,9 +434,17 @@ def get_projections_meta():
     Now leads with the blended cache — Sleeper + ESPN + ECR + props — and keeps the
     per-source counts underneath so a genuinely empty source is still visible.
     """
-    from app.projections import cache_meta
+    from app.projections import cache_meta, read_pushed, payload_meta
     from app import projections_store
     out = cache_meta()
+
+    # Which path V2 is actually being served, first — since the analysis split the
+    # blended local cache below is the FALLBACK, not necessarily what the model
+    # scored with. Reporting only the local cache's freshness would answer a
+    # question nobody asked while the pushed payload silently aged.
+    served = read_pushed()
+    out['serving'] = 'pushed' if served else 'local'
+    out['pushed'] = payload_meta(served) if served else None
 
     # Count the tables directly, the way /api/stores/status does.
     #
@@ -1997,7 +2005,21 @@ def draft_mapper_page():
 
 @app.route('/analysis')
 def analysis_page():
-    return render_template('analysis.html')
+    """Moved out on 2026-08-16 — see docs/PROJECTIONS_SPLIT.md.
+
+    A pointer rather than a 404 because bookmarks and muscle memory both survive a
+    refactor, and "this page moved, here is where" is a two-second answer where a
+    404 is a five-minute investigation.
+    """
+    return jsonify({
+        'moved': True,
+        'to': 'the projections app (fantasy_football/projections)',
+        'run': '.venv/bin/python cli.py analysis-serve   # then http://localhost:8100',
+        'why': ('Analysis owns every data source and derived metric now, so this app '
+                'stays lite. The recommender still gets its six fields — the '
+                'projections app publishes them to /api/projections/upload and they '
+                'are served from /api/projections-v2 as before.'),
+    }), 410
 
 
 @app.route('/api/analysis', methods=['GET'])
@@ -2056,6 +2078,88 @@ def upload_props():
     return jsonify({'ok': True, 'book': book, 'players': len(props), 'rows': count})
 
 
+@app.route('/api/projections/upload', methods=['POST'])
+def upload_projections():
+    """Accept the six-field payload computed by the projections app.
+
+    The receiving half of docs/PROJECTIONS_SPLIT.md §3. Same shape and same auth as
+    /api/props/upload above, for the same underlying reason: the work has to happen
+    where the data is reachable, and the result gets pushed here.
+
+    Two things are refused rather than stored, both because a bad payload here does
+    not produce an error anywhere downstream — it produces slightly different, still
+    entirely plausible, recommendations:
+
+      * an unknown schema MAJOR. A field that changed meaning is invisible to V2,
+        which reads what it is given. §4, second failure mode.
+      * players without a DK player_id. The payload is keyed on id specifically so
+        that name matching never becomes a cross-app failure surface (§3); a
+        name-keyed payload would silently score unmatched players as generic
+        bodies rather than erroring.
+    """
+    api_key = request.headers.get('X-Api-Key') or (request.json or {}).get('api_key', '')
+    expected = os.environ.get('BBA_API_KEY', '')
+    if expected and api_key != expected:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    from app import projections_store as ps
+    from app.projections import write_pushed, payload_meta
+
+    body    = request.get_json(silent=True) or {}
+    players = body.get('players')
+    version = str(body.get('schema_version') or '')
+
+    if not isinstance(players, list) or not players:
+        return jsonify({'error': 'players must be a non-empty list'}), 400
+
+    major = version.split('.')[0] if version else ''
+    if not major.isdigit() or int(major) != ps.PAYLOAD_SCHEMA_MAJOR:
+        return jsonify({
+            'error': f'unsupported schema_version {version!r}; this app speaks '
+                     f'major {ps.PAYLOAD_SCHEMA_MAJOR}. Refusing rather than storing '
+                     f'a payload whose fields may have changed meaning.'
+        }), 409
+
+    missing_id = sum(1 for p in players if not p.get('id'))
+    if missing_id:
+        return jsonify({
+            'error': f'{missing_id} of {len(players)} players have no DK id. The '
+                     f'payload must be keyed on player_id — see PROJECTIONS_SPLIT §3.'
+        }), 400
+
+    payload = {
+        'players':        players,
+        'schema_version': version,
+        'generated_at':   body.get('generated_at') or time.time(),
+        'source':         body.get('source') or 'projections-app',
+    }
+
+    # Durable first, mirror second. If Postgres refuses the write we still serve
+    # the payload from the mirror on this instance, but the next deploy would lose
+    # it — so that gets REPORTED rather than smoothed over.
+    durable = ps.save_payload(players, payload['schema_version'],
+                              payload['generated_at'], payload['source'])
+    try:
+        write_pushed(payload)
+    except Exception as e:
+        app.logger.error(f'[projections/upload] mirror write failed: {e!r}')
+        return jsonify({'error': f'stored={durable} but local mirror failed: {e}'}), 500
+
+    ps.mark_hydrated('payload', True)
+    app.logger.info(f'[projections/upload] accepted {len(players)} players '
+                    f'schema={version} durable={durable}')
+    return jsonify({
+        'ok': True,
+        'players': len(players),
+        'durable': durable,
+        'warning': None if durable else (
+            'DATABASE_URL unset or Postgres unreachable — payload is on this '
+            'instance only and will NOT survive a deploy or spin-down.'
+        ),
+        'meta': payload_meta(payload),
+    })
+
+
 def _db():
     from app.database import get_db
     return get_db()
@@ -2093,12 +2197,18 @@ def stores_status():
     props = projections_store.load_props()
     kv = kv_store_external.load_all()
     ranks = rankings_store.load_rankings()
+    payload = projections_store.load_payload()
     # None means unreachable, which is a different failure from empty.
     out['external'] = {
         'espn_projections': 'UNREACHABLE' if espn is None else len(espn),
         'player_props':     'UNREACHABLE' if props is None else len(props),
         'kv_store':         'UNREACHABLE' if kv is None else len(kv),
         'player_rankings':  'UNREACHABLE' if ranks is None else len(ranks),
+        # {} is a real state here — a database nobody has published to yet — and
+        # reads very differently from an outage, so it gets its own word.
+        'projections_payload': ('UNREACHABLE' if payload is None
+                                else 'NONE PUBLISHED' if not payload
+                                else payload.get('player_count')),
     }
 
     # Whether the LIVE board actually came from the durable store this boot.
@@ -2148,6 +2258,30 @@ def stores_status():
                 f'{table} hydrated this boot but local ({local_n}) != external '
                 f'({ext_n}) — cache drifted since boot'
             )
+    # And the same question for the payload the projections app publishes, which
+    # since the analysis split is what V2 actually scores with. The tell here is
+    # not a count — it is WHICH path is serving. A missing or ancient push does
+    # not break anything; it quietly reverts the model to the fallback build,
+    # which is exactly the substitution PROJECTIONS_SPLIT §4 was written about.
+    from app.projections import read_pushed, payload_meta
+    served = read_pushed()
+    out['projections_payload'] = (
+        {'serving': 'local fallback build — nothing has been pushed'}
+        if not served else {'serving': 'pushed', **payload_meta(served)}
+    )
+    if served and payload_meta(served)['stale']:
+        proj_warnings.append(
+            f"pushed payload is {payload_meta(served)['age_hours']}h old — the "
+            f"projections app has probably stopped publishing. V2 is scoring on it "
+            f"regardless, deliberately, so that this is visible rather than silently "
+            f"swapped for the fallback."
+        )
+    elif not served and proj_state.get('payload') is False:
+        proj_warnings.append(
+            'projections_payload DID NOT HYDRATE this boot and no local mirror '
+            'exists — V2 has fallen back to the local build. Restart while the '
+            'external store is reachable, or re-run the projections app publish.'
+        )
     if proj_warnings:
         out['projections_warning'] = proj_warnings
     return jsonify(out)
@@ -2157,19 +2291,35 @@ def stores_status():
 def get_projections_v2():
     """
     Lean per-player projection payload for the V2 recommender: DK-adjusted season
-    points, per-game mean, weekly SD and ceiling.  Disk-cached (6h) so the live
-    draft page never blocks on the Sleeper fetch.
+    points, per-game mean, weekly SD and ceiling.
+
+    Since the analysis split this prefers the payload PUSHED by the projections app
+    and falls back to the local build, which is still present and still works. The
+    response says which one it served and how old it is — read `source` before
+    concluding anything about why a valuation looks wrong.
+
+    `?source=local` forces the fallback path. That is how the two are compared;
+    see tools/compare-projection-paths.py.
     """
     try:
-        from app.projections import get_projections as build_projections
-        force = request.args.get('refresh', '').lower() in ('1', 'true', 'yes')
-        data  = build_projections(force_refresh=force)
+        from app.projections import resolve
+        force  = request.args.get('refresh', '').lower() in ('1', 'true', 'yes')
+        prefer = 'local' if request.args.get('source') == 'local' else 'auto'
+        data   = resolve(force_refresh=force, prefer=prefer)
         return jsonify({
             'ok': True,
             'players': data['players'],
             'count': len(data['players']),
             'generated_at': data.get('generated_at'),
             'stale': data.get('stale', False),
+            # Which code computed these numbers, and whether that was the intended
+            # path. Both halves matter: 'local' when a push was expected means the
+            # projections app has gone quiet, and nothing else would say so.
+            'source': data.get('source'),
+            'age_hours': data.get('age_hours'),
+            'schema_version': data.get('schema_version'),
+            'published_by': data.get('published_by'),
+            'warning': data.get('warning'),
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500

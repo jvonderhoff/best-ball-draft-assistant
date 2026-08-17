@@ -1,5 +1,23 @@
 """
 Player analysis module.
+
+**FROZEN 2026-08-16. This code MOVED to the projections app; what is left here is
+the fallback.** See docs/PROJECTIONS_SPLIT.md.
+
+The maintained copy is `fantasy_football/projections/analysis/build.py`. Add columns,
+sources and metrics THERE. This copy exists for exactly one reason: so that
+`/api/projections-v2` still has something to serve if no payload has been pushed, and
+so the two paths can be diffed (`cli.py analysis-verify` in the projections app,
+which reads `/api/projections-v2?source=local` — the only remaining caller of this
+module besides `/api/analysis`).
+
+Verified identical on 2026-08-16: 428 players, exact agreement on all six model
+fields plus ceiling, proj_dk and sources. Any divergence from here on is drift, and
+drift is the reason this is scheduled for deletion rather than kept — see
+PROJECTIONS_SPLIT §6 step 4. Do not "fix" a number here without making the same
+change in the projections app, or the fallback starts telling a different story from
+the thing it is a fallback for.
+
 Pulls from the Sleeper API:
   - 2025 actual season stats (performance baseline)
   - 2026 season projections (market consensus expectation)

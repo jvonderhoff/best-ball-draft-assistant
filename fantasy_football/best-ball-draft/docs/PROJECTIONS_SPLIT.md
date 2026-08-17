@@ -1,8 +1,41 @@
 # Splitting projections out of the draft app
 
-**Status: design note, nothing built.** Written 2026-08-14 while deciding whether
-analysis and projections should become their own app. Records the contract, the seam
-and the failure modes, so the decision does not have to be re-derived later.
+**Status: DONE through step 3, 2026-08-16.** Written 2026-08-14 as a design note;
+the analysis half moved on 2026-08-16. Records the contract, the seam and the
+failure modes, so the decision does not have to be re-derived later.
+
+## What is true now
+
+| | where it lives |
+|---|---|
+| Analysis UI | `projections/web` — `cli.py analysis-serve`, port 8100 |
+| `analysis.py`, the source fetchers, the derived metrics | `projections/analysis/` |
+| The six-field payload | built in `projections/analysis/payload.py`, POSTed to the draft app |
+| DK pool, rankings board, V1/V2, drafts | unchanged, still here |
+| `app/analysis.py` in THIS repo | **frozen fallback**, scheduled for deletion (step 4 below) |
+
+The draft app's `/analysis` now returns 410 with a pointer. `/api/analysis` still
+works, serving the frozen build, because `analysis-verify` compares against it.
+
+**Both paths were verified to agree before the page moved**: 428 players, exact
+agreement on all six model fields plus `ceiling`, `proj_dk` and `sources`
+(2026-08-16). Re-run it with `cli.py analysis-verify` in the projections app.
+
+**The one trap that comparison hit, and it is the familiar one.** The first run
+reported 345 `disagreement` mismatches and a one-player pool gap — all of it the
+draft app serving a 6h-cached build describing a 427-player pool while the
+projections app built fresh against 428. Nothing was wrong with either. `verify.py`
+now forces `?refresh=1` and builds both arms in one run, for the same reason the
+harness rule says to record the player count with any number you plan to compare.
+
+### The order it happened in
+
+Steps 1-3 of §6 shipped, then the UI moved. **Step 4 — deleting `app/analysis.py`
+from this repo — has NOT happened**, deliberately: it is the one-way door, and the
+fallback is what makes the split reversible while the projections app is still young.
+Delete it once `analysis-verify` has been clean across a few real publishes, and take
+`/api/analysis`, the analysis-only fetchers and this repo's Yahoo OAuth routes with
+it.
 
 This file covers only the **contract between the two apps**. See
 `PROJECTIONS_APP_ARCHITECTURE.md` for the new app's own internals.
@@ -62,6 +95,24 @@ Delivery is already one endpoint: **`GET /api/projections-v2`**, called by
 
 **So the split is: that endpoint stops computing and starts serving stored data.**
 
+**Done 2026-08-16.** It now serves the pushed payload and falls back to the local
+build, reporting which in `source`, with `age_hours`, `schema_version` and
+`published_by` alongside. `?source=local` forces the fallback, which is what
+`analysis-verify` compares against.
+
+The preference is **deterministic**: a pushed payload wins however old it is. The
+tempting alternative — fall back to the local build once the push goes stale — would
+have the model silently change which code computed its inputs based on a clock, and
+that is the exact bug shape this file is about. Serve the stale push and say so.
+
+`sd`'s second job survived the move intact and is asserted on every build:
+`payload.validate()` refuses a payload where `sd != ppg × POS_SCORING_CV[pos]` or
+`ceiling != ppg + 1.2816 × sd`. Note it checks in **points, not as the ceiling/mean
+ratio quoted above** — both fields are rounded to 2dp before publishing, so at
+ppg ~0.3 that rounding is over 1% and the ratio form fires on players who are
+perfectly correct. (It did, on 18 of them, the first time it ran.) Same invariant,
+rounding-safe instrument; the 1.741–1.746 spread recorded above is this rounding.
+
 ---
 
 ## 2. What moves, what stays
@@ -114,6 +165,22 @@ residential connection anyway, which is the whole reason props are pushed rather
 fetched), or the draft app exposes its pool. Prefer the former; it keeps the
 dependency arrow pointing one way.
 
+**Resolved 2026-08-16: the second option, and the reasoning changed.**
+`projections/analysis/spine.py` reads `GET /api/players`, falling back to the
+committed `player_cache.json`. Fetching DK independently would mean a second copy of
+`api_fetcher` — a DK session, the cookie sync, the ECR enrichment and the playoff
+schedule join, all of which the live-draft features need and none of which should
+exist twice. More to the point, `/api/players` is *the pool the recommender will
+score against*, and a projection keyed to a player the draft app does not have is a
+projection nobody reads. Agreeing with the consumer beats independence here.
+
+The custom rankings board is read the same way, from `GET /api/rankings`, for the
+"My Rank" column only. It stays the draft app's, per §2.
+
+Both reads are also why the drift §3 warned about is now *visible* rather than
+theoretical: on 2026-08-16 the live pool held 428 players and the committed cache
+427, and the analysis page's status line says which one it is looking at.
+
 ---
 
 ## 4. Failure modes, and the one that matters
@@ -137,10 +204,22 @@ So:
   boot-time retry that the rankings hydrate turned out never to have been running
   (see CLAUDE.md on `_conn()`). When the split happens this becomes the check on
   the *pushed payload* rather than on two Postgres tables; the shape carries over.
-- Surface `generated_at` age in the UI. `generated_at` and `stale` already exist in
-  the payload and are already returned by `/api/projections-v2`; nothing reads them.
+- ~~Surface `generated_at` age in the UI.~~ **Done 2026-08-16.** The Analysis page
+  carries a bar reading "Draft app is scoring on: your payload · 3h old" / "STALE"
+  / "its own fallback build (nothing published)", read from the draft app rather
+  than inferred from whether a publish succeeded here — a push that landed on an
+  instance whose Postgres was unreachable is gone after the next deploy, and only
+  the draft app knows that. Stale is 48h, which is judgement, not measurement.
+  Also on `/api/projections/meta` (`serving`, `pushed`) and `/api/stores/status`.
 - Prefer a hard refusal over a quiet fallback where a wrong answer is worse than no
   answer, as the rankings save path already does (409 when unhydrated).
+  **Applied at the boundary, not at serve time:** `/api/projections/upload` refuses
+  an unknown schema major (409) and a payload with unkeyed players (400), and
+  `payload.validate()` refuses to send one where the sd invariant is broken, where
+  fewer than half the pool has a ppg, or where every scored player has
+  `sources <= 1` — that last one because a collapse to a single feed doubles the
+  ECR blend weight silently. Serving is deliberately NOT a refusal: mid-draft, a
+  stale payload clearly labelled stale beats no projections at all.
 
 See CLAUDE.md: *prefer failing loudly and recording whether a thing actually happened
 over inferring it from a count that looks right.* Two separate incidents in this
@@ -178,13 +257,28 @@ Feed display columns freely; feed the model only what has been measured.
 
 ## 6. If it happens, do it in this order
 
-1. Add `projections_hydrated` + staleness reporting **first**, while everything is
-   still one app and a mistake is visible. §4 is the risk; retrofitting the guard
-   after the split means running blind through the migration.
-2. Add `POST /api/projections/upload` and have it write `projections_store`. Keep
-   `get_projections()` computing as it does.
-3. Switch `/api/projections-v2` to read the store, falling back to the local build.
-   Both paths live — verify they agree on the six fields, player by player.
-4. Only then move `analysis.py` out and delete the local build.
+1. ~~Add `projections_hydrated` + staleness reporting **first**~~ — **done 2026-08-14.**
+2. ~~Add `POST /api/projections/upload` and have it write `projections_store`. Keep
+   `get_projections()` computing as it does.~~ **Done 2026-08-16.** Writes the new
+   `projections_payload` table (one row, replaced wholesale — a published payload is
+   one atomic statement about the whole pool, and merging pushes would leave a single
+   `generated_at` describing rows from two different moments). Hydrated into a local
+   mirror at boot, because Render's filesystem does not survive a deploy and without
+   it a perfectly good payload would sit in Postgres while the instance served the
+   fallback.
+3. ~~Switch `/api/projections-v2` to read the store, falling back to the local build.
+   Both paths live — verify they agree on the six fields, player by player.~~
+   **Done 2026-08-16**, verified at 428 players with exact agreement.
+4. **NOT DONE — the one-way door.** Move `analysis.py` out and delete the local
+   build. The move happened; the deletion has not. What still has to go when it does:
+   `app/analysis.py`, `/api/analysis`, the analysis-only fetchers
+   (`espn_fetcher`, `fantasypros_fetcher`, `betting_fetcher`, `underdog_fetcher`,
+   `yahoo_fetcher`), this repo's Yahoo OAuth routes, and the four analysis tables in
+   `database.py`. Keep `fantasypros_ecr_fetcher` — it enriches the DK pool, which
+   stays.
 
 Steps 2 and 3 are reversible and leave the app working. Step 4 is the one-way door.
+
+**Do not do step 4 until the projections app has published for real a few times and
+`analysis-verify` has stayed clean.** The fallback costs a frozen file; removing it
+early costs the only thing that makes a bad publish survivable.
