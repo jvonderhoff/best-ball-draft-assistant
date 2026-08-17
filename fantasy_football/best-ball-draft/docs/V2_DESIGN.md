@@ -125,6 +125,46 @@ a price, not a return. See §9.
 
 ## 4. Dead ends — do not retry without new evidence
 
+**Changing V1's `BASE_TARGETS` (null, 6 seeds, 2026-08-17).** The Roster tab shows
+targets of QB2-RB6-WR8-TE2, and two of those look wrong against §5.4: `RB ≥ 6`
+measured −4.77 ±1.83pp and `TE ≤ 2` −4.79 ±0.53pp. `BASE_TARGETS` is a *model*
+constant — `capitalAllocationInfo` multiplies every V1 candidate score with it — so
+it was swept rather than argued about (`tools/v1-targets-sweep.sh`, 150×150, V1 EV
+against baseline, V2 as the control):
+
+| arm | mean Δ | SE | t | seeds won |
+|---|---|---|---|---|
+| candidate RB5 WR9 TE3 | +$15.14 | 11.81 | 1.28 | 4/6 |
+| te-only TE3 | +$14.42 | 9.95 | 1.45 | 4/6 |
+| rb-only RB5 | +$5.00 | 9.78 | 0.51 | 5/6 |
+
+**All three are positive in the mean and none is distinguishable from noise.** Do not
+read the positive means as a weak yes: baseline EV swings **2.5x on the seed alone**
+here ($38–$97), and at seed 20261015 baseline beat all three arms.
+
+**The two-seed read was wrong, and that is the lesson.** After the first two seeds
+every arm beat baseline, 6 comparisons out of 6, and it looked settled. Four more
+seeds turned it into 4/6. This is the third entry in this file to be retracted by
+replication; two seeds is the *minimum*, not enough.
+
+**Why the null, and this is the useful part: the targets are a weak lever.** Moving a
+target by a full player moves the realised roster by ~0.4:
+
+| | target | realised |
+|---|---|---|
+| RB | 6 → 5 | 5.71 → 5.37 backs |
+| TE | 2 → 3 | 2.94 → 3.34 ends |
+
+`dynamicTarget` expands on catch-up pace, the over-target penalty floors at 0.60, and
+the ADP-cliff term dominates early. **So V1 already drafts 2.94 tight ends against a
+target of 2** — the number on the Roster tab was never a prediction of V1's own
+behaviour, which is why correcting it toward the evidence bought nothing measurable.
+
+The display problem is real and separate: the tab tells the drafter to fill 6 RB and
+2 TE, when the model itself lands at 5.7 and 2.9 and §5.4 prefers 5 and 3–4. Fixing
+that is a UI question, not a constant to re-sweep. Changing `BASE_TARGETS` to fix a
+label would be moving a model input to correct a caption.
+
 **Forcing roster shape (3 attempts, all worse).**
 The harness reports advance rate by construction, and V2's TE:4 builds do
 underperform. But:

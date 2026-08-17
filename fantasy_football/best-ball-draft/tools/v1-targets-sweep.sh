@@ -42,7 +42,9 @@ DRAFTS=${1:-150}
 SEASONS=${2:-150}
 PODS=300
 
-SEEDS="20260730 20260817"
+# Override with SEEDS="a b c". Two is the minimum this codebase accepts; the first
+# run at two seeds put te-only at +$52 and +$3, which is why there are now six.
+SEEDS="${SEEDS:-20260730 20260817}"
 ARMS="baseline:  candidate:QB:2,RB:5,WR:9,TE:3 te-only:QB:2,RB:6,WR:8,TE:3 rb-only:QB:2,RB:5,WR:8,TE:2"
 
 echo "V1 BASE_TARGETS sweep — ${DRAFTS} drafts x ${SEASONS} seasons, field-pods ${PODS}"
