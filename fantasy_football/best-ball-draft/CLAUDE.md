@@ -12,6 +12,19 @@ makes the seam cheap.
 cd ../projections && .venv/bin/python cli.py analysis-serve   # http://localhost:8100
 ```
 
+**Analysis is NOT deployed and there is no `/analysis` on Render any more** — that
+route returns 410 with a pointer. It runs on the Mac, against local or prod:
+
+```bash
+export DRAFT_APP_URL=https://best-ball-draft-assistant.onrender.com
+cd ../projections && .venv/bin/python cli.py analysis-serve
+```
+
+Consequence worth knowing before a draft: **the Analysis table is not available on a
+phone.** That was the deliberate trade (props need a residential connection anyway).
+If it ever needs to be, the projections app's ARCHITECTURE §7 has the additive path —
+a read-only UI on Render over a Postgres mirror, pipeline still local.
+
 The analysis app needs THIS app running: it reads the DK pool from `/api/players` and
 the rankings board from `/api/rankings`. It does **not** need to be deployed — it
 pushes the six-field payload to whichever draft app you point it at, which is the same
