@@ -125,6 +125,48 @@ a price, not a return. See §9.
 
 ## 4. Dead ends — do not retry without new evidence
 
+**Feeding aDOT / WOPR / NGS to V2 (null, backtested 2026-08-17).** The projections app
+now computes real aDOT, WOPR and Next Gen Stats separation. The obvious next thought is
+to give them to the recommender. Two independent reasons not to, and the second is the
+one that would have cost real time to learn later.
+
+**1. The harness cannot price them, by construction.** Truth is either V2's own
+projections (`--truth proj`) or ADP (`--truth market`). *Neither contains information
+from air yards or tracking data.* So a preference derived from WOPR cannot pay off in
+the simulation no matter how predictive it is in reality — the simulated world does not
+know the signal exists. It would measure as noise at best. And per §5.5, anything
+touching `_eff.mean` or `_eff.sd` also moves the answer key, so the "improve the
+projection" version is not measurable there either.
+
+**2. They add nothing to next-season prediction anyway.** Backtested on nflverse
+play-by-play, three season pairs, receivers with 30+ targets in both years, predicting
+next-season receiving PPR. Baseline is prior-season PPR — what a projection already
+has. Gains are **adjusted** R², against a 400-run permutation null (the same columns
+shuffled):
+
+| pair | n | adj R² base | + WOPR & aDOT | gain | null 95th |
+|---|---|---|---|---|---|
+| 2022→2023 | 138 | 0.511 | 0.519 | +0.009 | +0.014 |
+| 2023→2024 | 146 | 0.303 | 0.320 | +0.017 | +0.021 |
+| 2024→2025 | 147 | 0.309 | 0.309 | −0.001 | +0.017 |
+
+**Every real gain sits inside the null.** A shuffled column buys as much. Raw R² looked
+like a consistent +0.017 across all three pairs, which is exactly the trap — two added
+parameters raise R² mechanically at n≈140.
+
+**Scope, honestly.** This tests them as SEASON-level predictors of NEXT-season receiving
+output, on players who cleared 30 targets in both years. It does not test them as
+within-season descriptors, and the 30-target filter excludes low-volume breakout
+candidates — the population where opportunity metrics are usually claimed to help most.
+NGS separation was not tested at all (it covers ~120 players, thinner still). So this
+closes "bolt them onto V2's valuation", not "opportunity metrics are worthless".
+
+**Where they would legitimately belong, if they ever earn it:** improving `ppg` inside
+the projections app. The six-field contract means a better projection reaches V2 with
+*zero* recommender changes — and it gets validated by backtesting against real outcomes,
+which is a different instrument from the draft simulator and the right one for this
+question. They stay display-only until such a backtest is positive.
+
 **Changing V1's `BASE_TARGETS` (null, 6 seeds, 2026-08-17).** The Roster tab shows
 targets of QB2-RB6-WR8-TE2, and two of those look wrong against §5.4: `RB ≥ 6`
 measured −4.77 ±1.83pp and `TE ≤ 2` −4.79 ±0.53pp. `BASE_TARGETS` is a *model*
