@@ -302,9 +302,28 @@ with field size, but V2 is strongly ahead at every size, and the old number was 
 the user away from the model that helps them most. Corrected in §5.2; read the columns
 there by event count, not by size.
 
-**Yahoo is still wanted.** Blocked on app registration at developer.yahoo.com needing
-Fantasy Sports read permission — the error is app-level, not code. Scope, token
-persistence and Python 3.9 compatibility are all done. Keep it in §9.
+**Yahoo would not add a projection even if unblocked — checked 2026-08-17.** The app is
+still 403 at developer.yahoo.com ("This application is not authorized to perform this
+action"), so its capability cannot be queried directly. But three things settle the
+practical question without it:
+
+- The fetcher requests `players;position=X;sort=AR` with no stats subresource, then
+  parses `stat_id 1073` out of a `player_stats` block that was never asked for. `fpts`
+  is structurally **always 0.0**, working auth or not.
+- `yahoo_projections` has **0 rows in every store**, local and prod. It has never
+  produced a record.
+- The only Yahoo value anything downstream consumes is `yahoo_rank`, in the positional
+  consensus. `consensus_ppr` filters on `v > 0`, so a permanently-zero `yahoo_pts_ppr`
+  was never entering the average.
+
+What Yahoo exposes here is **Analyst Rank ordering** (`sort=AR`), not season points.
+Season-long point projections are not a documented resource in the public Fantasy API —
+Yahoo's projections are weekly and surfaced in-product. Believed, not measured, since
+the 403 blocks verification.
+
+**So do not count Yahoo toward fixing the thin consensus.** `consensus_ppr` is Sleeper +
+ESPN + props, and unblocking Yahoo would make it Sleeper + ESPN + props + a rank. If a
+third real projection source is wanted, it has to come from somewhere else.
 
 ## How this codebase decides things
 
