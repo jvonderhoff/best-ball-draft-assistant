@@ -128,6 +128,10 @@
     #csvPreviewTable .pos-tag { font-size:0.75em; font-weight:700; padding:1px 4px; border-radius:3px; }
     .csv-modal-actions { display:flex; gap:8px; justify-content:flex-end; }
     .csv-no-match { color:var(--muted2); font-style:italic; }
+    .csv-demote { display:flex; gap:8px; align-items:flex-start; font-size:0.8em; color:var(--text);
+                  background:var(--card); border:1px solid var(--border); border-radius:6px; padding:9px 11px; cursor:pointer; }
+    .csv-demote input { margin-top:2px; flex-shrink:0; }
+    .csv-demote-sub { display:block; color:var(--muted2); font-size:0.92em; font-weight:400; margin-top:2px; }
 
     /* ── Table ── */
     .table-wrap {
@@ -357,6 +361,13 @@
       <h3>Import Rankings from CSV — Preview</h3>
       <div class="csv-sub" id="csvModalSub"></div>
       <div id="csvPreviewTable"></div>
+      <label class="csv-demote">
+        <input type="checkbox" id="csvDemoteRest" checked>
+        <span>
+          <strong>Rank everyone else below the CSV</strong>
+          <span class="csv-demote-sub" id="csvDemoteSub"></span>
+        </span>
+      </label>
       <div class="csv-modal-actions">
         <button class="btn btn-reset" onclick="closeCsvModal()">Cancel</button>
         <button class="btn btn-success" onclick="applyCsvImport()">Apply Import</button>
@@ -846,6 +857,13 @@ function openCsvImport(text) {
       <thead><tr><th>CSV Rank</th><th>Player</th><th>Team</th><th>DK ADP</th><th>Previous</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+  // Concrete counts rather than a generic label — the whole point is that you can
+  // see how many players the import is about to demote before it happens.
+  const lastRank = matched.reduce((m, { csvRank }) => Math.max(m, csvRank), 0);
+  const restCount = allPlayers.length - matched.length;
+  document.getElementById('csvDemoteSub').textContent =
+    `${restCount} players are not in this file. Rank them ${lastRank + 1}+ by ADP, so anyone `
+    + `you dropped sorts below your whole board. Unchecked, they keep the rank they already have.`;
   document.getElementById('csvModal').classList.add('open');
 }
 
@@ -855,12 +873,44 @@ function closeCsvModal() {
 }
 
 function applyCsvImport() {
+  const inCsv = new Set(_csvPending.map(({ player }) => player.player_id));
   _csvPending.forEach(({ player, csvRank }) => { player.custom_rank = csvRank; });
+
+  // ── Everyone not in the CSV ────────────────────────────────────────────────
+  //
+  // Without this, importing a 250-row CSV left the other ~178 players holding
+  // whatever rank they had from the LAST import. A player you deliberately
+  // dropped off your board kept his old number — so a former #40 stayed #40,
+  // got substituted into `adp` by applyCustomRanks, and carried 0.55 weight in
+  // every V2 valuation. The board silently described a set of opinions you no
+  // longer held.
+  //
+  // Clearing them to unranked does NOT fix it, which is the non-obvious part:
+  // an unranked player falls back to market ADP, so that same dropped #40
+  // returns at ADP ~40 and is recommended anyway. Dropping him from the file
+  // has to mean "below everyone I did rank", and only an explicit rank says so.
+  //
+  // Ordered by ADP among themselves, so the tail keeps a sensible internal
+  // order rather than an arbitrary one.
+  let demoted = 0;
+  if (document.getElementById('csvDemoteRest').checked) {
+    const lastRank = _csvPending.reduce((m, { csvRank }) => Math.max(m, csvRank), 0);
+    const rest = allPlayers
+      .filter(p => !inCsv.has(p.player_id))
+      .sort((a, b) => (a.adp ?? 9999) - (b.adp ?? 9999));
+    rest.forEach((p, i) => { p.custom_rank = lastRank + 1 + i; });
+    demoted = rest.length;
+  }
+
   markDirty();
   renderTable();
   const n = _csvPending.length;
   closeCsvModal();
-  setStatus(`Imported ${n} rankings from CSV — review and save when ready.`, 'ok');
+  setStatus(
+    demoted
+      ? `Imported ${n} rankings; ${demoted} other players ranked below them — review and save when ready.`
+      : `Imported ${n} rankings from CSV — review and save when ready.`,
+    'ok');
 }
 
 document.getElementById('importCsvBtn').addEventListener('click', () => {
