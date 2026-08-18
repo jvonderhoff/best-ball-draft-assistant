@@ -153,7 +153,8 @@ it.
 | DK player pool / ADP | this app | automatic, 6h TTL, background thread on `GET /api/players` |
 | FantasyPros ECR | this app | enriches the pool; stays here |
 | Custom rankings board | this app | manual, and correctly so — it's the user's opinion |
-| Sleeper / ESPN / Yahoo / props | **projections app** | buttons on the Analysis page, or its CLI |
+| Sleeper / ESPN / props | **projections app** | buttons on the Analysis page, or its CLI |
+| FFToday season projections | **projections app** | `cli.py fetch --source fftoday` then `crosswalk` |
 | The six-field V2 payload | **projections app** | `cli.py analysis-publish --no-dry-run` |
 
 `tools/push-props.py` still works and still pushes straight into this app's store,
@@ -321,9 +322,25 @@ Season-long point projections are not a documented resource in the public Fantas
 Yahoo's projections are weekly and surfaced in-product. Believed, not measured, since
 the 403 blocks verification.
 
-**So do not count Yahoo toward fixing the thin consensus.** `consensus_ppr` is Sleeper +
-ESPN + props, and unblocking Yahoo would make it Sleeper + ESPN + props + a rank. If a
-third real projection source is wanted, it has to come from somewhere else.
+**So do not count Yahoo toward fixing the thin consensus.** Unblocking it would add a
+rank, not a projection.
+
+**The third source arrived from somewhere else: FFToday, 2026-08-17.** Staff season
+projections with components, scraped in the projections app
+(`pipeline/sources/fftoday.py`), free and no auth. Effect measured at the changeover:
+**329 of 418 players gained a source** (mean +0.77, 137 now at four), and `ppg` moved
+−2.49% mean / 5.34% mean absolute / 33.9% max. `sources` drives the ECR blend weight,
+so this is a real change to what V2 scores with — the first input improvement that did
+not need the harness's permission.
+
+`consensus_ppr` is now **Sleeper + ESPN + FFToday + props**.
+
+**Consequence: `analysis-verify` no longer expects the two paths to be identical, and
+that is correct.** The frozen `app/analysis.py` here still blends Sleeper + ESPN +
+props, so the projection fields legitimately differ now. What must still agree exactly
+is everything FFToday cannot touch — `avail`, `rec_share`, the id keying — and that is
+what the check is now for. It already did its original job: it proved the port was
+faithful before the page moved.
 
 ## How this codebase decides things
 
