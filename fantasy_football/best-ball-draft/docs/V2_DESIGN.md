@@ -154,6 +154,45 @@ shuffled):
 like a consistent +0.017 across all three pairs, which is exactly the trap — two added
 parameters raise R² mechanically at n≈140.
 
+**CORRECTION 2026-08-17, same day: that test asked the wrong question for best ball.**
+It predicted the MEAN (next-season receiving PPR). Best ball pays for the TAIL. A metric
+can be useless for the average outcome and useful for the top-6 one, and the test above
+could not have seen the difference. Prompted by Mat Irby's "Apex Score" piece, which
+predicts apex membership directly rather than mean points.
+
+Re-run with **top-6 RB finish next season** as the outcome (`research/apex_rb.py` in the
+projections app), 2019-2025, RBs with 100+ opportunities, 341 player-season pairs and 33
+future-apex positives. AUC, where 0.5 is a coin flip:
+
+| predictor | AUC |
+|---|---|
+| prior-season PPR (what a projection already has) | 0.734 |
+| YAC per game | 0.722 |
+| % of team opportunities | 0.699 |
+| high-value touches | 0.685 |
+| targets inside the 20 / game | 0.653 |
+| yards per carry | 0.606 |
+| **five-metric profile composite** | **0.758** |
+
+**Suggestive, not established: +0.024 AUC over baseline, 95% CI [−0.038, +0.088].**
+The point estimate favours the profile and the CI includes zero. With 33 positives it
+cannot resolve a gap this size — that is a power problem, not a verdict, and it is a
+materially different result from the aDOT/WOPR null above, where the effect sat *inside*
+the null.
+
+**A methodological warning from this run, worth more than the result.** The obvious
+permutation test — shuffle the profile, blend at weight w — "clears" easily at high w
+(at w=1.0: real 0.758 against a null 95th of 0.590). That is meaningless: at w=1.0 the
+shuffled arm is pure noise scoring 0.5, so the test is asking "beats random?" rather than
+"beats the baseline?". Only the bootstrap CI on the *difference* answers the real
+question, and it is the one that includes zero. Do not read the weight sweep as support.
+
+**So: still display-only, still not fed to V2** — but for a different reason than the
+metrics above. This is underpowered, not disproven. The cheap way to resolve it is more
+positives: nflverse pbp goes back to 1999, so extending the window roughly triples the
+sample, and the two Irby inputs we cannot compute (missed tackles forced, fantasy points
+over expected) are ones he rates highly. Worth doing before any conclusion is drawn.
+
 **Scope, honestly.** This tests them as SEASON-level predictors of NEXT-season receiving
 output, on players who cleared 30 targets in both years. It does not test them as
 within-season descriptors, and the 30-target filter excludes low-volume breakout
