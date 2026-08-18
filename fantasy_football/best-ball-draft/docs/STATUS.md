@@ -1,21 +1,21 @@
 # Where things are — 2026-08-17
 
 The state of BOTH apps in one place, because since the analysis split no single repo
-holds the whole picture. The detailed reasoning lives in `PROJECTIONS_SPLIT.md` (the
+holds the whole picture. Detailed reasoning lives in `PROJECTIONS_SPLIT.md` (the
 contract), the projections app's `ARCHITECTURE.md` (its internals) and `V2_DESIGN.md`
-(the model). This file is the map.
+(the model, and §4 the dead ends). This file is the map.
 
 ---
 
 ## The two apps
 
 ```
-  best-ball-draft  (this repo, PUBLIC)        projections  (PRIVATE)
+  best-ball-draft  (PUBLIC)                   projections  (PRIVATE)
   deployed on Render                          local only, on the Mac
   ────────────────────────────────            ──────────────────────────────
   DK pool + ADP                               Analysis UI      :8100
-  custom rankings board                       Sleeper / ESPN / props
-  V1 + V2 recommender                         nflverse pbp + NGS
+  custom rankings board                       Sleeper · ESPN · FFToday · props
+  V1 + V2 recommender                         nflverse pbp + Next Gen Stats
   drafts, history, live draft                 the six-field payload
   /api/projections-v2                         analysis/  +  pipeline/
         ▲                                              │
@@ -23,10 +23,9 @@ contract), the projections app's `ARCHITECTURE.md` (its internals) and `V2_DESIG
                   X-Api-Key: $BBA_API_KEY
 ```
 
-**The analysis app does not need deploying.** It computes on the Mac and pushes the
-result, which is the same pattern props already used and for the same reason — DK
-blocks Render's datacenter IPs. The consequence to know before a draft: **the Analysis
-table is not reachable from a phone.**
+The analysis app **does not need deploying**. It computes on the Mac and pushes, the
+same pattern props already used and for the same reason — DK blocks Render's IPs. The
+cost: **the Analysis table is not reachable from a phone.**
 
 ---
 
@@ -34,16 +33,15 @@ table is not reachable from a phone.**
 
 | | state |
 |---|---|
-| Draft app on Render | deployed, healthy, `/analysis` → 410 (moved) |
-| V2's inputs in prod | **the local fallback build** — nothing published yet |
-| `/api/stores/status` | all hydrated; `projections_payload: NONE PUBLISHED` |
-| Analysis app | local, working, 54 tests passing, `doctor` clean |
-| `best-ball-draft` | pushed, `master` level with origin |
-| `projections` | pushed, `main` level with origin |
+| Draft app on Render | deployed, healthy, `/analysis` → 410 |
+| **V2's inputs in prod** | **the local fallback build — nothing published yet** |
+| Analysis app | local, 54 tests, `doctor: ok` |
+| Both repos | pushed and clean |
 
-**Prod's recommender is running exactly the code and numbers it was before the split.**
-That is intended: the split shipped without changing a single V2 valuation, and moving
-prod onto the new payload is a separate, deliberate act.
+**Production still scores exactly as it did before the split.** Everything below that
+improves inputs is live in the projections app only. Moving prod onto it is one
+deliberate command, and given FFToday changes `ppg` for 329 players it is a decision
+rather than a formality.
 
 ---
 
@@ -56,134 +54,153 @@ cd ../projections
 .venv/bin/python cli.py analysis-serve      # Analysis UI, :8100 (needs the draft app)
 ```
 
-Against production instead of local — **point BOTH at prod, not just the publish**,
-because the boards differ (prod 391 custom ranks, local 380):
+Against production — point **both** at prod, since the boards differ:
 
 ```bash
 export DRAFT_APP_URL=https://best-ball-draft-assistant.onrender.com
 .venv/bin/python cli.py analysis-serve
-.venv/bin/python cli.py analysis-publish --no-dry-run    # updates what prod's V2 scores with
+.venv/bin/python cli.py analysis-publish --no-dry-run    # changes what prod's V2 scores with
 ```
 
-`BBA_API_KEY` lives in `~/.zshrc`, so it is present in `zsh -ic` and **absent in
-`zsh -lc` and in any non-interactive shell** — `.zshrc` is sourced for interactive
-shells only. This costs an hour if you rediscover it.
+`BBA_API_KEY` lives in `~/.zshrc` — present in `zsh -ic`, **absent in `zsh -lc`** and in
+any non-interactive shell. `.zshrc` is sourced for interactive shells only.
 
-Other commands: `analysis-verify` (diff against the draft app's own build),
-`analysis-import` (one-shot table copy), `fetch --source nflverse`, `crosswalk`,
-`doctor`.
+Pipeline: `cli.py fetch --source {dk|sleeper|nflverse|fftoday|all}` → `crosswalk` →
+`doctor`. Also `analysis-verify`, `analysis-import`.
 
 ---
 
-## What moved on 2026-08-16, and what did not
+## Projection sources — what is real
 
-**Moved** to `projections/analysis/`: `analysis.py`, the ESPN / FantasyPros / Yahoo /
-DK-props / Underdog fetchers, `templates/analysis.html`, and the six-field payload
-builder.
+| source | state |
+|---|---|
+| Sleeper | live |
+| ESPN | live, 458 rows |
+| **FFToday** | **live since 2026-08-17 — the third real source** |
+| DK / Underdog props | live, 545 rows — component correction, not a projection |
+| FantasyPros season | **dead** — paywalled to a 10-per-position teaser |
+| Yahoo | **not a projection source, ever** — see below |
 
-**Stayed** here: the DK pool, the custom rankings board (the user's opinion, and 55%
-of every V2 valuation — moving it would put the largest single input behind a network
-hop), V1/V2, drafts, `names.py`, and the FantasyPros ECR fetcher, which enriches the
-pool rather than feeding analysis.
+`consensus_ppr` = Sleeper + ESPN + FFToday, corrected by props.
 
-**`app/analysis.py` here is a FROZEN FALLBACK.** Both copies still compute. They were
-verified identical before the page moved — 428 players, exact agreement on all 20
-payload fields — and they will drift the moment one is edited alone. Edit the
-projections app. Deleting this copy is the one-way door and has **not** been taken;
-`PROJECTIONS_SPLIT.md` §6 step 4 lists everything that goes with it.
-
----
-
-## Reading a V2 number
-
-`/api/projections-v2` now reports **`source`** — `pushed` or `local` — plus
-`age_hours` and `schema_version`. Read it before concluding anything:
-
-- `local` when you expected `pushed` → the projections app has stopped publishing.
-- a `warning` field → only ever set for a pushed payload gone stale (48h). The plain
-  local fallback deliberately does **not** warn, because that is a normal state (a
-  fresh install and prod-before-first-publish both look like it) and a banner that is
-  always on is one nobody reads.
-
-`?source=local` forces the fallback, which is how the two are compared.
+**Yahoo, settled 2026-08-17.** The app is still 403 at developer.yahoo.com so its
+capability cannot be queried — but the practical question is closed regardless: the
+fetcher requests `sort=AR` with no stats subresource and then parses a `player_stats`
+block that was never asked for, so `fpts` is structurally always 0; `yahoo_projections`
+has 0 rows in every store and never produced a record; and `consensus_ppr` filters on
+`v > 0`. Yahoo exposes Analyst Rank, not points. **Unblocking it would add a rank.**
 
 ---
 
-## New data since the split
+## FFToday, and the bug worth remembering
 
-Both **display only**. Neither touches the six fields V2 scores with, per the standing
-rule that features the harness cannot price ship off or flagged.
+Free, no auth, 2026 season projections **with components** — so PPR is computed by us
+rather than read from their scoring preset, and the components feed the prop
+correction, which until now had ESPN as its only source.
 
-**Play-by-play (nflverse)** — real **aDOT**, **WOPR**, **AY%**. The reason it exists is
-that Sleeper publishes *completed* air yards, so aDOT is not recoverable from it:
+Coverage: **120/120 inside ADP 120**, 330/428 overall. The ~98 it omits are fringe
+players it genuinely does not project, which is why `doctor` registers it as a
+partial-coverage source and gates it on ADP-120 rather than a spine bar it can never
+clear. A permanently red check is one that stops being read.
 
-| | real aDOT | SL ÷ targets | SL ÷ receptions |
-|---|---|---|---|
-| Chase | 8.49 | 4.17 | 6.18 |
-| Smith-Njigba | 11.25 | 7.76 | 10.63 |
+Effect: **329 of 418 players gained a source**, `ppg` mean +0.12%, mean absolute 4.37%.
 
-This replaced the old AY/Rec column. Negative aDOT is correct for check-down backs.
+**The bug: RB and WR rows are both 11 cells with the halves swapped.** RB is
+`Att Yds TD | Rec Yds TD`, WR is `Rec Yds TD | Att Yds TD`. Dispatching on cell width
+read every receiver's receptions as his rush attempts — Chase's 116 catches became 2,
+across all 126 WRs. Nothing errored; totals came out ~35% low and looked like a
+conservative source. It shipped, and was caught only by a per-position cross-source
+ratio: QB 1.000, RB 1.071, TE 0.999, **WR 0.653**.
 
-**Next Gen Stats** — **separation**, **cushion**, **YAC over expected**. Tracking data,
-so it measures the *player* where aDOT and WOPR measure his *usage*. Its own column
-group because NGS publishes qualifying receivers only.
+Two fixes, both worth keeping: the parser reads the page's own **header** and maps by
+column name, so a layout change fails loudly; and `_sanity()` asserts the top-20 WRs and
+TEs have real reception counts. The bug was self-consistent under its own mapping, so no
+internal cross-check could catch it — only a fact about football could.
 
-Coverage, all pass catchers / inside ADP 120:
-
-| | crosswalked | pbp metrics | NGS |
-|---|---|---|---|
-| all (362) | 361 | 286 | 117 |
-| ADP ≤ 120 (102) | 102 | 96 | 54 |
-
-NGS independently confirmed the pbp aDOT to **0.28 yards** mean absolute difference —
-a different instrument measuring the same thing. That check is now a test.
-
----
-
-## Checked so it is not re-litigated
-
-- **nflverse has no projections.** All 25 release buckets are historical.
-  `ffverse/ffopportunity` has expected points, but that is retrospective — what a
-  player *should* have scored given usage, not a forecast.
-- **Routes run are not in pbp, PFR advanced receiving, or NGS.** So **YPRR is not
-  computable from any free source** — this is not a Sleeper limitation. Do not derive
-  one from something else; that is the mistake aDOT existed to correct.
+Also note FFToday is **100% name-matched** (it publishes no ids). `doctor` warns about
+it; re-check the ADP-120 number after every refresh.
 
 ---
 
-## Open threads, highest value first
+## New display data — nflverse and NGS
 
-1. **The projection consensus is thin, and this one actually moves V2.**
-   `consensus_ppr` is Sleeper + ESPN + props only: FantasyPros season is paywalled to
-   a 10-per-position teaser and Yahoo is blocked at app registration. `sources` drives
-   how heavily V2 leans on the ECR blend, so a third real source changes valuations.
-2. **Publish to prod** when you want the deployed recommender on the new analysis. It
-   is one command; it is separate from everything above on purpose.
-3. **Pipeline step 4** — rebuild ESPN / FantasyPros / Yahoo / props as pipeline
-   sources. They work today in `analysis/`, so this is refactoring, not new capability.
-4. **Delete the frozen fallback** (§6 step 4) once `analysis-verify` has stayed clean
-   across a few real publishes.
-5. **Yahoo** is still wanted and still blocked at developer.yahoo.com needing Fantasy
-   Sports read permission. App-level, not code — scope, token persistence and 3.9
-   compatibility are all done.
+Both **display only**. Neither feeds the model; see the nulls below.
+
+**Play-by-play:** real **aDOT**, **WOPR**, **AY%**. Sleeper publishes *completed* air
+yards, so aDOT is not recoverable from it — Chase reads 8.49 real against 4.17
+(Sleeper ÷ targets) and 6.18 (÷ receptions). This replaced the old AY/Rec column.
+Negative aDOT is correct for check-down backs.
+
+**Next Gen Stats:** **separation**, **cushion**, **YAC over expected** — tracking data,
+so they describe the *player* where aDOT and WOPR describe his *usage*. Own column
+group, because NGS covers qualifying receivers only: 117 vs 255, and 54 of the top-120.
+
+NGS independently confirmed the pbp aDOT to **0.28 yards** mean absolute difference.
 
 ---
 
-## Traps this session actually hit
+## Settled — do not re-litigate
 
-Each of these cost real time and is now guarded in code:
+- **nflverse has no projections.** All 25 buckets are historical. `ffverse/ffopportunity`
+  has expected points, but that is retrospective, not a forecast.
+- **Routes run are not in pbp, PFR advanced receiving, or NGS.** YPRR is not computable
+  from any free source. Do not derive one from something else.
+- **aDOT/WOPR do not improve a projection** — inside the permutation null over three
+  season pairs.
+- **Nor do they predict the tail.** Re-tested with top-6 finish as the outcome,
+  1999–2025, 136 apex positives: +0.005 AUC, CI [−0.020, +0.030]. The effect *shrank*
+  as the sample grew from 33 to 136 positives, which is the signature of noise, not of
+  an underpowered real effect.
+- **V1's roster targets are not worth changing** — six seeds, all three alternatives
+  positive in the mean and none distinguishable from noise. The targets are a weak
+  lever anyway: moving one by a full player moves the realised roster by ~0.4, and V1
+  already drafts 2.94 TEs against a target of 2.
 
-- **Comparing against a cached build.** The first `analysis-verify` reported 345
-  mismatches; every one was a 6h-cached 427-player build against a fresh 428-player
-  one. Forces `?refresh=1` now. Same lesson as the harness: record the player count
-  with any number you plan to compare, and build both arms in one run.
-- **A ratio test that fires on rounding.** The sd invariant stated as `ceiling/ppg`
-  rejected 18 correct players, because both fields round to 2dp and at ppg ≈ 0.3 that
-  is over 1%. Stated in points now.
-- **A warning that would always be on.** Surfacing "serving the local fallback" as a
-  UI warning would have put a permanent banner on the live draft page. Only the
-  identifiable failure — a pushed payload gone stale — warns.
-- **Two stores for props now.** `tools/push-props.py` writes this app's (which only
-  the fallback reads); the Analysis page's buttons write the projections app's (which
-  the published payload reads). Pushing props here no longer changes what V2 scores
-  with unless you also publish.
+---
+
+## Open threads
+
+1. **Publish FFToday to prod.** One command. It changes `ppg` for 329 players, so it is
+   a decision — and the first publish that would actually change recommendations.
+2. **A fourth projection source.** FantasySharks and CBS both responded but need
+   rendering or more parsing work; NFL.com is weekly-only and still serving 2025.
+3. **Pipeline step 4** — rebuild ESPN / props as pipeline sources. They work today in
+   `analysis/`, so this is refactoring, not new capability.
+4. **Delete the frozen fallback** (`PROJECTIONS_SPLIT` §6 step 4) once the pushed path
+   has run for a while. Note `analysis-verify` no longer expects identity — the two
+   paths legitimately differ now that FFToday is in one of them.
+5. **Remove the dead Yahoo plumbing** — routes, `kv_store`, the fetcher. It cannot
+   produce projections, and it is the only consumer of `kv_store`.
+
+---
+
+## Traps hit this week — each now guarded
+
+- **The recommender was ignoring your board on every warm reload.** Init called
+  `loadCustomRankings()` fire-and-forget while `loadPlayers()` rendered immediately, and
+  the sessionStorage-cached branch renders *synchronously* — so the first
+  recommendations used market ADP with the star showing blue. V2 too, at
+  `V2_CUSTOM_RANK_WEIGHT` 0.55. Fixed; it re-renders when ranks land.
+- **CSV import left dropped players at their old rank.** A 250-row import only touched
+  those 250; a player you cut kept his number. Clearing them does not fix it either —
+  unranked falls back to market ADP. Non-CSV players now rank *below* the file, with an
+  opt-out checkbox showing the counts.
+- **A deploy silently reverts ADP** to the committed `player_cache.json`, and
+  `/api/players` serves the cache *then* refreshes — so the first load after a deploy
+  shows the old number and the next one is current.
+- **Comparing against a cached build.** `analysis-verify` reported 345 false mismatches
+  from a 6h-cached 427-player build vs a fresh 428-player one. Forces a rebuild now.
+- **A ratio test that fires on rounding.** The sd invariant as `ceiling/ppg` rejected 18
+  correct players; stated in points now.
+- **Mean-of-ratios lies.** It reported ESPN +11.6% vs Sleeper and FFToday −2.4%; median
+  and ratio-of-totals said +2–5% and −10%. Small denominators dominate. Use robust
+  measures before concluding a source is biased.
+- **A permutation null at high blend weight proves nothing** — there the shuffled arm is
+  pure noise scoring 0.5, so it asks "beats random?" not "beats the baseline?". Only a
+  bootstrap CI on the *difference* answers that.
+- **Two prop stores now.** `tools/push-props.py` writes the draft app's, which only the
+  fallback reads; the Analysis page's buttons write the projections app's, which the
+  published payload reads.
+- **Xcode updates break `/usr/bin/git`** until `sudo xcodebuild -license accept`. The
+  Command Line Tools git at `/Library/Developer/CommandLineTools/usr/bin/git` is a
+  working fallback.
