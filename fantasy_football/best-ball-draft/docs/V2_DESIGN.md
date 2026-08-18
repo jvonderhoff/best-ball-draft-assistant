@@ -187,11 +187,36 @@ shuffled arm is pure noise scoring 0.5, so the test is asking "beats random?" ra
 "beats the baseline?". Only the bootstrap CI on the *difference* answers the real
 question, and it is the one that includes zero. Do not read the weight sweep as support.
 
-**So: still display-only, still not fed to V2** — but for a different reason than the
-metrics above. This is underpowered, not disproven. The cheap way to resolve it is more
-positives: nflverse pbp goes back to 1999, so extending the window roughly triples the
-sample, and the two Irby inputs we cannot compute (missed tackles forced, fantasy points
-over expected) are ones he rates highly. Worth doing before any conclusion is drawn.
+**RESOLVED the same day — it was noise.** The window was extended to 1999-2025 and
+FPOE added from `ffverse/ffopportunity`'s play-level expected-points model, leaving
+missed tackles forced (PFF, paid) as the only Irby input still missing
+(`research/apex_rb_full.py`):
+
+| window | pairs | apex positives | baseline AUC | profile AUC | difference |
+|---|---|---|---|---|---|
+| 5 metrics, 1999-2025 | 1434 | **136** | 0.784 | 0.790 | **+0.005** [−0.020, +0.030] |
+| 6 metrics + FPOE, 2006-2025 | 1073 | 97 | 0.751 | 0.766 | +0.015 [−0.014, +0.043] |
+| 5 metrics, 2006-2025 (control) | 1073 | 97 | 0.751 | 0.762 | +0.011 [−0.018, +0.043] |
+
+**With 4x the positives the effect SHRANK, from +0.024 to +0.005, and the CI tightened
+around zero.** An underpowered real effect gets *more* significant with more data; one
+that shrinks toward zero as the sample grows was noise. FPOE is worth +0.004 on the same
+window (0.766 vs 0.762) — real, tiny, not close to mattering.
+
+**Prior-season PPR alone is a strong baseline at AUC 0.784**, and an equal-weighted
+composite of the computable opportunity metrics does not beat it. So the answer to
+"should aDOT/WOPR/opportunity metrics feed V2" is now **no on both the mean and the
+tail**, which is where this started.
+
+**One era caution worth keeping.** YAC/G scored 0.722 on 2019-2025, 0.716 on 2006-2025,
+and 0.598 on 1999-2025. A swing that large across windows is either a pre-2006 data
+quality difference in pbp or a genuine change in how backs are used; either way it is a
+reminder that a single-window AUC on a few dozen positives is not a measurement.
+
+**Fair to Irby:** this closes "an equal-weighted composite of the six computable inputs
+beats prior-season points", not "Apex Score does not work". His is a fitted and weighted
+construction, tested against apex-specific criteria, with a seventh input we cannot
+compute — and he discloses his own numbers are in-sample and expects them to degrade.
 
 **Scope, honestly.** This tests them as SEASON-level predictors of NEXT-season receiving
 output, on players who cleared 30 targets in both years. It does not test them as
