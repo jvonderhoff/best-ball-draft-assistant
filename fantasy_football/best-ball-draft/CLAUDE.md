@@ -162,6 +162,23 @@ the projections app's store, which is what the published payload reads. **They a
 different stores now** — pushing props here does not change what V2 scores with unless
 you also publish.
 
+**A page load does NOT re-fetch rankings or ADP on its own — know what triggers each.**
+`PLAYERS` (and therefore ADP) is cached in **sessionStorage for 10 minutes**, so a
+reload inside that window re-renders from cache and never calls `/api/players`. The
+server then has its own 6h TTL on top, refreshed in a background thread, so a fetch
+that does happen serves the OLD pool and the NEXT load gets the new one. Rankings are
+fetched once at init and only when the star is already on; nothing polls them. To
+force a genuinely fresh board mid-draft: `bustCache('players_bundle')` in the console,
+or `POST /api/players/refresh`, then reload twice.
+
+**That 10-minute cache is also what made the rankings race bite.** Fixed 2026-08-17:
+init called `loadCustomRankings()` fire-and-forget while `loadPlayers()` rendered
+immediately — and the warm-cache branch renders SYNCHRONOUSLY, so the first
+recommendations were computed against market ADP with `customRankMap` still empty,
+while the star showed blue. Measured at a round-7 pick: the top pick changed and two
+players appeared in the visible top 6 that did not belong. `loadV2Projections()
+.then(renderRecs)` had always been right; rankings now follow the same pattern.
+
 **The board is OFF by default and the flag is per-browser.** `useCustomRankings` reads
 `localStorage['bba_use_custom_ranks'] === 'true'`, so a new browser, a cleared profile,
 incognito, or simply the other device all default to market ADP — and the rankings are

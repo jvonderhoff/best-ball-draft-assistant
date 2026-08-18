@@ -2266,8 +2266,30 @@ checkDKAuth();
 loadPlayers();
 updateRankingToggleBtn();
 
-// Pre-load custom rankings if mode was active last session
-if (useCustomRankings) loadCustomRankings();
+// Pre-load custom rankings if mode was active last session.
+//
+// **The re-render is load-bearing — this was fire-and-forget until 2026-08-17.**
+// loadPlayers() calls renderRecs() as soon as it has a board, and when the
+// players_bundle is warm in sessionStorage (any reload inside 10 minutes, i.e.
+// constantly during a live draft) that branch is SYNCHRONOUS. So the first
+// recommendations were computed while customRankMap was still empty, and
+// applyCustomRanks silently returned market ADP — with the star showing blue, as
+// though the board were being used. Nothing re-rendered when the ranks landed.
+//
+// Measured at a round-7 pick on a 379-player board: the top recommendation changed
+// (Kraft -> Tyson) and two players appeared in the visible top 6 who did not belong
+// there. This is the same failure shape as everything else in this codebase — a
+// plausible answer, no error, and an indicator that says the opposite.
+//
+// loadV2Projections().then(renderRecs) already had this right; rankings did not.
+// Same pattern here: render fast, re-render when the slower input lands.
+if (useCustomRankings) {
+  loadCustomRankings().then(ok => {
+    if (!ok) return;
+    renderRecs();
+    renderPlayerList();
+  });
+}
 
 // If URL contains ?draft=ID (e.g. from a shared link or back-nav), load that draft
 const _urlDraft = new URLSearchParams(location.search).get('draft');
