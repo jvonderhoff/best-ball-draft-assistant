@@ -99,6 +99,14 @@
 <div class="content">
 
   <!-- Auth status -->
+  <!-- Data freshness. First card on purpose: "how old is this?" was the question
+       behind three separate confusions in one session, and the answer used to
+       require knowing which of four endpoints to hit. -->
+  <div class="card">
+    <h2>Data Freshness</h2>
+    <div id="freshBody" style="font-size:0.85em;color:var(--muted)">Loading…</div>
+  </div>
+
   <div class="card">
     <h2>DraftKings Auth</h2>
     <div class="status-row" id="authStatus">
@@ -390,6 +398,44 @@ checkAuth();
 checkProjections();
 checkYahoo();
 loadSavedDrafts();
+</script>
+<script>
+// ── Data freshness ────────────────────────────────────────────────────────────
+// Ages and states come from /api/freshness rather than being recomputed here, so
+// the page and the endpoint cannot drift apart on what counts as stale.
+function fmtAge(h) {
+  if (h == null) return '—';
+  if (h < 1)  return Math.round(h * 60) + 'm ago';
+  if (h < 48) return h.toFixed(1) + 'h ago';
+  return (h / 24).toFixed(1) + 'd ago';
+}
+async function loadFreshness() {
+  const el = document.getElementById('freshBody');
+  try {
+    const d = await (await fetch('/api/freshness')).json();
+    const colour = s => s === 'ok' ? 'var(--green)' : s === 'stale' ? 'var(--orange)' : 'var(--muted2)';
+    const rows = d.items.map(i => `
+      <tr>
+        <td style="padding:4px 10px 4px 0;white-space:pre">${i.label}</td>
+        <td style="padding:4px 10px 4px 0;text-align:right;font-variant-numeric:tabular-nums;color:${colour(i.state)}">${fmtAge(i.age_hours)}</td>
+        <td style="padding:4px 10px 4px 0;text-align:right;color:var(--muted2)">${i.rows ?? ''}</td>
+        <td style="padding:4px 0;color:var(--muted2);font-size:0.92em">${i.note ?? ''}</td>
+      </tr>`).join('');
+    el.innerHTML = `
+      <div style="margin-bottom:8px">
+        V2 is scoring on <strong style="color:${d.serving === 'pushed' ? 'var(--green)' : 'var(--orange)'}">${
+          d.serving === 'pushed' ? 'the published payload' : 'its local fallback build'}</strong>
+      </div>
+      <table style="width:100%;border-collapse:collapse">${rows}</table>
+      <div style="margin-top:10px;color:var(--muted2);font-size:0.92em">
+        Only the DK pool refreshes on its own. Everything else updates when you run it —
+        <code>cli.py analysis-publish --no-dry-run</code> in the projections app.
+      </div>`;
+  } catch (e) {
+    el.innerHTML = '<span style="color:var(--red)">Could not load: ' + e.message + '</span>';
+  }
+}
+loadFreshness();
 </script>
 </body>
 </html>

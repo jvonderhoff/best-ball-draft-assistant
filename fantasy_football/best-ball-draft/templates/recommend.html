@@ -534,6 +534,7 @@
 </div>
 
 <!-- ── Roster Tab ── -->
+<div id="staleBar" class="rec-warn-bar" style="display:none;margin-bottom:8px"></div>
 <div id="tab-roster" class="tab-panel">
   <div class="needs-row" id="needsRow"></div>
   <div id="capitalBar"></div>
@@ -2265,6 +2266,29 @@ renderHeader();
 checkDKAuth();
 loadPlayers();
 updateRankingToggleBtn();
+
+// ── Stale-data check ──────────────────────────────────────────────────────────
+//
+// Fires ONLY when something is actually stale, for the reason the projections
+// warning is calibrated the same way: a banner that is always on is one nobody
+// reads. The case this exists for is real — a deploy silently reverts ADP to the
+// committed player_cache.json, and a round-16 receiver read 199 against DK's 193
+// for a day before anyone noticed.
+async function checkFreshness() {
+  try {
+    const d = await (await fetch('/api/freshness')).json();
+    if (d.worst_state !== 'stale') return;
+    const bad = d.items.filter(i => i.state === 'stale' && !i.label.startsWith('  '));
+    if (!bad.length) return;
+    const el = document.getElementById('staleBar');
+    if (!el) return;
+    el.innerHTML = '⚠ Stale data: ' + bad.map(i =>
+      `<strong>${i.label}</strong> ${i.age_hours >= 48 ? (i.age_hours/24).toFixed(1)+'d' : i.age_hours.toFixed(0)+'h'}`
+    ).join(' · ') + ' — <a href="/setup" style="color:inherit;text-decoration:underline">details</a>';
+    el.style.display = '';
+  } catch (e) { /* advisory only; never block a draft on it */ }
+}
+checkFreshness();
 
 // Pre-load custom rankings if mode was active last session.
 //

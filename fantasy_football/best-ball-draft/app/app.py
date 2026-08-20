@@ -2132,6 +2132,11 @@ def upload_projections():
         'schema_version': version,
         'generated_at':   body.get('generated_at') or time.time(),
         'source':         body.get('source') or 'projections-app',
+        # Per-source ages from the publisher. This app cannot see the projections
+        # app's stores, so without carrying them across there is no way to answer
+        # "how old is the ESPN data behind these numbers" — which is how an
+        # 18-day-old props table went unnoticed while every number looked normal.
+        'sources_meta':   body.get('sources_meta') or {},
     }
 
     # Durable first, mirror second. If Postgres refuses the write we still serve
@@ -2158,6 +2163,86 @@ def upload_projections():
         ),
         'meta': payload_meta(payload),
     })
+
+
+@app.route('/api/freshness', methods=['GET'])
+def data_freshness():
+    """How old every piece of data behind a recommendation is. One place.
+
+    Written 2026-08-18 after a session where three separate confusions were all the
+    same question — ADP looked stale, rankings looked stale, and nobody could say how
+    old the projections were. Each was answerable, but only by knowing which of four
+    endpoints to hit and which cache to distrust.
+
+    Ages are computed here against server time and returned in hours, with a `state`
+    per row, so the UI does not re-implement the thresholds and drift from them.
+    """
+    import os as _os
+    from app.projections import read_pushed, payload_meta, PUSHED_STALE_AFTER
+    now = time.time()
+
+    def row(label, ts, stale_h, note=None, rows=None):
+        age = (now - ts) / 3600 if ts else None
+        return {
+            'label': label, 'updated_at': ts, 'age_hours': round(age, 1) if age is not None else None,
+            'rows': rows, 'note': note,
+            'state': 'unknown' if age is None else ('stale' if age > stale_h else 'ok'),
+        }
+
+    out = {'now': now, 'items': []}
+
+    # DK pool / ADP — the only thing that refreshes on its own.
+    pool_ts = None
+    try:
+        from app.data.api_fetcher import CACHE_PATH as _cp
+        pool_ts = _os.path.getmtime(_cp)
+    except Exception:
+        pass
+    n_pool = None
+    try:
+        with _db() as conn:
+            n_pool = conn.execute('SELECT COUNT(*) FROM players').fetchone()[0]
+    except Exception:
+        pass
+    out['items'].append(row('DK pool / ADP', pool_ts, 12,
+                            'auto-refreshes on a 6h TTL; the NEXT page load serves it', n_pool))
+
+    # The board.
+    try:
+        with _db() as conn:
+            r = conn.execute('SELECT COUNT(*) n, MAX(updated_at) mx FROM player_rankings').fetchone()
+        ts = None
+        if r['mx']:
+            import datetime as _dt
+            ts = _dt.datetime.strptime(str(r['mx']), '%Y-%m-%d %H:%M:%S').replace(
+                tzinfo=_dt.timezone.utc).timestamp()
+        out['items'].append(row('Custom rankings board', ts, 24 * 30,
+                                'manual — you edit it', r['n']))
+    except Exception as e:
+        out['items'].append(row('Custom rankings board', None, 1, str(e)))
+
+    # What V2 is actually scoring with.
+    pushed = read_pushed()
+    if pushed:
+        m = payload_meta(pushed)
+        out['items'].append(row('V2 payload (published)', m['generated_at'],
+                                PUSHED_STALE_AFTER / 3600,
+                                f"pushed by {m.get('source')}", m['count']))
+        # And every source behind it, as reported by the publisher.
+        for key, meta in sorted((pushed.get('sources_meta') or {}).items()):
+            if key.startswith('_'):
+                continue
+            out['items'].append(row(f'  └ {key}', meta.get('updated_at'), 24 * 7,
+                                    'via the projections app', meta.get('rows')))
+    else:
+        out['items'].append(row('V2 payload (published)', None, 1,
+                                'NOTHING PUBLISHED — serving the local fallback build'))
+
+    out['serving'] = 'pushed' if pushed else 'local'
+    out['worst_state'] = ('stale' if any(i['state'] == 'stale' for i in out['items'])
+                          else 'unknown' if any(i['state'] == 'unknown' for i in out['items'])
+                          else 'ok')
+    return jsonify(out)
 
 
 def _db():
