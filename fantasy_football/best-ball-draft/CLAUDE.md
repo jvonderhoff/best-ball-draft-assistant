@@ -41,6 +41,9 @@ a bad publish survivable — so a change made in only one place removes the safe
 without saying so. Deleting this copy is §6 step 4, the one-way door, and has not
 happened.
 
+**Prod's V2 runs on the PUBLISHED payload as of 2026-08-18** — 431 players,
+`source: pushed`. Nothing republishes automatically; do it after any source refresh.
+
 **Read `source` on `/api/projections-v2` before concluding anything about a V2 number.**
 It says `pushed` or `local` — which code computed the inputs — plus `age_hours`. A
 `local` where you expected `pushed` means the projections app has gone quiet, and
@@ -54,6 +57,17 @@ cd ../projections && .venv/bin/python cli.py analysis-verify
 Publishing needs `BBA_API_KEY`, which lives in `~/.zshrc` — so it is absent from a
 non-interactive agent shell and present in `zsh -ic`. `zsh -lc` is NOT enough; `.zshrc`
 is sourced for interactive shells only.
+
+**`GET /api/freshness` answers "how old is any of this".** One endpoint covering the
+DK pool, the rankings board, the published payload, and every source behind it — the
+payload carries per-source ages across in `sources_meta`, because this app cannot see
+the projections app's stores. Surfaced as a panel on `/setup`, and on `/recommend` as a
+bar that appears **only when something is stale** (a banner that is always on is one
+nobody reads). Ages and states are computed server-side so the UI cannot drift from the
+thresholds.
+
+**Only the DK pool refreshes on its own.** Sleeper is fetched on each analysis build;
+ESPN, props, FFToday and the publish itself are all manual.
 
 **Read `docs/V2_DESIGN.md` before changing the recommender.** It documents the model, the
 evidence behind every constant, and — most importantly — §4, the dead ends. This file

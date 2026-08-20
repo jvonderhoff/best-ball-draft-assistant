@@ -1,4 +1,4 @@
-# Where things are — 2026-08-17
+# Where things are — 2026-08-18
 
 The state of BOTH apps in one place, because since the analysis split no single repo
 holds the whole picture. Detailed reasoning lives in `PROJECTIONS_SPLIT.md` (the
@@ -34,14 +34,18 @@ cost: **the Analysis table is not reachable from a phone.**
 | | state |
 |---|---|
 | Draft app on Render | deployed, healthy, `/analysis` → 410 |
-| **V2's inputs in prod** | **the local fallback build — nothing published yet** |
+| **V2's inputs in prod** | **the PUBLISHED payload** — 431 players, `source: pushed` |
+| Sources per player | 137 at four, 182 at three (the pre-FFToday ceiling was three) |
 | Analysis app | local, 54 tests, `doctor: ok` |
 | Both repos | pushed and clean |
 
-**Production still scores exactly as it did before the split.** Everything below that
-improves inputs is live in the projections app only. Moving prod onto it is one
-deliberate command, and given FFToday changes `ppg` for 329 players it is a decision
-rather than a formality.
+**Published 2026-08-18.** Production's V2 scores on the projections app's payload,
+built against prod's own pool and board. `/api/projections-v2` reports `source:
+pushed` — if it ever reads `local` again, publishing has stopped and prod has silently
+reverted to the frozen fallback. That field is the only thing that would say so.
+
+**Re-publish after any source refresh.** Nothing does it automatically, and the payload
+is flagged stale at 48h.
 
 ---
 
@@ -69,6 +73,35 @@ Pipeline: `cli.py fetch --source {dk|sleeper|nflverse|fftoday|all}` → `crosswa
 `doctor`. Also `analysis-verify`, `analysis-import`.
 
 ---
+
+## How fresh is anything? — `/api/freshness`
+
+**Only the DK pool refreshes on its own** (6h TTL, background thread, and the *next*
+page load serves it). Sleeper is fetched live on each analysis build. ESPN, props and
+FFToday are **manual**. The published payload is **manual**.
+
+One endpoint answers it for everything, and two places surface it:
+
+| surface | behaviour |
+|---|---|
+| `/setup` → Data Freshness | full panel: every source, age, rows, ok/stale/unused |
+| `/recommend` | a bar that appears **only when something is stale**, linking to setup |
+| `GET /api/freshness` | the JSON behind both |
+
+Ages are computed server-side against server time and returned with a per-row `state`,
+so the UI cannot drift from the endpoint on what counts as stale.
+
+**The payload carries per-source ages with it** (`sources_meta`). The draft app cannot
+see the projections app's stores, so without that a deployed recommender has no way to
+answer "how old is the ESPN data behind these numbers" — which is exactly how an
+18-day-old props table went unnoticed while every downstream number looked normal.
+Stored in Postgres, not just on the instance: the first version kept them only in
+memory, so the detail rows survived until the next deploy and then vanished silently
+while the payload itself lived on.
+
+`unused` is a distinct state from `unknown`, and deliberately so: FantasyPros' season
+table and Yahoo are permanently empty by design, so counting them as unknown left the
+rollup permanently unresolved — the same failure as a check that is always red.
 
 ## Projection sources — what is real
 
@@ -160,16 +193,14 @@ NGS independently confirmed the pbp aDOT to **0.28 yards** mean absolute differe
 
 ## Open threads
 
-1. **Publish FFToday to prod.** One command. It changes `ppg` for 329 players, so it is
-   a decision — and the first publish that would actually change recommendations.
-2. **A fourth projection source.** FantasySharks and CBS both responded but need
+1. **A fourth projection source.** FantasySharks and CBS both responded but need
    rendering or more parsing work; NFL.com is weekly-only and still serving 2025.
-3. **Pipeline step 4** — rebuild ESPN / props as pipeline sources. They work today in
+2. **Pipeline step 4** — rebuild ESPN / props as pipeline sources. They work today in
    `analysis/`, so this is refactoring, not new capability.
-4. **Delete the frozen fallback** (`PROJECTIONS_SPLIT` §6 step 4) once the pushed path
+3. **Delete the frozen fallback** (`PROJECTIONS_SPLIT` §6 step 4) once the pushed path
    has run for a while. Note `analysis-verify` no longer expects identity — the two
    paths legitimately differ now that FFToday is in one of them.
-5. **Remove the dead Yahoo plumbing** — routes, `kv_store`, the fetcher. It cannot
+4. **Remove the dead Yahoo plumbing** — routes, `kv_store`, the fetcher. It cannot
    produce projections, and it is the only consumer of `kv_store`.
 
 ---
@@ -201,6 +232,11 @@ NGS independently confirmed the pbp aDOT to **0.28 yards** mean absolute differe
 - **Two prop stores now.** `tools/push-props.py` writes the draft app's, which only the
   fallback reads; the Analysis page's buttons write the projections app's, which the
   published payload reads.
+- **Metadata that lives only on the instance disappears on deploy.** `sources_meta`
+  was published, stored in memory, and lost at the next restart while the payload it
+  described survived — so the freshness panel quietly lost its detail rows. Caught by
+  watching the panel *across* a deploy rather than trusting the publish. Anything that
+  must outlive a restart goes to Postgres.
 - **Xcode updates break `/usr/bin/git`** until `sudo xcodebuild -license accept`. The
   Command Line Tools git at `/Library/Developer/CommandLineTools/usr/bin/git` is a
   working fallback.
