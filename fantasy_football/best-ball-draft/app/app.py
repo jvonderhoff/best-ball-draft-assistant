@@ -2183,10 +2183,21 @@ def data_freshness():
 
     def row(label, ts, stale_h, note=None, rows=None):
         age = (now - ts) / 3600 if ts else None
+        # `unused` is its own state, and it matters. FantasyPros' season table and
+        # Yahoo are permanently empty BY DESIGN — one is paywalled, the other has
+        # never produced a row — so reporting them as `unknown` would leave the
+        # rollup permanently unresolved, which is the same failure as a check that
+        # is always red: it stops being read. They are shown, and excluded from the
+        # rollup below.
+        if not rows and age is None:
+            state = 'unused'
+        elif age is None:
+            state = 'unknown'
+        else:
+            state = 'stale' if age > stale_h else 'ok'
         return {
             'label': label, 'updated_at': ts, 'age_hours': round(age, 1) if age is not None else None,
-            'rows': rows, 'note': note,
-            'state': 'unknown' if age is None else ('stale' if age > stale_h else 'ok'),
+            'rows': rows, 'note': note, 'state': state,
         }
 
     out = {'now': now, 'items': []}
@@ -2239,8 +2250,9 @@ def data_freshness():
                                 'NOTHING PUBLISHED — serving the local fallback build'))
 
     out['serving'] = 'pushed' if pushed else 'local'
-    out['worst_state'] = ('stale' if any(i['state'] == 'stale' for i in out['items'])
-                          else 'unknown' if any(i['state'] == 'unknown' for i in out['items'])
+    live = [i for i in out['items'] if i['state'] != 'unused']
+    out['worst_state'] = ('stale' if any(i['state'] == 'stale' for i in live)
+                          else 'unknown' if any(i['state'] == 'unknown' for i in live)
                           else 'ok')
     return jsonify(out)
 
