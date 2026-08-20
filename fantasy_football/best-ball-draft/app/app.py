@@ -2182,7 +2182,7 @@ def data_freshness():
     from app.projections import read_pushed, payload_meta, PUSHED_STALE_AFTER
     now = time.time()
 
-    def row(label, ts, stale_h, note=None, rows=None):
+    def row(label, ts, stale_h, note=None, rows=None, force_state=None):
         age = (now - ts) / 3600 if ts else None
         # `unused` is its own state, and it matters. FantasyPros' season table and
         # Yahoo are permanently empty BY DESIGN — one is paywalled, the other has
@@ -2190,7 +2190,11 @@ def data_freshness():
         # rollup permanently unresolved, which is the same failure as a check that
         # is always red: it stops being read. They are shown, and excluded from the
         # rollup below.
-        if not rows and age is None:
+        if force_state:
+            # For rows whose problem IS the absence of a timestamp, where the
+            # inferred state would be exactly wrong. See the sources_meta branch.
+            state = force_state
+        elif not rows and age is None:
             state = 'unused'
         elif age is None:
             state = 'unknown'
@@ -2241,11 +2245,39 @@ def data_freshness():
                                 PUSHED_STALE_AFTER / 3600,
                                 f"pushed by {m.get('source')}", m['count']))
         # And every source behind it, as reported by the publisher.
-        for key, meta in sorted((pushed.get('sources_meta') or {}).items()):
-            if key.startswith('_'):
-                continue
-            out['items'].append(row(f'  └ {key}', meta.get('updated_at'), 24 * 7,
-                                    'via the projections app', meta.get('rows')))
+        #
+        # **An absent sources_meta must not render as silence, and until 2026-08-19
+        # it did.** The loop simply produced no rows, so a payload that arrived
+        # without its per-source ages looked identical to one whose sources were all
+        # fresh: three green rows and `worst_state: ok`. That is precisely the
+        # failure this endpoint was written to remove, reproduced inside the endpoint
+        # itself — and it is the silent-plausible-number pattern the deployment notes
+        # in CLAUDE.md keep warning about.
+        #
+        # Observed on prod: a payload published 2026-08-19 carried none, while the
+        # publisher on the Mac builds eleven keys for the same cache. The likely
+        # cause is a long-running `analysis-serve` — it runs with use_reloader=False,
+        # so a process started before sources_meta existed keeps publishing without
+        # it indefinitely, and nothing anywhere says so. Whatever the cause, the
+        # endpoint's job is to report that it does not know, not to imply health.
+        meta_map = pushed.get('sources_meta') or {}
+        err      = meta_map.get('_error')
+        usable   = {k: v for k, v in meta_map.items() if not k.startswith('_')}
+        if usable:
+            for key, meta in sorted(usable.items()):
+                out['items'].append(row(f'  └ {key}', meta.get('updated_at'), 24 * 7,
+                                        'via the projections app', meta.get('rows')))
+        else:
+            # force_state because the inferred state would be 'unused' — no rows and
+            # no timestamp — which is the one word that would be actively misleading
+            # here. These sources are not unused; their age is unknown.
+            out['items'].append(row(
+                '  └ per-source ages', None, 1,
+                (f'publisher reported an error building them: {err}' if err else
+                 'MISSING — this payload arrived with no sources_meta, so how old '
+                 'ESPN / props / Sleeper / FFToday are behind it is UNKNOWN. '
+                 'Re-publish from a current projections app to restore them.'),
+                force_state='unknown'))
     else:
         out['items'].append(row('V2 payload (published)', None, 1,
                                 'NOTHING PUBLISHED — serving the local fallback build'))

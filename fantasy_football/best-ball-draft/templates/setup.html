@@ -413,7 +413,10 @@ async function loadFreshness() {
   const el = document.getElementById('freshBody');
   try {
     const d = await (await fetch('/api/freshness')).json();
-    const colour = s => s === 'ok' ? 'var(--green)' : s === 'stale' ? 'var(--orange)' : 'var(--muted2)';
+    // 'unknown' is orange with 'stale', not grey with 'unused'. A row whose age
+    // could not be determined is a thing to look at; only 'unused' — empty BY
+    // DESIGN, per the endpoint's own note — is safely ignorable.
+    const colour = s => s === 'ok' ? 'var(--green)' : (s === 'stale' || s === 'unknown') ? 'var(--orange)' : 'var(--muted2)';
     const ageText = i => i.state === 'unused' ? 'unused' : fmtAge(i.age_hours);
     const rows = d.items.map(i => `
       <tr>
