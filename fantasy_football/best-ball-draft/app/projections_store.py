@@ -103,9 +103,14 @@ def init_external() -> None:
                     source         text,
                     player_count   integer,
                     payload        text NOT NULL,
+                    sources_meta   text,
                     uploaded_at    timestamptz DEFAULT now()
                 )
             """)
+            # Added after the table shipped, so an existing deployment needs it
+            # backfilled rather than recreated.
+            cur.execute('ALTER TABLE projections_payload '
+                        'ADD COLUMN IF NOT EXISTS sources_meta text')
     except Exception as e:
         _log.warning(f'[projections-store] init failed: {e!r}')
     finally:
@@ -291,7 +296,8 @@ def load_payload():
         return None
     try:
         with conn, conn.cursor() as cur:
-            cur.execute("""SELECT schema_version, generated_at, source, player_count, payload
+            cur.execute("""SELECT schema_version, generated_at, source, player_count,
+                                  payload, sources_meta
                            FROM projections_payload WHERE slot = 'current'""")
             row = cur.fetchone()
             if not row:
@@ -303,6 +309,11 @@ def load_payload():
                 'source':         row[2],
                 'player_count':   row[3],
                 'players':        json.loads(row[4]),
+                # Per-source ages from the publisher. Stored durably rather than
+                # left on the instance: without this the ages vanished on every
+                # deploy while the payload itself survived, so the freshness panel
+                # silently lost its detail rows.
+                'sources_meta':   json.loads(row[5]) if row[5] else {},
             }
     except Exception as e:
         _log.warning(f'[projections-store] payload load failed: {e!r}')
@@ -312,7 +323,7 @@ def load_payload():
 
 
 def save_payload(players: list, schema_version: str, generated_at: float,
-                 source: str = 'projections-app') -> bool:
+                 source: str = 'projections-app', sources_meta: dict | None = None) -> bool:
     """Replace the stored payload. Returns True only if Postgres accepted the write.
 
     Wholesale replacement rather than an upsert per player, deliberately: a
@@ -329,16 +340,19 @@ def save_payload(players: list, schema_version: str, generated_at: float,
         with conn, conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO projections_payload
-                    (slot, schema_version, generated_at, source, player_count, payload, uploaded_at)
-                VALUES ('current', %s, %s, %s, %s, %s, now())
+                    (slot, schema_version, generated_at, source, player_count, payload,
+                     sources_meta, uploaded_at)
+                VALUES ('current', %s, %s, %s, %s, %s, %s, now())
                 ON CONFLICT (slot) DO UPDATE SET
                     schema_version = excluded.schema_version,
                     generated_at   = excluded.generated_at,
                     source         = excluded.source,
                     player_count   = excluded.player_count,
                     payload        = excluded.payload,
+                    sources_meta   = excluded.sources_meta,
                     uploaded_at    = now()
-            """, (schema_version, generated_at, source, len(players), json.dumps(players)))
+            """, (schema_version, generated_at, source, len(players), json.dumps(players),
+                  json.dumps(sources_meta or {})))
         return True
     except Exception as e:
         _log.warning(f'[projections-store] payload save failed: {e!r}')

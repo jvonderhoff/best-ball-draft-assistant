@@ -2143,7 +2143,8 @@ def upload_projections():
     # the payload from the mirror on this instance, but the next deploy would lose
     # it — so that gets REPORTED rather than smoothed over.
     durable = ps.save_payload(players, payload['schema_version'],
-                              payload['generated_at'], payload['source'])
+                              payload['generated_at'], payload['source'],
+                              sources_meta=payload['sources_meta'])
     try:
         write_pushed(payload)
     except Exception as e:
