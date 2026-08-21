@@ -2178,7 +2178,6 @@ def data_freshness():
     Ages are computed here against server time and returned in hours, with a `state`
     per row, so the UI does not re-implement the thresholds and drift from them.
     """
-    import os as _os
     from app.projections import read_pushed, payload_meta, PUSHED_STALE_AFTER
     now = time.time()
 
@@ -2208,10 +2207,30 @@ def data_freshness():
     out = {'now': now, 'items': []}
 
     # DK pool / ADP — the only thing that refreshes on its own.
+    #
+    # **Age comes from the embedded `fetched_at`, NOT the file mtime, and this cost a
+    # real afternoon on 2026-08-20.** `player_cache.json` is committed on purpose —
+    # `_seed_players_if_empty` needs it to populate a cold database — and Render's
+    # filesystem is ephemeral, so every deploy checks the file out fresh and
+    # repopulates the wiped players table from it. mtime then reports the pool as
+    # seconds old while the ADP inside is as stale as the last commit. Measured that
+    # day: a receiver read ADP 78 on /recommend against DK's live 113, because the
+    # deploy had reseeded from a file whose `fetched_at` was 92.6 hours old — and this
+    # panel called it `ok` at "age 0.2h" the whole time.
+    #
+    # `cache_age_seconds()` in the fetcher already does this correctly and its
+    # docstring names this exact failure. It was three files away and simply not
+    # called here, which is the whole bug: the endpoint written to answer "how old is
+    # any of this" was answering it with the one timestamp a deploy resets.
+    #
+    # A cache with no `fetched_at` yields None, which `row()` renders as `unknown`
+    # rather than `unused` (the table is not empty) — the right answer for a pool
+    # whose age cannot be established.
     pool_ts = None
     try:
-        from app.data.api_fetcher import CACHE_PATH as _cp
-        pool_ts = _os.path.getmtime(_cp)
+        from app.data.api_fetcher import cache_age_seconds as _pool_age
+        _age = _pool_age()
+        pool_ts = (now - _age) if _age is not None else None
     except Exception:
         pass
     n_pool = None
@@ -2221,7 +2240,9 @@ def data_freshness():
     except Exception:
         pass
     out['items'].append(row('DK pool / ADP', pool_ts, 12,
-                            'auto-refreshes on a 6h TTL; the NEXT page load serves it', n_pool))
+                            'age of the ADP itself, not of the file — a deploy reseeds '
+                            'this table from the committed cache. Auto-refreshes on a 6h '
+                            'TTL; the NEXT page load serves it', n_pool))
 
     # The board.
     try:
