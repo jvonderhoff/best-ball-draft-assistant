@@ -103,6 +103,25 @@ script so a refresh cannot land mid-experiment. Full note in §5.4b.
 
 Render, auto-deploys from `master`, usually live in 45–120s.
 
+**Run `tools/preflight.py` before a draft, and after any deploy.**
+
+```bash
+python3 tools/preflight.py                       # checks prod; non-zero exit on FAIL
+```
+
+One command covering every way this app has silently served wrong data: a pool
+reseeded from the committed cache by a deploy, publishing stopped and V2 back on the
+frozen fallback, a board that is really `rankings_seed.json`, `projections_hydrated`
+false, an unreachable Postgres, and stale sources behind the payload. Each check
+exists because that failure actually happened, and every one of them was silent at
+the time — plausible numbers, no error, nothing logged. WARN is for legitimate states
+worth seeing; the commonest is a recent deploy, where prod correctly serves the seed
+until the 6h TTL trips.
+
+Its companion on the other side is `../projections/tools/source-ages.py`, which
+answers what prod cannot: whether the LOCAL sources have moved ahead of what was
+published.
+
 **The filesystem is ephemeral.** SQLite is wiped on every deploy and on idle spin-down.
 Anything that must survive lives in Postgres (`DATABASE_URL`): `rankings_store`,
 `drafts_store`, `projections_store`, `kv_store_external`.
