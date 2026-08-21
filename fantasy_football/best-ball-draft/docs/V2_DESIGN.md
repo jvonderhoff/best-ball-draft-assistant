@@ -58,12 +58,94 @@ Baseline is **65% VOR** (vs the last startable player, `slots × 12`) **+ 35% VO
 | `V2_VALUE_FIT_REF / FLOOR` | 0.50 / 0.20 | Roster-fit scaling, applied in three places (§3). |
 | `V2_BREAKOUT_SD_GAIN` | **0.0 (off)** | Fully plumbed. Swept twice against the fixed simulator; the two runs disagree about the shape near zero and agree 1.6 is bad. Effect is smaller than the variation a routine projection refresh introduces. See §4. |
 | `V2_OVER_TARGET_COST` | **0.0 (off)** | Roster-shape forcing. See §4. |
+| `V2_PROP_DEMEAN` | **`global`** | *Input side — lives in the PROJECTIONS app, not here.* Strips the pool-wide level out of the betting-prop correction, leaving only relative market opinion. Books quote by ADP, so the raw correction was a graded haircut on early picks: 92.6% of 136 corrections negative, mean −6.50%, and coverage running 95.7% in rounds 1–2 to 0% among the undrafted. Below. |
 
 All are overridable via env (`V2_MKT`, `V2_RANKW`, `V2_CORR`, `V2_BREAKOUT`,
 `V2_OVERCOST`, `V2_TIMING`, `V2_W_ACC`, `V2_W_PO`, `V2_QB_RB_REC`) for sweeping.
 Harness-side knobs are env too (`SIM_TEAM_CV`, `SIM_GAME_CV`, `SIM_BREAKOUT`,
 `SIM_BUST`, `SIM_LOAD_SPREAD`); `--seed` is a CLI flag and exists for replication —
 see the noise floor in §5.
+
+`V2_PROP_DEMEAN` is the exception to that list: it is read by
+`analysis/payload.py` in the **projections app**, because it changes the `ppg` this app
+is handed rather than how this app scores it. Setting it here does nothing. Changing it
+requires a republish to take effect in production.
+
+### 2.1 De-meaning the prop correction (2026-08-20)
+
+Sportsbook season lines are the one genuinely independent input the model has — priced
+with real money, and not drawn from the same industry consensus feeding Sleeper, ESPN,
+FFToday and ECR. They are applied per-COMPONENT rather than as a projection, because no
+book quotes a season receptions market and a prop-implied total would therefore be
+missing 70–100 of a receiver's ~280 points while an RB's is nearly complete. That design
+is right and is not what changed.
+
+What changed is that the correction carried a level:
+
+| | value |
+|---|---|
+| corrections applied | 136 of 429 players (31.7%) |
+| negative | **92.6%** |
+| mean / median | **−6.50% / −6.49%** of the projection |
+| SD | 6.10pp, range −28.4% to +35.0% |
+
+Mean and median agreeing to two decimals is the tell — a clean shift, not outliers.
+Sportsbook lines simply sit below the projection consensus, which is unsurprising once
+said aloud: industry projections are optimistic in a way money-backed markets cannot be.
+
+That would be harmless if it landed evenly, and **the reason it is not harmless is the
+general principle worth keeping: a uniform bias does not change a ranking, but a graded
+one does.** Books quote players worth quoting, which tracks ADP almost exactly:
+
+| tier | players | quoted | coverage | mean delta |
+|---|---|---|---|---|
+| R1–2 | 23 | 22 | 95.7% | −7.9% |
+| R3–5 | 37 | 34 | 91.9% | −7.7% |
+| R6–10 | 60 | 49 | 81.7% | −6.4% |
+| R11–18 | 99 | 31 | 31.3% | −4.4% |
+| undrafted | 199 | 0 | 0.0% | +0.0% |
+
+So the level acted as a haircut on exactly the players you draft early, decaying to
+nothing by the end of the board — flattening the top of the pool toward the bottom for
+reasons that had nothing to do with any market's view of anyone.
+
+Two mechanical explanations were ruled out rather than assumed. Sleeper is not inflated
+relative to the other sources (0.963 of ESPN, 0.976 of FFToday in aggregate), and
+`scale` already normalises the component basis to the consensus total.
+
+**De-meaning removes the level, not the gradient**, and the difference is worth stating
+because the first write-up of this claimed otherwise:
+
+| tier | off | global | position |
+|---|---|---|---|
+| R1–2 | −7.91% | −1.43% | −0.43% |
+| R3–5 | −7.75% | −1.27% | −1.02% |
+| R6–10 | −6.37% | +0.10% | −0.02% |
+| R11–18 | −4.35% | +1.92% | +1.15% |
+| **spread** | 3.56pp | 3.35pp | **1.58pp** |
+
+`global` recentres the correction — 50% of players positive, up from 7% — and leaves a
+~3.3pp tilt. Part of that residual is positional MIX rather than ADP (early rounds are
+RB-heavy, and RB carried the largest haircut at −8.7% against QB's −4.9%), which is why
+`position` more than halves it. The rest may be real: the market plausibly does think the
+industry overrates early picks more than late ones. Removing a 6.5% artifact while
+leaving a 3.3pp effect that might be genuine is the conservative trade, and it is why
+`position` is offered but not default — it can discard cross-position market opinion,
+and cross-position is exactly what a draft recommender compares.
+
+**Effect on the payload:** 135 of 418 players moved, all upward, +6.09% to +9.40% on
+`ppg` (mean +7.28% among movers, +2.35% pool-wide). Nobody moved down, which is what
+removing a haircut looks like. The unquoted two-thirds are untouched by construction —
+de-meaning applies only where a market was used, since crediting unquoted players would
+recreate the same gradient with the sign flipped.
+
+**Unmeasurable in this harness, and shipped anyway — deliberately.** This is the §4
+aDOT/WOPR blind spot exactly: under `--truth market` truth is ADP, so any move away from
+ADP grades worse whether or not it is correct; under `--truth proj` the props are already
+baked into the answer key. Props themselves have never been harness-measured either. What
+justifies the change is not a simulated EV number but the coverage table above, which
+shows a distortion that exists independently of any model of the world. `off` restores
+the previous behaviour for comparison.
 
 ---
 

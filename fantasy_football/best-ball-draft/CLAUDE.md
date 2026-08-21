@@ -347,7 +347,19 @@ projections with components, scraped in the projections app
 so this is a real change to what V2 scores with — the first input improvement that did
 not need the harness's permission.
 
-`consensus_ppr` is now **Sleeper + ESPN + FFToday + props**.
+`consensus_ppr` is now **Sleeper + ESPN + FFToday**. (FantasyPros' season table and
+Yahoo are in the average's source list but hold zero rows everywhere, and it filters on
+`v > 0`.)
+
+**Props are NOT in `consensus_ppr`, and this file said they were until 2026-08-20.**
+They cannot be: no book quotes a season receptions market, so a prop-implied total is
+missing 70-100 of a receiver's ~280 points while an RB's is nearly complete, and
+averaging that in would drag every pass-catcher down relative to every runner. They are
+applied as a per-COMPONENT correction on top instead — only quoted components move, a
+missing market contributes exactly zero. What is true is narrower: a used market adds 1
+to `sources`, which sets the ECR blend weight, so props do change valuations, just not
+through the average. **The correction is de-meaned as of 2026-08-20** — see V2_DESIGN
+§2.1 for why, and `V2_PROP_DEMEAN` in the projections app for the modes.
 
 **Consequence: `analysis-verify` no longer expects the two paths to be identical, and
 that is correct.** The frozen `app/analysis.py` here still blends Sleeper + ESPN +
