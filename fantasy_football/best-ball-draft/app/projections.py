@@ -426,6 +426,10 @@ def payload_meta(payload: dict) -> dict:
         'schema_version': payload.get('schema_version'),
         'source':       payload.get('source'),
         'count':        len(payload.get('players') or []),
+        # Which code published it. Carried here rather than read separately by each
+        # caller so /api/projections/meta and /api/freshness cannot disagree about
+        # the provenance of the same payload.
+        'publisher':    payload.get('publisher') or {},
     }
 
 

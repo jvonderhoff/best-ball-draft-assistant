@@ -410,6 +410,7 @@ def _hydrate_external_projections(conn):
                 'generated_at':   ext_payload['generated_at'],
                 'source':         ext_payload['source'],
                 'sources_meta':   ext_payload.get('sources_meta') or {},
+                'publisher':      ext_payload.get('publisher') or {},
             })
             _log.info(f"[projections-store] payload hydrated: "
                       f"{len(ext_payload['players'])} players, "

@@ -2137,6 +2137,13 @@ def upload_projections():
         # "how old is the ESPN data behind these numbers" — which is how an
         # 18-day-old props table went unnoticed while every number looked normal.
         'sources_meta':   body.get('sources_meta') or {},
+        # Which code published this: git SHA, branch, dirty flag. Recorded because
+        # inferring it cost an afternoon on 2026-08-20 — a payload arrived with no
+        # sources_meta while the publisher on the Mac built eleven keys for the same
+        # cache, and nothing said which code had run. `analysis-serve` uses
+        # use_reloader=False, so a process started before a feature existed keeps
+        # publishing without it indefinitely and looks identical from here.
+        'publisher':      body.get('publisher') or {},
     }
 
     # Durable first, mirror second. If Postgres refuses the write we still serve
@@ -2144,7 +2151,8 @@ def upload_projections():
     # it — so that gets REPORTED rather than smoothed over.
     durable = ps.save_payload(players, payload['schema_version'],
                               payload['generated_at'], payload['source'],
-                              sources_meta=payload['sources_meta'])
+                              sources_meta=payload['sources_meta'],
+                              publisher=payload['publisher'])
     try:
         write_pushed(payload)
     except Exception as e:
@@ -2262,9 +2270,25 @@ def data_freshness():
     pushed = read_pushed()
     if pushed:
         m = payload_meta(pushed)
+        # The note names the CODE that published, not just the app. "pushed by
+        # projections-app" was true of every payload ever sent and therefore said
+        # nothing; a SHA distinguishes a current publisher from a process that has
+        # been running since before the feature you are looking for existed.
+        pub  = m.get('publisher') or {}
+        who  = m.get('source')
+        if pub.get('sha'):
+            who += f" @ {pub['sha']}"
+            if pub.get('branch') and pub['branch'] != 'main':
+                who += f" ({pub['branch']})"
+            if pub.get('dirty'):
+                who += ', dirty tree'
+            elif pub.get('dirty') is None:
+                who += ', tree state unknown'
+        else:
+            who += ' — version unknown, published before provenance was recorded'
         out['items'].append(row('V2 payload (published)', m['generated_at'],
                                 PUSHED_STALE_AFTER / 3600,
-                                f"pushed by {m.get('source')}", m['count']))
+                                f"pushed by {who}", m['count']))
         # And every source behind it, as reported by the publisher.
         #
         # **An absent sources_meta must not render as silence, and until 2026-08-19

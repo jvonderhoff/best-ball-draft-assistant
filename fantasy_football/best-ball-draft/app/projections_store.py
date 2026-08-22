@@ -111,6 +111,12 @@ def init_external() -> None:
             # backfilled rather than recreated.
             cur.execute('ALTER TABLE projections_payload '
                         'ADD COLUMN IF NOT EXISTS sources_meta text')
+            # Which code published this — git SHA, branch, dirty flag. Durable for
+            # the same reason sources_meta is: a deploy wipes the instance mirror,
+            # and provenance that vanishes on deploy is provenance you cannot use
+            # to explain a deploy.
+            cur.execute('ALTER TABLE projections_payload '
+                        'ADD COLUMN IF NOT EXISTS publisher text')
     except Exception as e:
         _log.warning(f'[projections-store] init failed: {e!r}')
     finally:
@@ -297,7 +303,7 @@ def load_payload():
     try:
         with conn, conn.cursor() as cur:
             cur.execute("""SELECT schema_version, generated_at, source, player_count,
-                                  payload, sources_meta
+                                  payload, sources_meta, publisher
                            FROM projections_payload WHERE slot = 'current'""")
             row = cur.fetchone()
             if not row:
@@ -314,6 +320,9 @@ def load_payload():
                 # deploy while the payload itself survived, so the freshness panel
                 # silently lost its detail rows.
                 'sources_meta':   json.loads(row[5]) if row[5] else {},
+                # {} for a payload published before this column existed, which reads
+                # correctly as "provenance unknown" rather than claiming a version.
+                'publisher':      json.loads(row[6]) if row[6] else {},
             }
     except Exception as e:
         _log.warning(f'[projections-store] payload load failed: {e!r}')
@@ -323,7 +332,8 @@ def load_payload():
 
 
 def save_payload(players: list, schema_version: str, generated_at: float,
-                 source: str = 'projections-app', sources_meta: dict | None = None) -> bool:
+                 source: str = 'projections-app', sources_meta: dict | None = None,
+                 publisher: dict | None = None) -> bool:
     """Replace the stored payload. Returns True only if Postgres accepted the write.
 
     Wholesale replacement rather than an upsert per player, deliberately: a
@@ -341,8 +351,8 @@ def save_payload(players: list, schema_version: str, generated_at: float,
             cur.execute("""
                 INSERT INTO projections_payload
                     (slot, schema_version, generated_at, source, player_count, payload,
-                     sources_meta, uploaded_at)
-                VALUES ('current', %s, %s, %s, %s, %s, %s, now())
+                     sources_meta, publisher, uploaded_at)
+                VALUES ('current', %s, %s, %s, %s, %s, %s, %s, now())
                 ON CONFLICT (slot) DO UPDATE SET
                     schema_version = excluded.schema_version,
                     generated_at   = excluded.generated_at,
@@ -350,9 +360,10 @@ def save_payload(players: list, schema_version: str, generated_at: float,
                     player_count   = excluded.player_count,
                     payload        = excluded.payload,
                     sources_meta   = excluded.sources_meta,
+                    publisher      = excluded.publisher,
                     uploaded_at    = now()
             """, (schema_version, generated_at, source, len(players), json.dumps(players),
-                  json.dumps(sources_meta or {})))
+                  json.dumps(sources_meta or {}), json.dumps(publisher or {})))
         return True
     except Exception as e:
         _log.warning(f'[projections-store] payload save failed: {e!r}')
