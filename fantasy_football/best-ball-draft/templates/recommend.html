@@ -491,6 +491,12 @@
   <div class="tab" data-tab="stacks">Stacks</div>
 </div>
 
+<!-- Stale-data warning. ABOVE the tab panels on purpose: it sat between the player
+     list and the Roster tab until 2026-08-20, which put it ~3,200px down a 3,290px
+     page — rendered, populated, and below the fold on every screen anyone looks at
+     mid-draft. A warning nobody scrolls to is the same as no warning. -->
+<div id="staleBar" class="rec-warn-bar" style="display:none;margin-bottom:8px"></div>
+
 <!-- ── Recs Tab ── -->
 <div id="tab-recs" class="tab-panel active">
   <div class="pick-banner">
@@ -534,7 +540,6 @@
 </div>
 
 <!-- ── Roster Tab ── -->
-<div id="staleBar" class="rec-warn-bar" style="display:none;margin-bottom:8px"></div>
 <div id="tab-roster" class="tab-panel">
   <div class="needs-row" id="needsRow"></div>
   <div id="capitalBar"></div>
@@ -2278,13 +2283,33 @@ async function checkFreshness() {
   try {
     const d = await (await fetch('/api/freshness')).json();
     if (d.worst_state !== 'stale') return;
-    const bad = d.items.filter(i => i.state === 'stale' && !i.label.startsWith('  '));
-    if (!bad.length) return;
+
+    // Top-level rows are named; the sources BEHIND the payload are rolled up into a
+    // count. Both halves matter and the second was missing until 2026-08-20: the
+    // filter dropped every indented row, so a stale source set worst_state to
+    // `stale`, passed the gate above, filtered to an empty list, and returned having
+    // drawn nothing. Sleeper went 7 days old with prod knowing, /setup showing it,
+    // and this bar — the one thing you actually have open mid-draft — silent.
+    //
+    // Rolled up rather than listed because there are eleven of them, and a bar
+    // naming all eleven is the always-on banner this was written to avoid. The count
+    // plus the oldest age is enough to decide whether to go look.
+    const fmt = h => h >= 48 ? (h/24).toFixed(1)+'d' : h.toFixed(0)+'h';
+    const stale = d.items.filter(i => i.state === 'stale');
+    const top   = stale.filter(i => !i.label.startsWith('  '));
+    const sub   = stale.filter(i =>  i.label.startsWith('  '));
+    if (!top.length && !sub.length) return;
     const el = document.getElementById('staleBar');
     if (!el) return;
-    el.innerHTML = '⚠ Stale data: ' + bad.map(i =>
-      `<strong>${i.label}</strong> ${i.age_hours >= 48 ? (i.age_hours/24).toFixed(1)+'d' : i.age_hours.toFixed(0)+'h'}`
-    ).join(' · ') + ' — <a href="/setup" style="color:inherit;text-decoration:underline">details</a>';
+
+    const parts = top.map(i => `<strong>${i.label}</strong> ${fmt(i.age_hours)}`);
+    if (sub.length) {
+      const oldest = Math.max(...sub.map(i => i.age_hours || 0));
+      parts.push(`<strong>${sub.length} source${sub.length > 1 ? 's' : ''}</strong> `
+               + `behind the payload, oldest ${fmt(oldest)}`);
+    }
+    el.innerHTML = '⚠ Stale data: ' + parts.join(' · ')
+      + ' — <a href="/setup" style="color:inherit;text-decoration:underline">details</a>';
     el.style.display = '';
   } catch (e) { /* advisory only; never block a draft on it */ }
 }
