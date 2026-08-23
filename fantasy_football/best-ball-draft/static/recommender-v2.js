@@ -578,6 +578,14 @@ function v2AttachEffective(players, projMap, opts = {}) {
       customRanked: customPts != null,
       projected: !!(proj && proj.ppg > 0),
       recShare: recShare,
+      // Carried straight through for the card. `injury` comes from Sleeper's own
+      // metadata rather than being inferred from a source that zeroed him, and
+      // `sourceNames` answers the question `sources: 1` could only raise.
+      injury:   (proj && proj.injury) || null,
+      // proj_sources excludes the betting-market +1, which is what you want when
+      // asking "how many people have actually projected this player".
+      projSources: (proj && proj.proj_sources != null) ? proj.proj_sources : null,
+      sourceNames: (proj && proj.source_names) || null,
     };
   }
 
@@ -1534,8 +1542,33 @@ function getTopRecommendationsV2(available, myTeam, myPickNumber, n = 5, nextMyP
       reasons.push(`🔓 unsigned — ${Math.round(v2FreeAgentSignProb(p, ctx) * 100)}% signing weight, no known schedule`);
     }
     if (p._eff) {
+      // Injury first — it outranks anything else on the card. From Sleeper's player
+      // metadata, so it does not depend on a projection source having noticed:
+      // Ricky Pearsall sat on IR carrying a 116-point ESPN projection because ESPN
+      // had not updated and consensus_ppr averages only non-zero values, making the
+      // one stale source 100% of the answer. avail is already 0 for these; this is
+      // what makes the reason visible rather than only the score.
+      // Shown for statuses that mean something over a SEASON. `Questionable` is
+      // excluded because it is a weekly designation and 78 of the 433 players in
+      // this pool carry one — Nacua, McCaffrey, Mahomes and Tyreek Hill among them.
+      // A red cross on a fifth of the board is the always-on warning nobody reads,
+      // which is the same mistake as a permanently-red freshness check. The field
+      // is still in the payload for anything that wants it; this only gates the card.
+      const inj = p._eff.injury;
+      if (inj && inj.status && inj.status !== 'Questionable' && inj.status !== 'NA') {
+        const part = inj.part ? ` (${inj.part})` : '';
+        reasons.push(p._eff.avail === 0
+          ? `🚑 OUT FOR SEASON — ${inj.status}${part}`
+          : `🚑 ${inj.status}${part}`);
+      }
       if (!p._eff.projected) reasons.push('⚠ no projection — ADP-implied');
-      else if (p._eff.sources === 1) reasons.push('single projection source');
+      else if ((p._eff.projSources ?? p._eff.sources) === 1) {
+        // Name the source. "single projection source" was already here and was too
+        // quiet to act on — it raised the question without answering it.
+        const who = (p._eff.sourceNames && p._eff.sourceNames.length)
+          ? p._eff.sourceNames.join('/') : 'one source';
+        reasons.push(`⚠ ${who} only — no other projection`);
+      }
     }
 
     // Survival read: if he is likely to last, you can take a scarcer need first.
