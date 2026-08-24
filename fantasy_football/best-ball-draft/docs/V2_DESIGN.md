@@ -58,7 +58,7 @@ Baseline is **65% VOR** (vs the last startable player, `slots × 12`) **+ 35% VO
 | `V2_VALUE_FIT_REF / FLOOR` | 0.50 / 0.20 | Roster-fit scaling, applied in three places (§3). |
 | `V2_BREAKOUT_SD_GAIN` | **0.0 (off)** | Fully plumbed. Swept twice against the fixed simulator; the two runs disagree about the shape near zero and agree 1.6 is bad. Effect is smaller than the variation a routine projection refresh introduces. See §4. |
 | `V2_OVER_TARGET_COST` | **0.0 (off)** | Roster-shape forcing. See §4. |
-| `V2_PROP_DEMEAN` | **`global`** | *Input side — lives in the PROJECTIONS app, not here.* Strips the pool-wide level out of the betting-prop correction, leaving only relative market opinion. Books quote by ADP, so the raw correction was a graded haircut on early picks: 92.6% of 136 corrections negative, mean −6.50%, and coverage running 95.7% in rounds 1–2 to 0% among the undrafted. Below. |
+| `V2_PROP_DEMEAN` | **`position`** | *Input side — lives in the PROJECTIONS app, not here.* Strips the pool-wide level out of the betting-prop correction, leaving only relative market opinion. Books quote by ADP, so the raw correction was a graded haircut on early picks: 92.6% of 136 corrections negative, mean −6.50%, and coverage running 95.7% in rounds 1–2 to 0% among the undrafted. Below. |
 
 All are overridable via env (`V2_MKT`, `V2_RANKW`, `V2_CORR`, `V2_BREAKOUT`,
 `V2_OVERCOST`, `V2_TIMING`, `V2_W_ACC`, `V2_W_PO`, `V2_QB_RB_REC`) for sweeping.
@@ -123,6 +123,24 @@ because the first write-up of this claimed otherwise:
 | R6–10 | −6.37% | +0.10% | −0.02% |
 | R11–18 | −4.35% | +1.92% | +1.15% |
 | **spread** | 3.56pp | 3.35pp | **1.58pp** |
+
+**Corrected the same day: `position` is the default, not `global`.** The reasoning
+below underweighted how much of the positional spread is artifact. Global de-meaning
+subtracts one pool average, so a position hit less hard than average comes out ahead of
+one hit harder — regardless of what any market thinks. Books price QBs nearly completely
+(0.88 of consensus recovered, against ~0.52 for everyone else), so QBs took the smaller
+raw haircut and global de-meaning turned that coverage gap into a standing bonus. On the
+board, props on vs off, top 24 by ceiling:
+
+| mode | churn | in | out | mean move |
+|---|---|---|---|---|
+| `global` | 4 | QB 4 | RB 3, WR 1 | 3.2 slots |
+| `position` | 1 | QB 1 | WR 1 | 2.3 slots |
+
+Four quarterbacks displacing Achane, Jeanty, Henry and Olave is not a market opinion, it
+is which players get priced completely. The original objection stands and is outweighed:
+`position` does discard genuine cross-position opinion if any exists, but that is
+unproven and unprovable here while the coverage gap is measured.
 
 `global` recentres the correction — 50% of players positive, up from 7% — and leaves a
 ~3.3pp tilt. Part of that residual is positional MIX rather than ADP (early rounds are
