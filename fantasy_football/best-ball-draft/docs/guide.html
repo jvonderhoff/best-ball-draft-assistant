@@ -184,9 +184,26 @@
   <strong>scores who to take now</strong> given who's on your roster, where your next
   pick lands, and your own rankings.</p>
   <p>The thing that makes best ball different from normal fantasy: you never set a
-  lineup. Each week your best players are counted automatically. So a player who scores
-  8, 8, then 35 is worth more than one who scores 15 every week — the 35 wins you a
-  week, the two 8s get dropped. That single fact drives most of the design.</p>
+  lineup. Each week your best players are counted automatically, and your worst are
+  dropped. So the <em>shape</em> of a player's scoring matters, not just his total.</p>
+  <p><strong>How much it matters depends entirely on where he sits in your lineup</strong>,
+  and it is easy to overstate. For a stud who starts every week, his bad weeks are not
+  dropped — they count, and you get roughly his average whatever the shape. For a depth
+  player hovering near the cut line, the bad weeks genuinely do fall away, so his spikes
+  are close to free. Variance is worth paying for in the second case and roughly neutral
+  in the first.</p>
+  <p><strong>And consistency has real value of its own.</strong> The season is 17 weeks,
+  not one — if you are thin at a position, a steady player is what stops a hole opening
+  when the spiky ones all miss the same week.</p>
+  <div class="note good">
+    <span class="tag">The model already handles this</span>
+    <p>V2 does not simply prefer spiky players. It scores each candidate as <em>how much
+    he raises your weekly best</em> against whoever currently holds that slot — which
+    automatically pays for variance only where it can actually be used, and pays for
+    reliability where it cannot. When the model was pushed harder toward spike and
+    measured, it did <strong>worse</strong> at large-field contests, and an early version
+    that inflated spiky players directly turned out to be counting variance twice.</p>
+  </div>
 </section>
 
 <section id="shape">
