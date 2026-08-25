@@ -1,0 +1,482 @@
+<title>Best Ball Assistant Handbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root{
+    --ground:#F5F8FB; --surface:#FFFFFF; --sunk:#EDF2F7;
+    --ink:#101720; --ink-2:#3B4757; --muted:#6B7889;
+    --line:#DCE4EC; --line-2:#C6D2DE;
+    --accent:#15618F; --accent-soft:#E4EFF7;
+    --ok:#2E8B62; --warn:#B4700F; --bad:#C0453C;
+    --shadow:0 1px 2px rgba(16,23,32,.06),0 8px 24px rgba(16,23,32,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0B1017; --surface:#131A24; --sunk:#0F1620;
+      --ink:#E7EEF6; --ink-2:#BAC6D4; --muted:#8593A5;
+      --line:#222D3A; --line-2:#31404F;
+      --accent:#5FB0E5; --accent-soft:#16293A;
+      --ok:#5EC492; --warn:#E0A340; --bad:#E5716A;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0B1017; --surface:#131A24; --sunk:#0F1620;
+    --ink:#E7EEF6; --ink-2:#BAC6D4; --muted:#8593A5;
+    --line:#222D3A; --line-2:#31404F;
+    --accent:#5FB0E5; --accent-soft:#16293A;
+    --ok:#5EC492; --warn:#E0A340; --bad:#E5716A;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.3);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:16.5px; line-height:1.65; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{display:grid; grid-template-columns:246px minmax(0,1fr); gap:56px;
+        max-width:1140px; margin:0 auto; padding:0 28px}
+
+  /* ── nav ─────────────────────────────────────────────── */
+  nav{position:sticky; top:0; align-self:start; max-height:100vh; overflow-y:auto;
+      padding:44px 0 40px}
+  nav .brand{font-family:Archivo,sans-serif; font-weight:700; font-size:15px;
+             letter-spacing:-.01em; margin:0 0 4px}
+  nav .brand-sub{font-size:12.5px; color:var(--muted); margin:0 0 22px}
+  nav ol{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1px}
+  nav a{display:flex; gap:10px; align-items:baseline; text-decoration:none;
+        color:var(--ink-2); font-size:13.5px; padding:5px 10px 5px 8px;
+        border-left:2px solid transparent; border-radius:0 4px 4px 0}
+  nav a .n{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted);
+           font-variant-numeric:tabular-nums}
+  nav a:hover{background:var(--sunk); color:var(--ink)}
+  nav a:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+  nav a.on{border-left-color:var(--accent); color:var(--accent); background:var(--accent-soft)}
+
+  /* ── content ─────────────────────────────────────────── */
+  main{padding:44px 0 120px; min-width:0}
+  header.top{border-bottom:1px solid var(--line); padding-bottom:30px; margin-bottom:44px}
+  .eyebrow{font-family:"IBM Plex Mono",monospace; font-size:11.5px; letter-spacing:.14em;
+           text-transform:uppercase; color:var(--muted); margin:0 0 12px}
+  h1{font-family:Archivo,sans-serif; font-weight:700; font-size:clamp(30px,4.4vw,42px);
+     line-height:1.1; letter-spacing:-.022em; margin:0 0 14px; text-wrap:balance}
+  .standfirst{font-size:18px; color:var(--ink-2); margin:0; max-width:60ch; text-wrap:pretty}
+
+  section{scroll-margin-top:24px; margin-bottom:64px}
+  h2{font-family:Archivo,sans-serif; font-weight:700; font-size:24px; letter-spacing:-.015em;
+     margin:0 0 6px; text-wrap:balance; display:flex; gap:12px; align-items:baseline}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:12.5px; color:var(--accent);
+        font-weight:500; font-variant-numeric:tabular-nums}
+  h3{font-family:Archivo,sans-serif; font-weight:600; font-size:16.5px; letter-spacing:-.008em;
+     margin:32px 0 8px; text-wrap:balance}
+  p{margin:0 0 15px; max-width:66ch; text-wrap:pretty}
+  .lede{color:var(--ink-2); margin-bottom:22px; max-width:64ch}
+  strong{font-weight:600; color:var(--ink)}
+  a{color:var(--accent)}
+  code{font-family:"IBM Plex Mono",monospace; font-size:.875em; background:var(--sunk);
+       padding:.12em .38em; border-radius:3px; border:1px solid var(--line)}
+
+  pre{background:var(--sunk); border:1px solid var(--line); border-radius:7px;
+      padding:14px 16px; overflow-x:auto; margin:0 0 18px; box-shadow:var(--shadow)}
+  pre code{background:none; border:0; padding:0; font-size:13px; line-height:1.6;
+           color:var(--ink); white-space:pre}
+  .cmd{position:relative; padding-left:34px}
+  .cmd::before{content:"$"; position:absolute; left:16px; color:var(--muted);
+               font-family:"IBM Plex Mono",monospace; font-size:13px}
+
+  ul,ol.steps{margin:0 0 16px; padding-left:20px; max-width:66ch}
+  li{margin-bottom:7px}
+
+  /* callouts — stripe encodes severity, not decoration */
+  .note{border-left:3px solid var(--line-2); background:var(--surface); border-radius:0 7px 7px 0;
+        padding:14px 18px; margin:0 0 18px; max-width:66ch; box-shadow:var(--shadow)}
+  .note p:last-child{margin-bottom:0}
+  .note .tag{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.12em;
+             text-transform:uppercase; display:block; margin-bottom:5px; color:var(--muted)}
+  .note.trap{border-left-color:var(--bad)} .note.trap .tag{color:var(--bad)}
+  .note.watch{border-left-color:var(--warn)} .note.watch .tag{color:var(--warn)}
+  .note.good{border-left-color:var(--ok)} .note.good .tag{color:var(--ok)}
+
+  .scroll{overflow-x:auto; margin:0 0 20px; border:1px solid var(--line);
+          border-radius:7px; background:var(--surface); box-shadow:var(--shadow)}
+  table{border-collapse:collapse; width:100%; font-size:14.5px}
+  th,td{text-align:left; padding:10px 15px; border-bottom:1px solid var(--line);
+        vertical-align:top}
+  th{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.09em;
+     text-transform:uppercase; color:var(--muted); font-weight:500; white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  td.num{font-variant-numeric:tabular-nums; white-space:nowrap}
+
+  /* pipeline — a real sequence, so it is numbered */
+  .flow{display:grid; gap:2px; margin:0 0 22px; border:1px solid var(--line);
+        border-radius:8px; overflow:hidden; background:var(--line)}
+  .flow .step{background:var(--surface); padding:15px 18px; display:grid;
+              grid-template-columns:26px minmax(0,1fr); gap:14px; align-items:start}
+  .flow .step .n{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--accent);
+                 padding-top:3px; font-variant-numeric:tabular-nums}
+  .flow .step h4{margin:0 0 3px; font-family:Archivo,sans-serif; font-weight:600; font-size:15px}
+  .flow .step p{margin:0; font-size:14px; color:var(--ink-2); max-width:58ch}
+  .flow .step .where{font-family:"IBM Plex Mono",monospace; font-size:10.5px;
+                     color:var(--muted); letter-spacing:.06em; text-transform:uppercase}
+
+  .split{display:grid; grid-template-columns:repeat(auto-fit,minmax(258px,1fr)); gap:16px; margin:0 0 22px}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:8px;
+        padding:18px 20px; box-shadow:var(--shadow)}
+  .card h4{margin:0 0 3px; font-family:Archivo,sans-serif; font-weight:700; font-size:16px}
+  .card .sub{font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--muted);
+             letter-spacing:.08em; text-transform:uppercase; margin:0 0 11px}
+  .card p{font-size:14.5px; margin:0 0 9px; color:var(--ink-2)}
+  .card p:last-child{margin-bottom:0}
+
+  dl{margin:0} dt{font-weight:600; margin-top:16px; font-size:15.5px}
+  dt code{font-size:.92em}
+  dd{margin:3px 0 0; color:var(--ink-2); max-width:64ch; font-size:15px}
+
+  footer{border-top:1px solid var(--line); padding-top:24px; color:var(--muted); font-size:14px}
+
+  @media (max-width:880px){
+    .wrap{grid-template-columns:1fr; gap:0; padding:0 20px}
+    nav{position:static; max-height:none; padding:32px 0 8px; border-bottom:1px solid var(--line)}
+    nav ol{flex-direction:row; flex-wrap:wrap; gap:4px}
+    nav a{border-left:0; border-radius:5px; padding:5px 9px; background:var(--sunk)}
+    nav a.on{border-left:0}
+    main{padding-top:32px}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+<div class="wrap">
+<nav>
+  <p class="brand">Best Ball Assistant</p>
+  <p class="brand-sub">Handbook · Aug 2026</p>
+  <ol>
+    <li><a href="#what"><span class="n">01</span> What it is</a></li>
+    <li><a href="#shape"><span class="n">02</span> The two halves</a></li>
+    <li><a href="#flow"><span class="n">03</span> Where numbers come from</a></li>
+    <li><a href="#projection"><span class="n">04</span> One player, end to end</a></li>
+    <li><a href="#models"><span class="n">05</span> V1 and V2</a></li>
+    <li><a href="#routine"><span class="n">06</span> The routine</a></li>
+    <li><a href="#wrong"><span class="n">07</span> Telling if it's wrong</a></li>
+    <li><a href="#traps"><span class="n">08</span> Traps</a></li>
+    <li><a href="#words"><span class="n">09</span> Glossary</a></li>
+    <li><a href="#deeper"><span class="n">10</span> Going deeper</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="top">
+  <p class="eyebrow">Reference · written for you, not for a developer</p>
+  <h1>Best Ball Assistant Handbook</h1>
+  <p class="standfirst">Everything the system does, why it's built in two pieces, and
+  the handful of things that will bite you if you forget them.</p>
+</header>
+
+<section id="what">
+  <h2><span class="n">01</span> What it is</h2>
+  <p class="lede">A draft assistant for DraftKings Best Ball. During a draft it tells you
+  who to take next, using more than the draft-room consensus.</p>
+  <p>It does three jobs. It <strong>gathers projections</strong> from several places and
+  averages them. It <strong>adjusts them with betting markets</strong>, which are real
+  money and therefore a sharper read than any projection site. And it
+  <strong>scores who to take now</strong> given who's on your roster, where your next
+  pick lands, and your own rankings.</p>
+  <p>The thing that makes best ball different from normal fantasy: you never set a
+  lineup. Each week your best players are counted automatically. So a player who scores
+  8, 8, then 35 is worth more than one who scores 15 every week — the 35 wins you a
+  week, the two 8s get dropped. That single fact drives most of the design.</p>
+</section>
+
+<section id="shape">
+  <h2><span class="n">02</span> The two halves</h2>
+  <p class="lede">One system, two programs, in two different places. This is the piece
+  most worth understanding, because nearly every gotcha comes from it.</p>
+  <div class="split">
+    <div class="card">
+      <h4>The draft app</h4>
+      <p class="sub">Runs on Render · always on</p>
+      <p>The website you use during a draft. Holds the player pool and ADP, your
+      rankings board, and both recommendation models.</p>
+      <p><strong>Always available, including on your phone.</strong></p>
+    </div>
+    <div class="card">
+      <h4>The projections app</h4>
+      <p class="sub">Runs on your Mac · only when you start it</p>
+      <p>Gathers the projections and betting lines, blends them, and sends the finished
+      numbers to the draft app.</p>
+      <p><strong>Not on the internet. Not on your phone.</strong></p>
+    </div>
+  </div>
+  <h3>Why split at all</h3>
+  <p>DraftKings blocks its betting-line API from data centres. The identical request
+  that works from your house returns "forbidden" from Render. Since betting lines are a
+  real input, the gathering has to happen on a home connection — so it runs on the Mac
+  and <em>pushes</em> the finished numbers up.</p>
+  <div class="note good">
+    <span class="tag">The upshot</span>
+    <p>Your Mac can be asleep during a draft. The draft app keeps working on whatever
+    was last sent to it. What it <em>won't</em> do is update by itself — nothing is
+    automatic except the player pool.</p>
+  </div>
+</section>
+
+<section id="flow">
+  <h2><span class="n">03</span> Where the numbers come from</h2>
+  <p class="lede">Five stages. Only the first is automatic; the rest happen when you run
+  them, which is why the routine in section 6 exists.</p>
+  <div class="flow">
+    <div class="step"><span class="n">01</span><div>
+      <span class="where">Automatic · every 6 hours</span>
+      <h4>The player pool and ADP</h4>
+      <p>Who's draftable and roughly when they go. The draft app refreshes this itself.</p>
+    </div></div>
+    <div class="step"><span class="n">02</span><div>
+      <span class="where">Your Mac · you run it</span>
+      <h4>Three projection sources</h4>
+      <p>Sleeper, ESPN and FFToday each guess a player's season points. Sleeper is
+      re-fetched every time you build; the other two you refresh.</p>
+    </div></div>
+    <div class="step"><span class="n">03</span><div>
+      <span class="where">Your Mac · home connection required</span>
+      <h4>Betting lines</h4>
+      <p>DraftKings and Underdog season props. These adjust individual pieces of a
+      projection — receiving yards, touchdowns — never the total.</p>
+    </div></div>
+    <div class="step"><span class="n">04</span><div>
+      <span class="where">Your Mac · you run it</span>
+      <h4>Blend and publish</h4>
+      <p>Everything is combined into one small file and pushed to the draft app, which
+      stores it permanently.</p>
+    </div></div>
+    <div class="step"><span class="n">05</span><div>
+      <span class="where">Render · live</span>
+      <h4>The draft app scores with it</h4>
+      <p>Until you publish again, this is what your recommendations are based on.</p>
+    </div></div>
+  </div>
+  <div class="note trap">
+    <span class="tag">The one that catches everyone</span>
+    <p><strong>Publishing is manual.</strong> Refreshing sources on your Mac changes
+    nothing in production until you publish. The Analysis page looking correct is not
+    evidence that the draft app agrees with it.</p>
+  </div>
+</section>
+
+<section id="projection">
+  <h2><span class="n">04</span> One player, end to end</h2>
+  <p class="lede">Ja'Marr Chase, from three raw guesses to the number the model sorts on.</p>
+  <div class="scroll"><table>
+    <tr><th>Step</th><th>Value</th><th>What happened</th></tr>
+    <tr><td>Sleeper</td><td class="num">311.1</td><td>One source's season-point guess</td></tr>
+    <tr><td>ESPN</td><td class="num">337.5</td><td>Another</td></tr>
+    <tr><td>FFToday</td><td class="num">330.5</td><td>And a third</td></tr>
+    <tr><td><strong>Average</strong></td><td class="num"><strong>326.4</strong></td><td>Plain mean of whoever has a number</td></tr>
+    <tr><td>Betting markets</td><td class="num">+1.5</td><td>Only the pieces a book actually prices move</td></tr>
+    <tr><td>DK bonuses</td><td class="num">+13.7</td><td>DraftKings pays +3 for a 100-yard game</td></tr>
+    <tr><td><strong>Season total</strong></td><td class="num"><strong>341.6</strong></td><td></td></tr>
+    <tr><td>÷ 17 games</td><td class="num">20.09</td><td>Points per game</td></tr>
+    <tr><td><strong>Ceiling</strong></td><td class="num"><strong>38.12</strong></td><td>Roughly a very good week — <strong>this is what best ball pays for</strong></td></tr>
+  </table></div>
+  <p>Click any row on the Analysis page to see this table for that player, including
+  which sources contributed and what weight each carried.</p>
+  <div class="note watch">
+    <span class="tag">A real hole worth knowing</span>
+    <p>The average only counts sources that have a number. If two sources drop a player
+    to zero because he's injured and one hasn't updated, <strong>the stale one becomes
+    the entire answer</strong> instead of being outvoted. That's exactly how a receiver
+    on injured reserve carried a 116-point projection into production. Injury status is
+    now read directly from Sleeper, and a player with only one source is flagged on the
+    card.</p>
+  </div>
+</section>
+
+<section id="models">
+  <h2><span class="n">05</span> V1 and V2</h2>
+  <p class="lede">Two recommendation models run side by side. V1 is the primary column;
+  V2 shows alongside it.</p>
+  <div class="split">
+    <div class="card">
+      <h4>V1</h4>
+      <p class="sub">Market-based</p>
+      <p>Ranks players almost entirely by where the room drafts them, adjusted for value
+      when someone falls past their ADP.</p>
+      <p>Simple, hard to break, and knows nothing about football.</p>
+    </div>
+    <div class="card">
+      <h4>V2</h4>
+      <p class="sub">Projection-based</p>
+      <p>Uses the ceiling from section 4, plus roster fit, stacking, bye weeks, and how
+      likely a player is to last until your next pick.</p>
+      <p>Better informed, more moving parts, more ways to be wrong.</p>
+    </div>
+  </div>
+  <p>They're kept side by side deliberately. Three real V2 errors were caught by eye in
+  its first day purely because a human could see the two columns disagree. V2 is the
+  model under development, not the model in charge.</p>
+  <div class="note good">
+    <span class="tag">Recently improved</span>
+    <p>V2 used to believe players were far more likely to be taken before your next pick
+    than they really are — a permanent "grab him now" nudge. Checked against 33 of your
+    completed drafts, a player it gave a 65% chance of lasting actually lasted 93% of
+    the time. Fixed. You should notice it telling you to wait more often.</p>
+  </div>
+</section>
+
+<section id="routine">
+  <h2><span class="n">06</span> The routine</h2>
+  <p class="lede">Two commands cover almost everything. Both are safe to run whenever.</p>
+  <h3>Before a draft — refresh and publish</h3>
+  <pre class="cmd"><code>cd ~/Development/projects/fantasy_football/projections
+export DRAFT_APP_URL=https://best-ball-draft-assistant.onrender.com
+tools/refresh-sources.sh</code></pre>
+  <p>Fetches the betting lines, refreshes FFToday, rebuilds, and <strong>stops without
+  sending anything</strong>. Read what it prints, then send it:</p>
+  <pre class="cmd"><code>tools/refresh-sources.sh --publish</code></pre>
+  <h3>Then check what production is actually serving</h3>
+  <pre class="cmd"><code>cd ~/Development/projects/fantasy_football/best-ball-draft
+python3 tools/preflight.py</code></pre>
+  <p>You want <code>PASS — 0 failing</code>. Every check in it exists because that exact
+  thing went wrong once and said nothing at the time.</p>
+  <h3>Looking at the data yourself</h3>
+  <pre class="cmd"><code>cd ~/Development/projects/fantasy_football/projections
+export DRAFT_APP_URL=https://best-ball-draft-assistant.onrender.com
+.venv/bin/python cli.py analysis-serve</code></pre>
+  <p>Opens the Analysis page at <code>localhost:8100</code> — every source, every stat,
+  the Compare view, and the per-player breakdown. Pointed at the Render URL like that,
+  it reads live production data and needs nothing else running.</p>
+  <div class="note trap">
+    <span class="tag">Always include the export line</span>
+    <p>That one variable decides both <em>which</em> draft app is read and <em>where</em>
+    a publish is sent. Leave it out and everything silently points at your laptop — and
+    a publish will report success while production never hears about it.</p>
+  </div>
+</section>
+
+<section id="wrong">
+  <h2><span class="n">07</span> Telling if something's wrong</h2>
+  <p class="lede">Three places to look, in the order worth looking.</p>
+  <div class="scroll"><table>
+    <tr><th>Where</th><th>Answers</th></tr>
+    <tr><td><code>tools/preflight.py</code></td><td>Everything at once. Start here.</td></tr>
+    <tr><td><code>/setup</code> → Data Freshness</td><td>Age of every source, in the browser</td></tr>
+    <tr><td>The bar on <code>/recommend</code></td><td>Appears only when something is genuinely stale</td></tr>
+  </table></div>
+  <h3>What the freshness panel is telling you</h3>
+  <p>Each source is aged against a clock that suits it, because they don't rot at the
+  same speed. Betting lines go stale in days; the player-ID matching table is fine for a
+  month.</p>
+  <div class="scroll"><table>
+    <tr><th>Kind</th><th>Stale after</th><th>Why</th></tr>
+    <tr><td>Projection</td><td class="num">7 days</td><td>Feeds the average directly</td></tr>
+    <tr><td>Betting lines</td><td class="num">4 days</td><td>Move fast, only refreshable from the Mac</td></tr>
+    <tr><td>Identity / display</td><td class="num">30 days</td><td>Not a model input at all</td></tr>
+  </table></div>
+  <p>The two Sleeper rows show no age on purpose — Sleeper is re-fetched on every build,
+  so a stored age would describe the wrong thing.</p>
+  <div class="note watch">
+    <span class="tag">Check this before blaming the model</span>
+    <p>Your rankings board is <strong>off by default, per browser</strong>. The star in
+    the header is the only indicator: <strong>filled blue = on, hollow grey = off</strong>.
+    A new browser, a cleared profile, or your phone all start with it off — and an entire
+    analysis was once written against the wrong mode because of it.</p>
+  </div>
+</section>
+
+<section id="traps">
+  <h2><span class="n">08</span> Traps</h2>
+  <p class="lede">Each of these has actually happened, and each was silent — plausible
+  numbers, no error message.</p>
+  <div class="note trap">
+    <span class="tag">Stale server</span>
+    <p><strong>The Analysis page does not reload code.</strong> Leave it running, change
+    something, and it keeps running the old version indefinitely while looking completely
+    normal. Restart it after any change. Published files now record which version sent
+    them, so this is visible rather than mysterious.</p>
+  </div>
+  <div class="note trap">
+    <span class="tag">Old numbers on screen</span>
+    <p><strong>Your browser caches the player list for 10 minutes.</strong> If a number
+    looks wrong, open the console and run <code>bustCache('players_bundle')</code>, then
+    reload — twice if it doesn't move, because the first reload serves the old copy while
+    fetching the new one.</p>
+  </div>
+  <div class="note trap">
+    <span class="tag">Just after a deploy</span>
+    <p><strong>Deploying resets the player pool to a snapshot stored in the code.</strong>
+    The server's storage is wiped each time, so it refills from a committed file until the
+    next automatic refresh. If ADP looks a few days old right after a deploy, that's why —
+    and preflight now says so instead of reporting it as fresh.</p>
+  </div>
+  <div class="note watch">
+    <span class="tag">Two prop stores</span>
+    <p>There are two places props can be saved. The Analysis page writes the one the
+    published file reads; an older script writes a different one used only as a backup.
+    If props seem not to matter, check you refreshed the one that counts — the routine in
+    section 6 always does.</p>
+  </div>
+</section>
+
+<section id="words">
+  <h2><span class="n">09</span> Glossary</h2>
+  <dl>
+    <dt>ADP</dt>
+    <dd>Average draft position — roughly when a player goes. Unbiased but weak: a
+    quarter of all picks land more than a full round away from it.</dd>
+    <dt>Ceiling</dt>
+    <dd>Roughly a very good week for a player. The number best ball actually pays for,
+    since your best scores are counted automatically.</dd>
+    <dt>Consensus</dt>
+    <dd>The plain average of whichever projection sources have a number for that player.</dd>
+    <dt>Sources</dt>
+    <dd>How many projection sources a player has. One is a warning sign — it means
+    nothing is checking that number.</dd>
+    <dt>Availability</dt>
+    <dd>Chance the player is active in a given week. Zero if he's on injured reserve,
+    which removes him from consideration entirely.</dd>
+    <dt>Props / betting lines</dt>
+    <dd>Season over/unders from sportsbooks. Applied piece by piece, never as a total —
+    no book prices receptions, so a prop-only total would badly undervalue receivers.</dd>
+    <dt>Survival</dt>
+    <dd>The chance a player is still available at your next pick. Now calibrated against
+    your real completed drafts rather than assumed.</dd>
+    <dt>The payload</dt>
+    <dd>The small file your Mac sends to the draft app. It's what V2 scores with, and it
+    only changes when you publish.</dd>
+  </dl>
+</section>
+
+<section id="deeper">
+  <h2><span class="n">10</span> Going deeper</h2>
+  <p class="lede">This handbook is the map. Four documents hold the detail.</p>
+  <div class="scroll"><table>
+    <tr><th>File</th><th>What's in it</th></tr>
+    <tr><td><code>docs/STATUS.md</code></td><td>Current state of both apps, open threads, every trap hit so far</td></tr>
+    <tr><td><code>CLAUDE.md</code></td><td>The operational rules — how to run, deploy, and not break things</td></tr>
+    <tr><td><code>docs/V2_DESIGN.md</code></td><td>The model: every constant, the evidence for it, and §4, the ideas that measured worse</td></tr>
+    <tr><td><code>docs/PROJECTIONS_SPLIT.md</code></td><td>What moved to the second app and why</td></tr>
+  </table></div>
+  <p>Section 4 of the design document is the most valuable page in the project: a written
+  record of things that seemed like improvements and measured worse. It exists so nobody
+  spends a weekend re-discovering them.</p>
+  <footer>
+    <p>Written 24 August 2026. If something here disagrees with the code, the code is
+    right and this is out of date — say so and it gets fixed.</p>
+  </footer>
+</section>
+</main>
+</div>
+
+<script>
+  const links = [...document.querySelectorAll('nav a')];
+  const byId = new Map(links.map(a => [a.getAttribute('href').slice(1), a]));
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      links.forEach(a => a.classList.remove('on'));
+      byId.get(e.target.id)?.classList.add('on');
+    });
+  }, {rootMargin: '-15% 0px -70% 0px'});
+  document.querySelectorAll('section[id]').forEach(s => obs.observe(s));
+</script>
