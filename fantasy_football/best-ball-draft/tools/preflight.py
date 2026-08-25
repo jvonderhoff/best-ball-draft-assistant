@@ -55,7 +55,7 @@ def get(target: str, path: str):
         return json.load(r)
 
 
-def check_freshness(target: str) -> None:
+def check_freshness(target: str) -> dict:
     """Every row of /api/freshness, with the pool called out separately.
 
     The pool gets its own line because it is the only source that refreshes on its
@@ -67,11 +67,16 @@ def check_freshness(target: str) -> None:
     pool = items.get('DK pool / ADP')
     if pool:
         lvl = {'ok': OK, 'stale': FAIL}.get(pool['state'], WARN)
+        # Note the self-healing, because otherwise it reads as a flaky check: the seed
+        # comparison below calls /api/players, which trips the 6h TTL and kicks off the
+        # background refresh. A genuine FAIL therefore clears on a re-run with nobody
+        # having done anything. Saying so beats letting someone conclude the tool
+        # is unreliable — and it was a real staleness either way.
         check(lvl, 'DK pool / ADP',
               f"{pool['age_hours']}h old, {pool['rows']} players"
-              + ('' if lvl == OK else ' — a deploy reseeds this from the committed'
-                                      ' cache; it refreshes on the next /api/players'
-                                      ' call after the 6h TTL'))
+              + ('' if lvl == OK else ' — stale. Running this check triggers a refresh,'
+                                      ' so re-run in ~30s and it should clear; if it'
+                                      ' does not, the DK fetch itself is failing'))
 
     if d.get('serving') != 'pushed':
         check(FAIL, 'V2 inputs',
@@ -89,6 +94,11 @@ def check_freshness(target: str) -> None:
     if not stale and not unknown:
         n = sum(1 for i in items.values() if i['label'].strip().startswith('└'))
         check(OK, 'source ages', f'{n} sources reported, none stale')
+
+    # Handed to check_serving_seed so it can tell "prod IS the seed" from "the seed
+    # happens to be current". Returned rather than re-fetched: a second /api/freshness
+    # would race the refresh this run's own /api/players call kicks off.
+    return items
 
 
 def check_stores(target: str) -> None:
@@ -124,7 +134,7 @@ def check_stores(target: str) -> None:
         check(FAIL, 'Postgres', 'a durable store is UNREACHABLE — writes will not survive a deploy')
 
 
-def check_serving_seed(target: str) -> None:
+def check_serving_seed(target: str, pool_ts: float | None = None) -> None:
     """Is prod serving the committed bootstrap cache rather than a live pool?
 
     Diagnostic rather than pass/fail: immediately after a deploy this is the CORRECT
@@ -153,11 +163,25 @@ def check_serving_seed(target: str) -> None:
     identical = sum(1 for k in shared if seed_adp[k] == live_adp[k])
     pct = identical / len(shared) * 100
 
-    if pct > 95:
+    # **Matching ADPs are NOT enough to conclude prod is serving the seed**, and
+    # assuming they were produced a wrong warning the day this was written: a freshly
+    # committed seed and a fresh pull agree almost perfectly, because ADP barely moves
+    # in a few hours. Identical values have two very different causes and only the
+    # TIMESTAMP separates them — if prod's pool was fetched at the same moment the seed
+    # was, it IS the seed. Same lesson as rankings_hydrated: check that the thing
+    # happened, do not infer it from a signal that looks the same either way.
+    seed_ts = seed.get('fetched_at')
+    same_fetch = (seed_ts and pool_ts and abs(pool_ts - seed_ts) < 60)
+
+    if same_fetch:
         check(WARN, 'seed comparison',
-              f'{pct:.0f}% of ADPs match the committed seed — prod is serving the'
-              ' bootstrap cache, not a fresh pull. Normal right after a deploy;'
+              f'prod is serving the COMMITTED SEED — its pool has the seed\'s own '
+              f'fetch time ({pct:.0f}% of ADPs identical). Normal right after a deploy;'
               ' it clears on the next /api/players call once the 6h TTL trips.')
+    elif pct > 95:
+        check(OK, 'seed comparison',
+              f'{pct:.0f}% of ADPs match the seed, but prod fetched its own pool — the'
+              ' seed is simply current too')
     else:
         check(OK, 'seed comparison',
               f'{pct:.0f}% match the committed seed — prod has pulled a live pool')
@@ -170,9 +194,18 @@ def main() -> int:
     args = ap.parse_args()
 
     print(f'preflight: {args.target}\n')
+    # check_freshness runs first and hands over the pool timestamp: the seed check
+    # needs it, and re-fetching would race the refresh its own /api/players call starts.
+    items = {}
     for fn in (check_freshness, check_stores, check_serving_seed):
         try:
-            fn(args.target)
+            if fn is check_serving_seed:
+                pool = (items or {}).get('DK pool / ADP') or {}
+                fn(args.target, pool.get('updated_at'))
+            else:
+                got = fn(args.target)
+                if isinstance(got, dict):
+                    items = got
         except Exception as e:
             check(FAIL, fn.__name__.replace('check_', ''), f'check itself failed: {e}')
 
