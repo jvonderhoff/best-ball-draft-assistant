@@ -22,8 +22,17 @@ best-ball-extension/players.js
 .vscode/
 .idea/
 
-# Claude internal
+# Claude internal — everything except shared slash commands, which are project
+# workflow rather than machine state. launch.json and the rest stay local; anything
+# in commands/ is meant to be read by whoever picks this repo up.
+#
+# The `**/` matters: a pattern containing a slash is anchored to THIS file's
+# directory, so `.claude/*` would only cover the repo root and would leave every
+# nested .claude fully un-ignored by the `!` above it.
 .claude/
+!.claude/
+**/.claude/*
+!**/.claude/commands/
 
 # Best Ball — secrets and local state
 fantasy_football/best-ball-draft/.saved_drafts.json
