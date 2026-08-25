@@ -361,6 +361,19 @@ round from ADP. That is an argument for the column that does not run on ADP alon
   described survived — so the freshness panel quietly lost its detail rows. Caught by
   watching the panel *across* a deploy rather than trusting the publish. Anything that
   must outlive a restart goes to Postgres.
+- **A guard against "value credited to an unusable player" contained the fourth
+  instance of that exact bug.** `V2_VALUE_FIT_FLOOR` (0.20) exists so a marginal player
+  is not zeroed on roster fit alone — a third TE is a bad fit but he does play. It was
+  applied to season-ending IR too, where 20% of a game stack is 20% of nothing. Ricky
+  Pearsall ranked **V2 #3 at pick 240**: accumulation and playoff spike both correctly
+  went to zero, then a stack worth +0.196 and "28 picks of value" worth +0.745 carried
+  him positive — and the falling ADP *was the injury being priced in*, credited as a
+  bonus. The floor now drops to 0 when `avail` is 0. 441 of 443 players unchanged; the
+  two movers are the two IR players.
+- **The same fix has to reach the model in charge.** The injury work landed in the
+  payload and on V2's card, and V1 — the PRIMARY column — still had no concept of
+  availability at all, because it scores on ADP and ADP lags a season-ending injury by
+  days. Fixing V2's inputs is not fixing the recommendation unless V1 sees it too.
 - **A check that dates a file by mtime cannot see a deploy.** `/api/freshness` aged the
   DK pool with `getmtime`, but that file is committed and a deploy checks it out fresh —
   so it reported a 92.6h-old ADP set as "0.2h old", and `/recommend` showed a receiver

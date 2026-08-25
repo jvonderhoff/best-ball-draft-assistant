@@ -1452,8 +1452,26 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   // Note this is the third place the same mistake appeared: value credited without
   // checking whether the player can be used. Falling ADP value and same-backfield
   // spikes were the other two.
+  // **The fit FLOOR does not apply to a player who cannot play, and that distinction
+  // is the whole of this fix (2026-08-25).** V2_VALUE_FIT_FLOOR exists so a marginal
+  // player is not zeroed on fit alone — a third tight end is a bad fit but he does
+  // take snaps, and 20% of a stack with him is real. A player on season-ending IR is
+  // not a bad fit; he is unusable, and 20% of a stack with someone who never plays is
+  // 20% of nothing.
+  //
+  // Ricky Pearsall ranked V2 #3 at pick 240 on exactly this: accumulation and playoff
+  // spike both correctly went to zero (avail 0 zeroes the gain), and then a game stack
+  // worth +0.196 and "28 picks of value" worth +0.745 carried him to a positive score.
+  // Both were already scaled x0.20 by the fit — the floor was the only thing keeping
+  // them alive. The falling ADP is not value; it is the market pricing in the injury.
+  //
+  // The comment below has said "this is the third place the same mistake appeared"
+  // since it was written. This was the fourth, hiding inside the guard for the others.
+  const usable  = (eff.avail ?? 1) > 0;
+  const fitFloor = usable ? V2_VALUE_FIT_FLOOR : 0;
+
   const corr = v2CorrelationValue(player, myTeam);
-  const corrFit = Math.max(V2_VALUE_FIT_FLOOR,
+  const corrFit = Math.max(fitFloor,
                            Math.min(1, rAcc.gain / Math.max(0.01, V2_VALUE_FIT_REF * eff.mean)));
   const fitNote = corrFit < 0.999 ? ` · x${corrFit.toFixed(2)} roster fit` : '';
   if (corr.regular) {
@@ -1529,7 +1547,10 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
     // were worth 0.93, some 43% of his score and enough to rank him first overall.
     let fit = 1;
     if (fell > 0) {
-      fit = Math.max(V2_VALUE_FIT_FLOOR,
+      // Same floor, same exception — see `fitFloor` above. A player who cannot play
+      // did not "fall"; the market moved him because of the thing that stops him
+      // playing, so crediting the drop as value double-counts the injury as a bonus.
+      fit = Math.max(fitFloor,
                      Math.min(1, rAcc.gain / Math.max(0.01, V2_VALUE_FIT_REF * eff.mean)));
       tilt *= fit;
     }
