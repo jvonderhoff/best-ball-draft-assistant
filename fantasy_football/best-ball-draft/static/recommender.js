@@ -308,6 +308,36 @@ function calculateValue(player, myPickNumber, myTeam, stackIntensity = 'medium',
   const qbTeams = getMyQBTeams(myTeam);
   let mult = 1.0;
 
+  // ── Availability ────────────────────────────────────────────────────────────
+  //
+  // **V1 had no idea whether a player could play.** It scores on ADP, and ADP is a
+  // market snapshot that lags a season-ending injury by days — so Ricky Pearsall sat
+  // in the top recommendations on 2026-08-25 while on IR with a torn PCL, at an ADP
+  // set before the news. The projections app had already caught it and V2 was scoring
+  // him at zero; V1 is the PRIMARY column and knew nothing about it.
+  //
+  // Read from `_eff`, which the V2 annotate pass attaches to every player regardless
+  // of which column is displayed, so this needs no new plumbing. Absent — an
+  // unprojected player, or a payload too old to carry it — means unknown, and unknown
+  // must not read as injured: `?? 1` leaves those players exactly as they were.
+  //
+  // **Only the CANNOT-PLAY case, and that restraint is the point.** `avail` is
+  // normally a per-position injury prior — 0.88 QB, 0.86 WR, 0.82 RB — so applying it
+  // generally would put a ~14% haircut and a meaningless line on every card, and
+  // would quietly re-weight V1's positional balance by docking backs harder than
+  // quarterbacks. V1 is the primary column; it does not get a new positional thumb on
+  // the scale as a side effect of fixing an injury bug. Exactly 0 is the value the
+  // projections app sets for a season-ending status and nothing else produces it.
+  //
+  // A multiplier rather than a filter: dropping him off the board would hide the
+  // reason, and a wrong `avail` would then remove a player with no way to see why.
+  // Zeroing him with a stated reason sinks him to the bottom and says why.
+  if (player._eff && player._eff.avail === 0) {
+    const inj = player._eff.injury;
+    apply(0, 'Out for season',
+          inj ? `${inj.status}${inj.part ? ' (' + inj.part + ')' : ''}` : 'ruled out');
+  }
+
   // Pre-compute capital pressure so stack bonuses can be dampened when over-allocated.
   // stackDamper = 1.0 when position is needed or balanced; shrinks toward 0.4 as
   // other positions fall further behind while this one is over-target.
