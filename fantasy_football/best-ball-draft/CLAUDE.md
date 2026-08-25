@@ -69,6 +69,19 @@ thresholds.
 **Only the DK pool refreshes on its own.** Sleeper is fetched on each analysis build;
 ESPN, props, FFToday and the publish itself are all manual.
 
+**`v2SurvivalProb` is calibrated against REAL drafts, not the harness** — 33 complete
+DK boards, 935,163 decisions. It is CONDITIONAL (`S(next)/S(now)`: he is on the board
+now, and the old form forgot that) and `V2_ADP_SIGMA_RATIO` is **0.10**, not the 0.30
+that was judgement. Calibration error 0.093 → 0.008. The harness cannot price this —
+its opponents are ADP bots, so their behaviour *is* the thing being modelled. Re-score
+with `tools/calibrate-survival.py`; grow the dataset with `tools/import-new-drafts.sh`.
+V2_DESIGN §2.2.
+
+**One command refreshes everything manual:**
+`../projections/tools/refresh-sources.sh` (add `--publish`), or the
+`/update-projections` slash command, which reads the output for you. It refuses to run
+without `DRAFT_APP_URL` rather than defaulting to localhost.
+
 **Read `docs/V2_DESIGN.md` before changing the recommender.** It documents the model, the
 evidence behind every constant, and — most importantly — §4, the dead ends. This file
 covers only the operational things that live nowhere else.
