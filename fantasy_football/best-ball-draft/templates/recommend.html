@@ -1432,7 +1432,7 @@ function renderSupplyGrid() {
     const usable = available.filter(p => p.pos === pos && p._eff.mean >= bar);
     const cells = picks.map(pk => {
       let n = 0;
-      for (const p of usable) n += v2SurvivalProb(p, pk, run[pos] || 1);
+      for (const p of usable) n += v2SurvivalProb(p, pk, run[pos] || 1, state.overallPick);
       return n;
     });
     return { pos, bar, cells };

@@ -333,7 +333,11 @@ const V2_RUN_CLAMP_LO = 0.70;
 const V2_RUN_CLAMP_HI = 1.45;
 
 const V2_ADP_SIGMA_FLOOR = 5.0;
-const V2_ADP_SIGMA_RATIO = 0.30;
+// 0.30 was judgement ("the spread grows roughly proportionally"). The boards say it is
+// 2-5x too wide: actual sd of (pick - adp) is 6.5 at ADP 49-72 where 0.30 implies 18.1,
+// and 13.3 at ADP 121-168 where it implies 43.4. Swept on 33 real drafts; the optimum
+// is flat across 0.08-0.10, so this is not a knife edge. See v2SurvivalProb.
+const V2_ADP_SIGMA_RATIO = 0.10;
 
 // How much weight to give consensus rankings (ECR / your custom board) as a
 // sanity check against the point projections.  Higher when only one projection
@@ -746,12 +750,43 @@ function v2PositionalRun(universe, available, pick) {
 // `run` shifts the curve by how hard his position is being drafted in this specific
 // room: at a run factor of 1.4 the market is effectively 40% further through the
 // position than ADP says, so he is correspondingly less likely to last.
-function v2SurvivalProb(player, pick, run = 1) {
+// **CONDITIONAL as of 2026-08-24, and calibrated against real boards.** The old form
+// returned the UNCONDITIONAL probability a player lasts to `pick` — it forgot the one
+// thing you always know when you ask: he is still on the board right now. A player
+// whose ADP passed ten picks ago and is still sitting there has already told you this
+// room does not want him, and the unconditional form kept predicting he was about to
+// go, every single pick, forever.
+//
+// Measured on 935,163 (player, next-pick, survived) decisions from 33 complete DK
+// boards — every seat, real picks, no simulator:
+//
+//     model                       sigma ratio   calib err   Brier
+//     unconditional (old)              0.30       0.093    0.0588
+//     CONDITIONAL                      0.30       0.037    0.0521
+//     CONDITIONAL                      0.10       0.008    0.0387
+//
+// Conditioning alone recovers most of it at the UNCHANGED sigma, which is the tell
+// that this was a modelling error rather than a tuning one. Where the old model said
+// 65% to last, players actually lasted 93% of the time.
+//
+// Consequence worth stating plainly: the old form was a standing "grab him now" bias
+// on every pick, because it believed the board was emptying faster than it was.
+//
+// See tools/calibrate-survival.py to re-run this as more drafts finish.
+function v2SurvivalProb(player, pick, run = 1, fromPick = null) {
   const adp = player.realAdp ?? player.adp;
   if (!adp || !pick) return 0.5;
   const sigma = Math.max(V2_ADP_SIGMA_FLOOR, V2_ADP_SIGMA_RATIO * adp);
   const effAdp = run && run !== 1 ? adp / run : adp;
-  return 1 - v2NormCdf((pick - effAdp) / sigma);
+  const S = at => 1 - v2NormCdf((at - effAdp) / sigma);
+
+  const target = S(pick);
+  // Null means the caller genuinely has no "now" — every in-app caller passes one.
+  if (fromPick == null || fromPick >= pick) return target;
+  const now = S(fromPick);
+  // S is monotone decreasing, so the ratio cannot exceed 1 except through floating
+  // point in the far tail, where `now` is vanishing. Clamp rather than emit 1.0000004.
+  return now > 1e-9 ? Math.min(1, target / now) : 1;
 }
 
 // The pick this position's replacement level is measured at.
@@ -786,7 +821,8 @@ function v2ExpectedBestSurvivor(pos, available, myTeam, nextPick, mode, ctx) {
     .filter(p => p.pos === pos && p._eff)
     .map(p => ({
       gain: v2PositionGain(pos, p._eff.mean, p._eff.sd, myTeam, mode, ctx, p._eff.avail ?? 1, p._eff.disagreement ?? 0).gain,
-      surv: v2SurvivalProb(p, nextPick, (ctx && ctx.run && ctx.run[pos]) || 1),
+      surv: v2SurvivalProb(p, nextPick, (ctx && ctx.run && ctx.run[pos]) || 1,
+                           ctx && ctx.myPickNumber),
     }))
     .sort((a, b) => b.gain - a.gain)
     .slice(0, 25);
@@ -1204,7 +1240,7 @@ function v2ExhaustionUrgency(pos, available, myTeam, ctx) {
     let cnt = 0;
     for (const p of atPos) {
       if (p._eff.mean < replMean) break;
-      cnt += v2SurvivalProb(p, picks[i], run);
+      cnt += v2SurvivalProb(p, picks[i], run, ctx.myPickNumber);
       if (cnt >= 1) break;
     }
     acquirable += Math.min(1, cnt);
@@ -1573,7 +1609,8 @@ function getTopRecommendationsV2(available, myTeam, myPickNumber, n = 5, nextMyP
 
     // Survival read: if he is likely to last, you can take a scarcer need first.
     if (nextMyPick != null) {
-      const surv = v2SurvivalProb(p, nextMyPick, (ctx.run && ctx.run[p.pos]) || 1);
+      const surv = v2SurvivalProb(p, nextMyPick, (ctx.run && ctx.run[p.pos]) || 1,
+                                 ctx.myPickNumber);
       if (surv > 0.65)      reasons.push(`⏳ ${Math.round(surv * 100)}% to last til ${nextMyPick}`);
       else if (surv < 0.20) reasons.push(`⚠ ${Math.round(surv * 100)}% to last — grab now`);
     }

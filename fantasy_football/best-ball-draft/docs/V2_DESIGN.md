@@ -58,6 +58,7 @@ Baseline is **65% VOR** (vs the last startable player, `slots × 12`) **+ 35% VO
 | `V2_VALUE_FIT_REF / FLOOR` | 0.50 / 0.20 | Roster-fit scaling, applied in three places (§3). |
 | `V2_BREAKOUT_SD_GAIN` | **0.0 (off)** | Fully plumbed. Swept twice against the fixed simulator; the two runs disagree about the shape near zero and agree 1.6 is bad. Effect is smaller than the variation a routine projection refresh introduces. See §4. |
 | `V2_OVER_TARGET_COST` | **0.0 (off)** | Roster-shape forcing. See §4. |
+| `V2_ADP_SIGMA_RATIO` | **0.10** | ADP noise, as a fraction of ADP. Was 0.30 by judgement; **calibrated against 33 real boards 2026-08-24** and 2–5x too wide — actual sd of (pick − adp) is 6.5 at ADP 49–72 where 0.30 implies 18.1. Optimum flat across 0.08–0.10. §2.2. |
 | `V2_PROP_DEMEAN` | **`position`** | *Input side — lives in the PROJECTIONS app, not here.* Strips the pool-wide level out of the betting-prop correction, leaving only relative market opinion. Books quote by ADP, so the raw correction was a graded haircut on early picks: 92.6% of 136 corrections negative, mean −6.50%, and coverage running 95.7% in rounds 1–2 to 0% among the undrafted. Below. |
 
 All are overridable via env (`V2_MKT`, `V2_RANKW`, `V2_CORR`, `V2_BREAKOUT`,
@@ -70,6 +71,70 @@ see the noise floor in §5.
 `analysis/payload.py` in the **projections app**, because it changes the `ppg` this app
 is handed rather than how this app scores it. Setting it here does nothing. Changing it
 requires a republish to take effect in production.
+
+### 2.2 Survival was never calibrated, and was wrong twice (2026-08-24)
+
+`v2SurvivalProb` answers "will he still be there at my next pick", from ADP. Nobody
+had ever scored it against a real draft. Doing so found two defects, one of them a
+modelling error rather than a tuning one.
+
+Scored on **935,163 (player, next-pick, survived) decisions** from **33 complete DK
+boards** — every seat, real pick numbers. ADP is the model's input; the truth is what
+happened.
+
+**1. The probability was UNCONDITIONAL.** It ignored the one thing you always know
+when you ask: the player is still on the board *right now*. A player whose ADP passed
+ten picks ago and is still sitting there has revealed that this room does not want
+him, and the old form kept predicting he was about to go, every pick, forever. The
+fix is the standard conditional form, `S(next) / S(now)`.
+
+**2. `V2_ADP_SIGMA_RATIO` was 0.30 by judgement.** The boards:
+
+| ADP band | model σ | actual sd |
+|---|---|---|
+| 1–24 | 5.0 | 4.0 |
+| 49–72 | 18.1 | 6.5 |
+| 121–168 | 43.4 | 13.3 |
+| 169–216 | 57.8 | 21.1 |
+
+| model | σ ratio | calib err | Brier |
+|---|---|---|---|
+| unconditional (old) | 0.30 | 0.093 | 0.0588 |
+| conditional | 0.30 | **0.037** | 0.0521 |
+| conditional | 0.10 | **0.008** | 0.0387 |
+
+**Conditioning alone recovers most of the error at the unchanged σ**, which is what
+identifies this as a modelling error. Where the old model said 65% to last, players
+actually lasted 93% of the time.
+
+**The headline number flatters it, and that matters.** 81% of decisions land in the
+90–100% bin — most players obviously survive — so an all-bin mean is dominated by the
+easy cases. Excluding that bin: old 0.167, new **0.038**. Still a 4x improvement, and
+the honest number to quote.
+
+**What remains wrong.** The extreme tail: the 0–10% bin predicts 0.030 against an
+actual 0.103. A Gaussian around ADP has thinner tails than real drafts, where players
+fall much further than the model allows, and conditioning cannot rescue a case where
+both numerator and denominator underflow. Not fixed — a fat-tailed ADP model is a
+bigger change than this evidence justifies.
+
+**Consequence for behaviour.** The old form was a standing *"grab him now"* bias on
+every pick, because it believed the board was emptying faster than it was. That is
+consistent with the roster data: over 33 drafts the user takes his first RB at exactly
+the field's pace (round 2.0 vs 2.0) and still finishes with **0.41 fewer RBs** than the
+field (5.57 vs 5.98) and 0.48 more WRs — early picks spent on players who would have
+lasted.
+
+**Unmeasurable in the harness, by construction.** The simulator's opponents are ADP
+bots, so their draft behaviour *is* the thing being modelled; asking the harness to
+price a better model of it is circular. This ships on out-of-sample calibration
+against real boards instead, which is a different and in this case stronger kind of
+evidence than an EV delta.
+
+**33 boards is enough to establish the direction and not enough to defend a third
+decimal place.** Re-run `tools/calibrate-survival.py` as more drafts finish. All 33
+are DK 12-team best ball, so it is calibrated to the format actually played and may
+not transfer.
 
 ### 2.1 De-meaning the prop correction (2026-08-20)
 
