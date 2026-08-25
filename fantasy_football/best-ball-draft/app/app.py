@@ -2309,9 +2309,39 @@ def data_freshness():
         err      = meta_map.get('_error')
         usable   = {k: v for k, v in meta_map.items() if not k.startswith('_')}
         if usable:
+            # Age each source against the clock that fits what it FEEDS. One threshold
+            # for everything cried wolf: `sleeper` went "stale" at 7 days and raised
+            # the bar mid-draft, when the Sleeper data behind the projections is
+            # refetched on every build and those rows are the identity crosswalk.
+            # A warning that is wrong once is a warning that gets ignored twice.
+            #
+            # Roles arrive on the payload (analysis/payload.py SOURCE_ROLES). A
+            # payload published before they existed has none, so the old 7-day rule
+            # stands for it — an older payload should not silently look healthier.
+            ROLE_STALE_H = {'projection': 24 * 7, 'market': 24 * 4,
+                            'identity': 24 * 30, 'display': 24 * 30}
+            ROLE_NOTE = {
+                'projection': 'projection source — inside the consensus average',
+                'market':     'betting lines — only refreshable from the Mac',
+                'identity':   'player-id crosswalk, not a projection input',
+                'display':    'Analysis page columns only, no model field',
+            }
             for key, meta in sorted(usable.items()):
-                out['items'].append(row(f'  └ {key}', meta.get('updated_at'), 24 * 7,
-                                        'via the projections app', meta.get('rows')))
+                role = meta.get('role')
+                stale_h = ROLE_STALE_H.get(role, 24 * 7)
+                note = ROLE_NOTE.get(role, 'via the projections app')
+                # Refetched on every build, so the stored snapshot age describes the
+                # store and not the numbers. Reporting it would be a figure that looks
+                # like an answer; the payload's own age is the real one.
+                if meta.get('live'):
+                    out['items'].append(row(
+                        f'  └ {key}', None, 1,
+                        'refetched live on every build — age is the payload\'s',
+                        meta.get('rows'), force_state='ok'))
+                    continue
+                label = f'  └ {key}' + (f' ({role})' if role and role != 'projection' else '')
+                out['items'].append(row(label, meta.get('updated_at'), stale_h,
+                                        note, meta.get('rows')))
         else:
             # force_state because the inferred state would be 'unused' — no rows and
             # no timestamp — which is the one word that would be actively misleading
