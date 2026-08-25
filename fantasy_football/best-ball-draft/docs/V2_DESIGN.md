@@ -207,6 +207,44 @@ is which players get priced completely. The original objection stands and is out
 `position` does discard genuine cross-position opinion if any exists, but that is
 unproven and unprovable here while the coverage gap is measured.
 
+**The RB markdown is a genuine market view, not a coverage artifact (measured
+2026-08-25).** This was assumed the other way when `position` was adopted, on the
+grounds that books price QBs completely (0.88 of value recovered) and everyone else
+about half. The coverage figures were right; the inference was not. Markdown rate — how
+far below the projection the market prices the parts it actually prices — is **flat in
+coverage and steep in position**:
+
+| markets quoted | n | coverage | markdown rate | | position | n | coverage | markdown rate |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 27 | 41% | −8.2% | | QB | 31 | 100% | −4.7% |
+| 2 | 90 | 68% | −9.1% | | RB | 37 | 72% | **−12.6%** |
+| 3 | 16 | 82% | −7.9% | | WR | 65 | 58% | −8.0% |
+| 4 | 24 | 96% | −7.6% | | TE | 24 | 53% | −8.2% |
+
+Coverage more than doubles with no slope in the rate; RBs are marked down nearly 3x
+QBs while having *more* coverage than WR or TE. So `position` mode is subtracting
+roughly −9.5% of genuine opinion on backs. That is a real cost, now measured rather
+than suspected: **all 35 sign flips under `position` run market-NEGATIVE to
+model-POSITIVE**, concentrated on first-to-fourth-round RBs — Gibbs −25.4 → +8.5,
+McCaffrey −26.7 → +4.5, Jeanty −20.6 → +4.2 three days after an ankle sprain.
+
+**`V2_PROP_DEMEAN=rate` was built to fix that and measured worse — do not adopt it.**
+It subtracts a pool-wide markdown rate against each player's covered value. Coverage
+and position are correlated, so it necessarily favours the most-quoted position: QBs
+lose 10.4% of their whole projection against an actual markdown of 4.7%, a standing
++5.7%, and it recreates the tilt `position` exists to remove (top-24 churn 3, all three
+entrants QBs). Sign flips rose 35 → 42 and Jeanty still came out positive. "Normalise
+by coverage" and "keep the positional view" are in direct conflict. Retained behind the
+flag for comparison only.
+
+**Still open, and untouched:** `scale` re-inflates a source that reacts alone. Sleeper
+cut Jeanty 259.5 → 233.9 for the injury; `scale` is `consensus ÷ Sleeper` = 1.110
+*because* Sleeper dropped while ESPN (98h old) and FFToday (unmoved in a week) held the
+consensus up — so his basis became 1163.6 rushing yards, higher than Sleeper's own
+pre-injury 1152. The market is then measured against a figure more optimistic than any
+source currently holds. That is a separate defect from de-meaning and is the more
+promising thread.
+
 `global` recentres the correction — 50% of players positive, up from 7% — and leaves a
 ~3.3pp tilt. Part of that residual is positional MIX rather than ADP (early rounds are
 RB-heavy, and RB carried the largest haircut at −8.7% against QB's −4.9%), which is why
