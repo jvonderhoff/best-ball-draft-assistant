@@ -339,6 +339,29 @@ const V2_ADP_SIGMA_FLOOR = 5.0;
 // is flat across 0.08-0.10, so this is not a knife edge. See v2SurvivalProb.
 const V2_ADP_SIGMA_RATIO = 0.10;
 
+// **The market term keeps its own sigma, and separating them is the point.**
+//
+// One constant was serving two questions that only look alike. Survival asks "will he
+// still be here", and 0.10 is what 33 real boards say — measured, and it stays.
+// The market term asks "how far outside the market's own uncertainty is this reach",
+// which is a pricing question nobody has calibrated, and it was tuned when the shared
+// value was 0.30.
+//
+// Narrowing the shared constant on the strength of the survival evidence silently
+// re-priced every reach. Measured on draft 193767922 at pick 133, same board:
+//
+//                       Sam Darnold (16.1 ppg)   Tommy DeVito (0.5 ppg)
+//     sigma 0.30                        +0.229                   -0.752
+//     sigma 0.10                        -1.696                   -0.674   <- inverted
+//
+// Reaching 8.8 picks for Darnold went from -1.01 to -3.03 because the same gap is a
+// much larger share of a narrower sigma, and a 16-ppg quarterback fell below a 0.5-ppg
+// one. Real players ranked below the 0-ppg bodies went 76 -> 94.
+//
+// So: 0.30 here, restoring the behaviour this term was tuned against. A calibration
+// result for one question is not a licence to change another question's units.
+const V2_MARKET_SIGMA_RATIO = 0.30;
+
 // How much weight to give consensus rankings (ECR / your custom board) as a
 // sanity check against the point projections.  Higher when only one projection
 // source is populated, since a single source can be an outlier.
@@ -1522,15 +1545,16 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   // who is any good. FantasyPros bears this out directly: expert rank disagreement
   // runs a standard deviation above 45 for some players inside the top 150.
   //
-  // The scale is the same ADP sigma the survival model already uses (0.30 x adp), so
-  // reaching is priced against how precisely the player is actually priced. Around
+  // The scale is V2_MARKET_SIGMA_RATIO (0.30 x adp) — deliberately NOT the survival
+  // model's sigma, which was recalibrated to 0.10 against real boards on 2026-08-24.
+  // The two answer different questions; see the note at the constant. Around
   // six picks at ADP 20, around sixty at ADP 200. That makes late-round reaches for
   // stacks and playoff correlation nearly free, which is the point: when the market
   // does not know either, structural edges are the better thing to spend on.
   const adp = player.realAdp ?? player.adp;
   if (adp) {
     const fell     = myPickNumber - adp;
-    const adpSigma = Math.max(V2_ADP_SIGMA_FLOOR, V2_ADP_SIGMA_RATIO * adp);
+    const adpSigma = Math.max(V2_ADP_SIGMA_FLOOR, V2_MARKET_SIGMA_RATIO * adp);
     let tilt = Math.max(-1.5, Math.min(1.5, fell / adpSigma)) * V2_MARKET_PULL * (eff.sd / 10);
 
     // The two directions are not symmetric.

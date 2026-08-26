@@ -58,6 +58,7 @@ Baseline is **65% VOR** (vs the last startable player, `slots × 12`) **+ 35% VO
 | `V2_VALUE_FIT_REF / FLOOR` | 0.50 / 0.20 | Roster-fit scaling, applied in three places (§3). |
 | `V2_BREAKOUT_SD_GAIN` | **0.0 (off)** | Fully plumbed. Swept twice against the fixed simulator; the two runs disagree about the shape near zero and agree 1.6 is bad. Effect is smaller than the variation a routine projection refresh introduces. See §4. |
 | `V2_OVER_TARGET_COST` | **0.0 (off)** | Roster-shape forcing. See §4. |
+| `V2_MARKET_SIGMA_RATIO` | **0.30** | The reach/value term's ADP sigma, **deliberately separate from the survival one since 2026-08-25**. Narrowing the shared constant to 0.10 on survival evidence silently tripled every reach penalty and put a 16-ppg QB below a 0.5-ppg QB. §2.3. |
 | `V2_ADP_SIGMA_RATIO` | **0.10** | ADP noise, as a fraction of ADP. Was 0.30 by judgement; **calibrated against 33 real boards 2026-08-24** and 2–5x too wide — actual sd of (pick − adp) is 6.5 at ADP 49–72 where 0.30 implies 18.1. Optimum flat across 0.08–0.10. §2.2. |
 | `V2_PROP_DEMEAN` | **`position`** | *Input side — lives in the PROJECTIONS app, not here.* Strips the pool-wide level out of the betting-prop correction, leaving only relative market opinion. Books quote by ADP, so the raw correction was a graded haircut on early picks: 92.6% of 136 corrections negative, mean −6.50%, and coverage running 95.7% in rounds 1–2 to 0% among the undrafted. Below. |
 
@@ -135,6 +136,42 @@ evidence than an EV delta.
 decimal place.** Re-run `tools/calibrate-survival.py` as more drafts finish. All 33
 are DK 12-team best ball, so it is calibrated to the format actually played and may
 not transfer.
+
+### 2.3 One constant, two questions (2026-08-25)
+
+`V2_ADP_SIGMA_RATIO` was used by both the survival model and the market/reach term.
+§2.2 recalibrated it 0.30 → 0.10 against 33 real boards — correct for survival, and it
+silently re-priced every reach, because the two terms ask different questions of the
+same number:
+
+- **survival**: "will he still be here at my next pick" — measurable, and measured
+- **market/reach**: "how far outside the market's own uncertainty is this reach" — a
+  pricing judgement, never calibrated, and tuned when the shared value was 0.30
+
+Narrowing sigma makes any fixed pick gap a larger share of it, so reach penalties grew
+roughly 3x. Measured on draft 193767922 at pick 133:
+
+| | Sam Darnold (16.1 ppg) | Tommy DeVito (0.5 ppg) |
+|---|---|---|
+| sigma 0.30 | **+0.229** | −0.752 |
+| sigma 0.10 | **−1.696** | −0.674 |
+
+A 16-ppg quarterback fell below a 0.5-ppg one, and real players ranked beneath the
+0-ppg bodies went 76 → 94. On the live board it put three backup QBs into the V2 top
+ten. Split into `V2_MARKET_SIGMA_RATIO` (0.30), restoring what that term was tuned
+against; survival keeps its measured 0.10.
+
+**The general rule: a calibration result for one question is not a licence to change
+another question's units.** Both uses read plausibly from the shared constant, and
+nothing failed — the reach penalty simply meant something different afterwards.
+
+**Still wrong, and pre-existing:** the reach penalty is scaled by `eff.sd`, so it is
+roughly proportional to player quality — Darnold's sd is 6.11 against DeVito's 0.19, a
+32x difference. Among players you would equally be reaching for, the worst is penalised
+least. That is why **76 real players still rank below the 0-ppg bodies** at this pick,
+and why a late-round board with nothing left to gain sorts partly by ascending quality.
+Not introduced here and not fixed here; the sigma split removes the amplification, not
+the cause.
 
 ### 2.1 De-meaning the prop correction (2026-08-20)
 
