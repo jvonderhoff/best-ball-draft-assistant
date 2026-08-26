@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/tools/hooks/on-model-edit.sh",
+            "timeout": 120,
+            "statusMessage": "Re-scoring every player on real boards\u2026"
+          }
+        ]
+      }
+    ]
+  }
+}

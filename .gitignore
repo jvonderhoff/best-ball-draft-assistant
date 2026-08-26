@@ -33,6 +33,7 @@ best-ball-extension/players.js
 !.claude/
 **/.claude/*
 !**/.claude/commands/
+!**/.claude/settings.json
 
 # Best Ball — secrets and local state
 fantasy_football/best-ball-draft/.saved_drafts.json
