@@ -302,29 +302,40 @@ round from ADP. That is an argument for the column that does not run on ADP alon
 
 ## Open threads
 
-1. **The prop correction's basis is Sleeper alone.** The consensus TOTAL is a blend of
+1. **The reach penalty scales with the player's own volatility.** `tilt` is multiplied
+   by `eff.sd / 10`, so among players you would equally be reaching for, the WORST is
+   penalised least — Darnold's sd is 6.11 against DeVito's 0.19, a 32x gap. On a
+   picked-over board where nothing adds value, this sorts partly by ascending quality:
+   **76 real players (>4 ppg) rank below the 0-ppg bodies** at pick 133 of draft
+   193767922. Pre-dates 2026-08-25 and is unchanged at either sigma; V2_DESIGN §2.3.
+2. **`scale` re-inflates a source that reacts alone.** Sleeper cut Jeanty 259.5 → 233.9
+   for his ankle, which RAISED `consensus ÷ Sleeper` to 1.110 because ESPN (98h old)
+   and FFToday (unmoved in a week) held the consensus up — so his basis became 1163.6
+   rushing yards, above Sleeper's own pre-injury 1152. The market is then measured
+   against a number more optimistic than any source currently holds. §2.1.
+3. **The prop correction's basis is Sleeper alone.** The consensus TOTAL is a blend of
    three sources; its COMPONENTS are not, and Sleeper is 11% low on RBs against ESPN
    almost entirely through receptions (Jeanty 39 catches to ESPN's 65). Swapping the
    basis flips the SIGN of the correction for 14 draftable players — Stevenson swings
    20 points. `research/prop_basis.py` measures it; `--alt blend` is the candidate fix
    and is not shipped.
-2. **ESPN and FFToday components are collected and unused by the model.** 375 of 435
+4. **ESPN and FFToday components are collected and unused by the model.** 375 of 435
    players have ESPN components, including the only interception projection anywhere.
    They are on the Analysis page now but feed no model field; the obvious use is as the
    prop basis above.
-3. **A fourth projection source.** FantasySharks and CBS both responded but need
+5. **A fourth projection source.** FantasySharks and CBS both responded but need
    rendering or more parsing work; NFL.com is weekly-only and still serving 2025. Note
    the marginal value is falling — most of the pool is already at three. The place it
    would pay is the thin tail: **37 players still rest on a single source**, which is
    how Pearsall reached production at 116 points while on IR.
-4. **A QB floor rule.** Five of 33 drafts ended with a materially weak QB room. Unlike
+6. **A QB floor rule.** Five of 33 drafts ended with a materially weak QB room. Unlike
    the §4 roster-shape mechanisms, a floor is a guardrail rather than a shape term.
-5. **Pipeline step 4** — rebuild ESPN / props as pipeline sources. They work today in
+7. **Pipeline step 4** — rebuild ESPN / props as pipeline sources. They work today in
    `analysis/`, so this is refactoring, not new capability.
-6. **Delete the frozen fallback** (`PROJECTIONS_SPLIT` §6 step 4) once the pushed path
+8. **Delete the frozen fallback** (`PROJECTIONS_SPLIT` §6 step 4) once the pushed path
    has run for a while. Note `analysis-verify` no longer expects identity — the two
    paths legitimately differ now that FFToday is in one of them.
-7. **Remove the dead Yahoo plumbing** — routes, `kv_store`, the fetcher. It cannot
+9. **Remove the dead Yahoo plumbing** — routes, `kv_store`, the fetcher. It cannot
    produce projections, and it is the only consumer of `kv_store`.
 
 ---
@@ -370,6 +381,15 @@ round from ADP. That is an argument for the column that does not run on ADP alon
   him positive — and the falling ADP *was the injury being priced in*, credited as a
   bonus. The floor now drops to 0 when `avail` is 0. 441 of 443 players unchanged; the
   two movers are the two IR players.
+- **A calibration result for one question is not a licence to change another
+  question's units.** `V2_ADP_SIGMA_RATIO` served both the survival model ("will he
+  last?", measurable, and measured against 33 boards) and the reach penalty ("how far
+  outside the market's own uncertainty is this?", a pricing judgement, never
+  calibrated). Narrowing it 0.30 → 0.10 on the survival evidence tripled every reach
+  penalty and put a 16-ppg QB *below* a 0.5-ppg QB — three backup quarterbacks in the
+  V2 top ten on a live board. Nothing errored; both readings were plausible; the term
+  simply meant something different afterwards. Split into `V2_MARKET_SIGMA_RATIO`.
+  **Caught by the user looking at his own board, not by any check here.**
 - **The same fix has to reach the model in charge.** The injury work landed in the
   payload and on V2's card, and V1 — the PRIMARY column — still had no concept of
   availability at all, because it scores on ADP and ADP lags a season-ending injury by
