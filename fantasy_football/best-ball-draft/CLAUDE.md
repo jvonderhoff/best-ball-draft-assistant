@@ -77,6 +77,16 @@ its opponents are ADP bots, so their behaviour *is* the thing being modelled. Re
 with `tools/calibrate-survival.py`; grow the dataset with `tools/import-new-drafts.sh`.
 V2_DESIGN §2.2.
 
+**Before shipping any change to a scoring constant or term, run
+`node tools/check-model-change.js`.** It scores every player with the working tree and
+with `HEAD`, on REAL boards from `drafts.db` at four pick depths, and lists exactly who
+moved — in BOTH models, because V1 is the primary column and a fix that reaches only V2
+has not fixed the recommendation. Every mover should be one you intended: making V1
+read `avail` moved all 443 players until it was narrowed to `avail === 0`, and the
+sigma regression showed as **"0 unchanged, 357 MOVED"** for a change that was only
+meant to recalibrate survival. Empty-roster testing is why that one shipped — at pick
+190 with nobody rostered, neither the stack nor the reach term fires.
+
 **One command refreshes everything manual:**
 `../projections/tools/refresh-sources.sh` (add `--publish`), or the
 `/update-projections` slash command, which reads the output for you. It refuses to run
