@@ -165,13 +165,65 @@ against; survival keeps its measured 0.10.
 another question's units.** Both uses read plausibly from the shared constant, and
 nothing failed — the reach penalty simply meant something different afterwards.
 
-**Still wrong, and pre-existing:** the reach penalty is scaled by `eff.sd`, so it is
-roughly proportional to player quality — Darnold's sd is 6.11 against DeVito's 0.19, a
-32x difference. Among players you would equally be reaching for, the worst is penalised
-least. That is why **76 real players still rank below the 0-ppg bodies** at this pick,
-and why a late-round board with nothing left to gain sorts partly by ascending quality.
-Not introduced here and not fixed here; the sigma split removes the amplification, not
-the cause.
+**Was still wrong, and pre-existing — fixed 2026-08-26, §2.4.** The reach penalty was
+scaled by `eff.sd`, so it was roughly proportional to player quality: Darnold's sd is
+6.11 against DeVito's 0.19, a 32x difference. Among players you would equally be
+reaching for, the worst was penalised least. The sigma split removed the amplification,
+not the cause.
+
+### 2.4 The reach penalty was scaled by the player, not the position (2026-08-26)
+
+The market/reach tilt read
+
+```js
+tilt = clamp(fell / adpSigma, ±1.5) * V2_MARKET_PULL * (eff.sd / 10)
+```
+
+where `eff.sd` is the **candidate's own** weekly standard deviation. The intent, per the
+comment above it, was "scaled by SD so it means the same thing across positions" — but a
+player's own sd is not a property of his position, it is mostly a proxy for how good he
+is. So the term meant something different for every player in the same position, and the
+worse the player, the cheaper it was to reach for him.
+
+Measured on three real boards at four depths each, against the committed pool and the
+local payload mirror:
+
+| | before | after |
+|---|---|---|
+| best sub-1ppg player's rank, pick 37 of 405 | **23** | 136 |
+| best sub-1ppg player's rank, pick 133 of 309 | **16** | 73 |
+| best sub-1ppg player's rank, pick 181 of 261 | **22** | 46 |
+| real players (>4 ppg) below the best 0-ppg body, 12 boards | **1320** | 357 |
+
+A 0.5-ppg quarterback ranking 16th of 309 is the defect in one line. The earlier §2.3
+framing — 76 inverted players — understated it by counting the symptom at the bottom of
+the board rather than the body climbing the top of it.
+
+**The fix is `ctx.marketRefSd[pos]`**: the mean sd of the top 24 by projected mean at
+that position, so the tilt is denominated in the position's scale and nothing else. The
+`fit` multiplier on the value direction is untouched, and so is the `avail === 0` floor
+drop — a player who cannot play still gets no credit for falling.
+
+**Read from the UNIVERSE, not from who is still available**, and that is measured rather
+than tidy. A best-24-remaining referent collapses as a position is picked over:
+
+| | pick 37 | 85 | 133 | 181 | 229 | universe |
+|---|---|---|---|---|---|---|
+| QB | 6.57 | 5.48 | 2.59 | 1.01 | 0.53 | 6.69 |
+| RB | 6.18 | 4.28 | 2.76 | 1.97 | 1.46 | 9.02 |
+| WR | 8.24 | 6.47 | 5.08 | 4.08 | 2.94 | 10.42 |
+| TE | 6.85 | 6.25 | 4.93 | 3.36 | 2.43 | 7.34 |
+
+`adpSigma` **already** makes a late reach cheaper (0.30 × adp — about six picks at ADP
+20, about sixty at ADP 200). A referent that shrank as well would compound with it and
+discount late reaches twice for the same stated reason once.
+
+**Every player moves, and that is expected here** — unlike the sigma regression, where
+"0 unchanged, 357 MOVED" was the tell that a survival fix had re-priced every reach.
+The referent changed for all of them by construction. What was checked instead is the
+top of the board: the #1 recommendation is unchanged on all six boards inspected, and
+reordering below it is modest (the largest is Ja'Kobi Lane 5th → 1st at pick 181, a
+board where the top ten span 0.66 to 2.01 and the ordering was near-arbitrary anyway).
 
 ### 2.1 De-meaning the prop correction (2026-08-20)
 

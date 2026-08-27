@@ -365,12 +365,13 @@ round from ADP. That is an argument for the column that does not run on ADP alon
 
 ## Open threads
 
-1. **The reach penalty scales with the player's own volatility.** `tilt` is multiplied
-   by `eff.sd / 10`, so among players you would equally be reaching for, the WORST is
-   penalised least — Darnold's sd is 6.11 against DeVito's 0.19, a 32x gap. On a
-   picked-over board where nothing adds value, this sorts partly by ascending quality:
-   **76 real players (>4 ppg) rank below the 0-ppg bodies** at pick 133 of draft
-   193767922. Pre-dates 2026-08-25 and is unchanged at either sigma; V2_DESIGN §2.3.
+1. ~~**The reach penalty scales with the player's own volatility.**~~ **Fixed
+   2026-08-26.** `tilt` was multiplied by `eff.sd / 10`, so among players you would
+   equally be reaching for the WORST was penalised least — Darnold's sd 6.11 against
+   DeVito's 0.19, a 32x gap. Scaled by the POSITION's reference sd now
+   (`ctx.marketRefSd`, top-24 by mean in the universe). The number that made it
+   concrete: a sub-1ppg body ranked **16th of 309** at pick 133 and now ranks 73rd;
+   inversions across 12 real boards went 1320 → 357. V2_DESIGN §2.4.
 2. **`scale` re-inflates a source that reacts alone.** Sleeper cut Jeanty 259.5 → 233.9
    for his ankle, which RAISED `consensus ÷ Sleeper` to 1.110 because ESPN (98h old)
    and FFToday (unmoved in a week) held the consensus up — so his basis became 1163.6

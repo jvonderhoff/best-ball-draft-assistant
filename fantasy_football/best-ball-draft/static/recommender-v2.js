@@ -1348,7 +1348,7 @@ function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = n
   // the current roster, so they are computed once per pick, not once per candidate.
   const ctx = {
     nextMyPick, myPickNumber, myPicks,
-    replAccum: {}, replSpike: {}, barCache: {}, typicalSd: {}, horizon: {}, replDepth: {},
+    replAccum: {}, replSpike: {}, barCache: {}, typicalSd: {}, marketRefSd: {}, horizon: {}, replDepth: {},
     exhaustion: {}, universe: universe || null,
     maxAdp: 250, teamSchedules: {},
     run: v2PositionalRun(universe, available, myPickNumber),
@@ -1383,6 +1383,33 @@ function buildV2Context(available, myTeam, myPickNumber, nextMyPick, myPicks = n
       .slice(0, 24)
       .map(p => p._eff.sd);
     ctx.typicalSd[pos] = sds.length ? sds.reduce((a, b) => a + b, 0) / sds.length : 0;
+  }
+
+  // Reference SD per position for the market/reach tilt — deliberately a property of
+  // the POSITION, never of the candidate.
+  //
+  // Until 2026-08-26 that tilt was scaled by the candidate's OWN `eff.sd`, which made
+  // the reach penalty roughly proportional to how good he is: Sam Darnold's sd is 6.11
+  // against Tommy DeVito's 0.19, a 32x gap. Among players you would equally be reaching
+  // for, the WORST was penalised least, so a picked-over board sorted partly by
+  // ASCENDING quality — 87 real players (>4 ppg) ranked below the 0-ppg bodies at pick
+  // 133 of a real board, and 180 of 198 at pick 37. V2_DESIGN §2.3.
+  //
+  // Read from the UNIVERSE rather than the players still available, and that part is
+  // measured, not tidiness: a best-24-remaining referent collapses as a position is
+  // picked over — QB 6.57 at pick 37 to 0.53 at 229, a 12x fall, RB 6.18 to 1.46. But
+  // `adpSigma` ALREADY makes a late reach cheaper (0.30 x adp, ~6 picks at ADP 20 and
+  // ~60 at ADP 200), so a referent that shrank too would compound with it and make late
+  // reaches nearly free twice over, for the same stated reason once. The universe value
+  // holds still: QB 6.69, RB 9.02, WR 10.42, TE 7.34.
+  const marketRefPool = (universe && universe.length) ? universe : available;
+  for (const pos of Object.keys(V2_STARTER_SLOTS)) {
+    const sds = marketRefPool
+      .filter(p => p.pos === pos && p._eff)
+      .sort((a, b) => b._eff.mean - a._eff.mean)
+      .slice(0, 24)
+      .map(p => p._eff.sd);
+    ctx.marketRefSd[pos] = sds.length ? sds.reduce((a, b) => a + b, 0) / sds.length : 0;
   }
 
 
@@ -1535,7 +1562,9 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   // ── Market value ───────────────────────────────────────────────────────────
   // Unlike V1 this uses realAdp, so it measures "the market let him fall to me"
   // rather than re-counting your own board (which already set the projection).
-  // Scaled by SD so it means the same thing across positions.
+  // Scaled by the POSITION's reference SD so it means the same thing across
+  // positions — and, since 2026-08-26, so that it does not also mean something
+  // different for every player within one (see `ctx.marketRefSd`).
   //
   // Measured in units of the market's OWN uncertainty about that player, not in
   // raw picks. A fixed pick yardstick treats reaching eight spots at pick 12 and at
@@ -1555,7 +1584,14 @@ function calculateValueV2(player, myPickNumber, myTeam, nextMyPick = null, avail
   if (adp) {
     const fell     = myPickNumber - adp;
     const adpSigma = Math.max(V2_ADP_SIGMA_FLOOR, V2_MARKET_SIGMA_RATIO * adp);
-    let tilt = Math.max(-1.5, Math.min(1.5, fell / adpSigma)) * V2_MARKET_PULL * (eff.sd / 10);
+
+    // The candidate's own sd is deliberately NOT used here; `ctx.marketRefSd` carries
+    // why at length. The fallbacks only fire for a position with nothing scored in it
+    // at all, which cannot happen for the candidate's own position — he is in
+    // `available` with an `_eff` or we would not be scoring him — but a term that
+    // silently becomes zero is worse than one that degrades to the old behaviour.
+    const refSd = (ctx.marketRefSd && ctx.marketRefSd[pos]) || ctx.typicalSd[pos] || eff.sd;
+    let tilt = Math.max(-1.5, Math.min(1.5, fell / adpSigma)) * V2_MARKET_PULL * (refSd / 10);
 
     // The two directions are not symmetric.
     //
