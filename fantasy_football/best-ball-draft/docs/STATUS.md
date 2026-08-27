@@ -372,21 +372,22 @@ round from ADP. That is an argument for the column that does not run on ADP alon
    (`ctx.marketRefSd`, top-24 by mean in the universe). The number that made it
    concrete: a sub-1ppg body ranked **16th of 309** at pick 133 and now ranks 73rd;
    inversions across 12 real boards went 1320 → 357. V2_DESIGN §2.4.
-2. **`scale` re-inflates a source that reacts alone.** Sleeper cut Jeanty 259.5 → 233.9
-   for his ankle, which RAISED `consensus ÷ Sleeper` to 1.110 because ESPN (98h old)
-   and FFToday (unmoved in a week) held the consensus up — so his basis became 1163.6
-   rushing yards, above Sleeper's own pre-injury 1152. The market is then measured
-   against a number more optimistic than any source currently holds. §2.1.
-3. **The prop correction's basis is Sleeper alone.** The consensus TOTAL is a blend of
-   three sources; its COMPONENTS are not, and Sleeper is 11% low on RBs against ESPN
-   almost entirely through receptions (Jeanty 39 catches to ESPN's 65). Swapping the
-   basis flips the SIGN of the correction for 14 draftable players — Stevenson swings
-   20 points. `research/prop_basis.py` measures it; `--alt blend` is the candidate fix
-   and is not shipped.
-4. **ESPN and FFToday components are collected and unused by the model.** 375 of 435
-   players have ESPN components, including the only interception projection anywhere.
-   They are on the Analysis page now but feed no model field; the obvious use is as the
-   prop basis above.
+2. ~~**`scale` re-inflates a source that reacts alone.**~~ **Fixed 2026-08-26**, and
+   with it thread 3. Components now blend every source that publishes them
+   (`_component_basis`), each rescaled by its OWN total, so a consensus total is met by
+   consensus components. Basis values above what EVERY source holds: 68 pairs / 59
+   players → 15 / 15. The residual 15 are components only one source publishes, where
+   blending has nothing to average. `ppg` moved for 183 of 439 (mean 1.10%, max 8.80%);
+   `rec_share` correctly did not move. `V2_PROP_BASIS=sleeper` restores the old basis.
+   V2_DESIGN §2.5.
+3. ~~**The prop correction's basis is Sleeper alone.**~~ **Fixed by the same change.**
+   `research/prop_basis.py --alt blend` was the candidate; it is now the default. Note
+   its numbers move as the sources do — the 14 sign flips recorded here read as 3 of
+   155 when re-run on 2026-08-26.
+4. **ESPN and FFToday components are collected and largely unused by the model.** 375
+   of 435 players have ESPN components, including the only interception projection
+   anywhere. The 2026-08-26 basis blend is the first model field to consume them; the
+   rest still feed only the Analysis page.
 5. **A fourth projection source.** FantasySharks and CBS both responded but need
    rendering or more parsing work; NFL.com is weekly-only and still serving 2025. Note
    the marginal value is falling — most of the pool is already at three. The place it

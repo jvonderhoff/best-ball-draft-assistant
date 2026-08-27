@@ -225,6 +225,70 @@ top of the board: the #1 recommendation is unchanged on all six boards inspected
 reordering below it is modest (the largest is Ja'Kobi Lane 5th → 1st at pick 181, a
 board where the top ten span 0.66 to 2.01 and the ordering was near-arbitrary anyway).
 
+### 2.5 The component basis blends every source (2026-08-26)
+
+The consensus TOTAL is a blend of three sources. Its COMPONENTS were taken from
+Sleeper alone and rescaled to that total:
+
+```python
+basis = sleeper_component * clamp(consensus_ppr / sleeper_pts_ppr, 0.5, 2.0)
+```
+
+That asymmetry is invisible while the sources agree and fails hardest in the case you
+most want it to work — **a source reacting alone to news.** Sleeper cut Jeanty
+259.5 → 233.9 for an ankle; ESPN (98h stale) and FFToday (unmoved in a week) held the
+consensus up, so `consensus / sleeper` ROSE to 1.110 and the rescale handed the
+components back exactly what the cut removed: a basis of 1163.6 rushing yards against
+Sleeper's own PRE-injury 1152. The market was then measured against a number more
+optimistic than any source currently held.
+
+Not a one-off. Across the 217 players inside ADP 216, the single-source basis exceeded
+what **every** source publishes for 68 (player, component) pairs over 59 distinct
+players, by up to +20.9%.
+
+| | before | after |
+|---|---|---|
+| (player, component) pairs above every source's value | **68** | 15 |
+| distinct players affected | **59** | 15 |
+
+**The residual 15 are components only one source publishes** — mean sources per
+component: `rush_yd` 2.03, `rec_yd` 2.54, `rec` 2.54, `pass_yd` 0.43. There the blend
+has nothing to average and the old behaviour stands. Clamping the basis into the range
+the sources actually hold would fix those too, but it would also disable the rescale
+wherever one source is alone, which is most of `pass_yd`. That trade is unmeasured and
+so it is not taken.
+
+Effect on the six fields V2 consumes, both arms built in one process off one data
+snapshot:
+
+| field | moved | mean abs | max |
+|---|---|---|---|
+| `ppg` | 183 of 439 | 1.10% | 8.80% |
+| `sd` | 173 of 439 | 1.17% | 8.84% |
+| `sources` | 1 | — | Jayden Higgins 1 → 2 |
+| `avail`, `disagreement`, `rec_share` | 0 | — | — |
+
+`rec_share` staying put is the check that matters most: it divides Sleeper's components
+by **Sleeper's own** total deliberately, because a ratio needs one basis. That is the
+single place a lone source is correct, and it was left alone.
+
+Higgins gaining a source is the fix working in the thin tail — Sleeper published no
+component for him, so his market was skipped entirely and he sat on one source.
+
+**Also fixes open thread 3** (the prop correction's basis was Sleeper alone) and takes
+the first real consumer of thread 4's collected-but-unused ESPN and FFToday components.
+
+**Not harness-measurable, so it ships with its comparison arm intact.** Props never
+have been — §2.1 says why — so `V2_PROP_BASIS=sleeper` restores the old basis exactly.
+Verified by round-trip: under that flag all six fields are identical to the
+pre-change build for all 439 players.
+
+**The measurement nearly went wrong in the documented way.** Building the two arms as
+separate processes reported "unchanged for all 439" on every field, because
+`get_projections` serves a disk cache within its TTL and both runs read the same one —
+the same trap that gave `analysis-verify` 345 false mismatches. Both arms belong in one
+process, off one snapshot, with only the code differing.
+
 ### 2.1 De-meaning the prop correction (2026-08-20)
 
 Sportsbook season lines are the one genuinely independent input the model has — priced
