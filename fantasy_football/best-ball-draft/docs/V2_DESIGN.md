@@ -132,6 +132,15 @@ price a better model of it is circular. This ships on out-of-sample calibration
 against real boards instead, which is a different and in this case stronger kind of
 evidence than an EV delta.
 
+**Re-run 2026-08-27 at 35 boards / 986,311 decisions: 0.10 holds, calibration error
+still 0.008.** The bucket table shows structure the aggregate hides, though — 794,158
+of those decisions are in the 90-100% band where survival is obvious, and in the
+contested middle the model is over-optimistic: 40-50% predicted against 0.358 actual,
+50-60% against 0.481, 30-40% against 0.292, while 0-10% under-predicts at 0.030
+against 0.099. That skew advises waiting on players who will not last. STATUS open
+thread 5; not acted on, because the aggregate constant has not moved and one table is
+not a mandate.
+
 **33 boards is enough to establish the direction and not enough to defend a third
 decimal place.** Re-run `tools/calibrate-survival.py` as more drafts finish. All 33
 are DK 12-team best ball, so it is calibrated to the format actually played and may

@@ -293,6 +293,8 @@ CLAUDE.md beside the command that runs the diff. Revisit if something slips past
 
 The first model work here scored against **real completed boards** rather than the
 simulator. 33 DK boards, every seat, **935,163 (player, next-pick, survived) decisions**.
+Re-run 2026-08-27 at **35 boards / 986,311 decisions**: 0.10 holds, calibration error
+still 0.008. Two of thirteen saved drafts had finished; eleven are still in progress.
 
 **`v2SurvivalProb` had never been checked, and was wrong twice.** It returned the
 UNCONDITIONAL probability a player lasts — ignoring the one thing you always know when
@@ -389,19 +391,29 @@ round from ADP. That is an argument for the column that does not run on ADP alon
    of 435 players have ESPN components, including the only interception projection
    anywhere. The 2026-08-26 basis blend is the first model field to consume them; the
    rest still feed only the Analysis page.
-5. **A fourth projection source.** FantasySharks and CBS both responded but need
+5. **Survival is well calibrated in aggregate and skewed in the contested middle.**
+   Re-run 2026-08-27 on 35 boards / 986,311 decisions: the headline calibration error
+   is 0.008, but 794,158 of those decisions sit in the 90-100% bucket where the answer
+   is "obviously still there". In the band where a pick decision actually turns the
+   model is over-optimistic about survival — 40-50% predicted against 0.358 actual
+   (+0.094), 50-60% against 0.481 (+0.070), 30-40% against 0.292 (+0.059) — while
+   0-10% under-predicts (0.030 against 0.099). Directionally that advises WAITING on
+   players who will not in fact last. Not acted on: one table, and the aggregate
+   constant is unchanged, so this wants a second look before anything moves. The
+   fitted optimum for `V2_ADP_SIGMA_RATIO` is still 0.10.
+6. **A fourth projection source.** FantasySharks and CBS both responded but need
    rendering or more parsing work; NFL.com is weekly-only and still serving 2025. Note
    the marginal value is falling — most of the pool is already at three. The place it
    would pay is the thin tail: **37 players still rest on a single source**, which is
    how Pearsall reached production at 116 points while on IR.
-6. **A QB floor rule.** Five of 33 drafts ended with a materially weak QB room. Unlike
+7. **A QB floor rule.** Five of 33 drafts ended with a materially weak QB room. Unlike
    the §4 roster-shape mechanisms, a floor is a guardrail rather than a shape term.
-7. **Pipeline step 4** — rebuild ESPN / props as pipeline sources. They work today in
+8. **Pipeline step 4** — rebuild ESPN / props as pipeline sources. They work today in
    `analysis/`, so this is refactoring, not new capability.
-8. **Delete the frozen fallback** (`PROJECTIONS_SPLIT` §6 step 4) once the pushed path
+9. **Delete the frozen fallback** (`PROJECTIONS_SPLIT` §6 step 4) once the pushed path
    has run for a while. Note `analysis-verify` no longer expects identity — the two
    paths legitimately differ now that FFToday is in one of them.
-9. **Remove the dead Yahoo plumbing** — routes, `kv_store`, the fetcher. It cannot
+10. **Remove the dead Yahoo plumbing** — routes, `kv_store`, the fetcher. It cannot
    produce projections, and it is the only consumer of `kv_store`.
 
 ---
