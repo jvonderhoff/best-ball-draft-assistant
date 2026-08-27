@@ -363,6 +363,17 @@ export DRAFT_APP_URL=https://best-ball-draft-assistant.onrender.com
   <p>Opens the Analysis page at <code>localhost:8100</code> — every source, every stat,
   the Compare view, and the per-player breakdown. Pointed at the Render URL like that,
   it reads live production data and needs nothing else running.</p>
+  <h3>What runs on its own</h3>
+  <p>Two things are automated, and they're automated differently on purpose.</p>
+  <ul>
+    <li><strong>A safety check on the scoring code.</strong> Whenever the recommendation
+    logic is edited, every player is automatically re-scored on real past drafts and the
+    differences are reported. It exists because three bugs shipped in one week that a
+    check like this would have caught — including one where backup quarterbacks appeared
+    in your top ten.</li>
+    <li><strong>The refresh routine is <em>not</em> automated.</strong> It publishes to
+    production, and anything that publishes should be something you decided to do.</li>
+  </ul>
   <div class="note trap">
     <span class="tag">Always include the export line</span>
     <p>That one variable decides both <em>which</em> draft app is read and <em>where</em>

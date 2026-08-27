@@ -218,10 +218,73 @@ mistakes were, not the steps.
 | import finished drafts, re-score survival | `tools/import-new-drafts.sh` |
 | does the basis of the prop correction matter? | `../projections/research/prop_basis.py --alt blend` |
 
-`/update-projections` (a slash command in `.claude/commands/`) drives the first two and
-reads the output for you. `refresh-sources.sh` **refuses to run without
-`DRAFT_APP_URL`** rather than defaulting — unset, it is localhost, and a publish then
-reports success while going nowhere near production.
+`refresh-sources.sh` **refuses to run without `DRAFT_APP_URL`** rather than defaulting —
+unset, it is localhost, and a publish then reports success while going nowhere near
+production.
+
+---
+
+## Automation — what exists, and when each one runs
+
+Three different mechanisms, and the difference between them is *who decides to run it*.
+That distinction turned out to matter: three regressions shipped in one week with the
+relevant lesson already written in this file, which is the case against relying on
+anything that needs remembering.
+
+### Runs by itself — a hook
+
+| | |
+|---|---|
+| **`.claude/settings.json`** → `tools/hooks/on-model-edit.sh` | `PostToolUse` on `Write\|Edit` |
+
+Fires on every edit and exits silently unless the file can change a recommendation —
+either recommender, or the projections app's `payload.py`, matched by path suffix so it
+works from either repo. When it matches it runs `tools/check-model-change.js` and
+returns the diff as `additionalContext`, so it lands in the model's context rather than
+only in the transcript.
+
+**It never fails the edit.** A verification tool that can block work gets disabled, and
+then it verifies nothing — the same fate as a warning that cries wolf.
+
+`launch.json` stays gitignored; `settings.json` and `commands/` are shared, via two
+negations in the root `.gitignore`. Note `git check-ignore` exits 0 when a NEGATION
+matches too, so its exit code alone reports the opposite of the truth — use
+`git add -n` to settle it.
+
+### Runs when you type it — a slash command
+
+| | |
+|---|---|
+| **`/update-projections`** | `.claude/commands/update-projections.md` |
+
+Drives `refresh-sources.sh` and covers what a script cannot: what to read before
+publishing (the target host, `sd_invariant_ok`, the player count in range), how to
+interpret preflight afterwards, and which warnings are expected rather than wrong.
+
+Deliberately NOT a hook. It publishes to production, and something that publishes
+should be triggered on purpose. **Commands register at startup**, so a newly added one
+needs a Claude Code restart before `/name` resolves.
+
+### Runs when you invoke it — scripts
+
+Everything in the table above, plus:
+
+| what | command |
+|---|---|
+| did this change move anyone I did not intend? | `node tools/check-model-change.js` |
+| re-score the survival model on real boards | `python3 tools/calibrate-survival.py` |
+
+`check-model-change.js` is the substance behind the hook and is useful standalone —
+`--base <ref>` compares against any commit.
+
+### No skills, and that is deliberate
+
+A skill loads automatically when its description matches the task, which makes it the
+weakest of the three for this problem: the same judgement that failed three times would
+be deciding whether it applies. The parts worth encoding either have teeth (the hook) or
+need an explicit trigger (the command). The two judgement-shaped rules that remain —
+grep every use of a constant before moving it, and check the change reaches V1 — are in
+CLAUDE.md beside the command that runs the diff. Revisit if something slips past this.
 
 ---
 
