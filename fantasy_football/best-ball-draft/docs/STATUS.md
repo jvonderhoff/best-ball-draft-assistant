@@ -34,13 +34,14 @@ cost: **the Analysis table is not reachable from a phone.**
 | | state |
 |---|---|
 | Draft app on Render | deployed, healthy, `/analysis` → 410 |
-| **V2's inputs in prod** | **the PUBLISHED payload** — 435 players, `source: pushed`, stamped with the publishing commit |
-| Sources per player | 380 multi-source of 420 scored |
+| **V2's inputs in prod** | **the PUBLISHED payload** — 439 players, `source: pushed`, stamped with the publishing commit |
+| Sources per player | 382 multi-source of 424 scored |
 | Analysis app | local, 60 tests, `doctor: ok` |
 | Both repos | pushed and clean |
 | `tools/preflight.py` | **PASS — 0 failing, 0 worth a look** |
 
-**Published 2026-08-18.** Production's V2 scores on the projections app's payload,
+**Published 2026-08-27, publisher `dd03737`** — the first payload built with the
+blended component basis (§2.5). Production's V2 scores on the projections app's payload,
 built against prod's own pool and board. `/api/projections-v2` reports `source:
 pushed` — if it ever reads `local` again, publishing has stopped and prod has silently
 reverted to the frozen fallback. That field is the only thing that would say so.
