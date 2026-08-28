@@ -325,11 +325,35 @@ and the two rejections are listed because they are the obvious ideas and they ar
    keystroke, and it sits on top of the most repeated bug class here. Advisory only —
    it must not move `avail`, or it becomes an unmeasurable heuristic of exactly the
    kind §4 records three failures of.
-2. **Nightly refresh on the Mac, stopping at the dry run.** The pipeline is manual
-   because DK blocks datacenter IPs — a reason that does not apply to this machine.
-   Automate everything up to the publish and leave the publish to a human: on
-   2026-08-27 a build fell back to the committed cache and passed every check the
-   runbook lists, and only a human reading one word caught it.
+2. ~~**Nightly refresh on the Mac, stopping at the dry run.**~~ **Built 2026-08-28** —
+   `../projections/tools/nightly.sh` plus `tools/com.bba.nightly.plist`. Wakes the app,
+   refreshes every manual source, snapshots DK for the ADP series, polls news, builds,
+   stops at the dry run, runs market-watch and preflight, and writes one dated report
+   to `data/nightly/` with a `what needs you` section at the end.
+
+   **It never publishes, and therefore never needs `BBA_API_KEY`** — it cannot change
+   production even if something goes wrong with it, which is a stronger guarantee than
+   being written not to. On 2026-08-27 a build fell back to the committed cache and
+   passed every check the runbook lists; automating the publish would have automated
+   shipping that on a schedule.
+
+   **The reason it wakes the app first is measured, not defensive.** `spine.py` reads
+   the pool with a 15-SECOND timeout and falls back to the committed cache on any
+   failure, swallowing the exception; Render's free tier spins down and a cold start
+   takes 30-60s. A 4am job firing into a sleeping app would build against a stale pool
+   and report success, every night. That is very likely what happened on 2026-08-27, at
+   the one moment nobody had touched the app in hours. It also greps the refresh output
+   for `from cache-file` and refuses, because the app answering is not proof the build
+   read it.
+
+   **launchd, not cron:** cron does not fire on a sleeping Mac and silently skips;
+   `StartCalendarInterval` runs at next wake. Scheduled 07:30, deliberately a time
+   somebody will read it. launchd does not source `~/.zshrc`, so every variable is set
+   explicitly in the plist — the same trap that has bitten the publish path.
+
+   **Zero tokens.** Everything mechanical is shell. The judgement — read the report,
+   decide whether to publish — stays with a human, and a scheduled Claude session would
+   have cost 20-40k tokens a run for work a script does for free.
 3. **Close the hook's blind spot.** The `PostToolUse` hook matches `Write|Edit`, so
    edits made through the shell never trigger it — both scoring files were changed that
    way on 2026-08-26 and the diff never ran. Add `Bash` to the matcher, and consider a

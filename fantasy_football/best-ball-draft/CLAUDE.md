@@ -92,6 +92,23 @@ meant to recalibrate survival. Empty-roster testing is why that one shipped — 
 `/update-projections` slash command, which reads the output for you. It refuses to run
 without `DRAFT_APP_URL` rather than defaulting to localhost.
 
+**`../projections/tools/nightly.sh` does all of that unattended, and never publishes.**
+Scheduled at 07:30 by `tools/com.bba.nightly.plist` (launchd, because cron does not fire
+on a sleeping Mac). It wakes the app, refreshes every source, snapshots DK for the ADP
+series, polls news, stops at the DRY RUN, then runs market-watch and preflight into one
+dated report at `../projections/data/nightly/`, ending with a `what needs you` section.
+Read that; the publish stays a human decision.
+
+**It wakes the app first because that is a real failure, not a precaution.**
+`spine.py` reads the pool with a 15-second timeout and falls back to the committed
+`player_cache.json` on any failure, swallowing the exception — and Render's free tier
+spins down, with cold starts of 30-60s. An unattended job firing into a sleeping app
+builds against a stale pool and reports success. It also greps the refresh output for
+`from cache-file` and refuses, because the app answering is not proof the build read it.
+
+**The nightly job never needs `BBA_API_KEY`**, and that is the point: it cannot change
+production at all. A stronger guarantee than being written not to.
+
 **Read `docs/V2_DESIGN.md` before changing the recommender.** It documents the model, the
 evidence behind every constant, and — most importantly — §4, the dead ends. This file
 covers only the operational things that live nowhere else.
