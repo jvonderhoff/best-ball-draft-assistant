@@ -420,6 +420,22 @@ round from ADP. That is an argument for the column that does not run on ADP alon
 
 ## Traps hit this week — each now guarded
 
+- **A failed pool read falls back to the committed cache and says so in one word.**
+  `spine.load_pool()` returns `(players, source)` where source is `api` or
+  `cache-file`, and both `_from_api` and `load_custom_ranks` swallow every exception —
+  so a refresh whose `/api/players` call fails builds the payload against
+  `app/data/player_cache.json` instead, with **zero** custom ranks, and reports success
+  at every other check. Hit 2026-08-27 during `refresh-sources.sh`: `441 players from
+  cache-file | 0 custom ranks` where every other build that day said `440 from api |
+  438 custom ranks`. `DRAFT_APP_URL` was set correctly — the script prints `target:` and
+  refuses without it — so this was a transient read failure, not a misconfiguration, and
+  a retry fixed it. Cost if published: 4 players in prod's live pool had no entry in the
+  cache-file build and would have scored with no projection at all. **The `/update-projections`
+  checklist reads three things and this is not one of them** — add the pool line to what
+  you check, since `sd_invariant_ok`, `null_fields` and the player count were all
+  perfectly healthy on the bad build. Note also that `--target` sets only where the
+  publish SENDS; the env var is what the build READS.
+
 - **The recommender was ignoring your board on every warm reload.** Init called
   `loadCustomRankings()` fire-and-forget while `loadPlayers()` rendered immediately, and
   the sessionStorage-cached branch renders *synchronously* — so the first

@@ -22,7 +22,7 @@ It must be run from an interactive shell. `BBA_API_KEY` lives in `~/.zshrc`, so 
 absent from `zsh -lc` and from most non-interactive contexts; the script checks and
 refuses rather than letting the publish 401 halfway through.
 
-## Before publishing, read three things
+## Before publishing, read four things
 
 1. **`would POST to` names the Render host**, not localhost. `DRAFT_APP_URL` controls
    both what the build reads and where the publish goes, so getting it wrong sends a
@@ -30,7 +30,12 @@ refuses rather than letting the publish 401 halfway through.
 2. **`sd_invariant_ok: true`** and `null_fields` showing zeros for `ppg`, `sd`,
    `sources` and `avail`. `rec_share` nulls are normal (Sleeper has no components for
    some players); the rest are not.
-3. **The player count is in the expected range** — 420-445 for a 2026 pool. A sharp
+3. **`pool: N players from api`** — not `from cache-file`, and the custom-rank count
+   next to it is not 0. Both reads swallow their exceptions, so a failed
+   `/api/players` silently builds against the committed cache with no rankings and
+   passes every other check here. Retry; it is usually transient. Note `--target`
+   controls only where the publish SENDS — `DRAFT_APP_URL` is what the build READS.
+4. **The player count is in the expected range** — 420-445 for a 2026 pool. A sharp
    drop means a source failed in a way that did not raise.
 
 `doctor` warning that FFToday matches 100% by NAME is expected and long-standing, not
