@@ -287,6 +287,48 @@ need an explicit trigger (the command). The two judgement-shaped rules that rema
 grep every use of a constant before moving it, and check the change reaches V1 — are in
 CLAUDE.md beside the command that runs the diff. Revisit if something slips past this.
 
+### Considered — a backlog, with the reasoning kept (2026-08-27)
+
+Reviewed for what agents and LLM tooling could actually add here. Ordered by value,
+and the two rejections are listed because they are the obvious ideas and they are wrong.
+
+1. ~~**News and injury advisories.**~~ **Built 2026-08-27** —
+   `../projections/tools/injury-watch.py`, advisory only, writes `data/advisories.json`.
+   On the first real board it found **7 material cases V2 cannot see**, Malik Nabers at
+   ADP 23.1 with a torn ACL listed "Questionable" among them. Mostly a documented map,
+   not a model call: two usable fields over 23 distinct pairs, and `injury_notes` is
+   empty out of season. The LLM slot is the open set — an unrecognised body part, and
+   free text in-season — surfaced as `review`. **Not wired into `/recommend` yet;
+   that is the next step.** Original reasoning: `avail` is a positional base rate
+   overridden to 0 only on a literal `IR` flag, so everything between "healthy" and
+   "season over" is invisible to the model: a hamstring, a holdout, a committee, a snap
+   count. This is the only item that adds a capability rather than automating a
+   keystroke, and it sits on top of the most repeated bug class here. Advisory only —
+   it must not move `avail`, or it becomes an unmeasurable heuristic of exactly the
+   kind §4 records three failures of.
+2. **Nightly refresh on the Mac, stopping at the dry run.** The pipeline is manual
+   because DK blocks datacenter IPs — a reason that does not apply to this machine.
+   Automate everything up to the publish and leave the publish to a human: on
+   2026-08-27 a build fell back to the committed cache and passed every check the
+   runbook lists, and only a human reading one word caught it.
+3. **Close the hook's blind spot.** The `PostToolUse` hook matches `Write|Edit`, so
+   edits made through the shell never trigger it — both scoring files were changed that
+   way on 2026-08-26 and the diff never ran. Add `Bash` to the matcher, and consider a
+   `PreToolUse` guard that refuses a publish when the last build line says `cache-file`.
+4. **More slash commands** for knowledge currently held in prose: a pre-draft check, a
+   post-draft import, and the "why does this player look absurd" checklist (names.py,
+   `avail`, `sources`, `realAdp` vs `adp`, then `debug-v2.js`).
+5. **A subagent for open thread 6** — whether FantasySharks or CBS is parseable is a
+   discrete, read-only research task and fits an agent well.
+
+**Rejected, deliberately:**
+
+- **Do not parallelise harness arms across agents.** §5.4b: `loadData()` reads a file
+  the app rewrites, which is why every arm must run inside one script. Parallel agents
+  reintroduce that exact failure, and the result would look like a finding.
+- **Do not let an agent tune constants.** §4 exists because the instinct to improve the
+  model by adding a heuristic has measured worse three times.
+
 ---
 
 ## Calibrated against real drafts (2026-08-24)
