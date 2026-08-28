@@ -298,8 +298,27 @@ and the two rejections are listed because they are the obvious ideas and they ar
    ADP 23.1 with a torn ACL listed "Questionable" among them. Mostly a documented map,
    not a model call: two usable fields over 23 distinct pairs, and `injury_notes` is
    empty out of season. The LLM slot is the open set — an unrecognised body part, and
-   free text in-season — surfaced as `review`. **Not wired into `/recommend` yet;
-   that is the next step.** Original reasoning: `avail` is a positional base rate
+   free text in-season — surfaced as `review`. **Not wired into `/recommend` yet.**
+
+   **Extended the same day into `tools/market-watch.py`, which is the version that
+   earns its place.** An injury flag alone fires on 47 of 217 and gets ignored; an ADP
+   move alone says something happened but not what. The signal is the DISAGREEMENT:
+   bad news with a flat ADP is a room that has not reacted; OK news with a big drop is
+   an overreaction worth buying. Median 14-day ADP drift across the pool is **1.9
+   picks**, so movement is rare enough to read — Higgins +73.7 and Tyson +64.4 priced
+   in, against Nabers +0.5 and Mahomes +0.8 unmoved on torn ACLs, and Kittle drafted
+   7.6 picks EARLIER on an Achilles. News comes from RotoWire and CBS RSS, accumulated
+   as snapshots because RotoWire serves only its last few items.
+
+   **This also fixed the reason the ADP half could not have worked:**
+   `refresh-sources.sh` fetched only fftoday, so the DK snapshot series had three
+   points and stopped on 17 Aug. An ADP time series nobody was recording. It is in the
+   routine now, and the tool improves every time the refresh runs.
+
+   **The model call is still not wired** — there is no `ANTHROPIC_API_KEY`, no SDK and
+   no `claude` on PATH here. The raw beat text is attached per player in
+   `data/market-watch.json` for a reader to classify, which is what item 2's scheduled
+   session would do. Original reasoning: `avail` is a positional base rate
    overridden to 0 only on a literal `IR` flag, so everything between "healthy" and
    "season over" is invisible to the model: a hamstring, a holdout, a committee, a snap
    count. This is the only item that adds a capability rather than automating a
