@@ -1341,9 +1341,27 @@ def dk_my_column():
     return jsonify({'ok': True, 'my_column_idx': col_idx, 'my_position': col_idx + 1})
 
 
-@app.route('/api/dk-reset', methods=['POST', 'GET'])
+@app.route('/api/dk-reset', methods=['POST'])
 def dk_reset():
-    """Clear all stored picks for a draft so a fresh scan can rebuild the list."""
+    """Clear all stored picks for a draft so a fresh scan can rebuild the list.
+
+    POST only. It answered GET as well until 2026-08-29, which made a destructive
+    action reachable by URL alone — and the risk there is not an attacker, it is an
+    accident. A GET that mutates fires on a link preview, a Slack or iMessage unfurl,
+    a browser prefetch, a crawler, or simply the address bar autocompleting a URL you
+    used once. Any of those silently empties the live pick cache for that draft.
+
+    That failure would also be invisible in the way this codebase keeps getting bitten
+    by: /api/dk-draft-state returns HTTP 200 with zero picks when its cache is cold, so
+    /recommend would score an EMPTY BOARD and produce a confident, completely wrong
+    answer rather than an error. Mid-draft that costs a pick.
+
+    Nothing calls this — not the bookmarklet, the extension, or any template (checked
+    across the repo). It is run by hand for recovery, so the only thing GET bought was
+    being able to paste it into a browser. That convenience is precisely the hazard.
+
+        curl -X POST "$HOST/api/dk-reset?draft_id=194290989"
+    """
     draft_id = str(request.args.get('draft_id') or (request.get_json(silent=True) or {}).get('draft_id', '') or '').strip()
     if not draft_id:
         return jsonify({'ok': False, 'error': 'missing draft_id'})

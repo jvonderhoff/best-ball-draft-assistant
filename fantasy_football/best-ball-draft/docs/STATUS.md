@@ -500,6 +500,30 @@ round from ADP. That is an argument for the column that does not run on ADP alon
    paths legitimately differ now that FFToday is in one of them.
 10. **Remove the dead Yahoo plumbing** — routes, `kv_store`, the fetcher. It cannot
    produce projections, and it is the only consumer of `kv_store`.
+11. **27 of the 30 write endpoints take no auth at all** (audited 2026-08-29).
+   Prod is on the public internet, and `POST /api/rankings/save` needs no credential:
+   it write-throughs to Postgres, and because the frontend posts the WHOLE board with
+   unranked players going up as deletes, one well-formed request replaces your board.
+   The `RankingsNotHydrated` 409 in front of it guards a bad *server state*, not a bad
+   caller. `DELETE /api/drafts/<id>` is the same shape on draft history, and
+   `/api/live-draft/push` and `/api/dk-intercept` can inject arbitrary picks into the
+   state `/recommend` scores against. Only `/api/props/upload`,
+   `/api/projections/upload` and `/api/sync-cookies` check `BBA_API_KEY` — and that
+   check reads `if expected and api_key != expected`, so it **fails open** if the env
+   var ever goes missing, which is the same shape as every other silent-success trap
+   in this file.
+   **Tracked deliberately, not fixed: this wants a design decision, not a patch.** The
+   browser calls these endpoints, so a shared secret would ship in client JS and buy
+   close to nothing. The honest options are a session cookie or putting the app behind
+   Render-level auth. Realistic threat is low — nobody is hunting for a personal draft
+   tool — which is why this is a thread rather than a trap.
+   The one case with a plausible **accidental** trigger is already closed:
+   `/api/dk-reset` answered GET until 2026-08-29, so a link preview, a Slack or iMessage
+   unfurl, a browser prefetch, a crawler or an address-bar autocomplete could empty a
+   draft's live pick cache — and `/api/dk-draft-state` returns HTTP 200 with zero picks
+   when cold, so `/recommend` would then score an empty board and answer confidently
+   rather than error. POST-only now. It was the only route mixing GET with a mutating
+   method, and there are none left.
 
 ---
 
@@ -525,7 +549,24 @@ round from ADP. That is an argument for the column that does not run on ADP alon
   `loadCustomRankings()` fire-and-forget while `loadPlayers()` rendered immediately, and
   the sessionStorage-cached branch renders *synchronously* — so the first
   recommendations used market ADP with the star showing blue. V2 too, at
-  `V2_CUSTOM_RANK_WEIGHT` 0.55. Fixed; it re-renders when ranks land.
+  `V2_CUSTOM_RANK_WEIGHT` 0.55. Fixed; it re-renders when ranks land — **but that
+  fixed only V1's half. See the next entry.**
+- **…and V2 was still ignoring it, until 2026-08-29.** Re-rendering is enough for V1,
+  which re-reads `adp` through `applyCustomRanks` on every render. V2 reads `_eff`,
+  baked once by `v2AttachEffective` — called in exactly ONE place, inside
+  `loadV2Projections` — and nothing rebuilt it. So with the star on, whether your board
+  reached V2 came down to which of two fetches won a race, and `toggleRankingMode`
+  never reached it at all until the next reload: flipping the star moved V1's column
+  while V2's scores stayed frozen, with the star glowing blue.
+  Caught on draft 194290989, where Drake Maye's blended projection alternated
+  **19.62 / 19.24** between refreshes of the same board, moving him V2 #2 ↔ #3. What
+  made it provable was that everything else held still across the two loads — pool 442,
+  ECR nulls 46, his `ecr_rank` 38, his QB ECR rank 3, QB curve 66 — which leaves
+  `V2_CUSTOM_RANK_WEIGHT` 0.55 as the only remaining term that can move `blended`.
+  `v2Reattach()` now rebuilds `_eff` on both paths and in both directions (turning the
+  board OFF has to rebuild it too, or V2 keeps scoring with ranks the star says are
+  off). **The general lesson: `_eff` has two async inputs, so whichever lands second
+  must be able to redo the attach — a re-render is not a re-attach.**
 - **CSV import left dropped players at their old rank.** A 250-row import only touched
   those 250; a player you cut kept his number. Clearing them does not fix it either —
   unranked falls back to market ADP. Non-CSV players now rank *below* the file, with an
