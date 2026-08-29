@@ -1965,6 +1965,32 @@ def get_players():
     # next load is current.
     _maybe_refresh_players_async()
 
+    # **The pool's own fetch time rides along on a header, and the client needs it.**
+    #
+    # Added 2026-08-29 after /recommend showed Oronde Gadsden II at ADP 178 against
+    # DK's live 184.4 during a draft. Nothing was broken server-side: prod had cold
+    # started, reseeded the wiped table from the committed player_cache.json, served
+    # that seed on the load that tripped the 6h TTL, and refreshed behind it exactly
+    # as designed. The browser then pinned those seed values in sessionStorage for ten
+    # minutes. So the page was stale while /api/freshness truthfully answered `ok` —
+    # the two were describing different copies of the pool, and the one on screen had
+    # no timestamp attached to it at all.
+    #
+    # A response HEADER rather than wrapping the body in an object, because this
+    # endpoint's bare-array shape is a contract: the projections app's spine.py reads
+    # the DK pool from here, and a dict would break it silently in the direction that
+    # matters (it falls back to a committed cache and swallows the exception).
+    #
+    # Only the cache path can answer honestly. The DB and legacy fallbacks carry no
+    # fetch time, so they send no header, and the client treats its absence as
+    # "unknown" rather than "current" — the whole failure was a missing signal being
+    # read as a good one.
+    def _with_pool_age(players, fetched_at=None):
+        resp = jsonify(players)
+        if fetched_at:
+            resp.headers['X-Pool-Fetched-At'] = f'{fetched_at:.0f}'
+        return resp
+
     # Primary: player_cache.json (written by fetch_players, fast)
     from app.data.api_fetcher import CACHE_PATH as cache_path
     try:
@@ -1972,7 +1998,8 @@ def get_players():
             data = json.load(f)
         players = data if isinstance(data, list) else data.get('players', [])
         if players:
-            return jsonify(players)
+            ts = data.get('fetched_at') if isinstance(data, dict) else None
+            return _with_pool_age(players, ts)
     except Exception:
         pass
     # Secondary: DB — survives redeploys even when ephemeral cache is wiped
@@ -1980,7 +2007,7 @@ def get_players():
         from app.database import get_players as db_get_players
         players = db_get_players()
         if players:
-            return jsonify(players)
+            return _with_pool_age(players)
     except Exception:
         pass
     # Fallback: legacy extension players.js

@@ -162,6 +162,24 @@ Its companion on the other side is `../projections/tools/source-ages.py`, which
 answers what prod cannot: whether the LOCAL sources have moved ahead of what was
 published.
 
+**One check reads the local working tree rather than prod: `seed age`.** Every other
+check asks what production is serving now; that one asks what it will serve the moment
+it spins down, which on the free tier is routine. It FAILs past three days because the
+committed `player_cache.json` has twice been served straight into a live draft — 92.6h
+old on 2026-08-20 (a receiver at ADP 78 against DK's 113) and 109.7h old on 2026-08-29
+(Gadsden II at 178 against 184.4). Neither was visible from the server side, because
+from the server side nothing was wrong.
+
+```bash
+python3 tools/refresh-seed.py                    # refresh it, validate it, then commit
+```
+
+Use the script rather than calling `fetch_players(force_refresh=True)` by hand: a
+refresh REBUILDS every row from DK, so any field not set in that loop is silently
+dropped — which has wiped `ecr_rank` from the whole pool before. It validates count,
+schema, ECR coverage and `fetched_at`, and restores the old file if any of them fail,
+so a partial DK response cannot sit in the working tree looking committable.
+
 **The filesystem is ephemeral.** SQLite is wiped on every deploy and on idle spin-down.
 Anything that must survive lives in Postgres (`DATABASE_URL`): `rankings_store`,
 `drafts_store`, `projections_store`, `kv_store_external`.
@@ -244,6 +262,20 @@ that does happen serves the OLD pool and the NEXT load gets the new one. Ranking
 fetched once at init and only when the star is already on; nothing polls them. To
 force a genuinely fresh board mid-draft: `bustCache('players_bundle')` in the console,
 or `POST /api/players/refresh`, then reload twice.
+
+**You should not have to notice this yourself any more — the stale bar now says so.**
+`/api/players` returns the pool's own `fetched_at` on an `X-Pool-Fetched-At` header,
+the browser caches it with the bundle, and `checkFreshness()` compares it to what the
+server currently holds. It asks two independent questions — "is the SERVER stale?" and
+"is MY COPY older than the server's?" — and only the first existed until 2026-08-29,
+which is how /recommend showed Gadsden at ADP 178 against DK's live 184.4 during a
+draft while the bar stayed silent and was *right* to: prod had cold started, reseeded
+from the committed cache, served that seed on the load which tripped the TTL, and
+refreshed behind it exactly as designed. The bar was describing the server and the
+cards were describing sessionStorage. The client-behind message carries a link that
+busts and reloads, and the check re-runs every 5 minutes, because the 10-minute TTL
+only applies on a reload — `PLAYERS` sits in memory for as long as the tab is open, so
+a board that was current at pick 1 can be hours behind by pick 200.
 
 **That 10-minute cache is also what made the rankings race bite.** Fixed 2026-08-17:
 init called `loadCustomRankings()` fire-and-forget while `loadPlayers()` rendered

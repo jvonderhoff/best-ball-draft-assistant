@@ -1366,12 +1366,23 @@ document.getElementById('resetDraft').addEventListener('click', () => {
 });
 
 // ── Player loading ─────────────────────────────────────────────────────────────
+
+// When the pool THESE players came from was fetched, per the X-Pool-Fetched-At header
+// on /api/players. Cached alongside the bundle so it survives a reload, and compared
+// against the server's current pool in checkFreshness().
+//
+// null means the server sent no header — the DB or legacy fallback answered, and the
+// age is genuinely unknown. Kept distinct from "current" on purpose: the bug this was
+// written for was a missing signal being read as a good one.
+let POOL_FETCHED_AT = null;
+
 async function loadPlayers() {
   // Players don't change mid-session — cache 10 min.
   const cached = getCached('players_bundle', 10 * 60 * 1000);
   if (cached) {
     loadExposure();
     PLAYERS = cached.players;
+    POOL_FETCHED_AT = cached.poolTs ?? null;
     buildNameLookup();
     renderPlayerList();
     renderRecs();
@@ -1384,7 +1395,8 @@ async function loadPlayers() {
   try {
     const pr = await fetch('/api/players');
     PLAYERS   = await pr.json();
-    setCached('players_bundle', { players: PLAYERS });
+    POOL_FETCHED_AT = Number(pr.headers.get('X-Pool-Fetched-At')) || null;
+    setCached('players_bundle', { players: PLAYERS, poolTs: POOL_FETCHED_AT });
     buildNameLookup();
     renderPlayerList();
     renderRecs();
@@ -2316,41 +2328,96 @@ updateRankingToggleBtn();
 // reads. The case this exists for is real — a deploy silently reverts ADP to the
 // committed player_cache.json, and a round-16 receiver read 199 against DK's 193
 // for a day before anyone noticed.
+//
+// **It asks two different questions, and only the first one was here until
+// 2026-08-29.** "Is the SERVER's data old?" and "is MY COPY older than the server's?"
+// are independent, and the second is the one that put ADP 178 on screen against DK's
+// live 184.4 during a draft. Prod was entirely healthy at that moment — it had cold
+// started, reseeded the wiped table from the committed cache, served that seed on the
+// load which tripped the 6h TTL, and refreshed behind it exactly as designed. So this
+// bar asked the server, got a truthful `ok`, and drew nothing, while the cards beside
+// it rendered a five-day-old bundle out of sessionStorage. The bar and the board were
+// describing different copies of the pool.
+//
+// The client-behind case is listed FIRST when both fire, because it is the one you
+// can fix from here — hence the link, rather than a console incantation typed
+// mid-draft.
+window.refreshPool = function () {
+  bustCache('players_bundle');
+  location.reload();
+};
+
+const _fmtAge = h => h >= 48 ? (h / 24).toFixed(1) + 'd' : h.toFixed(0) + 'h';
+
 async function checkFreshness() {
   try {
     const d = await (await fetch('/api/freshness')).json();
-    if (d.worst_state !== 'stale') return;
+    const parts = [];
 
+    // 1. Is the board in this browser older than the pool the server now has?
+    //
+    // POOL_FETCHED_AT and the endpoint's updated_at are the same quantity — the
+    // embedded fetched_at of the pool — so they are directly comparable. A minute of
+    // tolerance absorbs the header's rounding to whole seconds; anything larger means
+    // a real refresh has landed since this bundle was fetched.
+    //
+    // null POOL_FETCHED_AT means the server sent no header (DB or legacy fallback
+    // answered) and the comparison cannot be made. Silent in that case: claiming
+    // staleness without evidence trains the bar to be ignored, which is the failure
+    // mode this whole thing is built around.
+    const pool = (d.items || []).find(i => i.label === 'DK pool / ADP');
+    if (pool && pool.updated_at && POOL_FETCHED_AT
+        && pool.updated_at - POOL_FETCHED_AT > 60) {
+      const behind = (pool.updated_at - POOL_FETCHED_AT) / 3600;
+      parts.push('<strong>your board is ' + _fmtAge(behind) + ' behind</strong> — '
+        + 'the server has newer ADP than this page is showing '
+        + '(<a href="#" onclick="refreshPool();return false" '
+        + 'style="color:inherit;text-decoration:underline">reload it</a>)');
+    }
+
+    // 2. Is the server's own data stale?
+    //
     // Top-level rows are named; the sources BEHIND the payload are rolled up into a
     // count. Both halves matter and the second was missing until 2026-08-20: the
     // filter dropped every indented row, so a stale source set worst_state to
-    // `stale`, passed the gate above, filtered to an empty list, and returned having
-    // drawn nothing. Sleeper went 7 days old with prod knowing, /setup showing it,
-    // and this bar — the one thing you actually have open mid-draft — silent.
+    // `stale`, passed the gate, filtered to an empty list, and returned having drawn
+    // nothing. Sleeper went 7 days old with prod knowing, /setup showing it, and this
+    // bar — the one thing you actually have open mid-draft — silent.
     //
-    // Rolled up rather than listed because there are eleven of them, and a bar
-    // naming all eleven is the always-on banner this was written to avoid. The count
-    // plus the oldest age is enough to decide whether to go look.
-    const fmt = h => h >= 48 ? (h/24).toFixed(1)+'d' : h.toFixed(0)+'h';
-    const stale = d.items.filter(i => i.state === 'stale');
-    const top   = stale.filter(i => !i.label.startsWith('  '));
-    const sub   = stale.filter(i =>  i.label.startsWith('  '));
-    if (!top.length && !sub.length) return;
+    // Rolled up rather than listed because there are eleven of them, and a bar naming
+    // all eleven is the always-on banner this was written to avoid. The count plus the
+    // oldest age is enough to decide whether to go look.
+    if (d.worst_state === 'stale') {
+      const stale = d.items.filter(i => i.state === 'stale');
+      const top   = stale.filter(i => !i.label.startsWith('  '));
+      const sub   = stale.filter(i =>  i.label.startsWith('  '));
+      top.forEach(i => parts.push('<strong>' + i.label + '</strong> ' + _fmtAge(i.age_hours)));
+      if (sub.length) {
+        const oldest = Math.max(...sub.map(i => i.age_hours || 0));
+        parts.push('<strong>' + sub.length + ' source' + (sub.length > 1 ? 's' : '') + '</strong> '
+                 + 'behind the payload, oldest ' + _fmtAge(oldest));
+      }
+    }
+
     const el = document.getElementById('staleBar');
     if (!el) return;
+    if (!parts.length) { el.style.display = 'none'; return; }
 
-    const parts = top.map(i => `<strong>${i.label}</strong> ${fmt(i.age_hours)}`);
-    if (sub.length) {
-      const oldest = Math.max(...sub.map(i => i.age_hours || 0));
-      parts.push(`<strong>${sub.length} source${sub.length > 1 ? 's' : ''}</strong> `
-               + `behind the payload, oldest ${fmt(oldest)}`);
-    }
     el.innerHTML = '⚠ Stale data: ' + parts.join(' · ')
       + ' — <a href="/setup" style="color:inherit;text-decoration:underline">details</a>';
     el.style.display = '';
   } catch (e) { /* advisory only; never block a draft on it */ }
 }
 checkFreshness();
+
+// Re-checked on an interval, because a slow draft outlives a page load by hours.
+//
+// The 10-minute players_bundle TTL only applies on a RELOAD — PLAYERS sits in memory
+// untouched for as long as the tab is open, so a board that was current at pick 1 can
+// be hours behind by pick 200 with nothing on screen changing. A single check at init
+// cannot see that; this one runs while you are drafting, and hides itself again if a
+// reload fixes things.
+setInterval(checkFreshness, 5 * 60 * 1000);
 
 // Pre-load custom rankings if mode was active last session.
 //

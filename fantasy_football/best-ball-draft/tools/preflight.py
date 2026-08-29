@@ -36,7 +36,9 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.request
+from datetime import datetime
 
 PROD = 'https://best-ball-draft-assistant.onrender.com'
 SEED = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -187,6 +189,50 @@ def check_serving_seed(target: str, pool_ts: float | None = None) -> None:
               f'{pct:.0f}% match the committed seed — prod has pulled a live pool')
 
 
+def check_seed_age() -> None:
+    """How old is the file the NEXT cold start will serve?
+
+    Every other check here asks what prod is serving right now. This one asks what it
+    will serve the moment it spins down, which on Render's free tier is routine rather
+    than exceptional — the filesystem is wiped, `_seed_players_if_empty` repopulates
+    the players table from the committed player_cache.json, and that snapshot is the
+    board until the 6h TTL trips.
+
+    It is the only check that reads the LOCAL working tree, and deliberately so: by
+    the time a stale seed is visible in prod it has already been served into a draft.
+    Twice now, and neither was noticed from the server side, because from the server
+    side nothing is wrong.
+
+      * 2026-08-20  seed 92.6h old  -> a receiver at ADP 78 against DK's live 113.
+      * 2026-08-29  seed 109.7h old -> Gadsden II at 178 against DK's 184.4, mid-draft.
+
+    FAIL rather than WARN past three days, because the remediation is one command and
+    a check you are allowed to keep ignoring is not a check.
+    """
+    try:
+        with open(SEED) as f:
+            ts = json.load(f).get('fetched_at')
+    except Exception as e:
+        check(FAIL, 'seed age', f'could not read the committed cache: {e}')
+        return
+    if not ts:
+        check(FAIL, 'seed age', 'no fetched_at in player_cache.json — a cold start '
+                                'would serve a pool of unknowable age')
+        return
+
+    age = (time.time() - ts) / 3600
+    when = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M')
+    fix = 'python3 tools/refresh-seed.py, then commit it'
+    if age > 72:
+        check(FAIL, 'seed age', f'committed seed is {age / 24:.1f} DAYS old ({when}) — '
+                                f'this is what the next cold start serves. {fix}')
+    elif age > 24:
+        check(WARN, 'seed age', f'committed seed is {age:.0f}h old ({when}) — the next '
+                                f'cold start serves it until the 6h TTL trips. {fix}')
+    else:
+        check(OK, 'seed age', f'committed seed is {age:.0f}h old ({when})')
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -197,9 +243,11 @@ def main() -> int:
     # check_freshness runs first and hands over the pool timestamp: the seed check
     # needs it, and re-fetching would race the refresh its own /api/players call starts.
     items = {}
-    for fn in (check_freshness, check_stores, check_serving_seed):
+    for fn in (check_freshness, check_stores, check_serving_seed, check_seed_age):
         try:
-            if fn is check_serving_seed:
+            if fn is check_seed_age:
+                fn()          # local working tree, not the deployed target
+            elif fn is check_serving_seed:
                 pool = (items or {}).get('DK pool / ADP') or {}
                 fn(args.target, pool.get('updated_at'))
             else:
