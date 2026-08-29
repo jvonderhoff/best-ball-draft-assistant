@@ -99,6 +99,14 @@
     }
     .rec-card:first-child { border-left-color: var(--green); }
     .rec-card-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+    .adv-badge {
+      font-size: 0.62rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+      padding: 1px 5px; border-radius: 3px; white-space: nowrap; cursor: help;
+    }
+    .adv-material { background: rgba(192, 57, 43, .16); color: var(--red, #c0392b);
+                    border: 1px solid rgba(192, 57, 43, .45); }
+    .adv-watch    { background: rgba(243, 156, 18, .13); color: var(--orange, #b8791f);
+                    border: 1px solid rgba(243, 156, 18, .35); }
     .rec-rank { font-size: 0.72em; color: var(--muted); font-weight: 700; flex-shrink: 0; }
     .rec-name { font-weight: 700; font-size: 1em; flex: 1; }
     .rec-pos  { display: inline-block; font-size: 0.72em; font-weight: 700; padding: 1px 6px; border-radius: 3px; color: #fff; margin-right: 4px; }
@@ -692,6 +700,17 @@ async function loadV2Projections() {
     const map = {};
     (d.players || []).forEach(p => { if (p.id) map[p.id] = p; });
     PLAYERS.forEach(p => { if (p.realAdp == null) p.realAdp = p.adp; });
+
+    // Attached OUTSIDE v2AttachEffective on purpose. The advisory is display-only and
+    // both columns need it — V1 is the primary column and does not go through the V2
+    // annotate pass, and "the same fix has to reach the model in charge" is a lesson
+    // this repo has already paid for once (the injury work landed on V2's card while
+    // V1, which scores on ADP, still had no concept of availability).
+    //
+    // `_adv` is read by the card templates and by nothing else. No scoring code may
+    // read it — see analysis/advisories.py in the projections app for why.
+    PLAYERS.forEach(p => { p._adv = (map[p.id] || {}).advisory || null; });
+
     v2AttachEffective(PLAYERS, map, { customRankMap: useCustomRankings ? customRankMap : {} });
     v2Ready = true;
     // `stale` means two different things since the analysis split, so take the
@@ -1693,6 +1712,22 @@ function renderHeader() {
 }
 
 // ── Recommendations ────────────────────────────────────────────────────────────
+// Injury advisory badge. Deliberately terse: on the clock you need "is there something
+// I do not know about this player", not a paragraph. The body part is the payload, the
+// tier is the colour, and the title carries the rest for a hover.
+//
+// `material` only for the loud styling. `watch` is 39 of 53 flagged players and a bar
+// that shouts about all of them is one nobody reads — the same reason the freshness bar
+// only appears when something is actually stale.
+function advBadge(p) {
+  const a = p && p._adv;
+  if (!a) return '';
+  const label = a.part || a.status || 'injury';
+  const cls   = a.tier === 'material' ? 'adv-material' : 'adv-watch';
+  const why   = `${a.status || ''}${a.part ? ' · ' + a.part : ''}${a.why ? ' — ' + a.why : ''}`;
+  return `<span class="adv-badge ${cls}" title="${why.replace(/"/g, '&quot;')}">${label}</span>`;
+}
+
 function renderRecs() {
   if (!PLAYERS.length) return;
   renderHeader();
@@ -1893,6 +1928,7 @@ function renderRecs() {
         <span class="rec-rank">#${i+1}</span>
         <span class="rec-pos ${p.pos}">${p.pos}</span>
         <span class="rec-name">${p.name}</span>
+        ${advBadge(p)}
         ${xrBadge(v2Rank.get(p.id), i + 1, 'V2')}
       </div>
       <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ${useCustomRankings ? 'Rank' : 'ADP'} ${Math.round(p.adp)}</div>
@@ -1925,6 +1961,7 @@ function renderRecs() {
               <span class="rec-rank">#${i+1}</span>
               <span class="rec-pos ${p.pos}">${p.pos}</span>
               <span class="rec-name">${p.name}</span>
+              ${advBadge(p)}
               ${xrBadge(v1Rank.get(p.id), i + 1, 'V1')}
             </div>
             <div class="rec-adp">${p.team}${p.bye?' · bye '+p.bye:''} · ADP ${Math.round(p.realAdp ?? p.adp)}
