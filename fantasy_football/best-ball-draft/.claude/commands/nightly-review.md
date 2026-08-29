@@ -20,14 +20,30 @@ And the raw beat-report text, which the printed report truncates to one line eac
 cat ../projections/data/market-watch.json
 ```
 
-## First, is the report even current?
+## First: which report is this, and is it current?
 
-Line 1 carries a timestamp. **A job that has quietly stopped running and a job with
-nothing to report look identical**, which is the failure this whole codebase keeps
-guarding against. If the report is more than ~36 hours old, say so first and stop —
+**Line 1 names the job as well as the time, and both matter.**
+
+| line 1 starts | job | ran | refreshed the sources? |
+|---|---|---|---|
+| `nightly —` | `nightly.sh` | Tue/Fri 07:30 | yes — props, FFToday, DK, and a dry run |
+| `market report —` | `market-report.sh` | Sun/Mon/Wed/Thu/Sat 07:30 | **no** — news and ADP only |
+
+Both write `nightly-latest.txt`, so this file is whichever ran most recently. On a
+market-report day there is **no publish decision to make** — props and FFToday were not
+refreshed, so the payload has not changed since the last nightly. Skip the publish
+section entirely rather than re-approving Friday's payload as if it were new; say which
+report you read and move on to the news.
+
+**A job that has quietly stopped running and a job with nothing to report look
+identical**, which is the failure this whole codebase keeps guarding against. Expect a
+report every day now. If the newest is more than ~36 hours old, say so first and stop —
 reviewing a stale report as though it were this morning's is worse than not reviewing.
 
-Check `launchctl list | grep bba` if it looks stalled.
+Check `launchctl list | grep bba` if it looks stalled; there should be three jobs —
+`newspoll` (every 3h), `marketreport` (off days), `nightly` (Tue/Fri). Confirm the date
+you are checking against actually falls on the day the job that produced it runs, before
+calling a gap a failure.
 
 ## Show a verdict on EVERY news item, not just the interesting ones
 
@@ -52,6 +68,16 @@ information. Say so plainly rather than hedging — a review that calls everythi
 `up` means drafted EARLIER (a falling ADP number). Movement is measured against a
 threshold of 0.15 × the player's own ADP, because five picks at ADP 12 and at ADP 180
 are not the same event.
+
+## Then the general-news digest
+
+`market-watch` also prints **the rest of the feed** — the CBS and Yahoo items that carry
+no player price signal, with any draftable player named in them tagged in brackets. This
+is the non-injury half, and it is where roster cuts, depth-chart changes, trades and
+beat-reporter colour show up. It is a reading list, not a quadrant: there is no ADP move
+attached, so do not manufacture a verdict for each one. Call out the few that plausibly
+change a valuation — a cut, a trade, a starter named, a role opening — and say plainly
+that the rest is scenery.
 
 ## Then the movers with no news attached
 

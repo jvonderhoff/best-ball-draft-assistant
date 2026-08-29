@@ -354,14 +354,64 @@ and the two rejections are listed because they are the obvious ideas and they ar
    **Zero tokens.** Everything mechanical is shell. The judgement — read the report,
    decide whether to publish — stays with a human, and a scheduled Claude session would
    have cost 20-40k tokens a run for work a script does for free.
-3. **Close the hook's blind spot.** The `PostToolUse` hook matches `Write|Edit`, so
+
+   **Split into three jobs on 2026-08-29, because one cadence was serving two needs.**
+   `nightly.sh` is Tue/Fri and that is right for the SOURCES — it scrapes the DK
+   sportsbook and FFToday, and doing that ~30 times a month from one home IP is a
+   different thing from doing it a few times. It is wrong for the NEWS: RotoWire serves
+   ~5 items a poll, so anything between runs is gone for good.
+
+       com.bba.newspoll      every 3h                     capture. Two RSS requests.
+       com.bba.marketreport  Sun/Mon/Wed/Thu/Sat 07:30    read them. News + ADP.
+       com.bba.nightly       Tue/Fri 07:30                that, plus sources + dry run.
+
+   Capture often, report daily, refresh rarely. `market-report.sh` wakes the app and
+   asserts on `from cache-file` exactly as nightly does, and carries no API key either.
+
+   **It does snapshot the DK pool, which is not the contradiction it looks like.**
+   `dkpool.py` reads `$DRAFT_APP_URL/api/players` — our own app, not DraftKings — so it
+   has no sportsbook footprint, and it is the highest-value thing the light job does:
+   market-watch measures against the DK snapshot series, so without a fresh snapshot an
+   off-day report reads today's news against Friday's board.
+
+   **Both jobs write `nightly-latest.txt`, so line 1 names the job.** On a market-report
+   day there is no publish decision — the sources were not refreshed. The days are
+   covered exactly once; adding a day to one means removing it from the other.
+
+3. ~~**The news join was throwing away 74% of what it captured.**~~ **Fixed 2026-08-29.**
+   Measured across 77 stored items: RotoWire joined 20/20, **CBS joined 0/57**.
+   `news_by_player` requires RotoWire's `"Name: headline"` shape, and CBS emits article
+   titles — so every general NFL story was fetched, stored, and silently dropped at
+   render. That is the entire non-injury half of the feed, which is also the half the
+   quadrant table cannot help with.
+
+   Now rendered as a **general-news digest**: unattached items, newest first, with any
+   draftable player named in the text tagged in brackets. Yahoo added alongside (37/poll;
+   ESPN's NFL feed is a one-item stub and FantasyPros' is a 404 — both probed and
+   recorded in `FEEDS` so nobody retries them).
+
+   **Two bugs surfaced while building it, both silent, both the house pattern.**
+   `_text` decoded two entities by hand (`&amp;`, `&#39;`) and CBS emits `&#039;`, so
+   stored titles read "Raiders&#039;" — harmless to the join, ugly in a digest a human
+   reads; now `html.unescape`. And the player tagger missed **Cam Skattebo**, because
+   `_normalize` rewrites nicknames to formal spellings (`cameron skattebo`) — correct
+   when both sides are names, impossible when one side is prose, since no aliaser fires
+   on "Cam" mid-sentence. CLAUDE.md's "normalize runs on both sides" symmetry cannot
+   hold for free text, so `general_news` indexes the loose form alongside the aliased
+   one. Do not fix this class by editing `_normalize`.
+
+   Also: the no-news mover list printed only 12 of 19. A truncation you cannot see is
+   the same failure as a filter you cannot audit — now 20, with an explicit "… and N
+   more" line.
+
+4. **Close the hook's blind spot.** The `PostToolUse` hook matches `Write|Edit`, so
    edits made through the shell never trigger it — both scoring files were changed that
    way on 2026-08-26 and the diff never ran. Add `Bash` to the matcher, and consider a
    `PreToolUse` guard that refuses a publish when the last build line says `cache-file`.
-4. **More slash commands** for knowledge currently held in prose: a pre-draft check, a
+5. **More slash commands** for knowledge currently held in prose: a pre-draft check, a
    post-draft import, and the "why does this player look absurd" checklist (names.py,
    `avail`, `sources`, `realAdp` vs `adp`, then `debug-v2.js`).
-5. **A subagent for open thread 6** — whether FantasySharks or CBS is parseable is a
+6. **A subagent for open thread 6** — whether FantasySharks or CBS is parseable is a
    discrete, read-only research task and fits an agent well.
 
 **Rejected, deliberately:**
