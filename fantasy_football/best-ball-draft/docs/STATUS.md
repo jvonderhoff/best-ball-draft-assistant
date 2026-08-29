@@ -400,6 +400,19 @@ and the two rejections are listed because they are the obvious ideas and they ar
    hold for free text, so `general_news` indexes the loose form alongside the aliased
    one. Do not fix this class by editing `_normalize`.
 
+   **Readable as a page since the same day:** a `News` tab on the Analysis app
+   (`/news` in the projections repo — `analysis-serve`, port 8100). Filters All /
+   Player news / General / **Price moved**, which is the view worth having: it
+   collapses ~130 headlines to the handful that both said something and had the room
+   react. Headlines come from `store.db` (3-hourly, no network, 3-5ms); the player and
+   ADP context comes from `market-watch.json`, so anything captured since the morning
+   report shows the headline with no badge — the honest answer rather than a
+   computed-live one that would disagree with the report already read. Two clocks in
+   the freshness bar, because the halves fail differently.
+
+   The read side lives in `analysis/news.py` so the page and the report cannot drift.
+   Mac-only, like the rest of the Analysis app.
+
    Also: the no-news mover list printed only 12 of 19. A truncation you cannot see is
    the same failure as a filter you cannot audit — now 20, with an explicit "… and N
    more" line.
