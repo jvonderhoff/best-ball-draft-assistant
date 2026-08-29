@@ -622,11 +622,16 @@ function toggleRankingMode() {
         updateRankingToggleBtn();
         alert('No custom rankings saved yet — set them at /rankings first.');
       } else {
+        v2Reattach();
         renderRecs();
         renderPlayerList();
       }
     });
   } else {
+    // Both directions need this, not just switching the board ON. `_eff` holds a
+    // blend baked at attach time, so turning the board OFF has to rebuild it too —
+    // otherwise V2 keeps scoring with your ranks while the star says it is not.
+    v2Reattach();
     renderRecs();
     renderPlayerList();
   }
@@ -684,6 +689,26 @@ let settings = loadSettings();
 let v2Ready = false, v2Error = '';
 // Roster players V2 cannot see this render. Recomputed in renderRecs.
 let v2Unmatched = [];
+// The payload V2 last attached with, kept so the attach can be REDONE.
+//
+// `_eff` has two independent async inputs — the projection payload and your custom
+// board — and whichever lands second has to be able to rebuild it. Until 2026-08-29
+// only the projections could: v2AttachEffective ran in exactly one place, inside
+// loadV2Projections, so a /api/rankings fetch that resolved after it left the 0.55
+// custom-rank blend out of `_eff` entirely, with nothing saying so. Same page, same
+// data, a different answer depending on which fetch won.
+//
+// Measured live on draft 194290989 with the star ON: Drake Maye's blended projection
+// alternated 19.62 / 19.24 between refreshes — moving him between V2 #2 and #3 —
+// while every other input to the blend was byte-identical across the two loads (pool
+// 442, ECR nulls 46, his ecr_rank 38, his QB ECR rank 3, QB curve 66). The 0.55 blend
+// is the heaviest single weight in the model, so this was not a rounding difference:
+// it is the user's own board silently applying about half the time.
+//
+// This is the second half of the 2026-08-17 rankings race. That fix made the page
+// re-RENDER when rankings landed late, which was enough for V1 — it reads `adp` via
+// applyCustomRanks — but not for V2, which reads `_eff` and needs a re-ATTACH.
+let v2ProjMap = null;
 async function loadV2Projections() {
   try {
     const r = await fetch('/api/projections-v2');
@@ -692,6 +717,7 @@ async function loadV2Projections() {
     const map = {};
     (d.players || []).forEach(p => { if (p.id) map[p.id] = p; });
     PLAYERS.forEach(p => { if (p.realAdp == null) p.realAdp = p.adp; });
+    v2ProjMap = map;
     v2AttachEffective(PLAYERS, map, { customRankMap: useCustomRankings ? customRankMap : {} });
     v2Ready = true;
     // `stale` means two different things since the analysis split, so take the
@@ -703,6 +729,23 @@ async function loadV2Projections() {
     v2Error = e.message || 'projections unavailable';
     v2Ready = false;
   }
+}
+
+// Rebuild `_eff` against the payload already in hand, picking up whatever the custom
+// board says NOW. One pass over ~440 players, so it is cheap enough to call on any
+// change to the rankings state rather than trying to work out whether it is needed —
+// and unconditional is the point, because every conditional version of this
+// re-introduces the ordering assumption that caused the bug.
+//
+// Returns false when there is no payload yet. That is not a failure: it means
+// loadV2Projections has not run, and when it does it will attach with the ranks
+// already in customRankMap. Callers still re-render, because V1 reads `adp` through
+// applyCustomRanks and is correct either way.
+function v2Reattach() {
+  if (!v2ProjMap) return false;
+  v2AttachEffective(PLAYERS, v2ProjMap,
+                    { customRankMap: useCustomRankings ? customRankMap : {} });
+  return true;
 }
 
 function v2RemainingPicks(fromPick, numTeams, myPos) {
@@ -2332,9 +2375,15 @@ checkFreshness();
 //
 // loadV2Projections().then(renderRecs) already had this right; rankings did not.
 // Same pattern here: render fast, re-render when the slower input lands.
+//
+// 2026-08-29: re-rendering was necessary but NOT sufficient, and the gap was V2.
+// renderRecs re-reads `adp` through applyCustomRanks, which is V1's whole input — so
+// V1 was fixed here. V2 reads `_eff`, which is baked once by v2AttachEffective, and
+// nothing rebuilt it when the board landed late. See `v2ProjMap` for the measurement.
 if (useCustomRankings) {
   loadCustomRankings().then(ok => {
     if (!ok) return;
+    v2Reattach();
     renderRecs();
     renderPlayerList();
   });
