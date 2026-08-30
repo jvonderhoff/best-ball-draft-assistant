@@ -58,6 +58,21 @@ Publishing needs `BBA_API_KEY`, which lives in `~/.zshrc` — so it is absent fr
 non-interactive agent shell and present in `zsh -ic`. `zsh -lc` is NOT enough; `.zshrc`
 is sourced for interactive shells only.
 
+**`/news` on the draft app is the captured feed, pushed from the Mac.** RotoWire, CBS
+and Yahoo, filterable by All / Player news / General / **Price moved** — the last one is
+the view worth having, since it collapses ~250 headlines to the handful that both said
+something and had the room react. It reaches a phone; the Analysis table still does not.
+
+**The Analysis app is NOT being deployed, and the news page is why it does not need to
+be.** Checked 2026-08-29: `web/app.py` has no authentication of any kind — it has only
+ever been bound to localhost — and one of its four POST routes publishes the payload
+production scores with. Deploying it means either that button is dead or the deployed app
+holds `BBA_API_KEY` behind an unauthenticated endpoint. Add to that props being blocked
+from datacenter IPs, SQLite on an ephemeral filesystem, and a cold-start chain (it reads
+the pool from THIS app, so `spine.py`'s 15s timeout would fire on ordinary page loads and
+silently serve the committed cache). The news page has none of those: read-only, no pool,
+no network. So the page moved and the app stayed home.
+
 **`GET /api/freshness` answers "how old is any of this".** One endpoint covering the
 DK pool, the rankings board, the published payload, and every source behind it — the
 payload carries per-source ages across in `sources_meta`, because this app cannot see
@@ -106,8 +121,20 @@ spins down, with cold starts of 30-60s. An unattended job firing into a sleeping
 builds against a stale pool and reports success. It also greps the refresh output for
 `from cache-file` and refuses, because the app answering is not proof the build read it.
 
-**The nightly job never needs `BBA_API_KEY`**, and that is the point: it cannot change
-production at all. A stronger guarantee than being written not to.
+**Neither scheduled job can change what the recommender scores with**, and that is the
+point — a stronger guarantee than being written not to. Under launchd they hold no
+`BBA_API_KEY` at all, because launchd does not source `~/.zshrc`.
+
+**That claim was narrowed on 2026-08-29 and the narrowing is the honest part.** It used
+to read "never needs `BBA_API_KEY`, so it cannot change production at all". Both jobs now
+push the news bundle to `/api/news/upload`, which does need the key — so run by hand from
+an interactive shell, they DO write to production. What they still cannot do is change a
+score: that endpoint writes `news_bundle` and nothing else, and the bundle feeds no
+valuation, no `avail`, and not the payload. Under launchd the push is skipped and the
+report SAYS so, rather than reporting a success it did not achieve.
+
+**Consequence worth knowing: the `/news` page only refreshes when somebody pushes.**
+Automating it means putting `BBA_API_KEY` into a plist, which has not been done.
 
 **Read `docs/V2_DESIGN.md` before changing the recommender.** It documents the model, the
 evidence behind every constant, and — most importantly — §4, the dead ends. This file
