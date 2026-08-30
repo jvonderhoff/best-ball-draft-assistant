@@ -16,6 +16,10 @@ app/data/projection_cache.json
 # cannot reach Postgres falls back to the local build and SAYS SO in
 # /api/projections-v2's `source`, instead of serving a stale file that looks fine.
 app/data/pushed_payload.json
+# The news mirror, same story: a warm-read cache of what Postgres holds, rebuilt at
+# boot by _hydrate_external_news. Committing it would ship one machine's snapshot of
+# a feed as though it were part of the app.
+app/data/pushed_news.json
 tools/replay-draft.json
 
 # Local backups taken before data refreshes

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>News — Best Ball Assistant</title>
+  <script src="{{ asset('theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ asset('theme.css') }}">
+  <style>
+    .content { padding: 12px; max-width: 820px; margin: 0 auto; }
+    .page-sub { color: var(--muted); font-size: 0.78em; line-height: 1.5; margin-bottom: 12px; }
+
+    /* Two clocks, not one. If the poller stops the page keeps showing the same
+       stories; if the report stops the badges freeze. A single "last updated"
+       would hide whichever actually broke. States come from the server. */
+    .fresh-bar {
+      display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 9px; padding: 9px 13px; margin-bottom: 14px; font-size: 0.78em;
+    }
+    .fresh-item { display: flex; align-items: center; gap: 6px; }
+    .fresh-label { color: var(--muted); }
+    .fresh-val { font-weight: 700; color: var(--text); }
+    .fresh-val.stale { color: var(--orange, #ff9800); }
+    .fresh-val.bad, .fresh-val.missing { color: var(--red, #ef5350); }
+
+    .controls { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
+    .chip {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 999px; padding: 6px 13px; font-size: 0.78em; font-weight: 600;
+      cursor: pointer; white-space: nowrap; -webkit-tap-highlight-color: transparent;
+    }
+    .chip.active { border-color: var(--accent); color: var(--accent); background: var(--selected); }
+    .search-box {
+      background: var(--input-bg, var(--surface)); border: 1px solid var(--border);
+      color: var(--text); border-radius: 7px; padding: 8px 12px; font-size: 0.85em;
+      width: 100%; box-sizing: border-box; margin-bottom: 12px;
+    }
+    .count { color: var(--muted); font-size: 0.75em; margin-bottom: 9px; }
+
+    .item {
+      border: 1px solid var(--border); border-left: 3px solid var(--border);
+      border-radius: 8px; padding: 11px 13px; margin-bottom: 9px; background: var(--card);
+    }
+    .item.has-player { border-left-color: var(--accent); }
+    .item-top { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 5px; }
+    .feed {
+      font-size: 0.62em; text-transform: uppercase; letter-spacing: .05em; font-weight: 700;
+      color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 2px 5px;
+    }
+    .who { color: var(--accent); font-weight: 700; font-size: 0.88em; }
+    .when { color: var(--muted); font-size: 0.68em; width: 100%; }
+    .headline { color: var(--text); font-size: 0.92em; font-weight: 600; line-height: 1.35; }
+    .headline a { color: inherit; text-decoration: none; }
+    .body { color: var(--muted); font-size: 0.8em; margin-top: 5px; line-height: 1.5; }
+
+    .badge { font-size: 0.66em; font-weight: 700; border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+    .badge.up   { color: var(--green, #81c784); background: rgba(129,199,132,.14); border: 1px solid rgba(129,199,132,.4); }
+    .badge.down { color: var(--red, #ef5350);   background: rgba(239,83,80,.14);   border: 1px solid rgba(239,83,80,.4); }
+    .badge.flat { color: var(--muted); border: 1px solid var(--border); }
+    .badge.inj  { color: var(--orange, #ff9800); background: rgba(255,152,0,.12); border: 1px solid rgba(255,152,0,.38); }
+    .tag { font-size: 0.66em; color: var(--accent); background: var(--selected); border-radius: 4px; padding: 2px 6px; font-weight: 600; }
+    .empty { color: var(--muted); text-align: center; padding: 34px 16px; font-size: 0.85em; line-height: 1.6; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/recommend">Live Draft</a>
+  <a href="/history">History</a>
+  <a href="/rankings">Rankings</a>
+  <a href="/news" class="active">News</a>
+  <a href="/setup">Setup</a>
+  <button class="theme-toggle" onclick="toggleTheme()"><!-- label via CSS ::after --></button>
+</nav>
+
+<div class="content">
+  <div class="page-sub">
+    Captured on the Mac and pushed here — nothing on this page feeds a score.
+    Player context comes from the morning report; anything newer shows the headline alone.
+  </div>
+
+  <div class="fresh-bar" id="fresh-bar"></div>
+
+  <div class="controls">
+    <button class="chip active" data-filter="all">All</button>
+    <button class="chip" data-filter="player">Player news</button>
+    <button class="chip" data-filter="general">General</button>
+    <button class="chip" data-filter="moved">Price moved</button>
+  </div>
+  <input class="search-box" id="q" placeholder="filter by player, team, word…">
+
+  <div class="count" id="count"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</div>
+
+<script>
+let ITEMS = [], FILTER = 'all', Q = '';
+
+function esc(s) {
+  return (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+// Ages and states both come from the server. Duplicating the thresholds here is how
+// the page and /api/freshness would quietly disagree about the same data.
+function renderFresh(m) {
+  const bits = [
+    ['captured',      m.poll_age_hours,  m.poll_state],
+    ['price context', m.watch_age_hours, m.watch_state],
+    ['pushed',        m.push_age_hours,  m.push_state],
+  ].map(([label, h, state]) => {
+    const txt = h == null ? 'never' : h < 1 ? Math.round(h * 60) + 'm ago' :
+                h < 48 ? h.toFixed(1) + 'h ago' : (h / 24).toFixed(1) + 'd ago';
+    return `<div class="fresh-item"><span class="fresh-label">${label}</span>
+            <span class="fresh-val ${state}">${txt}</span></div>`;
+  });
+  bits.push(`<div class="fresh-item"><span class="fresh-label">stored</span>
+             <span class="fresh-val">${m.items_stored ?? m.items} items</span></div>`);
+  document.getElementById('fresh-bar').innerHTML = bits.join('');
+}
+
+function render() {
+  const q = Q.toLowerCase().trim();
+  const rows = ITEMS.filter(it => {
+    if (FILTER === 'player'  && !it.player) return false;
+    if (FILTER === 'general' &&  it.player) return false;
+    if (FILTER === 'moved'   && !(it.player && it.player.direction && it.player.direction !== 'flat')) return false;
+    if (!q) return true;
+    return [it.title, it.body, it.feed, it.player && it.player.player, (it.tags || []).join(' ')]
+      .filter(Boolean).join(' ').toLowerCase().includes(q);
+  });
+
+  document.getElementById('count').textContent = `${rows.length} of ${ITEMS.length} shown`;
+  if (!rows.length) {
+    document.getElementById('list').innerHTML = '<div class="empty">Nothing matches.</div>';
+    return;
+  }
+
+  document.getElementById('list').innerHTML = rows.map(it => {
+    const p = it.player;
+    let badges = '';
+    if (p) {
+      if (p.direction && p.direction !== 'flat' && p.picks != null) {
+        badges += `<span class="badge ${p.direction}">${p.direction === 'up' ? '▲' : '▼'} ${p.picks.toFixed(1)} picks</span>`;
+      } else if (p.direction === 'flat') {
+        badges += '<span class="badge flat">price flat</span>';
+      }
+      if (p.injury_status) {
+        badges += `<span class="badge inj">${esc(p.injury_status)}${p.injury_part ? ' · ' + esc(p.injury_part) : ''}</span>`;
+      }
+    }
+    const tags = (it.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join(' ');
+    const who = p ? `<span class="who">${esc(p.player)}</span><span class="feed">${esc(p.pos)}${p.adp != null ? ' · ADP ' + p.adp.toFixed(1) : ''}</span>` : '';
+    const title = p && p.headline ? p.headline : it.title;
+    return `<div class="item ${p ? 'has-player' : ''}">
+      <div class="item-top"><span class="feed">${esc(it.feed)}</span>${who}${badges}${tags}</div>
+      <div class="when">${esc(it.published || '')}</div>
+      <div class="headline">${it.link ? `<a href="${esc(it.link)}" target="_blank" rel="noopener">${esc(title)}</a>` : esc(title)}</div>
+      ${it.body ? `<div class="body">${esc(it.body)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function load() {
+  try {
+    const d = await (await fetch('/api/news')).json();
+    renderFresh(d.meta || {});
+    ITEMS = d.items || [];
+    if (!ITEMS.length) {
+      document.getElementById('list').innerHTML =
+        '<div class="empty">No news stored yet.<br>Push it from the Mac:<br>' +
+        '<code>cli.py news-publish --no-dry-run</code></div>';
+      document.getElementById('count').textContent = '';
+      return;
+    }
+    render();
+  } catch (e) {
+    document.getElementById('list').innerHTML =
+      `<div class="empty">Could not load news: ${esc(e.message)}</div>`;
+  }
+}
+
+document.querySelectorAll('.chip').forEach(c => c.onclick = () => {
+  document.querySelectorAll('.chip').forEach(x => x.classList.remove('active'));
+  c.classList.add('active');
+  FILTER = c.dataset.filter;
+  render();
+});
+document.getElementById('q').oninput = e => { Q = e.target.value; render(); };
+load();
+</script>
+</body>
+</html>

@@ -160,6 +160,7 @@ def init_db():
         _hydrate_external_drafts(conn)
         _hydrate_external_projections(conn)
         _hydrate_external_kv(conn)
+        _hydrate_external_news()
 
 
 def _seed_players_if_empty(conn):
@@ -272,6 +273,25 @@ def _hydrate_external_rankings(conn):
     except Exception as e:
         rankings_store.mark_hydrated(False)
         _log.error(f'[rankings-store] hydrate failed, local rankings may be the seed file: {e!r}')
+
+
+def _hydrate_external_news():
+    """Rebuild the pushed news bundle's disk mirror from Postgres at boot.
+
+    Takes no `conn`: unlike every other hydrate here, news has no local SQLite table
+    to reconcile. It is display-only pushed content, so the durable copy IS the
+    source of truth and the mirror is purely a warm read — the same shape as the
+    pushed projections payload.
+
+    Deliberately quiet on failure. The news page is the least important thing this
+    app serves, and an unreachable store at boot must not take the boot with it; the
+    page reports "no news stored" and everything else works.
+    """
+    try:
+        from app import news
+        news.hydrate()
+    except Exception as e:
+        _log.warning(f'[news] hydrate skipped: {e!r}')
 
 
 def _hydrate_external_kv(conn):

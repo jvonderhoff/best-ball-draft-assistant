@@ -2219,6 +2219,87 @@ def upload_projections():
     })
 
 
+@app.route('/api/news/upload', methods=['POST'])
+def upload_news():
+    """Accept a news bundle pushed by the projections app.
+
+    News is captured on the Mac and cannot be captured here — see app/news_store.py.
+    This is the same local-compute-then-push path the six-field payload uses, and it
+    is guarded the same way, because it writes to the shared store.
+
+    Validation is deliberately thin compared to the projections upload. That endpoint
+    refuses on schema major and missing player ids because a bad payload silently
+    changes what the recommender SCORES with. This bundle is display-only: nothing
+    here feeds `avail`, the payload, or any score, so the failure mode of a malformed
+    push is a wrong-looking page, not a wrong recommendation. Refuse the shapes that
+    would break rendering and store the rest.
+    """
+    api_key = request.headers.get('X-Api-Key') or (request.json or {}).get('api_key', '')
+    expected = os.environ.get('BBA_API_KEY', '')
+    if expected and api_key != expected:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    from app import news_store
+    from app.news import write_mirror, bundle_meta
+
+    body  = request.get_json(silent=True) or {}
+    items = body.get('items')
+    if not isinstance(items, list):
+        return jsonify({'error': 'items must be a list'}), 400
+    # An empty push would blank the page. A feed returning nothing is a FAILED fetch
+    # far more often than a quiet news day — the same reason refresh-sources.sh
+    # refuses to save empty props rather than wiping good rows.
+    if not items:
+        return jsonify({'error': 'refusing an empty bundle; keeping what is stored'}), 400
+
+    bundle = {
+        'items':        items,
+        'items_stored': body.get('items_stored'),
+        # Two clocks, carried across because this app cannot see either one. See
+        # app/news.bundle_meta for why they are separate.
+        'last_poll_at':       body.get('last_poll_at'),
+        'watch_generated_at': body.get('watch_generated_at'),
+        'generated_at': body.get('generated_at') or time.time(),
+        'publisher':    body.get('publisher') or {},
+    }
+
+    durable = news_store.save_bundle(bundle, publisher=bundle['publisher'])
+    try:
+        write_mirror(bundle)
+    except Exception as e:
+        app.logger.error(f'[news/upload] mirror write failed: {e!r}')
+        return jsonify({'error': f'stored={durable} but local mirror failed: {e}'}), 500
+
+    app.logger.info(f'[news/upload] accepted {len(items)} items durable={durable}')
+    return jsonify({
+        'ok': True,
+        'items': len(items),
+        'durable': durable,
+        'warning': None if durable else (
+            'DATABASE_URL unset or Postgres unreachable — the bundle is on this '
+            'instance only and will NOT survive a deploy or spin-down.'
+        ),
+        'meta': bundle_meta(bundle),
+    })
+
+
+@app.route('/api/news', methods=['GET'])
+def api_news():
+    """The pushed news bundle, with its ages computed here rather than in the page."""
+    from app.news import read_mirror, bundle_meta
+    bundle = read_mirror()
+    return jsonify({
+        'ok': bool(bundle.get('items')),
+        'items': bundle.get('items') or [],
+        'meta':  bundle_meta(bundle),
+    })
+
+
+@app.route('/news')
+def news_page():
+    return render_template('news.html')
+
+
 @app.route('/api/freshness', methods=['GET'])
 def data_freshness():
     """How old every piece of data behind a recommendation is. One place.
