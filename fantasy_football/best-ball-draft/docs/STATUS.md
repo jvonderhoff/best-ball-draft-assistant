@@ -654,7 +654,20 @@ round from ADP. That is an argument for the column that does not run on ADP alon
 16. **The news store keeps duplicates.** De-duplication happens at read time, so every
     poll stores all ~41 items even when 40 are unchanged. Irrelevant at the current
     3-hourly cadence (~15MB/year); worth fixing before polling any faster.
-17. **`/nightly-review`'s verdicts have never been audited.** It was built to show a
+17. **`/nightly-review`'s verdicts: first audit passed, on a sample of two.**
+    Checked with the user 2026-08-29 — the two consequential calls, **Stribling** (bad
+    news, market up 45.8, read as a role win) and **Jeanty** (reassuring coach quote,
+    market down 7.8, read as an overreaction) — were both confirmed as sound. That is
+    the quadrant logic working in the two directions that matter, and the Jeanty read
+    was the one most at risk, since "counting on him" is also what coaches say about
+    players who miss Week 1.
+
+    **Not yet checked:** the five "nothing" verdicts (Henderson, Croskey-Merritt,
+    Shakir, Rodgers, A.J. Brown — all "did not play a preseason game") and the three
+    mild ones. Silence is not agreement. And two confirmations are a sample, not
+    calibration: the failure worth watching is a *dismissal* that should have been a
+    flag, which by definition never appears in a report anyone reads. Keep spot-checking
+    the noise column, not the highlights. Original intent: It was built to show a
     verdict on EVERY news item precisely so its dismissals can be challenged, and the
     first run's ten verdicts were never checked against a human read. Until that
     happens the classification is unvalidated. Jeanty is the one to check first — a
