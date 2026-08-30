@@ -588,9 +588,52 @@ round from ADP. That is an argument for the column that does not run on ADP alon
    rather than error. POST-only now. It was the only route mixing GET with a mutating
    method, and there are none left.
 
+12. **The advisory on the card is only as fresh as the last publish.** It rides the
+    payload, which is manual and now only rebuilt Tue/Fri. A player who goes on IR on a
+    Thursday carries no badge until someone publishes — and the card gives no hint of
+    that, because the advisory has no age of its own. The payload's `age_hours` is the
+    real answer and is not shown next to it. Either surface it, or push advisories on a
+    faster path than the payload.
+13. **`market-watch` cannot tell a quiet news day from a broken feed.** Matching is
+    `Player:` prefix against RotoWire's format. If that format changes, matches silently
+    drop to zero and the report shows fewer players in the news — which reads exactly
+    like nothing happened. **Zero matched items should be treated as suspicious**, the
+    same way `unused` is a distinct state from `unknown` in the freshness rollup. Not
+    guarded today.
+14. **The structured injury field and the beat report disagree, and the prose is
+    winning.** 2026-08-29: Sleeper had Jeanty at `Knee` while the wire said ankle
+    ("counting on him" for Week 1), and Henderson at `Leg` against an ankle. Both tiers
+    and both badges come from the Sleeper field. If that is systematically stale, the
+    badge is confidently wrong on exactly the players anyone is reading about. Worth
+    measuring: how often do the two disagree, and which is right.
+15. **`nightly.sh` builds the analysis twice per run.** `refresh-sources.sh` and
+    `market-watch.py` are separate processes, so Sleeper is fetched twice — visible as
+    two `Sleeper stats: 8247 rows` lines in every report. Roughly doubles the runtime
+    and the load for no benefit.
+16. **The news store keeps duplicates.** De-duplication happens at read time, so every
+    poll stores all ~41 items even when 40 are unchanged. Irrelevant at the current
+    3-hourly cadence (~15MB/year); worth fixing before polling any faster.
+17. **`/nightly-review`'s verdicts have never been audited.** It was built to show a
+    verdict on EVERY news item precisely so its dismissals can be challenged, and the
+    first run's ten verdicts were never checked against a human read. Until that
+    happens the classification is unvalidated. Jeanty is the one to check first — a
+    coach saying "counting on him" was read as reassuring, and coaches say that about
+    players who then miss Week 1.
+
 ---
 
 ## Traps hit this week — each now guarded
+
+- **Two threads on one checkout, neither fetching.** 2026-08-29: this session committed
+  13 times straight to `master` over two days without ever fetching, while another
+  thread branched, merged and pushed. They met on `recommend.html` — one adding
+  `v2ProjMap = map`, the other `p._adv = …`, on the same anchor line in
+  `loadV2Projections`. Git conflicted; the resolution was additive and both lines kept.
+  Nothing was lost, and the reason was not branching: it was that every commit was small
+  and self-described, so the other thread could merge work it had not seen. **The habit
+  worth keeping is `git fetch` before starting, not only before pushing** — the
+  divergence existed for hours before anything surfaced it, and CLAUDE.md's "commit
+  freely, ask before pushing" reads differently once a second thread exists.
 
 - **A failed pool read falls back to the committed cache and says so in one word.**
   `spine.load_pool()` returns `(players, source)` where source is `api` or

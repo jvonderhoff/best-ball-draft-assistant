@@ -126,8 +126,15 @@ if a restart isn't enough, load with a cache-busting query string.
 `asset()` cache-busts static files by mtime. Never hand-maintain `?v=N`; doing so once
 had browsers running scoring code from before several fixes, silently.
 
-No test suite. Verification is by running the thing: the harness for model changes, the
-app in a browser for UI changes.
+No test suite for the app, and that is deliberate: verification is by running the thing —
+the harness for model changes, the app in a browser for UI changes.
+
+**Two exceptions, both because the thing being verified is SILENT when it works.**
+`tools/hooks/test-on-model-edit.sh` (8 checks) and `../projections/tools/test-nightly.sh`
+(11) cover the hook and the scheduled job. A broken hook and a quiet one look identical,
+so "run it and see" verifies nothing there — and two bugs were written into the hook in
+one sitting on 2026-08-27, neither of which raised anything. The projections app has its
+own pytest suite (84 tests); this rule is about the draft app.
 
 **Doing both in one session silently invalidates the harness numbers.** `loadData()`
 reads `app/data/player_cache.json` off disk, and the *app* rewrites it — `GET
