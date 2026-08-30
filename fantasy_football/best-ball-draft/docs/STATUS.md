@@ -378,6 +378,40 @@ and the two rejections are listed because they are the obvious ideas and they ar
    day there is no publish decision — the sources were not refreshed. The days are
    covered exactly once; adding a day to one means removing it from the other.
 
+   **Four jobs now, and turning them off is a per-job decision (2026-08-29):**
+
+       com.bba.newspoll      every 3h    capture the feeds. Two RSS requests.
+       com.bba.newspush      every 3h    send the bundle to the draft app.
+       com.bba.marketreport  off days    read them. News + ADP.
+       com.bba.nightly       Tue/Fri     that, plus sources + a dry run.
+
+   `newspush` is the **only** scheduled job that can write to production, and it is
+   separate from `newspoll` precisely so the others keep their "cannot write to
+   production at all" property. Its key is not in the plist — the plist runs
+   `zsh -ic`, the only shell form that reads `~/.zshrc` — because that file is
+   committed. What it can do is narrow by construction: `/api/news/upload` writes
+   `news_bundle` and nothing else, so a corrupted push gives a wrong-looking page and
+   a correct recommendation.
+
+   **To retire the news in-season** (the plan as of 2026-08-29 — it is a preseason
+   tool, and once games are played the beat matters less than the box score):
+
+   ```bash
+   launchctl unload ~/Library/LaunchAgents/com.bba.newspush.plist   # stop publishing
+   launchctl unload ~/Library/LaunchAgents/com.bba.newspoll.plist   # stop capturing
+   ```
+
+   Unload `newspush` alone to freeze the page while still capturing. Nothing else
+   breaks either way: `market-watch` degrades to the ADP half, and `/news` keeps
+   serving the last bundle with its `captured` clock going orange and then red, which
+   is the point of having three clocks rather than one.
+
+   **News is kept 10 days and pruned on the capture path.** ARCHITECTURE §5 makes
+   snapshots immutable to buy re-derivation, "what did Sleeper say on the 12th", and
+   snapshot diffing — all three about DERIVATION sources. Nothing derives from news
+   and nothing diffs it, so the window costs none of them here and would cost all
+   three on DK or Sleeper. Do not generalise it.
+
 3. ~~**The news join was throwing away 74% of what it captured.**~~ **Fixed 2026-08-29.**
    Measured across 77 stored items: RotoWire joined 20/20, **CBS joined 0/57**.
    `news_by_player` requires RotoWire's `"Name: headline"` shape, and CBS emits article
