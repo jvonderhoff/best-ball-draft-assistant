@@ -603,9 +603,16 @@ round from ADP. That is an argument for the column that does not run on ADP alon
 14. **The structured injury field and the beat report disagree, and the prose is
     winning.** 2026-08-29: Sleeper had Jeanty at `Knee` while the wire said ankle
     ("counting on him" for Week 1), and Henderson at `Leg` against an ankle. Both tiers
-    and both badges come from the Sleeper field. If that is systematically stale, the
-    badge is confidently wrong on exactly the players anyone is reading about. Worth
-    measuring: how often do the two disagree, and which is right.
+    and both badges come from the Sleeper field.
+
+    **Measured 2026-08-29 and DOWNGRADED to cosmetic.** Knee and ankle are both in
+    `WATCH_PARTS`, so the mismatch changes the label and not the tier — and the tier is
+    what anyone acts on. The direction that would matter is the opposite one, a material
+    injury hiding behind a vague or empty Sleeper field: **0 of the 20 players with news
+    attached**, searching the beat text for ACL/Achilles/fracture/tear/surgery/IR against
+    a `Undisclosed`/`Lower Body`/absent field. (The first pass reported 10 hits because
+    the keyword `season` matched *pre*season; word boundaries took it to zero.) Revisit
+    in-season, when real injuries replace camp designations.
 15. **`nightly.sh` builds the analysis twice per run.** `refresh-sources.sh` and
     `market-watch.py` are separate processes, so Sleeper is fetched twice — visible as
     two `Sleeper stats: 8247 rows` lines in every report. Roughly doubles the runtime
