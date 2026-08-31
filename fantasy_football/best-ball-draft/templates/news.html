@@ -87,6 +87,7 @@
     <button class="chip" data-filter="player">Player news</button>
     <button class="chip" data-filter="general">General</button>
     <button class="chip" data-filter="moved">Price moved</button>
+    <button class="chip" data-filter="trending">Trending</button>
   </div>
   <input class="search-box" id="q" placeholder="filter by player, team, word…">
 
@@ -95,7 +96,7 @@
 </div>
 
 <script>
-let ITEMS = [], FILTER = 'all', Q = '';
+let ITEMS = [], TRENDING = [], FILTER = 'all', Q = '';
 
 function esc(s) {
   return (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -119,7 +120,43 @@ function renderFresh(m) {
   document.getElementById('fresh-bar').innerHTML = bits.join('');
 }
 
+// Trending is a list of PLAYERS, not articles, so it renders separately rather than
+// being forced through the item template. The `no news` marker is the whole point of
+// the view: a big add count with nothing reported is the case worth chasing.
+function renderTrending() {
+  const q = Q.toLowerCase().trim();
+  const rows = TRENDING.filter(t => !q || (t.player || '').toLowerCase().includes(q));
+  document.getElementById('count').textContent =
+    `${rows.length} of ${TRENDING.length} trending`;
+  if (!rows.length) {
+    document.getElementById('list').innerHTML =
+      '<div class="empty">No trending data in this bundle.<br>' +
+      'It arrives with the next push from the Mac.</div>';
+    return;
+  }
+  document.getElementById('list').innerHTML = rows.map(t => {
+    let badges = '';
+    if (t.adds)  badges += `<span class="badge up">+${t.adds.toLocaleString()} adds</span>`;
+    if (t.drops) badges += `<span class="badge down">-${t.drops.toLocaleString()} drops</span>`;
+    if (t.direction && t.direction !== 'flat' && t.picks != null) {
+      badges += `<span class="badge ${t.direction}">${t.direction === 'up' ? '▲' : '▼'} ${t.picks.toFixed(1)} picks</span>`;
+    }
+    if (t.injury_status) {
+      badges += `<span class="badge inj">${esc(t.injury_status)}${t.injury_part ? ' · ' + esc(t.injury_part) : ''}</span>`;
+    }
+    if (!t.has_news) badges += '<span class="badge flat">no news</span>';
+    return `<div class="item has-player">
+      <div class="item-top">
+        <span class="who">${esc(t.player)}</span>
+        <span class="feed">${esc(t.pos)}${t.adp != null ? ' · ADP ' + t.adp.toFixed(1) : ''}</span>
+        ${badges}
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function render() {
+  if (FILTER === 'trending') return renderTrending();
   const q = Q.toLowerCase().trim();
   const rows = ITEMS.filter(it => {
     if (FILTER === 'player'  && !it.player) return false;
@@ -166,6 +203,7 @@ async function load() {
     const d = await (await fetch('/api/news')).json();
     renderFresh(d.meta || {});
     ITEMS = d.items || [];
+    TRENDING = d.trending || [];
     if (!ITEMS.length) {
       document.getElementById('list').innerHTML =
         '<div class="empty">No news stored yet.<br>Push it from the Mac:<br>' +

@@ -2254,6 +2254,11 @@ def upload_news():
 
     bundle = {
         'items':        items,
+        # Not news, and on the page for exactly that reason: it answers why a price
+        # moved when nothing was reported. Optional — an older publisher omits it and
+        # the page simply has no Trending tab.
+        'trending':     body.get('trending') or [],
+        'trending_at':  body.get('trending_at'),
         'items_stored': body.get('items_stored'),
         # Two clocks, carried across because this app cannot see either one. See
         # app/news.bundle_meta for why they are separate.
@@ -2291,6 +2296,7 @@ def api_news():
     return jsonify({
         'ok': bool(bundle.get('items')),
         'items': bundle.get('items') or [],
+        'trending': bundle.get('trending') or [],
         'meta':  bundle_meta(bundle),
     })
 
