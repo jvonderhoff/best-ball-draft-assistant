@@ -35,6 +35,13 @@ best-ball-extension/players.js
 !**/.claude/commands/
 !**/.claude/settings.json
 
+# Nested repos — these have their own .git and are versioned independently.
+# Without these lines they show as permanently untracked directories in every
+# `git status` here, which trains you to ignore that list.
+fantasy_football/projections/
+fantasy_football/dynasty-rankings/
+fantasy_football/sleeper/
+
 # Best Ball — secrets and local state
 fantasy_football/best-ball-draft/.saved_drafts.json
 fantasy_football/best-ball-draft/app/data/.dk_user_guid
