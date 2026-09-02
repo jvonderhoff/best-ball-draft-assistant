@@ -643,6 +643,20 @@ round from ADP. That is an argument for the column that does not run on ADP alon
    rather than error. POST-only now. It was the only route mixing GET with a mutating
    method, and there are none left.
 
+12a. **DO NOT wire the advisory into `avail`.** Raised 2026-08-31: V2 had Mahomes #1
+    over Purdy on a board already holding McCaffrey and Stribling, with Mahomes carrying
+    a `material — Questionable/Knee - ACL` badge and `avail 0.88`, identical to healthy.
+    The diagnosis looked clean — the market has priced the ACL into his ADP 103, so V2
+    takes the cheap price without the availability cost, the same double-count the
+    Pearsall comment describes. **The user's call was to leave it alone: the injury tag
+    is misleading often enough not to build on.** Sleeper's `injury_body_part` cannot
+    tell "recovering from" apart from "hurt now", and Mahomes is the case that proves
+    it. That is a domain judgement from the person who drafts, and it outranks the
+    tidiness of the fix. The advisory stays display-only.
+
+    Worth knowing the primary column was already right: V1 had Purdy **#1** and Mahomes
+    **#10**. V2 was the one disagreeing, which is what the side-by-side is for.
+
 12. **The advisory on the card is only as fresh as the last publish.** It rides the
     payload, which is manual and now only rebuilt Tue/Fri. A player who goes on IR on a
     Thursday carries no badge until someone publishes — and the card gives no hint of
