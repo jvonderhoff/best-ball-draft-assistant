@@ -134,6 +134,20 @@ def init_db():
             conn.execute("ALTER TABLE drafts ADD COLUMN entry_fee REAL")
         if 'drafted_at' not in cols:
             conn.execute("ALTER TABLE drafts ADD COLUMN drafted_at TEXT")
+        # How the entry was paid: 'cash', 'ticket', or NULL for unknown.
+        #
+        # DK does not tell us. All 57 fields on a My Contests row were dumped on
+        # 2026-09-01: `BuyInAmount` is the sticker price whether you paid cash or
+        # burned a ticket, `IsFreeroll` only says the contest was free for EVERYONE,
+        # and TicketWinnings / TokensWon / CrownsAwarded / AwardableTokenId are all
+        # about what was WON. Nothing records how an entry was funded.
+        #
+        # So this is set by hand and defaults to NULL, which means unknown rather than
+        # cash — the same distinction `unused` vs `unknown` carries in the freshness
+        # rollup. Reporting that treats unknown as cash would overstate spend, and the
+        # whole point of the column is to stop doing that silently.
+        if 'entry_paid' not in cols:
+            conn.execute("ALTER TABLE drafts ADD COLUMN entry_paid TEXT")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_dk_draft_id ON drafts(dk_draft_id) WHERE dk_draft_id IS NOT NULL")
         player_cols = [r[1] for r in conn.execute("PRAGMA table_info(players)").fetchall()]
         if 'ecr_rank' not in player_cols:

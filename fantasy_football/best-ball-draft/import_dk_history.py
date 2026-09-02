@@ -38,19 +38,41 @@ def _ensure_guid(cli_guid):
     return guid
 
 
+def _entry_fees():
+    """{contest_id: BuyInAmount} from DK's My Contests, or {} if it cannot be reached.
+
+    `.saved_drafts.json` has never carried the fee, so every draft imported by id — which
+    is every draft tools/import-new-drafts.sh has ever imported — landed with entry_fee
+    NULL. 35 of 35 rows, silently: the column existed, save_draft accepted it, the
+    discovery path supplied it, and this path simply did not.
+
+    Best effort by design. A DK fetch that fails must not stop a history import that
+    otherwise works; the fee is metadata, and save_draft backfills it on any later
+    re-import.
+    """
+    try:
+        from app.data.api_fetcher import fetch_my_dk_contests
+        return {str(c['contest_id']): c.get('entry_fee')
+                for c in (fetch_my_dk_contests() or [])}
+    except Exception as e:
+        print(f'  [fees] unavailable ({type(e).__name__}) — importing without them')
+        return {}
+
+
 def _load_items(ids):
-    """Return [{id, entry_id, name}] from --ids or .saved_drafts.json."""
+    """Return [{id, entry_id, name, entry_fee}] from --ids or .saved_drafts.json."""
     saved = {}
     if os.path.exists(_SAVED_DRAFTS):
         try:
             saved = json.load(open(_SAVED_DRAFTS))
         except Exception:
             saved = {}
-    if ids:
-        return [{'id': i, 'entry_id': (saved.get(i) or {}).get('entry_id'),
-                 'name': (saved.get(i) or {}).get('name')} for i in ids]
-    return [{'id': did, 'entry_id': info.get('entry_id'), 'name': info.get('name')}
-            for did, info in saved.items()]
+    fees = _entry_fees()
+    keys = list(ids) if ids else list(saved)
+    return [{'id': k,
+             'entry_id': (saved.get(k) or {}).get('entry_id'),
+             'name':     (saved.get(k) or {}).get('name'),
+             'entry_fee': fees.get(str(k))} for k in keys]
 
 
 def main():
