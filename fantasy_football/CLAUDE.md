@@ -1,7 +1,7 @@
 # Fantasy football — the umbrella
 
-Five projects, one player universe. This file is loaded by any session started in
-any of them, so it holds **only what is true across all five**. Per-project detail
+Six projects, one player universe. This file is loaded by any session started in
+any of them, so it holds **only what is true across all six**. Per-project detail
 lives in each project's own docs, named below; when they disagree with this file,
 they win.
 
@@ -13,6 +13,7 @@ they win.
 | `projections/` | Every external source, every derived metric, the Analysis UI. Local only. | `ARCHITECTURE.md`, `README.md` | **live, local** |
 | `sleeper/` | All four Sleeper leagues (2 redraft, 2 dynasty): board, draft plan, queue; start/sit and waivers still to come. | `README.md`, `docs/DRAFT_DAY.md` | **live** |
 | `dynasty-rankings/` | Ranking-source comparison (KTC, FantasyCalc, CSV). A valuation INPUT, not a weekly tool — the dynasty leagues' start/sit lives in `sleeper/`. | — | dormant, uncommitted changes |
+| `dfs/` | DraftKings daily: slates, salaries, salary-cap lineups. | `README.md` | **new, 2026-09-05** |
 | `best-ball-extension/` | Chrome overlay for the DK draft room. | — | dormant since 2026-06-11 |
 
 `docs/STATUS.md` in the draft app is **the map** for best-ball + projections: since
@@ -69,13 +70,20 @@ filter. When a proposed split leaves the shared modules untouched, it is not a
 split.
 
 ```
-                    projections/  (owns every source and the crosswalk)
-                          │
-        publish (HTTP)    │    read-only SQLite
-        ┌─────────────────┴──────────────────┐
-  best-ball-draft/                       sleeper/
-  keyed dk_player_id                     keyed sleeper_id
+              projections/  (owns every source and the crosswalk)
+                    │
+   publish (HTTP)   │   read-only SQLite / JSON exports
+   ┌────────────────┼─────────────────────┬──────────────────┐
+best-ball-draft/    │              sleeper/               dfs/
+DK best ball        │              Sleeper leagues        DK daily
+keyed dk_player_id  │              keyed sleeper_id       keyed by DK salary name
 ```
+
+**The axis is platform AND product mechanics, never data.** DK best ball and DK
+daily are the same operator and different products — one drafts twenty players
+and holds them, the other fills a salary cap weekly — so they are separate. An
+application never lives in `projections/`: a lineup optimiser sat in
+`projections/tools/` for a day, importing across the seam, and was moved out.
 
 **The crosswalk covers the DK best-ball pool, not the waiver wire.** That is
 ~450-460 players and it MOVES as DK's pool changes, so read the count at run time
@@ -139,10 +147,16 @@ Written down because they recur, across every project here:
    only WRs reads as a working source. This caught two real failures on their
    first run: FantasyPros' ADP page ships only its first five rows and lazy-loads
    the rest, and a five-player board parses perfectly cleanly.
-5. **A parameter that is accepted, echoed, and ignored.** Fantasy Football
+5. **A model that beats the baseline only because the harness cheated.** A
+   weekly projection measured +2.14% against "assume every week is average" —
+   until the defence ratings were computed from a season it was not predicting,
+   at which point it measured −1.19%. Hold out the data the model was fitted on,
+   always.
+6. **A parameter that is accepted, echoed, and ignored.** Fantasy Football
    Calculator's ADP API takes `teams`, reflects it in `meta.teams`, and returns
-   byte-identical payloads for 8/10/12/14. Verify a knob changes the output before
-   believing it does.
+   byte-identical payloads for 8/10/12/14. `dfs --leverage` shipped inert twice
+   for the same reason. Verify a knob changes the output before believing it
+   does, and write the regression that proves it.
 
 ## Working style
 

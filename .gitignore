@@ -41,6 +41,7 @@ best-ball-extension/players.js
 fantasy_football/projections/
 fantasy_football/dynasty-rankings/
 fantasy_football/sleeper/
+fantasy_football/dfs/
 
 # Best Ball — secrets and local state
 fantasy_football/best-ball-draft/.saved_drafts.json
