@@ -31,6 +31,7 @@ docs/STATUS.md — so a pass that does not read back has proved nothing.
     python3 tools/auto-queue.py                    # one pass over every live draft
     python3 tools/auto-queue.py --depth 8
     python3 tools/auto-queue.py --draft 194290989  # just this one
+    python3 tools/auto-queue.py --max-until-clock 2      # only boards near your pick
     python3 tools/auto-queue.py --deadline 2026-09-07T17:30
 
 --deadline makes an unattended job stop deciding for you at a wall-clock time: past it
@@ -69,11 +70,18 @@ STATE = os.path.join(os.path.expanduser('~'), '.bba-autoqueue-state.json')
 
 
 def load_state(path):
+    """{'queued': {draft: [pids this tool wrote]}, 'seen': {draft: unix ts}}.
+    Reads the older flat {draft: [pids]} form too, so upgrading mid-session does not
+    hand every queue back to the 'you picked these' branch."""
     try:
         with open(path) as f:
-            return {k: [int(v) for v in vs] for k, vs in json.load(f).items()}
+            raw = json.load(f)
     except Exception:
-        return {}
+        return {'queued': {}, 'seen': {}}
+    if 'queued' not in raw:
+        return {'queued': {k: [int(v) for v in vs] for k, vs in raw.items()}, 'seen': {}}
+    return {'queued': {k: [int(v) for v in vs] for k, vs in raw.get('queued', {}).items()},
+            'seen': {k: float(v) for k, v in raw.get('seen', {}).items()}}
 
 
 def save_state(path, state):
@@ -124,6 +132,16 @@ def main():
     ap.add_argument('--replace', action='store_true',
                     help='discard players you queued by hand instead of keeping them in front')
     ap.add_argument('--state', default=STATE, help=f'where to remember its own writes (default {STATE})')
+    ap.add_argument('--max-until-clock', type=int, metavar='N',
+                    help='only touch drafts N or fewer picks from your clock. The filter is '
+                         'free — picksUntilOnTheClock comes from the one live-drafts call, so a '
+                         'skipped draft costs no 700KB draftStatus. Safe because every board is '
+                         'already queued and DK drops drafted players from a queue itself, so a '
+                         'queue left alone gets shorter, never wrong.')
+    ap.add_argument('--sweep-minutes', type=int, default=30, metavar='M',
+                    help='refresh a draft anyway if it has not been touched in M minutes, '
+                         'whatever --max-until-clock says. This is the backstop for a table '
+                         'where everyone picks instantly and 5 picks go by between passes.')
     ap.add_argument('--deadline', help='ISO time after which this does nothing (e.g. 2026-09-07T17:30)')
     args = ap.parse_args()
 
@@ -152,6 +170,24 @@ def main():
     if not drafts:
         log(f'[{stamp}] no live drafts')
         return 0
+
+    now = dt.datetime.now().timestamp()
+    if args.max_until_clock is not None:
+        near, swept, skipped = [], 0, 0
+        for d in drafts:
+            until = d.get('picksUntilOnTheClock')
+            stale = (now - state['seen'].get(str(d['contestId']), 0)) > args.sweep_minutes * 60
+            if until is not None and until > args.max_until_clock and not stale:
+                skipped += 1
+                continue
+            swept += 1 if (until is not None and until > args.max_until_clock) else 0
+            near.append(d)
+        drafts = near
+        log(f'[{stamp}] {len(drafts)} within {args.max_until_clock} of the clock'
+            + (f' (+{swept} swept in, {args.sweep_minutes}m stale)' if swept else '')
+            + f', {skipped} skipped')
+        if not drafts:
+            return 0
 
     # Everything the recommender scores with, pulled fresh. Deliberately NOT
     # app/data/player_cache.json: the committed seed is a bootstrap file and has been
@@ -235,7 +271,7 @@ def main():
         # stays IN FRONT — the write replaces the whole list, and a tool that quietly
         # drops a hand-picked player is worse than one that queues nobody. Drafted
         # entries fall off here; DK removes them itself, but not before the read.
-        mine = set(state.get(cid, []))
+        mine = set(state['queued'].get(cid, []))
         kept = [] if args.replace else [pid for pid in (queue_by[cid] or [])
                                         if (avail.get(pid) or {}).get('available')
                                         and pid not in mine]
@@ -257,6 +293,7 @@ def main():
             wanted.append(pid)
             names.append(f"{rec['name']} ({rec['pos']} {rec['team']}, v={rec['value']:.1f})")
 
+        state['seen'][cid] = now
         before = queue_by[cid]
         rost = ' '.join(f'{k}{r["roster"].get(k, 0)}' for k in ('QB', 'RB', 'WR', 'TE'))
         log(f'\n  {cid}  pick {r["overall"]} · seat {r["myPos"]}/{r["teams"]} · '
@@ -279,11 +316,14 @@ def main():
             log(f'    !! queue did not land: wanted {wanted}, DK reports {after}')
             failures.append(cid); continue
         written += 1
-        state[cid] = [pid for pid in wanted if pid not in kept]
+        state['queued'][cid] = [pid for pid in wanted if pid not in kept]
         log(f'    ✓ queued {len(after)}'
             + (f' ({len(kept)} of them yours)' if kept else ''))
 
-    save_state(args.state, state)
+    # A dry run changes nothing, so it must not mark drafts as freshly seen — that
+    # would let the sweep backstop believe work happened that did not.
+    if not args.dry_run:
+        save_state(args.state, state)
     log(f'\n[{stamp}] {written} queues written, {len(failures)} failed'
         + (f': {failures}' if failures else ''))
     return 1 if failures else 0

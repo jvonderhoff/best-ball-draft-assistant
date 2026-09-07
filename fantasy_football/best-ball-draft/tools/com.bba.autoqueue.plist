@@ -22,6 +22,12 @@
   Five minutes against a ten-minute pick clock: the queue is never more than one pick
   behind the board. Most runs write nothing and say "queue already correct".
 
+  --max-until-clock 2 keeps each pass to the boards near your pick. It is free to
+  apply: picksUntilOnTheClock arrives in the one live-drafts call, so a skipped draft
+  costs no 700KB draftStatus. It is safe because every board is already queued and DK
+  removes drafted players from a queue itself — a queue left alone gets shorter, never
+  wrong — and --sweep-minutes 30 refreshes anything that has gone untouched anyway.
+
   StartInterval, not StartCalendarInterval: this wants "every so often", and launchd
   fires once shortly after a wake rather than replaying every missed run.
 
@@ -39,8 +45,10 @@
         <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/.claude/worktrees/beautiful-rhodes-84e22b/fantasy_football/best-ball-draft/tools/auto-queue.py</string>
         <string>--depth</string>
         <string>6</string>
+        <string>--max-until-clock</string>
+        <string>2</string>
         <string>--deadline</string>
-        <string>2026-09-07T16:30</string>
+        <string>2026-09-07T21:00</string>
     </array>
 
     <key>WorkingDirectory</key>
