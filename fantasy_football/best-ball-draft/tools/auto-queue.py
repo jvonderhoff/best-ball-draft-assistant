@@ -50,6 +50,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -114,9 +115,23 @@ def find_node():
     return sorted(cands, key=ver)[-1] if cands else None
 
 
-def get_json(url, timeout=90):
-    with urllib.request.urlopen(url, timeout=timeout) as r:
-        return json.loads(r.read())
+def get_json(url, timeout=90, attempts=4, wait=15):
+    """Prod, with retries. Render's free tier spins down and cold starts take 30-60s,
+    and a push to master takes it down on purpose — the 14:53 run on 2026-09-07 died on
+    a 502 from the deploy this tool's own commit triggered. Unattended, that is a queue
+    that stops being refreshed for as long as nobody looks."""
+    last = None
+    for i in range(attempts):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                return json.loads(r.read())
+        except Exception as e:
+            last = e
+            if i + 1 < attempts:
+                log(f'  {url.rsplit("/", 1)[-1]}: {e} — retrying in {wait}s '
+                    f'({i + 2}/{attempts})')
+                time.sleep(wait)
+    raise last
 
 
 def live_drafts(session, guid):
@@ -192,9 +207,15 @@ def main():
     # Everything the recommender scores with, pulled fresh. Deliberately NOT
     # app/data/player_cache.json: the committed seed is a bootstrap file and has been
     # 100+ hours stale while looking perfectly healthy.
-    pool     = get_json(f'{PROD}/api/players')
-    v2       = get_json(f'{PROD}/api/projections-v2')
-    rankings = get_json(f'{PROD}/api/rankings')
+    try:
+        pool     = get_json(f'{PROD}/api/players')
+        v2       = get_json(f'{PROD}/api/projections-v2')
+        rankings = get_json(f'{PROD}/api/rankings')
+    except Exception as e:
+        # Loud, but not a traceback: this is a reachability problem, and the right
+        # thing is to touch nothing and let the next pass try again.
+        log(f'[{stamp}] {PROD} unreachable after retries ({e}) — no queue touched')
+        return 2
     ranked   = sum(1 for p in rankings if p.get('custom_rank') is not None)
     log(f'[{stamp}] {len(drafts)} live drafts · pool {len(pool)} · '
         f'V2 {v2.get("count")} {v2.get("source")} {v2.get("age_hours")}h · board {ranked} ranks')
