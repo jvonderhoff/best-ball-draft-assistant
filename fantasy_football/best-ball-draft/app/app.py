@@ -1512,54 +1512,153 @@ def my_dk_drafts():
                     'message': 'No drafts found. Go to Setup and paste your DK draft URL.'})
 
 
-@app.route('/api/dk-draft/queue/<draft_id>', methods=['POST'])
-def dk_draft_queue(draft_id):
-    """Add a player to the DK draft queue via direct API call."""
-    from app.data.api_fetcher import _dk_session
-    data = request.get_json(silent=True) or {}
-    draftable_id = data.get('draftable_id')
-    if not draftable_id:
-        return jsonify({'error': 'draftable_id required'}), 400
-
+def _resolve_entry_id(draft_id):
+    """entry_id for one of the user's drafts — saved list first, then drafts/live.
+    Returns None when it cannot be found; every caller must say so out loud rather
+    than carrying on with a half-addressed request."""
     entry_id = (_saved_draft_ids.get(str(draft_id)) or {}).get('entry_id')
-    if not entry_id:
-        # Try getting it from pick cache
-        cache = _dk_pick_cache.get(str(draft_id), {})
-        my_picks = [p for p in cache.get('picks', []) if p.get('username') == 'jvonderhoff']
-        # entry_id not directly in cache - fall back to live drafts
-        if not entry_id:
-            from app.data.api_fetcher import _load_user_guid
-            guid = _load_user_guid()
-            if guid:
-                session = _dk_session(referer=f'https://www.draftkings.com/draft/snake/{draft_id}')
-                if session:
-                    try:
-                        r = session.get(f'https://api.draftkings.com/drafts/v1/users/{guid}/drafts/live?format=json', timeout=10)
-                        if r.ok:
-                            for ud in r.json().get('userDrafts', []):
-                                if str(ud.get('contestId')) == str(draft_id):
-                                    entry_id = str(ud.get('entryId', ''))
-                                    _saved_draft_ids[str(draft_id)]['entry_id'] = entry_id
-                                    _persist_saved_drafts()
-                                    break
-                    except Exception:
-                        pass
+    if entry_id:
+        return entry_id
 
+    from app.data.api_fetcher import _dk_session, _load_user_guid
+    guid = _load_user_guid()
+    if not guid:
+        return None
+    session = _dk_session(referer=f'https://www.draftkings.com/draft/snake/{draft_id}')
+    if not session:
+        return None
+    try:
+        r = session.get(
+            f'https://api.draftkings.com/drafts/v1/users/{guid}/drafts/live?format=json',
+            timeout=10)
+        if not r.ok:
+            return None
+        for ud in r.json().get('userDrafts', []):
+            if str(ud.get('contestId')) == str(draft_id):
+                entry_id = str(ud.get('entryId', ''))
+                # setdefault, not [] — a draft discovered here need not be saved yet,
+                # and the older form raised KeyError on exactly that case.
+                _saved_draft_ids.setdefault(str(draft_id), {})['entry_id'] = entry_id
+                _persist_saved_drafts()
+                return entry_id
+    except Exception as e:
+        print(f'[DK] entry_id lookup failed for draft {draft_id}: {e}')
+    return None
+
+
+def _queue_payload(draft_id, entry_id, player_ids, players):
+    """The queue as the UI wants it: ids in DK's order, with names attached."""
+    return {
+        'draft_id': str(draft_id),
+        'entry_id': str(entry_id),
+        'queue': [
+            {'player_id': pid,
+             'name': (players.get(pid) or {}).get('name', f'Player #{pid}'),
+             'available': (players.get(pid) or {}).get('available')}
+            for pid in player_ids
+        ],
+        'player_ids': player_ids,
+    }
+
+
+@app.route('/api/dk-draft/queue/<draft_id>', methods=['GET'])
+def dk_draft_queue_read(draft_id):
+    """Read the DK draft queue back.
+
+    This exists because there was no read path at all, which is the only reason a
+    write that DK answered 200 and ignored could sit inert from 2026-06-01 to
+    2026-09-07 without anyone noticing."""
+    from app.data.api_fetcher import fetch_dk_draft_status, dk_player_index, read_dk_queue
+
+    entry_id = _resolve_entry_id(draft_id)
     if not entry_id:
         return jsonify({'error': 'Could not find entry_id for this draft'}), 400
 
-    session = _dk_session(referer=f'https://www.draftkings.com/draft/snake/{draft_id}')
-    if not session:
-        return jsonify({'error': 'No DK cookies — run sync_cookies.py'}), 401
+    status = fetch_dk_draft_status(draft_id, entry_id)
+    if status is None:
+        return jsonify({'error': 'Could not read draftStatus from DK'}), 502
+    _, players = dk_player_index(status)
+    return jsonify(_queue_payload(draft_id, entry_id, read_dk_queue(
+        draft_id, entry_id, status=status), players))
 
-    try:
-        url = f'https://api.draftkings.com/drafts/v1/snake/{draft_id}/entries/{entry_id}/draftPreferences/queue/players?format=json'
-        r = session.post(url, json={'draftableId': int(draftable_id)}, timeout=10)
-        if r.ok:
-            return jsonify({'ok': True, 'response': r.json()})
-        return jsonify({'error': f'DK returned {r.status_code}', 'body': r.text[:200]}), r.status_code
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/dk-draft/queue/<draft_id>', methods=['POST'])
+def dk_draft_queue(draft_id):
+    """Add or remove one player in the DK draft queue.
+
+    Takes `player_id`, or `draftable_id` and translates it — DK's queue is keyed on
+    playerId, and the pool this app carries knows players by draftableId only.
+    `action` is 'add' (default) or 'remove'.
+
+    DK has no per-player append: the whole queue is posted every time, so this
+    reads the current queue first. And it never reports success from the HTTP
+    status — the queue DK returns after the write is checked for the player that
+    was asked for, because a 200 here has meant nothing at all before."""
+    from app.data.api_fetcher import (fetch_dk_draft_status, dk_player_index,
+                                      read_dk_queue, write_dk_queue)
+
+    data = request.get_json(silent=True) or {}
+    player_id    = data.get('player_id')
+    draftable_id = data.get('draftable_id')
+    action       = (data.get('action') or 'add').lower()
+    if not player_id and not draftable_id:
+        return jsonify({'error': 'player_id or draftable_id required'}), 400
+    if action not in ('add', 'remove'):
+        return jsonify({'error': f'action must be add or remove, got {action!r}'}), 400
+
+    entry_id = _resolve_entry_id(draft_id)
+    if not entry_id:
+        return jsonify({'error': 'Could not find entry_id for this draft'}), 400
+
+    # One draftStatus call carries the current queue AND the draftableId → playerId
+    # map, so the translation costs nothing extra.
+    status = fetch_dk_draft_status(draft_id, entry_id)
+    if status is None:
+        return jsonify({'error': 'Could not read draftStatus from DK'}), 502
+    did_to_pid, players = dk_player_index(status)
+
+    if not player_id:
+        # Strip the `dk_` the pool prefixes ids with; live DK ids are bare.
+        raw = str(draftable_id)
+        raw = raw[3:] if raw.startswith('dk_') else raw
+        try:
+            player_id = did_to_pid.get(int(raw))
+        except ValueError:
+            return jsonify({'error': f'draftable_id {draftable_id!r} is not a number'}), 400
+        if not player_id:
+            return jsonify({'error': f'draftable_id {draftable_id} is not in this draft\'s pool'}), 400
+    player_id = int(player_id)
+
+    name = (players.get(player_id) or {}).get('name', f'Player #{player_id}')
+    if action == 'add' and players.get(player_id) and not players[player_id]['available']:
+        return jsonify({'error': f'{name} is already drafted'}), 409
+
+    before = read_dk_queue(draft_id, entry_id, status=status)
+    if action == 'add':
+        if player_id in before:
+            return jsonify(dict(_queue_payload(draft_id, entry_id, before, players),
+                                ok=True, unchanged=True, player_id=player_id, name=name))
+        wanted = before + [player_id]
+    else:
+        if player_id not in before:
+            return jsonify(dict(_queue_payload(draft_id, entry_id, before, players),
+                                ok=True, unchanged=True, player_id=player_id, name=name))
+        wanted = [p for p in before if p != player_id]
+
+    after, error = write_dk_queue(draft_id, entry_id, wanted)
+    if error:
+        return jsonify({'error': error}), 502
+
+    # The read-back. DK answers 200 to a write it ignored, so this is the only
+    # thing that distinguishes "queued" from "said it queued".
+    if (action == 'add') != (player_id in after):
+        return jsonify({'error': f'DK accepted the write but the queue did not change: '
+                                 f'asked to {action} {name} ({player_id}), '
+                                 f'queue is still {after}',
+                        'before': before, 'after': after}), 502
+
+    return jsonify(dict(_queue_payload(draft_id, entry_id, after, players),
+                        ok=True, unchanged=False, player_id=player_id, name=name))
 
 
 @app.route('/api/dk-draft/pull/<draft_id>', methods=['POST'])

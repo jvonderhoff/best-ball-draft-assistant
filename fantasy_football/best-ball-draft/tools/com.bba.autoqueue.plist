@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Keep every live DK draft queue stocked, every 5 minutes.
+
+      cp tools/com.bba.autoqueue.plist ~/Library/LaunchAgents/
+      launchctl load ~/Library/LaunchAgents/com.bba.autoqueue.plist
+      launchctl unload ~/Library/LaunchAgents/com.bba.autoqueue.plist   # stop it
+
+  This one WRITES to your DraftKings entries — it is the only job here that does. It
+  sets the draft queue, which is what DK drafts from when a pick clock expires, so
+  while it is loaded it is deciding your picks in your absence. Two guards on that:
+
+    --deadline  is a wall-clock stop. Past it every run exits without touching a
+                queue, so a timer left loaded goes quiet instead of drafting your
+                board overnight. Edit the date below to extend it; there is no way
+                to extend it by accident.
+
+    the tool    never discards a player you queued by hand — yours stay, in front,
+                and the recommender fills in behind. The --replace flag overrides
+                that, and is deliberately not used here.
+
+  Five minutes against a ten-minute pick clock: the queue is never more than one pick
+  behind the board. Most runs write nothing and say "queue already correct".
+
+  StartInterval, not StartCalendarInterval: this wants "every so often", and launchd
+  fires once shortly after a wake rather than replaying every missed run.
+
+  NOTE the paths below point at the worktree the fix was built in, because that is
+  where tools/auto-queue.py currently lives. Merge to master and repoint them.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bba.autoqueue</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/.venv/bin/python</string>
+        <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/.claude/worktrees/beautiful-rhodes-84e22b/fantasy_football/best-ball-draft/tools/auto-queue.py</string>
+        <string>--depth</string>
+        <string>6</string>
+        <string>--deadline</string>
+        <string>2026-09-07T16:30</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/.claude/worktrees/beautiful-rhodes-84e22b/fantasy_football/best-ball-draft</string>
+
+    <!-- every 5 minutes -->
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/data/autoqueue/autoqueue.out</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/data/autoqueue/autoqueue.err</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

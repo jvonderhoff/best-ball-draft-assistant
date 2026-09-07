@@ -374,11 +374,15 @@ def _fetch_draftables(session, draft_group_id=DK_RANKINGS_ID):
         return cached[1] if cached else {}
 
 
-def fetch_dk_draft_picks(contest_id, entry_id=None, draft_group_id=None):
+def fetch_dk_draft_picks(contest_id, entry_id=None, draft_group_id=None, status=None):
     """
     Fetch the current draft board using direct API calls via direct DK API calls.
     Uses Firefox cookies + api.draftkings.com endpoints discovered via network inspection.
     Returns normalized pick list or None on failure.
+
+    `status` lets a caller that already holds this entry's draftStatus hand it over
+    rather than paying for it twice — the body is ~700KB, and auto-queue reads one per
+    draft per pass for the queue and the availability flags.
     """
     session = _dk_session(referer=f'https://www.draftkings.com/draft/snake/{contest_id}')
     if not session:
@@ -408,18 +412,22 @@ def fetch_dk_draft_picks(contest_id, entry_id=None, draft_group_id=None):
         return None
 
     # Fetch pick state
-    try:
-        r = session.get(
-            f'https://api.draftkings.com/drafts/v1/{contest_id}/entries/{entry_id}/draftStatus?format=json',
-            timeout=10,
-        )
-        r.raise_for_status()
-        _status = r.json()
-        draft_board = _status.get('draftBoard') or []
-        draft_start_time = _status.get('draftStartTime')   # when the draft happened
-    except Exception as e:
-        print(f'  [DK] draftStatus error: {e}')
-        return None
+    if status is not None:
+        draft_board = status.get('draftBoard') or []
+        draft_start_time = status.get('draftStartTime')
+    else:
+        try:
+            r = session.get(
+                f'https://api.draftkings.com/drafts/v1/{contest_id}/entries/{entry_id}/draftStatus?format=json',
+                timeout=10,
+            )
+            r.raise_for_status()
+            _status = r.json()
+            draft_board = _status.get('draftBoard') or []
+            draft_start_time = _status.get('draftStartTime')   # when the draft happened
+        except Exception as e:
+            print(f'  [DK] draftStatus error: {e}')
+            return None
 
     if not draft_board:
         print('  [DK] draftBoard is empty')
@@ -467,6 +475,102 @@ def fetch_dk_draft_picks(contest_id, entry_id=None, draft_group_id=None):
     print(f'  [DK] ✓ {len(picks)} picks for contest {contest_id}, my_position={my_position}')
     return {'picks': picks, 'my_position': my_position, 'drafted_at': draft_start_time} \
         if picks or my_position else None
+
+
+# ── DK draft queue ────────────────────────────────────────────────────────────
+# The queue is keyed on **playerId**, and it is written as the WHOLE list. DK's
+# own draft room sends {"playerIds": [...]} — the full ordered queue — to
+#   POST /drafts/v1/snake/{contest}/entries/{entry}/draftPreferences/queue/players
+# There is no per-player append: adding one player means reading the queue,
+# appending, and posting all of it back.
+#
+# A body of {"draftableId": N} is accepted and answered 200 with a genuine
+# draftPreferences body — and because it carries no `playerIds`, DK reads it as an
+# empty queue and REPLACES the queue with nothing. That is what the app sent from
+# 2026-06-01 to 2026-09-07: not a no-op, a wipe, measured on live draft 194778826.
+# So never trust the 200: every write below returns the queue DK reports back, and
+# the caller is expected to check that what it asked for is in it.
+
+def fetch_dk_draft_status(contest_id, entry_id, session=None):
+    """Raw draftStatus for one entry. This is the read path for the queue AND for
+    the draftableId↔playerId map. Returns the parsed body, None when unreachable."""
+    session = session or _dk_session(
+        referer=f'https://www.draftkings.com/draft/snake/{contest_id}')
+    if not session:
+        print('  [DK] No Firefox DK cookies found')
+        return None
+    try:
+        r = session.get(
+            f'https://api.draftkings.com/drafts/v1/{contest_id}/entries/{entry_id}/draftStatus?format=json',
+            timeout=15,
+        )
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f'  [DK] draftStatus error: {e}')
+        return None
+
+
+def dk_player_index(status):
+    """(draftableId → playerId, playerId → {name, available}) out of a draftStatus
+    body. draftStatus already carries every draftableId per player, so the queue
+    never needs a second draftables fetch to translate an id."""
+    did_to_pid, players = {}, {}
+    pool = ((status or {}).get('playerPool') or {}).get('draftablePlayers') or []
+    for p in pool:
+        pid = p.get('playerId')
+        if not pid:
+            continue
+        pid = int(pid)
+        players[pid] = {
+            'name':      p.get('displayName') or f'Player #{pid}',
+            'available': bool(p.get('isAvailable')),
+        }
+        for slot in (p.get('draftableRosterPositions') or []):
+            did = slot.get('draftableId')
+            if did:
+                did_to_pid[int(did)] = pid
+    return did_to_pid, players
+
+
+def _queue_from_body(body):
+    """queuedPlayerIds out of a draftStatus or draftQueue response. An EMPTY queue
+    comes back as `"draftQueue": {}` — the key is absent, not empty — so the []
+    default is load-bearing, not defensive noise."""
+    return [int(p) for p in ((body.get('draftQueue') or {}).get('queuedPlayerIds') or [])]
+
+
+def read_dk_queue(contest_id, entry_id, session=None, status=None):
+    """The queue as a list of playerIds, in DK's order. None when unreachable —
+    which is NOT the same as [], and callers must keep them apart."""
+    if status is None:
+        status = fetch_dk_draft_status(contest_id, entry_id, session)
+    if status is None:
+        return None
+    return _queue_from_body(status)
+
+
+def write_dk_queue(contest_id, entry_id, player_ids, session=None):
+    """Replace the whole queue. Returns (queue, error): `queue` is what DK reports
+    back after the write — the read-back, already done — and is None whenever
+    `error` is set."""
+    session = session or _dk_session(
+        referer=f'https://www.draftkings.com/draft/snake/{contest_id}')
+    if not session:
+        return None, 'No DK cookies — run sync_cookies.py'
+    url = (f'https://api.draftkings.com/drafts/v1/snake/{contest_id}/entries/{entry_id}'
+           f'/draftPreferences/queue/players?format=json')
+    try:
+        r = session.post(url, json={'playerIds': [int(p) for p in player_ids]}, timeout=15)
+    except Exception as e:
+        return None, f'queue write failed: {e}'
+    if not r.ok:
+        return None, f'DK returned {r.status_code}: {r.text[:200]}'
+    try:
+        body = r.json()
+    except Exception:
+        return None, f'DK returned unparseable body: {r.text[:200]}'
+    return _queue_from_body(body), None
 
 
 # Path to cache the user's DK GUID so we can call the live-drafts endpoint directly

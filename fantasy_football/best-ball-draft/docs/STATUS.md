@@ -713,6 +713,30 @@ round from ADP. That is an argument for the column that does not run on ADP alon
 
 ## Traps hit this week — each now guarded
 
+- **The DK queue write was not ignored — it was WIPING the queue. Three months.**
+  `POST /api/dk-draft/queue/<id>` shipped 2026-06-01 sending `{"draftableId": N}`.
+  DK answered every one with HTTP 200 and a real draftPreferences body —
+  `{"draftQueue":{},"nextPickDraftableId":…,"nextPickPlayerId":…}` — and the queue on
+  screen stayed empty, which read as bug class #6, a parameter accepted and ignored.
+  It is worse than that. The contract, read out of DK's own draft-room bundle
+  (`dkjs/app.js` → chunk `3866`), is `{"playerIds": [...]}` — keyed on **playerId**,
+  not draftableId, and the WHOLE queue every time, since DK has no per-player append.
+  A body with no `playerIds` key is therefore an EMPTY queue, and the write does
+  exactly what it was told: replace everything with nothing. Measured on live draft
+  194778826 on 2026-09-07 — `[Strange, Andrews]` → `[]` from one old-style call. The
+  `+ Queue` button was never failing to add a player; it was deleting the queue on
+  every click, and it looked identical from outside.
+  **What let it hide was that nothing could read the queue** — the app had no read
+  path at all, and the button was pulled two hours after it shipped (`699c699`, "DK
+  queue API unverified"), so no caller was left to notice. There is now a
+  `GET /api/dk-draft/queue/<id>`, the POST checks its own read-back and 502s when the
+  queue did not move, and `tools/verify-dk-queue.py` fires the old body at a live draft
+  to keep the destructive behaviour measured rather than remembered. DK's own client
+  checks the returned `draftQueue.queuedPlayerIds` after every write, which is the tell
+  that a 200 here was never meant to be believed.
+  `GET /drafts/v1/{contest}/entries/{entry}/draftStatus` carries the queue AND every
+  `draftableId → playerId` in one call, so the translation costs no extra request.
+
 - **Two threads on one checkout, neither fetching.** 2026-08-29: this session committed
   13 times straight to `master` over two days without ever fetching, while another
   thread branched, merged and pushed. They met on `recommend.html` — one adding
