@@ -49,3 +49,6 @@ fantasy_football/best-ball-draft/app/data/.dk_user_guid
 fantasy_football/best-ball-draft/.synced_cookies.json
 fantasy_football/best-ball-draft/ssl.crt
 fantasy_football/best-ball-draft/ssl.key
+
+# auto-queue run logs and its record of what it queued — runtime output, not source
+fantasy_football/best-ball-draft/data/
