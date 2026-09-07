@@ -30,9 +30,6 @@
 
   StartInterval, not StartCalendarInterval: this wants "every so often", and launchd
   fires once shortly after a wake rather than replaying every missed run.
-
-  NOTE the paths below point at the worktree the fix was built in, because that is
-  where tools/auto-queue.py currently lives. Merge to master and repoint them.
 -->
 <plist version="1.0">
 <dict>
@@ -42,7 +39,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/.venv/bin/python</string>
-        <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/.claude/worktrees/beautiful-rhodes-84e22b/fantasy_football/best-ball-draft/tools/auto-queue.py</string>
+        <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/tools/auto-queue.py</string>
         <string>--depth</string>
         <string>6</string>
         <string>--max-until-clock</string>
@@ -52,7 +49,7 @@
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/.claude/worktrees/beautiful-rhodes-84e22b/fantasy_football/best-ball-draft</string>
+    <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft</string>
 
     <!-- every 5 minutes -->
     <key>StartInterval</key>
