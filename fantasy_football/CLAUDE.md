@@ -13,7 +13,7 @@ they win.
 | `projections/` | Every external source, every derived metric, the Analysis UI. Local only. | `ARCHITECTURE.md`, `README.md` | **live, local** |
 | `sleeper/` | All four Sleeper leagues (2 redraft, 2 dynasty): board, draft plan, queue; start/sit and waivers still to come. | `README.md`, `docs/DRAFT_DAY.md` | **live** |
 | `dynasty-rankings/` | Ranking-source comparison (KTC, FantasyCalc, CSV). A valuation INPUT, not a weekly tool — the dynasty leagues' start/sit lives in `sleeper/`. | — | dormant, uncommitted changes |
-| `dfs/` | DraftKings daily: slates, salaries, salary-cap lineups. | `README.md` | **new, 2026-09-05** |
+| `dfs/` | DraftKings daily: slates, salaries, salary-cap lineups. | `README.md`, `docs/STATUS.md` | **live, in season** |
 | `best-ball-extension/` | Chrome overlay for the DK draft room. | — | dormant since 2026-06-11 |
 
 `docs/STATUS.md` in the draft app is **the map** for best-ball + projections: since
