@@ -38,21 +38,32 @@ interpret the lineup — find out why.
 **This is the most repeated bug in this codebase — value paid to players who cannot
 play** — and start/sit is where it costs a week rather than a pick.
 
-The tell the tool does not yet act on: **a player with NO market at all, whose game IS
-priced.** DK prices ~26 players a game; a nominal starter the book will not take action
-on is usually a player who is not playing. Measured on Week 1, seven rostered skill
-players fit that description, and they were not all the same thing:
+The tool now enforces what it can KNOW: Sleeper's own `status` and `injury_status` (IR,
+PUP, NFI, Out, Suspended, DNR), plus the dated assertions in
+`sleeper/data/unavailable.json`. Anyone it catches appears under **OUT** with the reason
+and what he would have been worth. Read that block — and read the expired-assertion
+warning above it, because an override nobody deletes keeps a healthy player benched.
 
-- **Josh Jacobs** — GB depth chart **4**, groin, ADP down 58.7 with 23.5k drops. Real.
-  He was sitting on two benches at a 9.77 season baseline, ranked above live options.
+Your job is the case it cannot know. The tell: **a player with NO market at all, whose
+game IS priced.** DK prices ~26 players a game; a nominal starter the book will not take
+action on is usually a player who is not playing, and Sleeper's feed can be days behind
+or have no vocabulary for it at all — the commissioner exempt list reads back as
+`Active` / `NA`. Measured on Week 1, seven rostered skill players fit that description
+and they were not all the same thing:
+
+- **Josh Jacobs** — GB depth chart **4**, groin, ADP down 58.7 with 23.5k drops. Real:
+  he turned out to be on the commissioner exempt list, which Sleeper cannot express. He
+  is in `unavailable.json` until 2026-09-15 — **extend or delete that entry** rather
+  than letting it lapse silently.
 - **Chig Okonkwo** — depth **1**, no injury. Not absent: DK writes *Chigoziem* Okonkwo
   and the crosswalk says *Chig*, so he is UNMATCHED, not unpriced. Check the export's
   `unmatched` list before calling anyone out.
-- **Tank Dell, Ricky Pearsall** — IR, already surfaced under `NO NUMBER AT ALL`.
+- **Tank Dell, Ricky Pearsall** — IR, and now caught by Sleeper's own status.
 - three genuine deep-bench players DK simply does not price.
 
 So the discriminator is `depth_chart_order` plus `injury_body_part`, cross-checked
-against the unmatched list. Do that check by hand each week until it is built:
+against the unmatched list. Run it each week to find the next Jacobs; when you confirm
+one, add him to `sleeper/data/unavailable.json` with an `until` and a why:
 
 ```bash
 cd sleeper && .venv/bin/python - <<'PY'
@@ -107,6 +118,12 @@ markets, the comparison is clean and the gap means what it says.
 Comparing a market row against a `(season baseline)` row is also not clean, for the same
 reason in the other direction — the market side reads high. The tool already labels
 every row; use the label.
+
+`(DST model)` is the third kind of row and the least like a price: no book prices a
+defence, so that number is a regression on the opponent's implied total, corrected from
+DK's scoring toward this league's where the rate could be measured. It is counted
+separately in the START header for that reason. Two defences inside 2 points of each
+other is not a decision worth agonising over.
 
 ## Finally
 
