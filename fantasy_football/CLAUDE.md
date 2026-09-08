@@ -103,10 +103,34 @@ ball from Sleeper — as opposed to league format, which does not:
 - **Dynasty** asks the same weekly question as redraft — which is why they share an
   app — and a different one at acquisition: rest-of-career, not rest-of-season.
 
-**There are no per-week projections anywhere yet.** `ppg` is season-long and `sd`
-is estimated from position-level coefficients of variation
+**Per-week numbers come from the MARKET, and only there.** `ppg` is season-long
+and `sd` is estimated from position-level coefficients of variation
 (`projections/pipeline/core/metrics.py:31`), not from opponent-adjusted weekly
-numbers. Anything that needs a weekly number is new work.
+numbers. The one genuine weekly source is DraftKings' own per-game player props:
+`projections/tools/export_props.py` writes them across the seam and
+`sleeper/cli.py startsit` consumes them. A home-made weekly model exists at
+`projections/pipeline/weekly.py` and its own header says do not wire it in - it
+lost to assuming every week is a player's season average (bug class 5 below).
+
+Two measured facts about that seam, because both are ways to be wrong invisibly:
+
+- **The props file is keyed on `name_key`, not on an id** - uniquely among the
+  seams here, because the exporter owns `names.py` and does the join there so no
+  consumer needs a copy. Each record carries `sleeper_id` as a FIELD. Reading the
+  dict key as an id raises nothing: every lookup misses, every player falls back
+  to his season week, and a complete lineup of plausible numbers renders with the
+  market absent. It shipped that way and the first real run scored 0/9 starters
+  from the market against 349 keyed players. `startsit` now refuses a run where
+  no starter took a market number.
+- **`anytime_td` needs a haircut this codebase has not applied yet.** Converting
+  P(>=1) to E[TD] with `-ln(1-p)` is right in principle and measurably too high
+  at the top: fitted on 2024 and validated on 2025, `p*(1+0.512p)` beat it (MAE
+  0.0376 vs 0.0435, bias -2.3% vs +4.2%), and the gap reaches -26% at p=0.76 -
+  the RB1s a start/sit call turns on. On top of that the anytime-TD path is the
+  only market in `export_props.py` that is NOT de-vigged, while ladders are cut
+  6%; summed over Week 1 the raw probabilities imply 25.7% more scorers than the
+  slate's own implied totals do. Neither is fixed. Do not read a propped
+  touchdown number as calibrated.
 
 **A scoring rule that lifts a whole position lifts its replacement just as fast.**
 Measured 2026-08-31: six-point passing TDs raise QB1's season total by 52.6 points
