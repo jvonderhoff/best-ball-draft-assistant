@@ -680,6 +680,32 @@ def get_all_drafts(include_opponents=False):
         return result
 
 
+def get_my_pick_counts_by_dk_id():
+    """{dk_draft_id: number of YOUR picks stored} for every draft in history.
+
+    Exists so a sync can skip the drafts it has already finished importing.
+    The History sync walks every contest DK has ever seen you enter, and that
+    list only grows — at 83 contests it was taking ~141s against gunicorn's
+    120s timeout, so the worker was killed mid-request and the browser got an
+    HTML 502 instead of the JSON it parsed. Re-pulling a finished board also
+    buys nothing: it is final, and save_draft would rewrite it identically.
+
+    Counts YOUR picks (not opponent seats) because that is what completeness is
+    judged on upstream — a full 240-row board with 4 of your slots filled is an
+    in-progress draft, and must NOT be skipped.
+    """
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT d.dk_draft_id AS dk_id,
+                   SUM(CASE WHEN COALESCE(p.mine, 1) = 1 THEN 1 ELSE 0 END) AS n
+            FROM drafts d
+            LEFT JOIN draft_picks p ON p.draft_id = d.id
+            WHERE d.dk_draft_id IS NOT NULL
+            GROUP BY d.dk_draft_id
+        """).fetchall()
+        return {str(r['dk_id']): (r['n'] or 0) for r in rows}
+
+
 def get_exposure():
     with get_db() as conn:
         total = conn.execute("SELECT COUNT(*) FROM drafts").fetchone()[0]

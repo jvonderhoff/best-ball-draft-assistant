@@ -75,7 +75,7 @@
         .sync-results .sr-status { font-weight: 700; min-width: 88px; }
         .sr-imported { color: var(--green); }
         .sr-updated { color: var(--accent); }
-        .sr-duplicate { color: var(--muted); }
+        .sr-duplicate, .sr-skipped { color: var(--muted); }
         .sr-incomplete, .sr-no_picks, .sr-error { color: var(--red, #c0392b); }
         .sync-results .sr-id { font-variant-numeric: tabular-nums; color: var(--text); min-width: 92px; }
         .sync-results .sr-reason { color: var(--muted); flex: 1; }
@@ -802,7 +802,7 @@
         function renderSyncResults(results) {
             const box = document.getElementById('syncResults');
             if (!results.length) { box.style.display = 'none'; return; }
-            const order = { imported: 0, updated: 1, incomplete: 2, no_picks: 3, error: 4, duplicate: 5 };
+            const order = { imported: 0, updated: 1, incomplete: 2, no_picks: 3, error: 4, duplicate: 5, skipped: 6 };
             const sorted = [...results].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
             box.innerHTML = sorted.map(r => `
                 <div class="sr-row">
@@ -829,10 +829,25 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(ids.length ? { ids } : {}),
                 });
-                const data = await resp.json();
-                if (!resp.ok) {
+                // Parse defensively: the failures that actually happen here do NOT
+                // come from Flask, so they are not JSON. A sync that outruns the
+                // worker timeout gets an HTML 502 from Render, and a cold start
+                // gets Render's own holding page — both of which made resp.json()
+                // throw BEFORE the resp.ok check below, so every one of them
+                // surfaced as "Sync failed: JSON.parse: unexpected character at
+                // line 1 column 1" and the real status was never shown. Report
+                // the status code; it is the only thing that says what happened.
+                const raw = await resp.text();
+                let data = null;
+                try { data = JSON.parse(raw); } catch (_) { /* not JSON — handled below */ }
+                if (!resp.ok || data === null) {
                     status.style.color = 'var(--red, #c0392b)';
-                    status.textContent = data.error || 'Sync failed';
+                    status.textContent = (data && data.error)
+                        ? data.error
+                        : `Sync failed — HTTP ${resp.status} ${resp.statusText || ''}`.trim() +
+                          (resp.status === 502 || resp.status === 504
+                              ? '. The sync ran past the server timeout; it will pick up where it left off, so run it again.'
+                              : `: ${raw.slice(0, 120).replace(/\s+/g, ' ')}`);
                     return;
                 }
                 const r = data.results || [];

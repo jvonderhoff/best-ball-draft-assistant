@@ -149,7 +149,8 @@ def import_many(items, min_picks=DEFAULT_MIN_PICKS, include_opponents=False):
 
 
 def import_completed_contests(min_picks=DEFAULT_MIN_PICKS, include_incomplete=False,
-                              min_picks_incomplete=1, include_opponents=False):
+                              min_picks_incomplete=1, include_opponents=False,
+                              force=False):
     """Discover the user's contests via My Contests, then board-import them.
 
     This is the primary History sync: discovery yields contest_id + entry_id for
@@ -166,13 +167,42 @@ def import_completed_contests(min_picks=DEFAULT_MIN_PICKS, include_incomplete=Fa
     Re-importing is safe and is how these self-heal: save_draft updates in place on
     dk_draft_id and replaces the roster, so a draft imported at pick 7 is completed by
     the next sync rather than left stale.
+
+    Drafts already stored complete are SKIPPED, which is what keeps the request
+    inside gunicorn's 120s timeout as history grows — see the comment below.
+    force=True re-pulls them anyway.
     """
     from app.data.api_fetcher import fetch_my_dk_contests
+    from app.database import get_my_pick_counts_by_dk_id
     contests = fetch_my_dk_contests()
 
     def _items(cs):
         return [{'id': c['contest_id'], 'entry_id': c['entry_id'], 'name': c['name'],
                  'entry_fee': c.get('entry_fee')} for c in cs]
+
+    # Skip the drafts already imported COMPLETE. DK's contest list only grows, so
+    # without this the work per sync grows with your entire history rather than
+    # with what has changed: at 83 contests it measured ~1.7s each on Render —
+    # ~141s against gunicorn's 120s timeout — and the killed worker returned an
+    # HTML 502 that the History page tried to parse as JSON. Every skipped draft
+    # is finished and final; re-pulling it rewrites the same board.
+    #
+    # The threshold is what makes this safe: a draft stored with fewer than
+    # min_picks of YOUR picks was imported mid-draft, so it is still pulled and
+    # still self-heals. force=True re-pulls everything (the repair path for a
+    # board you believe was stored wrong).
+    #
+    # include_opponents is its own reason to re-pull: the stored count is of YOUR
+    # picks, which says nothing about whether the other eleven seats were kept.
+    # A draft imported my-picks-only stores 20 and would skip forever, so the
+    # harness field (§9.2) could never grow past what it already had.
+    already = {} if (force or include_opponents) else get_my_pick_counts_by_dk_id()
+    skipped = [{'contest_id': str(c['contest_id']), 'status': 'skipped',
+                'my_picks': already.get(str(c['contest_id']), 0),
+                'reason': 'already imported complete'}
+               for c in contests if already.get(str(c['contest_id']), 0) >= min_picks]
+    skip_ids = {r['contest_id'] for r in skipped}
+    contests = [c for c in contests if str(c['contest_id']) not in skip_ids]
 
     done = [c for c in contests if c.get('lineup_id')]
     results = import_many(_items(done), min_picks=min_picks,
@@ -184,6 +214,6 @@ def import_completed_contests(min_picks=DEFAULT_MIN_PICKS, include_incomplete=Fa
             results += import_many(_items(live), min_picks=min_picks_incomplete,
                                    include_opponents=include_opponents)
 
-    return results
+    return results + skipped
 
 

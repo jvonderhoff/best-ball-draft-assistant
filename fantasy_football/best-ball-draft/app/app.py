@@ -164,6 +164,9 @@ def sync_drafts_from_dk():
       {}                            all known saved draft IDs
       { "min_picks": 18 }           completeness threshold
       { "include_incomplete": true} also pull drafts still in progress (default on)
+      { "force": true }             re-pull drafts already stored complete
+                                    (default off — the skip is what keeps this
+                                    request inside the 120s worker timeout)
     Works for past drafts AND a freshly-finished one — same path either way.
     Requires DK cookies + a cached user GUID on this instance.
     """
@@ -185,15 +188,21 @@ def sync_drafts_from_dk():
         # the ones whose exposure should be steering the pick you are about to make.
         # They re-import cleanly (save_draft updates in place), so a draft pulled at
         # pick 7 is completed by the next sync.
+        # force=true re-pulls drafts already stored complete. Off by default:
+        # that skip is what keeps this request inside the worker timeout.
         results = import_completed_contests(
             min_picks=min_picks,
             include_incomplete=bool(data.get('include_incomplete', True)),
+            force=bool(data.get('force')),
         )
 
     imported = sum(1 for r in results if r['status'] == 'imported')
     updated = sum(1 for r in results if r['status'] == 'updated')
-    app.logger.info(f'[sync-from-dk] {imported} imported, {updated} updated of {len(results)}')
-    return jsonify({'ok': True, 'imported': imported, 'updated': updated, 'results': results})
+    skipped = sum(1 for r in results if r['status'] == 'skipped')
+    app.logger.info(f'[sync-from-dk] {imported} imported, {updated} updated, '
+                    f'{skipped} skipped of {len(results)}')
+    return jsonify({'ok': True, 'imported': imported, 'updated': updated,
+                    'skipped': skipped, 'results': results})
 
 
 @app.route('/api/drafts/exposure', methods=['GET'])

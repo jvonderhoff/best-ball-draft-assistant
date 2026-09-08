@@ -80,6 +80,8 @@ def main():
     ap.add_argument('--ids', nargs='*', help='specific DK draft/contest IDs')
     ap.add_argument('--guid', help='DK user GUID (if the cached file is missing)')
     ap.add_argument('--min-picks', type=int, default=18, help='min of your picks to count as complete')
+    ap.add_argument('--force', action='store_true',
+                    help='re-pull drafts already stored complete (they are skipped by default)')
     ap.add_argument('--include-opponents', action='store_true',
                     help='keep all 12 seats, not just yours — needed for the harness '
                          'field of real rosters (tools/export-real-rosters.py). '
@@ -111,13 +113,14 @@ def main():
         print(f'Discovering completed drafts from My Contests (persist={persist})\n')
         from app.dk_import import import_completed_contests
         results = import_completed_contests(min_picks=args.min_picks,
-                                            include_opponents=args.include_opponents)
+                                            include_opponents=args.include_opponents,
+                                            force=args.force)
 
     counts = {}
     for r in results:
         counts[r['status']] = counts.get(r['status'], 0) + 1
         icon = {'imported': '✓', 'duplicate': '•', 'incomplete': '·',
-                'no_picks': '✗', 'error': '✗'}.get(r['status'], '?')
+                'no_picks': '✗', 'error': '✗', 'skipped': '–'}.get(r['status'], '?')
         line = f"  {icon} {r['contest_id']:<12} {r['status']:<11} picks={r['my_picks']}"
         if r.get('reason'):
             line += f"  ({r['reason']})"

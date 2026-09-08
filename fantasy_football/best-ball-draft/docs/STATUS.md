@@ -713,6 +713,35 @@ round from ADP. That is an argument for the column that does not run on ADP alon
 
 ## Traps hit this week — each now guarded
 
+- **The History sync outgrew the worker timeout, and the error message hid it.**
+  2026-09-08: "Sync failed: JSON.parse: unexpected character at line 1 column 1"
+  on `/history`. Nothing was wrong with any JSON — the response was not JSON. The
+  default sync (empty textarea) re-pulls the board of **every contest DK has ever
+  seen you enter**, which is now 83 and only grows. Measured against prod: ~1.7s
+  each, ~141s total, against `--timeout 120` and `-w 1` in `render.yaml`. Gunicorn
+  kills the worker mid-request, Render returns an HTML 502, and the page parses
+  `<html>`. The work was proportional to your whole history rather than to what
+  had changed, so it crossed the timeout by simply drafting more, and **every
+  retry restarted from the top and died in the same place** — the failure was
+  permanent once reached, not intermittent.
+  `import_completed_contests` now skips contests already stored complete
+  (`get_my_pick_counts_by_dk_id`): **44.8s → 1.4s** on the real 83, 81 skipped.
+  Completeness is judged on YOUR picks, so a draft stored mid-draft still gets
+  pulled and still self-heals; `include_opponents` never skips, because the
+  stored count is of your own picks and says nothing about whether the other
+  eleven seats were kept — without that carve-out the §9.2 harness field would
+  have been frozen at its current size forever. `force: true` re-pulls anyway.
+  **The retry advice is only true because of the skip**: `save_draft` commits per
+  draft, so a timed-out run keeps what it processed and the next one resumes.
+  **The second bug is the one worth generalising.** `resp.json()` ran BEFORE the
+  `resp.ok` check, so every non-JSON failure — 502, Render's cold-start page, a
+  Flask traceback — collapsed into the same parse error with the status code
+  thrown away. The message named the wrong layer and pointed at the wrong file;
+  the endpoint was healthy on the explicit-id path the whole time, which is how a
+  first look reads as "sync is fine". Parse defensively at any boundary whose real
+  failures come from ABOVE the app — proxies and platforms answer in HTML, and a
+  parse error is the one message that guarantees you cannot see what they said.
+
 - **The DK queue write was not ignored — it was WIPING the queue. Three months.**
   `POST /api/dk-draft/queue/<id>` shipped 2026-06-01 sending `{"draftableId": N}`.
   DK answered every one with HTTP 200 and a real draftPreferences body —
