@@ -122,15 +122,21 @@ Two measured facts about that seam, because both are ways to be wrong invisibly:
   market absent. It shipped that way and the first real run scored 0/9 starters
   from the market against 349 keyed players. `startsit` now refuses a run where
   no starter took a market number.
-- **`anytime_td` needs a haircut this codebase has not applied yet.** Converting
-  P(>=1) to E[TD] with `-ln(1-p)` is right in principle and measurably too high
-  at the top: fitted on 2024 and validated on 2025, `p*(1+0.512p)` beat it (MAE
-  0.0376 vs 0.0435, bias -2.3% vs +4.2%), and the gap reaches -26% at p=0.76 -
-  the RB1s a start/sit call turns on. On top of that the anytime-TD path is the
-  only market in `export_props.py` that is NOT de-vigged, while ladders are cut
-  6%; summed over Week 1 the raw probabilities imply 25.7% more scorers than the
-  slate's own implied totals do. Neither is fixed. Do not read a propped
-  touchdown number as calibrated.
+- **`anytime_td` is P(scores at all); `exp_td` is the count. Score `exp_td`.**
+  Fixed 2026-09-08. The conversion now lives at `projections/pipeline/td.py` and
+  travels with the export, because both consumers had been doing it themselves,
+  neither measured, and in OPPOSITE directions - `dfs` read the probability as
+  the count, `sleeper` used `-ln(1-p)`. Measured on 2025 play-by-play, fitted on
+  2024, over the `p>=0.45` group a lineup actually turns on: identity MAE 0.176 /
+  bias -24.6%, Poisson 0.128 / +9.7%, `p*(1+0.512p)` 0.094 / -3.5%. Poisson loses
+  because scoring is clustered - a goal-line back's second touchdown is not
+  independent of his first. Re-derive with `tools/backtest_td.py` rather than
+  trusting the constant. Consumers keep their old conversion as a fallback for a
+  pre-`exp_td` file and REPORT when it fires; do not copy the fit across the seam.
+- **The anytime-TD market is still NOT de-vigged**, alone among the markets in
+  `export_props.py`, while the ladders are cut 6%. Summed over Week 1 the raw
+  probabilities imply 25.7% more scorers than the slate's own implied totals do.
+  Not fixed. A propped touchdown number is calibrated in SHAPE now, not in level.
 
 **A scoring rule that lifts a whole position lifts its replacement just as fast.**
 Measured 2026-08-31: six-point passing TDs raise QB1's season total by 52.6 points
