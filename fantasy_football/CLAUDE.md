@@ -1,7 +1,7 @@
 # Fantasy football — the umbrella
 
-Six projects, one player universe. This file is loaded by any session started in
-any of them, so it holds **only what is true across all six**. Per-project detail
+Five projects, one player universe. This file is loaded by any session started in
+any of them, so it holds **only what is true across all five**. Per-project detail
 lives in each project's own docs, named below; when they disagree with this file,
 they win.
 
@@ -12,9 +12,8 @@ they win.
 | `best-ball-draft/` | DK best-ball draft app + V1/V2 recommender. Public, on Render. | `CLAUDE.md`, `docs/STATUS.md` | **live, in season** |
 | `projections/` | Every external source, every derived metric, the Analysis UI. Local only. | `ARCHITECTURE.md`, `README.md` | **live, local** |
 | `sleeper/` | All four Sleeper leagues (2 redraft, 2 dynasty): board, draft plan, queue; start/sit and waivers still to come. | `README.md`, `docs/DRAFT_DAY.md` | **live** |
-| `dynasty-rankings/` | Ranking-source comparison (KTC, FantasyCalc, CSV). A valuation INPUT, not a weekly tool — the dynasty leagues' start/sit lives in `sleeper/`. | — | dormant, uncommitted changes |
+| `dynasty-rankings/` | Ranking-source comparison (KTC, FantasyCalc, CSV). A valuation INPUT, not a weekly tool — the dynasty leagues' start/sit lives in `sleeper/`. | — | dormant |
 | `dfs/` | DraftKings daily: slates, salaries, salary-cap lineups. | `README.md`, `docs/STATUS.md` | **live, in season** |
-| `best-ball-extension/` | Chrome overlay for the DK draft room. | — | dormant since 2026-06-11 |
 
 `docs/STATUS.md` in the draft app is **the map** for best-ball + projections: since
 the analysis split, no single repo holds that picture. Read it before changing
@@ -156,9 +155,18 @@ uv venv --python 3.11 && uv pip install --python .venv/bin/python requests pytes
 `BBA_API_KEY` lives in `~/.zshrc`: present in `zsh -ic`, **absent in `zsh -lc`** and
 in any non-interactive shell, which is how a cron publish fails silently.
 
-Repos: `best-ball-draft/` and `best-ball-extension/` are tracked by the parent
-repo at `Development/projects`. `projections/`, `dynasty-rankings/` and `sleeper/`
-are their own repos, gitignored by the parent.
+Repos: `best-ball-draft/` is tracked by the parent repo at `Development/projects`.
+`projections/`, `dynasty-rankings/`, `sleeper/` and `dfs/` are their own repos,
+gitignored by the parent.
+
+**`best-ball-extension/` was removed 2026-09-08** — a Chrome overlay for the DK
+draft room, dormant since June. It is in git history if it is ever wanted back. Three
+things went with it, and the reasons are worth keeping: a `pre-commit` hook that
+copied the extension's `recommender.js` over the served one (the two had diverged by
+15KB and six commits, so the next commit to the extension would have silently reverted
+the live recommender), the `/api/rankings/export` endpoint and its button, and a
+`players.js` fallback in `/api/players`. The extension directory was never inside
+`render.yaml`'s `rootDir`, so every one of those paths was already dead in production.
 
 ## The bug classes this codebase keeps hitting
 

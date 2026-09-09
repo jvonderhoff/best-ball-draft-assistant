@@ -396,7 +396,7 @@ and nothing else. `compare-models.js` picks the export up automatically;
 measure anything (21 today, ~2% of the candidate pool).
 
 **`--include-opponents` is off by default and must stay that way for normal imports.**
-Exposure, the History page and the extension export all mean "my roster" by "picks".
+Exposure and the History page both mean "my roster" by "picks".
 A full board is kept apart from your own picks by the `mine` column, which every one
 of those paths filters on.
 

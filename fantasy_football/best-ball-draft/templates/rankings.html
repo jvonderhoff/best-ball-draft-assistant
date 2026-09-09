@@ -48,7 +48,6 @@
     .btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .btn-primary { background: #1565c0; color: #fff; }
     .btn-success { background: #2e7d32; color: #a5d6a7; }
-    .btn-export  { background: #6a1b9a; color: #ce93d8; }
     .btn-reset   { background: #263238; color: #78909c; }
     .btn-sm { padding: 4px 10px; font-size: 0.78em; }
 
@@ -345,7 +344,6 @@
       <button class="btn btn-reset" id="refreshAdpBtn" title="Pull latest ADP from DraftKings (keeps your custom ranks &amp; notes)">↻ Refresh ADP</button>
       <button class="btn btn-reset" id="importCsvBtn" title="Import custom rankings from a CSV file">Import CSV</button>
       <input type="file" id="csvFileInput" accept=".csv" style="display:none">
-      <button class="btn btn-export" id="exportBtn">Export to Extension</button>
       <a class="btn btn-reset" href="/api/rankings/download-seed" download="rankings_seed.json" title="Download seed file to commit to the repo">⬇ Download Seed</a>
       <button class="btn btn-success" id="saveBtn">
         Save Rankings
@@ -754,26 +752,6 @@ async function saveRankings() {
   }
 }
 
-// ── Export ─────────────────────────────────────────────────────────────────────
-async function exportToExtension() {
-  const btn = document.getElementById('exportBtn');
-  btn.disabled = true;
-  setStatus('Exporting players.js…', 'info');
-  try {
-    const res = await fetch('/api/rankings/export', { method: 'POST' });
-    const data = await res.json();
-    if (data.ok) {
-      setStatus(`✓ Exported ${data.players} players to extension — reload the extension in about:debugging then refresh the DK tab`, 'ok');
-    } else {
-      setStatus('Export error: ' + (data.error || 'unknown'), 'error');
-    }
-  } catch (e) {
-    setStatus('Export failed: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
-  }
-}
-
 // ── CSV Import ────────────────────────────────────────────────────────────────
 // Accepts any CSV with at least a rank column and a name column.
 // Detects headers automatically; tries common names like Rank, Overall, Name, Player.
@@ -994,7 +972,6 @@ async function refreshAdp() {
 // ── Wire up controls ───────────────────────────────────────────────────────────
 document.getElementById('refreshAdpBtn').addEventListener('click', refreshAdp);
 document.getElementById('saveBtn').addEventListener('click', saveRankings);
-document.getElementById('exportBtn').addEventListener('click', exportToExtension);
 document.getElementById('sortRankBtn').addEventListener('click', sortByCustomRank);
 document.getElementById('sortAdpBtn').addEventListener('click', sortByAdp);
 

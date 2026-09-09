@@ -59,56 +59,77 @@ _PLAYERS_BY_NAME  = {}   # lowercase full name → player dict
 _PLAYERS_BY_LAST  = {}   # lowercase "last pos" → [player dict, …]
 _PLAYERS_BY_ABBR  = {}   # "A_lastname_POS" → player dict  (single, first-write/low-ADP wins)
 _PLAYERS_BY_ABBR_MULTI = {}  # "A_lastname_POS" → [player, …]  (all candidates; for collision disambiguation)
-_PLAYERS_BY_ID    = {}   # "dk_42775000" → player dict  (for extension taken_ids lookup)
+_PLAYERS_BY_ID    = {}   # "dk_42775000" → player dict  (DK id lookup for live picks)
 
 def _load_players_index():
-    """Parse players.js and build fast lookup dicts."""
-    ext_dir = os.path.join(basedir, '..', 'best-ball-extension')
-    js_path  = os.path.join(ext_dir, 'players.js')
-    if not os.path.exists(js_path):
-        js_path = os.path.join(basedir, 'static', 'players.js')
+    """Build the fast lookup dicts from the players table.
+
+    Reads the DB, which is what `/api/players/refresh` and the background pool
+    refresh actually WRITE. Until 2026-09-08 this parsed the Chrome extension's
+    `players.js` instead — a file no refresh ever wrote — so every call that
+    called itself a reload re-read a June snapshot, and on Render, where the
+    extension directory was never deployed, the index was silently empty and
+    `/api/dk-dom-text` matched nothing at all. Bug class 1: the reload looked the
+    same whether or not it had done anything.
+
+    `get_players()` returns rows ordered by ADP in the same shape the old file
+    used, so the lowest-ADP-wins tie-break below is unchanged.
+    """
     try:
-        with open(js_path) as f:
-            text = f.read()
-        m = re.search(r'const PLAYERS\s*=\s*(\[.*?\]);', text, re.DOTALL)
-        if not m:
-            # Try without semicolon
-            m = re.search(r'const PLAYERS\s*=\s*(\[.*\])', text, re.DOTALL)
-        if m:
-            players = json.loads(m.group(1))
-            for p in players:
-                name = p.get('name', '')
-                if not name:
-                    continue
-                lname = name.lower()
-                _PLAYERS_BY_NAME[lname] = p
-                parts = name.split()
-                pos = p.get('pos', '')
-                if len(parts) >= 2:
-                    # "lastname_pos" index
-                    key = f"{parts[-1].lower()}_{pos}"
-                    _PLAYERS_BY_LAST.setdefault(key, []).append(p)
-                    # "Initial_lastname_pos" index for DK abbreviated names ("J. Gibbs RB")
-                    initial = parts[0][0].upper()
-                    # Use the LAST significant word as lastname (skip Jr./Sr./II/III/IV)
-                    suffixes = {'jr', 'sr', 'ii', 'iii', 'iv', 'v'}
-                    last = parts[-1].lower().rstrip('.')
-                    if last in suffixes and len(parts) >= 3:
-                        last = parts[-2].lower().rstrip('.')
-                    abbr_key = f"{initial}_{last}_{pos}"
-                    # Single-entry dict: first write (lowest ADP) wins for quick lookup
-                    _PLAYERS_BY_ABBR.setdefault(abbr_key, p)
-                    _PLAYERS_BY_ABBR.setdefault(f"{initial}_{last}", p)
-                    # Multi-entry list: ALL candidates stored for round-based disambiguation
-                    _PLAYERS_BY_ABBR_MULTI.setdefault(abbr_key, []).append(p)
-                    _PLAYERS_BY_ABBR_MULTI.setdefault(f"{initial}_{last}", []).append(p)
-                # ID index — DK IDs are "dk_XXXXXXX"
-                pid = p.get('id', '')
-                if pid:
-                    _PLAYERS_BY_ID[pid] = p
-            print(f"[Players] Loaded {len(_PLAYERS_BY_NAME)} players, {len(_PLAYERS_BY_ABBR)} abbr keys, {len(_PLAYERS_BY_ID)} id keys")
+        from app.database import get_players as db_get_players
+        players = db_get_players()
     except Exception as e:
         print(f"[Players] Could not load index: {e}")
+        return
+
+    if not players:
+        # An empty table is not an empty index — keep serving the last good one
+        # rather than quietly dropping every name the draft page matches on.
+        print("[Players] players table is empty; keeping the existing index "
+              f"({len(_PLAYERS_BY_NAME)} players)")
+        return
+
+    # Rebuild, don't append. These are module-level dicts and two of them hold
+    # LISTS, so a reload that only added would grow a duplicate candidate per
+    # refresh and make abbreviation disambiguation worse every time it ran.
+    _PLAYERS_BY_NAME.clear()
+    _PLAYERS_BY_LAST.clear()
+    _PLAYERS_BY_ABBR.clear()
+    _PLAYERS_BY_ABBR_MULTI.clear()
+    _PLAYERS_BY_ID.clear()
+
+    for p in players:
+        name = p.get('name', '')
+        if not name:
+            continue
+        lname = name.lower()
+        _PLAYERS_BY_NAME[lname] = p
+        parts = name.split()
+        pos = p.get('pos', '')
+        if len(parts) >= 2:
+            # "lastname_pos" index
+            key = f"{parts[-1].lower()}_{pos}"
+            _PLAYERS_BY_LAST.setdefault(key, []).append(p)
+            # "Initial_lastname_pos" index for DK abbreviated names ("J. Gibbs RB")
+            initial = parts[0][0].upper()
+            # Use the LAST significant word as lastname (skip Jr./Sr./II/III/IV)
+            suffixes = {'jr', 'sr', 'ii', 'iii', 'iv', 'v'}
+            last = parts[-1].lower().rstrip('.')
+            if last in suffixes and len(parts) >= 3:
+                last = parts[-2].lower().rstrip('.')
+            abbr_key = f"{initial}_{last}_{pos}"
+            # Single-entry dict: first write (lowest ADP) wins for quick lookup
+            _PLAYERS_BY_ABBR.setdefault(abbr_key, p)
+            _PLAYERS_BY_ABBR.setdefault(f"{initial}_{last}", p)
+            # Multi-entry list: ALL candidates stored for round-based disambiguation
+            _PLAYERS_BY_ABBR_MULTI.setdefault(abbr_key, []).append(p)
+            _PLAYERS_BY_ABBR_MULTI.setdefault(f"{initial}_{last}", []).append(p)
+        # ID index — DK IDs are "dk_XXXXXXX"
+        pid = p.get('id', '')
+        if pid:
+            _PLAYERS_BY_ID[pid] = p
+    print(f"[Players] Loaded {len(_PLAYERS_BY_NAME)} players, "
+          f"{len(_PLAYERS_BY_ABBR)} abbr keys, {len(_PLAYERS_BY_ID)} id keys")
 
 _load_players_index()
 
@@ -282,52 +303,6 @@ def download_rankings_seed():
         mimetype='application/json',
         headers={'Content-Disposition': 'attachment; filename="rankings_seed.json"'}
     )
-
-
-@app.route('/api/rankings/export', methods=['POST'])
-def export_rankings_to_extension():
-    """
-    Regenerate best-ball-extension/players.js using custom ranks as the ADP
-    for ranked players; unranked players keep their DK ADP (offset past ranked ones).
-    """
-    players = get_rankings()
-    if not players:
-        return jsonify({'error': 'no players in DB'}), 400
-
-    ranked   = [p for p in players if p['custom_rank'] is not None]
-    unranked = [p for p in players if p['custom_rank'] is None]
-
-    ranked.sort(key=lambda p: p['custom_rank'])
-    unranked.sort(key=lambda p: p['adp'] or 9999)
-
-    ordered = ranked + unranked
-    output = []
-    for i, p in enumerate(ordered, 1):
-        output.append({
-            'id':     p['player_id'],
-            'name':   p['name'],
-            'pos':    p['pos'],
-            'team':   p['team'],
-            'adp':    i,
-            'season': '2026',
-            'week15': p.get('week15'),
-            'week16': p.get('week16'),
-            'week17': p.get('week17'),
-        })
-
-    ext_path = os.path.join(basedir, '..', 'best-ball-extension', 'players.js')
-    ext_path = os.path.normpath(ext_path)
-    try:
-        with open(ext_path, 'w') as f:
-            f.write(f'// Auto-generated by rankings export — {len(output)} players, season 2026\n')
-            f.write('// Source: custom rankings from best-ball-draft/rankings\n')
-            f.write('// Re-run: use the Export button on the Rankings page\n')
-            f.write('const PLAYERS = ')
-            json.dump(output, f, separators=(',', ':'))
-            f.write(';\n')
-        return jsonify({'ok': True, 'players': len(output), 'path': ext_path})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
 # ── Betting props ─────────────────────────────────────────────────────────────
@@ -2136,16 +2111,9 @@ def get_players():
             return _with_pool_age(players)
     except Exception:
         pass
-    # Fallback: legacy extension players.js
-    players_js = os.path.normpath(os.path.join(basedir, '..', 'best-ball-extension', 'players.js'))
-    try:
-        with open(players_js) as f:
-            content = f.read()
-        m = re.search(r'const PLAYERS\s*=\s*(\[.*\]);', content, re.DOTALL)
-        if m:
-            return jsonify(json.loads(m.group(1)))
-    except Exception:
-        pass
+    # There was a third fallback here — the Chrome extension's players.js. It was
+    # removed with the extension on 2026-09-08, and it had never once fired on
+    # Render: `rootDir` is this directory, so the path it read did not exist there.
     return jsonify({'error': 'No player data found'}), 404
 
 

@@ -1,18 +1,15 @@
 # Best Ball Draft Assistant
 
-A two-part tool for DraftKings best ball drafting: a **Firefox browser extension** that overlays on the live draft room, and a **Flask web app** for draft history and exposure tracking.
+A **Flask web app** for DraftKings best ball drafting.
 
-## Components
-
-### `best-ball-extension/` — Firefox Extension
-Overlays a live recommendation panel directly on the DraftKings draft room.
-
-- Real-time pick suggestions based on ADP, positional needs, and team stacking
-- Configurable **stack intensity** — boosts WRs/TEs from your QB's team (off / light / medium / heavy)
-- **Diversification** — penalizes players you've over-drafted in past contests
-- Auto-detects picks from the DraftKings DOM; manual "My Pick" / "Taken" buttons as fallback
-- Three tabs: Board, My Team, Stacks
-- Settings saved in browser storage (teams, position, stack intensity, diversification strength)
+> **This file is stale below this line (last accurate ~June 2026).** Paths moved
+> under `fantasy_football/`, the pool comes from DraftKings rather than Sleeper, and
+> the recommender is now V1 + V2. The live docs are
+> `fantasy_football/docs/MAP.md` (what exists), `fantasy_football/CLAUDE.md` (the
+> rules) and `fantasy_football/best-ball-draft/docs/STATUS.md` (the map for this app).
+>
+> The Firefox/Chrome extension that this file used to describe was **removed
+> 2026-09-08**; it is in git history.
 
 ### `best-ball-draft/` — Flask Web App
 Local server for practice drafts and tracking draft history.
@@ -24,34 +21,13 @@ Local server for practice drafts and tracking draft history.
 
 ## Setup
 
-### 1. Flask Web App (optional — needed for exposure tracking)
+### Flask Web App
 
 ```bash
 cd best-ball-draft
 pip install -r requirements.txt
 bash run.sh
 # Open http://localhost:8000
-```
-
-### 2. Firefox Extension
-
-**First-time player data setup:**
-```bash
-cd best-ball-draft
-python app/data/api_fetcher.py   # fetches from Sleeper API, writes player_cache.json
-cd ../best-ball-extension
-python generate_players.py        # writes players.js (bundled into extension)
-```
-
-**Install in Firefox:**
-1. Open `about:debugging` → This Firefox → Load Temporary Add-on
-2. Select `best-ball-extension/manifest.json`
-3. Click the extension icon, set your draft position and strategy, then navigate to a DraftKings draft
-
-**Refresh player data** (run before each season or when rosters change):
-```bash
-cd best-ball-draft && python -c "from app.data.api_fetcher import fetch_players; fetch_players(force_refresh=True)"
-cd ../best-ball-extension && python generate_players.py
 ```
 
 ## Project Structure
@@ -73,15 +49,6 @@ best-ball-draft/
 │   └── app.js
 ├── requirements.txt
 └── run.sh
-
-best-ball-extension/
-├── manifest.json           # WebExtension manifest (Firefox/Chrome compatible)
-├── content.js              # Main overlay injected into DraftKings
-├── recommender.js          # Pick recommendation engine
-├── overlay.css             # Panel styles
-├── popup.html / popup.js   # Extension settings popup
-├── generate_players.py     # Builds players.js from player_cache.json
-└── players.js              # Generated — do not edit manually
 ```
 
 ## How Recommendations Work
@@ -99,5 +66,4 @@ best-ball-extension/
 ## Requirements
 
 - Python 3.7+
-- Firefox (for extension; also Chrome-compatible with minor manifest adjustments)
 - Flask, requests (see `best-ball-draft/requirements.txt`)
