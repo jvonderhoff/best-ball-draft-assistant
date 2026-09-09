@@ -1,9 +1,17 @@
 ---
 description: Refresh the market and the baselines, then read this week's start/sit and say what the script cannot decide.
+argument-hint: "[lateround]"
 ---
 
 Run the weekly routine and do the parts it deliberately does not: judge whether the
 lineup is actually a WEEKLY one, and which players it is wrong about.
+
+**Arguments: `$ARGUMENTS`.** Empty is the normal run. If it contains `lateround`,
+the reader wants the lineup ordered by LateRound's ranks INSTEAD of the market —
+add `--source lateround` to the `startsit` call below, and read the "Ordered by
+LateRound" section at the end of this file instead of the market-specific
+guidance. Anything else in `$ARGUMENTS` that looks like a league name means
+restrict to that league with `--league`.
 
 ```bash
 cd sleeper && tools/weekly.sh
@@ -166,3 +174,31 @@ it belongs in the overrule line, in a clause. **The lineup itself is a
 maximum-weight matching, not a sort** (`sleeper/leagues/lineup.py`), so never
 "fix" it by moving the top scorer into the first slot that fits: measured over
 4,000 random cases that greedy answer was wrong 334 times and the matching 0.
+
+
+## Ordered by LateRound (`$ARGUMENTS` contains `lateround`)
+
+```bash
+cd sleeper && .venv/bin/python cli.py startsit --source lateround
+```
+
+A different question: not what the roster is worth, but **who LateRound would
+start**. Ordering is the one thing a rank can honestly answer.
+
+Everything above about the market — coverage counts, calibration, `(season
+baseline)` labels — is irrelevant here and must not be repeated. **There is no
+projected total, and you must not compute one.** The right-hand column of the
+output is the market's number printed for contrast; it did not build this lineup,
+so do not add it up or present it as the lineup's value.
+
+Report the same table per league, with `Pts` replaced by `LR` (their rank and
+tier) and a `flex` column where one exists. Then, in at most two lines:
+
+- **where this lineup differs from the market's**, which is the entire reason to
+  run it — name the swap and both views, e.g. "market starts Dowdle (flex55),
+  LateRound starts Washington (flex50)". Run the default `startsit` too if you
+  need the comparison.
+- **the two limits, only if they bit**: someone ranked at his position but
+  outside the FLEX 100 was placed below everyone inside it, or a SUPER_FLEX slot
+  was filled by the best remaining QB, which is a rule rather than their view.
+  Both print as `note:` lines; pass them through, do not re-explain them.
