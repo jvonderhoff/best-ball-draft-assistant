@@ -6,12 +6,18 @@ argument-hint: "[lateround]"
 Run the weekly routine and do the parts it deliberately does not: judge whether the
 lineup is actually a WEEKLY one, and which players it is wrong about.
 
-**Arguments: `$ARGUMENTS`.** Empty is the normal run. If it contains `lateround`,
-the reader wants the lineup ordered by LateRound's ranks INSTEAD of the market —
-add `--source lateround` to the `startsit` call below, and read the "Ordered by
+**Arguments: `$ARGUMENTS`.** Empty is the normal run.
+
+Match them loosely, not literally. Strip spaces, punctuation and case before
+comparing: `late round`, `LateRound`, `Late-Round` and `lr` all mean the same
+thing, and a reader who types the brand the way it is actually written should
+not silently get the default run. If they resolve to **lateround**, the reader
+wants the lineup ordered by LateRound's ranks INSTEAD of the market — add
+`--source lateround` to the `startsit` call below and read the "Ordered by
 LateRound" section at the end of this file instead of the market-specific
-guidance. Anything else in `$ARGUMENTS` that looks like a league name means
-restrict to that league with `--league`.
+guidance. Anything else that looks like a league name means restrict to that
+league with `--league`. If an argument matches nothing, say so and run the
+default rather than guessing.
 
 ```bash
 cd sleeper && tools/weekly.sh
@@ -176,7 +182,7 @@ maximum-weight matching, not a sort** (`sleeper/leagues/lineup.py`), so never
 4,000 random cases that greedy answer was wrong 334 times and the matching 0.
 
 
-## Ordered by LateRound (`$ARGUMENTS` contains `lateround`)
+## Ordered by LateRound (`$ARGUMENTS` resolves to `lateround`)
 
 ```bash
 cd sleeper && .venv/bin/python cli.py startsit --source lateround
