@@ -135,10 +135,36 @@ Two measured facts about that seam, because both are ways to be wrong invisibly:
   independent of his first. Re-derive with `tools/backtest_td.py` rather than
   trusting the constant. Consumers keep their old conversion as a fallback for a
   pre-`exp_td` file and REPORT when it fires; do not copy the fit across the seam.
-- **The anytime-TD market is still NOT de-vigged**, alone among the markets in
-  `export_props.py`, while the ladders are cut 6%. Summed over Week 1 the raw
-  probabilities imply 25.7% more scorers than the slate's own implied totals do.
-  Not fixed. A propped touchdown number is calibrated in SHAPE now, not in level.
+- **The anytime-TD market IS de-vigged now** — fixed 2026-09-08, `pipeline/devig.py`.
+  It cannot be de-vigged the normal way: DK publishes one `ToScoreAnyTime` selection
+  per player and **no "No" side**, so there is no complement to normalise against.
+  The constraint comes from outside the market instead — the slate's own implied
+  totals, via `scorers = -0.0645 + 0.09324 * points`, fitted on 2024 team-games and
+  confirmed on 2025 (out-of-sample MAE 0.555 against its own fit's 0.553, so the
+  relationship is real rather than tuned).
+  **The fit is deliberately LINEAR**: an implied total is E[points], and for a
+  non-linear f, E[f(X)] ≠ f(E[X]). Linearity makes it unbiased at the level the
+  correction is applied.
+  **One GLOBAL factor, estimated from well-covered teams only.** Per-team ratios
+  correlate **+0.668 with how many players DK actually propped** (≤9 propped → 1.075,
+  ≥12 → 1.224): that is coverage, not hold, and normalising per team would scale a
+  thin team's players by 8% and a covered team's by 22% for the same hold. It also
+  explains the old 25.7% figure — that was a fuller board; a thin one dilutes the
+  measurement, which is why the factor must not be read off the whole board.
+  Measured 2026-09-08: **factor 1.2287** on 11 covered teams. `anytime_td` keeps its
+  literal meaning, `anytime_td_devig` is the corrected one, and `exp_td` is built
+  from the corrected value — so both consumers got the fix without changing a line.
+  **Validated from a direction it was not fitted on**: the corrected slate sums to
+  2.34 offensive TDs per team against a historical 2.44, and sits just below because
+  only propped players are counted. Before the fix it was 2.95 — above any rate the
+  league has produced. Re-derive with `tools/backtest_devig.py`.
+  **Still open: the SHAPE.** Whether the hold sits proportionally or falls harder on
+  longshots is unmeasured — it needs historical odds joined to outcomes and this repo
+  stores no odds history. The de-vig is proportional because that is the only part
+  measured; `method='power'` exists and is labelled unproven.
+  **Also still open: the ladders' 6% is itself an unmeasured constant**, and the two
+  corrections now differ by 3x. Plausible (a one-sided longshot market carries more
+  hold than a yardage ladder) but not established.
 
 **A scoring rule that lifts a whole position lifts its replacement just as fast.**
 Measured 2026-08-31: six-point passing TDs raise QB1's season total by 52.6 points

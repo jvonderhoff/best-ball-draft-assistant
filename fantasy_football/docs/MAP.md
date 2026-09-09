@@ -128,9 +128,15 @@ Two standing caveats worth re-reading each season:
   "assume every week is a player's season average" once its defence ratings were held
   out properly. Its own header says do not wire it in. Weekly numbers come from the
   market or they do not exist.
-- **The anytime-TD market is not de-vigged**, alone among the markets in
-  `export_props.py`. Summed over Week 1 the raw probabilities imply 25.7% more scorers
-  than the slate's own totals do. A propped TD number is calibrated in SHAPE, not level.
+- **The anytime-TD market is de-vigged as of 2026-09-08** (`pipeline/devig.py`). It has
+  no "No" side to normalise against, so the constraint comes from the slate's own
+  implied totals: `scorers = -0.0645 + 0.09324 × points`, fitted on 2024 and confirmed
+  on 2025. One global factor (1.2287 when measured), estimated from well-covered teams
+  only — per-team ratios correlate +0.668 with how many players DK propped, which is
+  coverage rather than hold. The correction is **not uniform**: it touches only the TD
+  component, so a goal-line back falls ~8% and a quarterback ~1%. What is still
+  unmeasured is the *shape* — proportional vs longshot-weighted — which needs odds
+  history this repo does not keep.
 
 ---
 

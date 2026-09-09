@@ -119,9 +119,9 @@ The `CLOSE` list is inside 2.0 points, and two of those points are not equally s
 **A propped touchdown number is an upper bound, not a calibrated projection.** Measured
 against 2024+2025 play-by-play, `-ln(1-p)` is accurate to ~1% up to p=0.45 and then runs
 away — **+5.6%** over 0.45-0.60 and **+20.5%** above 0.60 — and on top of that
-`export_props.py` de-vigs its ladders 6% but does not de-vig the anytime-TD market at
-all (Week 1's raw probabilities imply 25.7% more scorers than the slate's own implied
-totals do). Neither is fixed.
+`export_props.py` now DOES de-vig the anytime-TD market (fixed 2026-09-08, measured
+factor 1.2287 against the slate's own implied totals), so the level bias is gone. The
+conversion's own residual above p=0.45 is not — that half is unchanged.
 
 So: when a CLOSE call is decided by a player with a **high anytime-TD price and little
 else** — a goal-line back, a red-zone tight end — his number is inflated relative to a
