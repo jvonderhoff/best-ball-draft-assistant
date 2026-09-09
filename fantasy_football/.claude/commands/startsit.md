@@ -125,13 +125,44 @@ DK's scoring toward this league's where the rate could be measured. It is counte
 separately in the START header for that reason. Two defences inside 2 points of each
 other is not a decision worth agonising over.
 
-## Finally
+## Finally: one section per league, lineup as a table
 
-Give the actual calls, per league, shortest form that is still honest: what to start,
-what to change from what is set on Sleeper now, and which decisions you are not
-confident about and why. **The lineup itself is a maximum-weight matching, not a sort**
-(`sleeper/leagues/lineup.py`) — so do not "correct" it by moving the highest-scoring
-player into the first slot that fits. Measured over 4,000 random cases, that greedy
-answer was wrong 334 times and the matching 0.
+The analysis above is for YOU to do, not to narrate. The reader wants the lineup.
+An earlier run reported all of it as prose and the feedback was "too much info to
+digest" — so the default output is a table per league and nothing else, with the
+reasoning collapsed to the few rows where a human still has to choose.
 
-End by naming what you would want re-run closer to kickoff.
+Per league, in this shape:
+
+```
+### <league>  —  <points> proj, <n>/<m> market
+
+| Slot | Player | Pts | LR | |
+|---|---|--:|---|---|
+| RB | Kenneth Walker III | 19.6 | RB13 t4 | |
+| FLEX | Rico Dowdle | 13.9 | RB27 t7 | **IN** |
+| TE | Chig Okonkwo | 7.1 | TE20 t7 | baseline |
+| K | *nobody eligible* | — | | **empty** |
+
+**Bench:** <who comes out>
+```
+
+`LR` is LateRound's rank and tier. The last column is for flags only, at most one
+word: **IN** for a change from what is currently set on Sleeper, `baseline` /
+`model` / `LR` where the number is not a market price, **empty** for an unfilled
+slot. The lineup diff against what is actually set is the point — get it from
+`roster_for_owner(...)["starters"]`, because "start Dowdle" is useful and a
+lineup the reader already has set is not.
+
+Then, and only then, at most **three short lines under the tables**:
+
+- the calls you would OVERRULE, with the one reason;
+- any unfilled slot, which is a guaranteed zero and beats every close call;
+- what to re-run and when.
+
+Everything else — coverage counts, calibration state, tier arithmetic, which
+sources agreed — stays out unless it changed a decision. If it did change one,
+it belongs in the overrule line, in a clause. **The lineup itself is a
+maximum-weight matching, not a sort** (`sleeper/leagues/lineup.py`), so never
+"fix" it by moving the top scorer into the first slot that fits: measured over
+4,000 random cases that greedy answer was wrong 334 times and the matching 0.
