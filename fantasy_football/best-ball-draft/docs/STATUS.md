@@ -5,7 +5,7 @@ single repo holds that picture. **Scope note, 2026-09-01: there is now a THIRD
 consumer of the projections app — `../../sleeper`, which serves the two Sleeper
 redraft and two dynasty leagues. It is not covered here.** Its own README and
 `docs/DRAFT_DAY.md` are authoritative for it, and `../../CLAUDE.md` is the map
-across all five projects. This file remains the map for best-ball + projections. Detailed reasoning lives in `PROJECTIONS_SPLIT.md` (the
+across all four projects. This file remains the map for best-ball + projections. Detailed reasoning lives in `PROJECTIONS_SPLIT.md` (the
 contract), the projections app's `ARCHITECTURE.md` (its internals) and `V2_DESIGN.md`
 (the model, and §4 the dead ends). This file is the map.
 

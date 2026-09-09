@@ -10,7 +10,7 @@ of a healthy system. Do not trust the numbers themselves next season; run `docto
 
 ---
 
-## 1. The five projects, in one table
+## 1. The four projects, in one table
 
 | | the question it answers | state | run it | port |
 |---|---|---|---|---|
@@ -18,15 +18,16 @@ of a healthy system. Do not trust the numbers themselves next season; run `docto
 | `best-ball-draft/` | *DK best ball: who do I draft next?* | live, public on Render | `./run.sh` | 8000 |
 | `sleeper/` | *my four Sleeper leagues: who do I start, who do I draft?* | live | `.venv/bin/python cli.py serve` | 8200 |
 | `dfs/` | *DK daily: which 9 fit the salary cap?* | live, in season | `.venv/bin/python cli.py serve` | 8300 |
-| `dynasty-rankings/` | *do KTC and FantasyCalc agree with me?* | dormant | `./run.sh` | 8001 |
 
-Repos: `projections/`, `sleeper/`, `dfs/` and `dynasty-rankings/` are their own git
-repos, gitignored by the parent. `best-ball-draft/` is tracked by the parent repo at
+Repos: `projections/`, `sleeper/` and `dfs/` are their own git repos, gitignored by
+the parent. `best-ball-draft/` is tracked by the parent repo at
 `Development/projects`.
 
-`best-ball-extension/` — a Chrome overlay for the DK draft room — **was removed
-2026-09-08** and is recoverable from git history. See `../CLAUDE.md` for what went
-with it.
+Two projects were removed on 2026-09-08 and both are recoverable.
+`best-ball-extension/` (a Chrome overlay) is in the parent repo's history.
+`dynasty-rankings/` was **absorbed rather than dropped** — its two market sources
+now live in `projections/pipeline/sources/`, and its history is at
+`github.com/jvonderhoff/dynasty-rankings`. See `../CLAUDE.md`.
 
 Every project is Python 3.11 in its own `.venv/` via `uv`. There is no shared package
 and that is deliberate — see §8.
@@ -59,13 +60,13 @@ and that is deliberate — see §8.
          │   Analysis UI  :8100          │
          └───────────────────────────────┘
                          │
-      ┌──────────────────┼───────────────────┬────────────────────┐
-      │ HTTP push        │ read-only file    │ read-only file     │ read-only file
-      ▼                  ▼                   ▼                    ▼
- best-ball-draft/    sleeper/            dfs/               dynasty-rankings/
- DK best ball        4 Sleeper leagues   DK daily           (its own sources;
- key: dk_player_id   key: sleeper_id     key: DK name        reads nothing here)
- :8000 + Render      :8200               :8300              :8001
+      ┌──────────────────┼─────────────────────┐
+      │ HTTP push        │ read-only files     │ read-only file
+      ▼                  ▼                     ▼
+ best-ball-draft/    sleeper/              dfs/
+ DK best ball        4 Sleeper leagues     DK daily
+ key: dk_player_id   key: sleeper_id       key: DK salary name
+ :8000 + Render      :8200                 :8300
 ```
 
 Nothing flows back up. No app imports another app's code. **Every arrow is a file or an
@@ -75,13 +76,14 @@ HTTP call, never an import** — that is the whole architecture in one sentence.
 
 ## 3. The seams — the complete list of what crosses
 
-There are exactly four, plus one duplicated function. If a change does not touch this
+There are exactly five, plus one duplicated function. If a change does not touch this
 table, it cannot break another project.
 
 | from → to | what crosses | keyed on | written by | stale at |
 |---|---|---|---|---|
 | `projections` → `best-ball-draft` | the six model fields: `ppg` `sd` `sources` `avail` `disagreement` `rec_share` | `dk_player_id` | `cli.py analysis-publish` → `POST /api/projections/upload` | 48h |
 | `projections` → `sleeper` | `data/store.db` (crosswalk, read-only) + `data/stat_lines.json` (ESPN stat lines, unscored) | `sleeper_id` | `tools/export_stat_lines.py` | 7d |
+| `projections` → `sleeper` | `data/dynasty_values.json` — KTC + FantasyCalc trade prices, rest-of-career. Joined on `mfl_id`, so **no name matching anywhere in it** | `sleeper_id` | `tools/export_dynasty_values.py` | 14d |
 | `projections` → `sleeper` **and** `dfs` | `data/weekly_props.json` — per-game DK markets, incl. `exp_td` | `name_key` **(a string, not an id)** — `sleeper_id` rides inside each record as a field | `tools/export_props.py` | 24h |
 | `best-ball-draft` → `sleeper` | `drafts.db` table `player_rankings` (your best-ball board), read-only | `dk_player_id` | you, in the rankings UI | — |
 | both directions, by hand | `names.py`, byte-identical below its header in `best-ball-draft/app/data/` and `projections/pipeline/core/` | — | copy-paste | must always agree |
@@ -240,9 +242,12 @@ Two structural notes for the year-to-year goal:
   one's data.** In week 1 there is nothing else. That is correct and stated in their
   headers — but it means an early-September number is a last-season number wearing this
   year's hat, and it should be treated as one.
-- **Rookie drafts are unbuilt.** Nothing here handles them. That is next summer's
-  problem, and the honest place to start is `dynasty-rankings/`, which is already a
-  ranking-source comparison and is currently dormant.
+- **Rookie drafts are half-built as of 2026-09-08.** KTC publishes 84 rookie-pick
+  entries — "2026 Pick 1.01", "2027 Early 1st" — and they are carried in
+  `dynasty_values.json` under `rookie_picks`, with values. They have no id of any
+  kind, because they are not people, so they join to nothing; that is why they sit
+  in their own block rather than in 19 rows of `unmatched`. Nothing consumes them
+  yet, and that is next summer's problem.
 
 ---
 
@@ -250,7 +255,7 @@ Two structural notes for the year-to-year goal:
 
 The long version is in `../CLAUDE.md`. Four decisions explain most of the layout:
 
-1. **Sharing is a data seam, not a library.** Five projects with separate venvs and
+1. **Sharing is a data seam, not a library.** Four projects with separate venvs and
    separate deploy cadences would be coupled by one shared package, and the single
    genuinely duplicated function is duplicated on purpose.
 2. **Repos split on platform and product mechanics, never on league format.** DK best

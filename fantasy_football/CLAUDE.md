@@ -1,7 +1,7 @@
 # Fantasy football — the umbrella
 
-Five projects, one player universe. This file is loaded by any session started in
-any of them, so it holds **only what is true across all five**. Per-project detail
+Four projects, one player universe. This file is loaded by any session started in
+any of them, so it holds **only what is true across all four**. Per-project detail
 lives in each project's own docs, named below; when they disagree with this file,
 they win.
 
@@ -12,7 +12,6 @@ they win.
 | `best-ball-draft/` | DK best-ball draft app + V1/V2 recommender. Public, on Render. | `CLAUDE.md`, `docs/STATUS.md` | **live, in season** |
 | `projections/` | Every external source, every derived metric, the Analysis UI. Local only. | `ARCHITECTURE.md`, `README.md` | **live, local** |
 | `sleeper/` | All four Sleeper leagues (2 redraft, 2 dynasty): board, draft plan, queue; start/sit and waivers still to come. | `README.md`, `docs/DRAFT_DAY.md` | **live** |
-| `dynasty-rankings/` | Ranking-source comparison (KTC, FantasyCalc, CSV). A valuation INPUT, not a weekly tool — the dynasty leagues' start/sit lives in `sleeper/`. | — | dormant |
 | `dfs/` | DraftKings daily: slates, salaries, salary-cap lineups. | `README.md`, `docs/STATUS.md` | **live, in season** |
 
 `docs/STATUS.md` in the draft app is **the map** for best-ball + projections: since
@@ -24,7 +23,8 @@ Rookie drafts are next summer's problem. Nothing has been built for them.
 **Rankings differ per format.** Redraft, best ball and dynasty are three separate
 lists of the same players and must never be reused across formats. Redraft:
 `sleeper/rankings/2026-redraft-ppr.csv`. Best ball: `best-ball-draft/drafts.db`
-table `player_rankings`. Dynasty: not wired up. Anything consuming rankings takes
+table `player_rankings`. Dynasty: the MARKET, not a list of yours —
+`projections/data/dynasty_values.json`, read by `sleeper/cli.py dynasty`. Anything consuming rankings takes
 a PATH, never a blessed location.
 
 ## Identity: everything is keyed on an id, never on a name
@@ -47,14 +47,17 @@ Two rules that hold everywhere:
   byte-identically (below its header) in `best-ball-draft/app/data/` and
   `projections/pipeline/core/` on purpose, and the two must agree while both apps
   exist. `sleeper/` has no copy and does no name matching at all.
-  `dynasty-rankings/sources/normalize.py` is a *different, weaker* rule — fine for
-  comparing ranking sources by name, not to be copied anywhere else.
+  A *weaker* rule used to exist in `dynasty-rankings/sources/normalize.py`; that
+  app was deleted 2026-09-08 and the rule went with it rather than spreading.
+  Its replacement is the better answer: the dynasty export joins KTC to
+  FantasyCalc on `mfl_id` and reads `sleeper_id` off FantasyCalc, so it does no
+  name matching at all.
 
 ## Sharing is a data seam, not a code library
 
 Decided 2026-08-31. The apps share the crosswalk (SQLite, read-only) and the
 payload contract (`POST /api/projections/upload`, `GET /api/projections-v2`), and
-nothing else. No common Python package: five projects with separate venvs and
+nothing else. No common Python package: four projects with separate venvs and
 separate deploy cadences would be coupled by one, and the single genuinely
 duplicated function is duplicated deliberately.
 
@@ -156,8 +159,21 @@ uv venv --python 3.11 && uv pip install --python .venv/bin/python requests pytes
 in any non-interactive shell, which is how a cron publish fails silently.
 
 Repos: `best-ball-draft/` is tracked by the parent repo at `Development/projects`.
-`projections/`, `dynasty-rankings/`, `sleeper/` and `dfs/` are their own repos,
-gitignored by the parent.
+`projections/`, `sleeper/` and `dfs/` are their own repos, gitignored by the parent.
+
+**`dynasty-rankings/` was removed 2026-09-08**, and this is the shape of a
+correct deletion. It was the only thing producing a rest-of-career valuation, so
+it was not simply dropped: its two market sources moved to
+`projections/pipeline/sources/{ktc,fantasycalc}.py`, behind the crosswalk, and
+`tools/export_dynasty_values.py` writes the seam that `sleeper/cli.py dynasty`
+reads. What died was the standalone Flask app and its weaker `normalize.py` —
+what it *knew* moved to where sources live. Its git history is intact at
+`github.com/jvonderhoff/dynasty-rankings`.
+
+The two dynasty sources join on `mfl_id` and FantasyCalc carries `sleeper_id` on
+every row, so the whole dynasty export resolves **without one name comparison** —
+the strongest version of the identity rule above, and the reason the deletion
+improved matters rather than merely tidying.
 
 **`best-ball-extension/` was removed 2026-09-08** — a Chrome overlay for the DK
 draft room, dormant since June. It is in git history if it is ever wanted back. Three
