@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Season — Best Ball Assistant</title>
+  <script src="{{ asset('theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ asset('theme.css') }}">
+  <style>
+    /* Without this, any element given display:flex below ignores `hidden`. */
+    [hidden] { display: none !important; }
+
+    .content { padding: 12px; max-width: 860px; margin: 0 auto; }
+    .page-sub { color: var(--muted); font-size: 0.78em; line-height: 1.5; margin-bottom: 12px; }
+
+    /* States come from the server, like /news: a threshold duplicated here would
+       drift from the one in app/season.py and both would keep rendering. */
+    .fresh-bar {
+      display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 9px; padding: 9px 13px; margin-bottom: 12px; font-size: 0.78em;
+    }
+    .fresh-item { display: flex; align-items: center; gap: 6px; }
+    .fresh-label { color: var(--muted); }
+    .fresh-val { font-weight: 700; color: var(--text); }
+    .fresh-val.stale, .fresh-val.live { color: var(--orange); }
+    .fresh-val.bad, .fresh-val.missing { color: var(--red); }
+    .fresh-val.final, .fresh-val.done { color: var(--green); }
+
+    .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+    .tile { background: var(--card); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; min-width: 0; }
+    .tile-label { color: var(--muted); font-size: 0.64em; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+    .tile-val { font-size: 1.3em; font-weight: 800; margin-top: 3px; font-variant-numeric: tabular-nums; }
+    .tile-sub { color: var(--muted); font-size: 0.7em; margin-top: 2px; }
+
+    .controls { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
+    .chip {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 999px; padding: 6px 13px; font-size: 0.78em; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+    }
+    .chip.active { border-color: var(--accent); color: var(--accent); background: var(--selected); }
+    .sortbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; font-size: 0.72em; color: var(--muted); }
+    .sortbar .chip { padding: 4px 10px; font-size: 1em; }
+    .search-box {
+      background: var(--input-bg, var(--surface)); border: 1px solid var(--border);
+      color: var(--text); border-radius: 7px; padding: 8px 12px; font-size: 0.85em;
+      width: 100%; margin-bottom: 10px;
+    }
+    .count { color: var(--muted); font-size: 0.75em; margin-bottom: 9px; }
+
+    .entry { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+    .entry-top { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+    .rank {
+      height: 42px; border-radius: 8px; border: 1px solid var(--border);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 1.05em; font-variant-numeric: tabular-nums;
+    }
+    .rank.in { color: var(--green); border-color: var(--green); background: var(--green-bg); }
+    .rank .of { font-size: .52em; font-weight: 600; color: var(--muted); }
+    .e-name { font-weight: 700; font-size: .88em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .e-sub { color: var(--muted); font-size: .7em; margin-top: 2px; }
+    .e-num { text-align: right; font-variant-numeric: tabular-nums; }
+    .e-pts { font-weight: 700; font-size: .92em; }
+    .margin { font-size: .72em; font-weight: 700; }
+    .pos { color: var(--green); }
+    .neg { color: var(--red); }
+    .zero { color: var(--muted); }
+
+    .roster { margin-top: 9px; border-top: 1px solid var(--border-soft); padding-top: 6px; cursor: default; }
+    .r-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: .8em; padding: 3px 0; }
+    .r-row.bn { color: var(--muted); }
+    .slot { font-size: .7em; font-weight: 700; text-align: center; border-radius: 4px; padding: 1px 0; border: 1px solid var(--border); color: var(--muted); }
+    .r-row:not(.bn) .slot { color: var(--accent); border-color: var(--accent); }
+    .r-meta { color: var(--muted); font-size: .85em; }
+    .r-score { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .divider { font-size: .62em; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 6px 0 2px; }
+
+    .table-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: .8em; }
+    th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--row-border); white-space: nowrap; }
+    th { color: var(--muted); font-size: .78em; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tr:last-child td { border-bottom: none; }
+
+    .notes { margin-top: 16px; font-size: .75em; color: var(--muted); line-height: 1.55; }
+    .notes h3 { font-size: 1em; color: var(--text); margin: 12px 0 4px; }
+    .warn { color: var(--orange); }
+    .empty { color: var(--muted); text-align: center; padding: 34px 16px; font-size: 0.85em; line-height: 1.6; }
+    @media (max-width: 480px) { .tile-val { font-size: 1.1em; } }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/recommend">Live Draft</a>
+  <a href="/season" class="active">Season</a>
+  <a href="/history">History</a>
+  <a href="/rankings">Rankings</a>
+  <a href="/news">News</a>
+  <a href="/setup">Setup</a>
+  <button class="theme-toggle" onclick="toggleTheme()"><!-- label via CSS ::after --></button>
+</nav>
+
+<div class="content">
+  <div class="page-sub">
+    Pod standings from DraftKings, captured on the Mac each Tuesday and pushed here.
+    The top <span id="adv">2</span> of each pod advance after week <span id="regw">14</span>.
+    Nothing on this page feeds a score.
+  </div>
+
+  <div class="fresh-bar" id="fresh"></div>
+  <div class="tiles" id="tiles"></div>
+
+  <div class="controls" id="tabs">
+    <button class="chip active" data-tab="entries">Entries</button>
+    <button class="chip" data-tab="tournaments">Tournaments</button>
+    <button class="chip" data-tab="players">Players</button>
+  </div>
+  <div class="sortbar" id="sortbar">sort
+    <button class="chip active" data-sort="rank">Rank</button>
+    <button class="chip" data-sort="bubble">Closest to the line</button>
+    <button class="chip" data-sort="points">Points</button>
+    <button class="chip" data-sort="contest">Tournament</button>
+  </div>
+  <input class="search-box" id="q" placeholder="filter by player or tournament…">
+
+  <div class="count" id="count"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+  <div class="notes" id="notes"></div>
+</div>
+
+<script>
+let D = null, TAB = 'entries', SORT = 'rank', Q = '';
+const OPEN = new Set();
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+const pts = v => v == null ? '—' : Number(v).toFixed(2);
+const money = v => '$' + Number(v || 0).toLocaleString(undefined, {maximumFractionDigits: 0});
+const ago = h => h == null ? 'never' : h < 1 ? Math.round(h * 60) + 'm ago' :
+                 h < 48 ? h.toFixed(1) + 'h ago' : (h / 24).toFixed(1) + 'd ago';
+
+function signed(v) {
+  if (v == null) return '<span class="zero">—</span>';
+  const cls = v > 0 ? 'pos' : v < 0 ? 'neg' : 'zero';
+  return `<span class="${cls}">${v > 0 ? '+' : ''}${v.toFixed(2)}</span>`;
+}
+
+function trend(ranks) {
+  const r = ranks.filter(x => x != null);
+  if (r.length < 2) return '';
+  const moved = r[r.length - 2] - r[r.length - 1];   // positive = climbed
+  const arrow = moved > 0 ? ` <span class="pos">▲${moved}</span>` : moved < 0 ? ` <span class="neg">▼${-moved}</span>` : '';
+  return ` · ${r.slice(-5).join(' → ')}${arrow}`;
+}
+
+// Everything that is a rule — the line, advancing, stale — was decided server-side.
+function renderHeader() {
+  const m = D.meta, t = D.totals, cfg = D.config;
+  document.getElementById('adv').textContent = cfg.advance ?? 2;
+  document.getElementById('regw').textContent = cfg.regular_weeks ?? 14;
+  const status = {live: 'in progress', final: 'final', pre: 'final'}[m.status] || m.status;
+  const bits = [
+    ['season', `${D.season} · week ${m.week}`, ''],
+    ['status', status, m.status],
+    ['captured', ago(m.age_hours), m.state],
+    ['entries', m.entries, ''],
+  ];
+  if (!m.has_rosters) bits.push(['player scores', 'not captured', 'missing']);
+  else if (m.rosters_captured_at && Math.abs(m.rosters_captured_at - m.captured_at) > 60) {
+    bits.push(['player scores', ago((Date.now() / 1000 - m.rosters_captured_at) / 3600), '']);
+  }
+  document.getElementById('fresh').innerHTML = bits.map(([label, val, cls]) =>
+    `<div class="fresh-item"><span class="fresh-label">${label}</span>
+     <span class="fresh-val ${esc(cls)}">${esc(val)}</span></div>`).join('');
+
+  const pct = t.entries ? Math.round(100 * t.advancing / t.entries) : 0;
+  document.getElementById('tiles').innerHTML = [
+    ['Advancing', `${t.advancing} / ${t.entries}`, `${pct}% · top ${cfg.advance} of ${cfg.pod_size}`],
+    ['On the bubble', t.within_10, 'within 10 pts of the line'],
+    ['Fees advancing', money(t.fees_advancing), `of ${money(t.fees)} entered`],
+  ].map(([label, val, sub]) => `<div class="tile"><div class="tile-label">${label}</div>
+     <div class="tile-val">${esc(val)}</div><div class="tile-sub">${esc(sub)}</div></div>`).join('');
+}
+
+function rosterHtml(e) {
+  if (!e.roster.length) {
+    return '<div class="roster"><div class="e-sub">No player scores in this capture.</div></div>';
+  }
+  const order = {QB: 0, RB: 1, WR: 2, TE: 3, FLEX: 4, BN: 5};
+  const rows = e.roster.slice().sort((a, b) => (order[a.slot] ?? 9) - (order[b.slot] ?? 9) || b.score - a.score);
+  let html = '', benched = false;
+  for (const r of rows) {
+    if (r.slot === 'BN' && !benched) { benched = true; html += '<div class="divider">bench</div>'; }
+    html += `<div class="r-row ${r.slot === 'BN' ? 'bn' : ''}">
+      <span class="slot">${esc(r.slot)}</span>
+      <span>${esc(r.name)} <span class="r-meta">${esc(r.pos || '')}${r.team ? ' · ' + esc(r.team) : ''}</span></span>
+      <span class="r-score">${pts(r.score)}</span></div>`;
+  }
+  const line = e.line != null ? `line ${pts(e.line)} · ` : '';
+  return `<div class="roster"><div class="e-sub" style="margin-bottom:4px">${line}week ${D.meta.week} lineup as DraftKings set it</div>${html}</div>`;
+}
+
+function renderEntries() {
+  const q = Q.toLowerCase().trim();
+  const rows = D.entries.filter(e => !q || e.contest.toLowerCase().includes(q) ||
+    e.roster.some(r => (r.name || '').toLowerCase().includes(q)));
+  const by = {
+    rank:    (a, b) => a.rank - b.rank || (b.margin ?? -1e9) - (a.margin ?? -1e9),
+    bubble:  (a, b) => Math.abs(a.margin ?? 1e9) - Math.abs(b.margin ?? 1e9),
+    points:  (a, b) => b.points - a.points,
+    contest: (a, b) => a.contest.localeCompare(b.contest) || a.rank - b.rank,
+  }[SORT];
+  rows.sort(by);
+  document.getElementById('count').textContent =
+    `${rows.length} of ${D.entries.length} entries · ± is points from the advance line · tap an entry for its lineup`;
+  if (!rows.length) {
+    document.getElementById('list').innerHTML = '<div class="empty">Nothing matches.</div>';
+    return;
+  }
+  const pod = D.config.pod_size || 12;
+  document.getElementById('list').innerHTML = rows.map(e => {
+    const sub = [money(e.entry_fee), e.drafted_at ? 'drafted ' + e.drafted_at : null].filter(Boolean).join(' · ');
+    return `<div class="entry" data-id="${esc(e.contest_id)}">
+      <div class="entry-top">
+        <div class="rank ${e.advancing ? 'in' : ''}">${e.rank}<span class="of">of ${pod}</span></div>
+        <div style="min-width:0">
+          <div class="e-name">${esc(e.contest)}</div>
+          <div class="e-sub">${esc(sub)}${trend(e.ranks)}</div>
+        </div>
+        <div class="e-num"><div class="e-pts">${pts(e.points)}</div><div class="margin">${signed(e.margin)}</div></div>
+      </div>
+      ${OPEN.has(e.contest_id) ? rosterHtml(e) : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderTournaments() {
+  document.getElementById('count').textContent = `${D.tournaments.length} tournaments`;
+  document.getElementById('list').innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Tournament</th><th class="num">Entries</th><th class="num">Advancing</th>
+      <th class="num">Avg rank</th><th class="num">Fees</th></tr></thead>
+    <tbody>${D.tournaments.map(g => `<tr><td>${esc(g.contest)}</td><td class="num">${g.entries}</td>
+      <td class="num">${g.advancing}</td><td class="num">${g.avg_rank.toFixed(1)}</td>
+      <td class="num">${money(g.fees)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function renderPlayers() {
+  if (!D.meta.has_rosters) {
+    document.getElementById('count').textContent = '';
+    document.getElementById('list').innerHTML =
+      '<div class="empty">No player scores in this capture — DraftKings had already moved its scorecards on to next week.</div>';
+    return;
+  }
+  const q = Q.toLowerCase().trim();
+  const rows = D.players.filter(p => !q || (p.name || '').toLowerCase().includes(q) ||
+    (p.team || '').toLowerCase() === q || (p.pos || '').toLowerCase() === q);
+  document.getElementById('count').textContent =
+    `${rows.length} of ${D.players.length} players · counted = rosters where DraftKings started him this week`;
+  const n = D.totals.entries || 1;
+  document.getElementById('list').innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Player</th><th>Pos</th><th class="num">Rosters</th><th class="num">Counted</th>
+      <th class="num">Wk ${D.meta.week} pts</th></tr></thead>
+    <tbody>${rows.map(p => `<tr><td>${esc(p.name)} <span class="r-meta">${esc(p.team || '')}</span></td>
+      <td>${esc(p.pos || '')}</td>
+      <td class="num">${p.rosters} <span class="r-meta">${Math.round(100 * p.rosters / n)}%</span></td>
+      <td class="num">${p.counted}</td><td class="num">${pts(p.score)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function renderNotes() {
+  const r = D.reconcile || {}, m = D.meta;
+  let html = '';
+  if (m.warnings.length) {
+    html += '<h3 class="warn">Capture warnings</h3>' + m.warnings.map(w => `<div class="warn">${esc(w)}</div>`).join('');
+  }
+  if ((r.not_in_capture || []).length) {
+    html += '<h3>In draft history, not in this capture</h3>' + r.not_in_capture.map(x =>
+      `<div>${esc(x.dk_draft_id)} · ${esc(x.contest)} · drafted ${esc(x.drafted_at)}</div>`).join('');
+  }
+  if ((r.not_in_history || []).length) {
+    html += `<h3>On DraftKings, not in draft history</h3><div>${r.not_in_history.map(esc).join(', ')}</div>`;
+  }
+  const pub = m.publisher || {};
+  html += `<div style="margin-top:12px">weeks stored: ${esc(D.weeks.join(', '))} · captured by ${esc(pub.sha || '?')}${pub.dirty ? ' (uncommitted changes)' : ''}</div>`;
+  document.getElementById('notes').innerHTML = html;
+}
+
+function render() {
+  document.getElementById('sortbar').hidden = TAB !== 'entries';
+  document.getElementById('q').hidden = TAB === 'tournaments';
+  ({entries: renderEntries, tournaments: renderTournaments, players: renderPlayers})[TAB]();
+}
+
+async function load() {
+  const list = document.getElementById('list');
+  try {
+    const r = await fetch('/api/season' + location.search);
+    // Status before parsing: a Render 502 or cold-start page is HTML, and parsing it
+    // first turns every such failure into one useless JSON error — the History sync
+    // lost an afternoon to exactly that on 2026-09-08.
+    if (!r.ok) throw new Error(`HTTP ${r.status} from /api/season`);
+    D = await r.json();
+  } catch (e) {
+    list.innerHTML = `<div class="empty">Could not load standings: ${esc(e.message)}</div>`;
+    return;
+  }
+  if (!D.ok) {
+    document.getElementById('fresh').innerHTML =
+      '<div class="fresh-item"><span class="fresh-label">captured</span><span class="fresh-val missing">never</span></div>';
+    document.getElementById('sortbar').hidden = true;
+    document.getElementById('q').hidden = true;
+    list.innerHTML = `<div class="empty">No standings stored for ${esc(D.season)} yet.<br>
+      Capture them from the Mac:<br><code>tools/capture-standings.sh</code></div>`;
+    return;
+  }
+  renderHeader();
+  render();
+  renderNotes();
+}
+
+document.querySelectorAll('#tabs .chip').forEach(c => c.onclick = () => {
+  document.querySelectorAll('#tabs .chip').forEach(x => x.classList.remove('active'));
+  c.classList.add('active');
+  TAB = c.dataset.tab;
+  render();
+});
+document.querySelectorAll('#sortbar .chip').forEach(c => c.onclick = () => {
+  document.querySelectorAll('#sortbar .chip').forEach(x => x.classList.remove('active'));
+  c.classList.add('active');
+  SORT = c.dataset.sort;
+  render();
+});
+document.getElementById('list').addEventListener('click', ev => {
+  if (TAB !== 'entries' || ev.target.closest('.roster')) return;
+  const card = ev.target.closest('.entry');
+  if (!card) return;
+  OPEN.has(card.dataset.id) ? OPEN.delete(card.dataset.id) : OPEN.add(card.dataset.id);
+  render();
+});
+document.getElementById('q').oninput = e => { Q = e.target.value; render(); };
+load();
+</script>
+</body>
+</html>

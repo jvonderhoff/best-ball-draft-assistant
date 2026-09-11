@@ -2382,6 +2382,82 @@ def news_page():
     return render_template('news.html')
 
 
+# ── Season standings ──────────────────────────────────────────────────────────
+
+@app.route('/api/season/upload', methods=['POST'])
+def upload_season():
+    """Accept a weekly standings snapshot from tools/capture-standings.py on the Mac.
+
+    Same push shape as /api/news/upload, with one deliberate difference: the key
+    check FAILS CLOSED. The older endpoints read `if expected and api_key !=
+    expected`, which accepts anyone at all the moment BBA_API_KEY goes missing
+    (STATUS open thread 11). A new write path has no reason to inherit that.
+
+    Display-only, like news: nothing the recommender scores with reads this, so a bad
+    push is a wrong-looking page, never a wrong recommendation.
+    """
+    import hmac
+    expected = os.environ.get('BBA_API_KEY', '')
+    if not expected:
+        return jsonify({'error': 'BBA_API_KEY is not set on this server — refusing every '
+                                 'write rather than accepting unauthenticated ones'}), 503
+    if not hmac.compare_digest(request.headers.get('X-Api-Key', ''), expected):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    from app import season, season_store
+    snap = request.get_json(silent=True)
+    if not isinstance(snap, dict):
+        return jsonify({'error': 'body must be a JSON object'}), 400
+    problem = season.validate(snap)
+    if problem:
+        return jsonify({'error': problem}), 400
+
+    # Postgres first: this instance's mirror is empty after any boot that could not
+    # reach it, and merging against nothing would drop a week's rosters.
+    old = season_store.load_week(snap['season'], snap['week'])
+    if old is None:
+        old = season.read_week(snap['season'], snap['week'])
+    snap = season.merge(old, snap)
+
+    durable = season_store.save_week(snap)
+    try:
+        season.write_week(snap)
+    except Exception as e:
+        app.logger.error(f'[season/upload] mirror write failed: {e!r}')
+        return jsonify({'error': f'stored={durable} but local mirror failed: {e}'}), 500
+
+    app.logger.info(f"[season/upload] {snap['season']} week {snap['week']} {snap['status']}: "
+                    f"{len(snap['entries'])} entries durable={durable}")
+    return jsonify({
+        'ok': True,
+        'season': snap['season'],
+        'week': snap['week'],
+        'status': snap['status'],
+        'entries': len(snap['entries']),
+        'has_rosters': bool(snap.get('has_rosters')),
+        'durable': durable,
+        'warning': None if durable else (
+            'DATABASE_URL unset or Postgres unreachable — this week is on this instance '
+            'only and will NOT survive a deploy or spin-down.'
+        ),
+    })
+
+
+@app.route('/api/season', methods=['GET'])
+def api_season():
+    """Standings for /season, with every rule applied here rather than in the page."""
+    from app import season
+    raw = request.args.get('season')
+    if raw is not None and not raw.isdigit():
+        return jsonify({'error': 'season must be a year'}), 400
+    return jsonify(season.view(int(raw) if raw else None))
+
+
+@app.route('/season')
+def season_page():
+    return render_template('season.html')
+
+
 @app.route('/api/freshness', methods=['GET'])
 def data_freshness():
     """How old every piece of data behind a recommendation is. One place.

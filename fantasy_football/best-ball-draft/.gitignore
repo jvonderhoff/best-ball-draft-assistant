@@ -20,6 +20,9 @@ app/data/pushed_payload.json
 # boot by _hydrate_external_news. Committing it would ship one machine's snapshot of
 # a feed as though it were part of the app.
 app/data/pushed_news.json
+# And the season standings mirror. Postgres holds the durable copy, and the complete
+# record is the capture archive on the Mac under data/, which the parent repo ignores.
+app/data/pushed_season.json
 tools/replay-draft.json
 
 # Local backups taken before data refreshes

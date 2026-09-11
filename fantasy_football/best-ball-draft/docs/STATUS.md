@@ -72,6 +72,65 @@ is flagged stale at 48h.
 
 ---
 
+## In-season standings — `/season` (built 2026-09-11)
+
+Pod rank and points for every best-ball entry, on one page that reaches a phone.
+DraftKings already keeps the score; what it does not do is show 81 entries at once.
+**Nothing is scored here** — every number is DK's.
+
+```
+  Mac: tools/capture-standings.py ── POST /api/season/upload ──> Postgres season_snapshots ──> /season
+       (Firefox DK session)            X-Api-Key, fails CLOSED     one row per (season, week)
+       archive: data/season/<season>/weekNN.json
+```
+
+| what | command |
+|---|---|
+| capture + archive, dry run | `.venv/bin/python tools/capture-standings.py` |
+| ...and push | `tools/capture-standings.sh` (needs `BBA_API_KEY`, so `zsh -ic`) |
+| every Tuesday 07:30 | `tools/com.bba.standings.plist` — install steps in its header |
+
+It runs on the Mac, not Render, because the dependable DK session is Firefox's. The key
+check on the upload **fails closed** — unlike the older endpoints in open thread 11.
+Nothing the recommender scores with reads `season_snapshots`.
+
+**Next season is one dict entry:** `SEASONS` in `app/season.py`. A capture for an
+undeclared season is refused by name, because DK changes tournament structures between
+years and scoring 2027 against 2026's rules would be silent.
+
+Measured on the first captures, and each one is a trap:
+
+- **`PaidPositionThresholdPoints` is not the advance line.** On `/mycontests` it equals
+  the pod LEADER's points, 12 of 12 tournament types. The line is read off the 12-row
+  leaderboard.
+- **Every tournament advances 2 of 12** (`LastWinningMegaEntry.Rank`), measured not assumed.
+- **Draftable ids are not identities.** Drake Maye had two in ONE draft group, and every
+  season's pool mints new ones. Standings key players by DK `playerId`.
+- **A finished game has two states,** `CompetitionOver` and later `ScoresOfficial`.
+  Reading only the first called a finished week live forever.
+- **The scorecards reconcile:** DK's non-bench player scores summed to the entry total on
+  81 of 81 lineups in week 1.
+
+Open, and settled only by captures after week 1:
+
+1. Whether a scorecard shows the WEEK's points or the season's from week 2 on. The
+   capture checks each lineup against the points the entry gained that week, so if it is
+   the season's, every entry fails loudly on the first week-2 capture.
+2. When DK rolls its scorecards on to the next week. A capture after the roll is filed
+   `pre`: standings kept, rosters carried over from the earlier capture of that week.
+3. What happens to contest ids when an entry advances into week 15. `round`,
+   `mega_contest_id`, `lineup_id` and `tournament_key` are stored for that day.
+
+Draft `192300034` (2026-07-14, $1M Play Action, no fee) is in history but not on DK —
+probably a cancelled contest. The page lists it rather than dropping it.
+
+**Not built, deliberately: our own scoring from nflverse.** It works — 5 of 5 players
+matched DK to the cent through the crosswalk — but DK's score is the one that pays, so a
+second scorer would only be a check. Worth building only if DK's week-by-week detail
+turns out to be unrecoverable.
+
+---
+
 ## Running it
 
 ```bash

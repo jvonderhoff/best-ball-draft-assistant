@@ -64,7 +64,10 @@ nav a:hover { color: var(--text); }
 nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 @media (max-width: 480px) {
-  nav { padding: 0 12px; gap: 14px; }
+  /* Scrolls rather than clips. Six links stopped fitting a 375px phone when Season
+     was added, and the theme toggle at the end was the part cut off. */
+  nav { padding: 0 12px; gap: 12px; overflow-x: auto; scrollbar-width: none; }
+  nav::-webkit-scrollbar { display: none; }
   nav a { font-size: 0.8em; }
 }
 

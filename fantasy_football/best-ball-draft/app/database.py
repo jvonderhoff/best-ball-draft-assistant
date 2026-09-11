@@ -175,6 +175,7 @@ def init_db():
         _hydrate_external_projections(conn)
         _hydrate_external_kv(conn)
         _hydrate_external_news()
+        _hydrate_external_season()
 
 
 def _seed_players_if_empty(conn):
@@ -306,6 +307,20 @@ def _hydrate_external_news():
         news.hydrate()
     except Exception as e:
         _log.warning(f'[news] hydrate skipped: {e!r}')
+
+
+def _hydrate_external_season():
+    """Rebuild the season standings mirror from Postgres at boot.
+
+    Same shape and the same quiet failure as the news hydrate above: display-only
+    pushed content with no local SQLite table, so an unreachable store must not take
+    the boot with it. The page then says no standings are stored.
+    """
+    try:
+        from app import season
+        season.hydrate()
+    except Exception as e:
+        _log.warning(f'[season] hydrate skipped: {e!r}')
 
 
 def _hydrate_external_kv(conn):

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Capture the week's best-ball standings every Tuesday morning and push them to /season.
+
+      mkdir -p /Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/data/season
+      cp tools/com.bba.standings.plist ~/Library/LaunchAgents/
+      launchctl load ~/Library/LaunchAgents/com.bba.standings.plist
+      launchctl start com.bba.standings                                  # run once now
+      launchctl unload ~/Library/LaunchAgents/com.bba.standings.plist   # stop it
+
+  Tuesday 07:30 because the week is over by then — Monday night ends around midnight —
+  and it is a time somebody will read the log. StartCalendarInterval, not an interval:
+  a Mac asleep at 07:30 runs it at the next wake instead of skipping the week, and a
+  skipped week is a hole in the rank history DraftKings will not refill.
+
+  The mkdir matters: launchd opens the log paths below before the job runs, and will
+  not create their directory.
+
+  ── The key, and why it is not in this file ─────────────────────────────────────────
+
+  Same as com.bba.newspush. launchd does not source ~/.zshrc, so ProgramArguments runs
+  `zsh -ic` — an INTERACTIVE shell, the only kind that reads .zshrc. This file is
+  committed; a key pasted into it would be on GitHub at the next `git add`.
+
+  ── What it can do ──────────────────────────────────────────────────────────────────
+
+  Reads DraftKings with your own session, and changes nothing there. Writes one table
+  in production, `season_snapshots`, which no recommendation reads. A corrupted push is
+  a wrong-looking /season page and a correct draft board.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bba.standings</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-ic</string>
+        <string>exec /Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/tools/capture-standings.sh --quiet</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>DRAFT_APP_URL</key>
+        <string>https://best-ball-draft-assistant.onrender.com</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft</string>
+
+    <!-- Tuesday 07:30 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>2</integer>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/data/season/standings.out</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/data/season/standings.err</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
