@@ -26,18 +26,21 @@ cd "$(dirname "$0")/.." || exit 1
 DRAFT_APP_URL="${DRAFT_APP_URL:-https://best-ball-draft-assistant.onrender.com}"
 export DRAFT_APP_URL
 
-QUIET=()
-[[ "${1:-}" == "--quiet" ]] && QUIET=(--quiet)
+# A plain string, left unquoted where it is used, NOT an array. /bin/bash on macOS is
+# 3.2, where "${arr[@]}" on an empty array under `set -u` is "unbound variable" — the
+# first run without --quiet died on it, and `bash -n` passes it cleanly.
+QUIET=""
+[[ "${1:-}" == "--quiet" ]] && QUIET="--quiet"
 stamp="$(date '+%Y-%m-%d %H:%M:%S %Z')"
 
 if [[ -z "${BBA_API_KEY:-}" ]]; then
   echo "capture-standings $stamp: BBA_API_KEY absent — capturing to the archive only."
   echo "  Under launchd this means the plist is not invoking zsh -ic."
-  .venv/bin/python tools/capture-standings.py "${QUIET[@]}"
+  .venv/bin/python tools/capture-standings.py $QUIET
   exit 2
 fi
 
-out="$(.venv/bin/python tools/capture-standings.py --push "${QUIET[@]}" 2>&1)"
+out="$(.venv/bin/python tools/capture-standings.py --push $QUIET 2>&1)"
 rc=$?
 echo "$out"
 
