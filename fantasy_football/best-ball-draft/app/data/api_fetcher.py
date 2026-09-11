@@ -336,7 +336,13 @@ def _dk_session(referer=None):
         'Origin': 'https://www.draftkings.com',
         'Referer': referer or 'https://www.draftkings.com/',
     })
-    s.cookies.update(cookies)
+    # Scoped to draftkings.com, never `cookies.update(dict)`: that makes domain-less
+    # cookies requests sends to ANY host, including wherever a DK response redirects.
+    # dfs/standings.py hit it on 2026-09-10 — DK's standings export 302s to S3, and the
+    # whole login jar (47 cookies, ~8KB) went to amazonaws.com with it. Every caller
+    # here talks to www. or api.draftkings.com, both of which the scope still covers.
+    for name, value in cookies.items():
+        s.cookies.set(name, value, domain='.draftkings.com', path='/')
     return s
 
 
