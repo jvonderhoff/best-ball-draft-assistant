@@ -2,9 +2,10 @@
 
 DraftKings Best Ball draft assistant. Flask + vanilla JS + Postgres, deployed on Render.
 
-**`docs/STATUS.md` is the map — read it first.** It holds the state of BOTH apps in
+**`docs/STATUS.md` is the status — read it first.** It holds the state of BOTH apps in
 one place, which no single repo does since the split: what is live, what is open, the
-runbook, and the traps that have already cost time.
+runbook, and the traps that have already cost time. How this app connects to the other
+fantasy projects is `../docs/architecture.html`, the one map.
 
 **The Analysis page and every data source moved out on 2026-08-16.** They live in
 `fantasy_football/projections` now. `docs/PROJECTIONS_SPLIT.md` is the record of what
@@ -161,7 +162,7 @@ the harness for model changes, the app in a browser for UI changes.
 (11) cover the hook and the scheduled job. A broken hook and a quiet one look identical,
 so "run it and see" verifies nothing there — and two bugs were written into the hook in
 one sitting on 2026-08-27, neither of which raised anything. The projections app has its
-own pytest suite (84 tests); this rule is about the draft app.
+own pytest suite (147 tests on 2026-09-14); this rule is about the draft app.
 
 **Doing both in one session silently invalidates the harness numbers.** `loadData()`
 reads `app/data/player_cache.json` off disk, and the *app* rewrites it — `GET

@@ -38,7 +38,8 @@ Delete it once `analysis-verify` has been clean across a few real publishes, and
 it.
 
 This file covers only the **contract between the two apps**. See
-`PROJECTIONS_APP_ARCHITECTURE.md` for the new app's own internals.
+`../../projections/ARCHITECTURE.md` for the projections app's own internals, and
+`../../docs/architecture.html` for how every project connects.
 
 The goal is a **lite draft app**: DK pool, rankings board, recommender, drafts. Every
 data source, every scraper and every derived metric moves out.

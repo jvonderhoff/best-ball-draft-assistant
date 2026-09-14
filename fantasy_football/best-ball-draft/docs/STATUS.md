@@ -1,13 +1,13 @@
-# Where things are — 2026-08-24
+# Best ball + projections — where things are
 
-The state of the best-ball pair in one place, because since the analysis split no
-single repo holds that picture. **Scope note, 2026-09-01: there is now a THIRD
-consumer of the projections app — `../../sleeper`, which serves the two Sleeper
-redraft and two dynasty leagues. It is not covered here.** Its own README and
-`docs/DRAFT_DAY.md` are authoritative for it, and `../../CLAUDE.md` is the map
-across all four projects. This file remains the map for best-ball + projections. Detailed reasoning lives in `PROJECTIONS_SPLIT.md` (the
-contract), the projections app's `ARCHITECTURE.md` (its internals) and `V2_DESIGN.md`
-(the model, and §4 the dead ends). This file is the map.
+The running status of the best-ball pair: what is live, what is open, the routine, and
+the traps that have already cost time. Entries are dated and point-in-time; when two
+disagree, the newer one wins.
+
+**How everything connects is `../../docs/architecture.html`** — all four projects,
+every seam, the schedule — and this file does not restate it. Detailed reasoning lives
+in `PROJECTIONS_SPLIT.md` (the contract), the projections app's `ARCHITECTURE.md` (its
+internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
@@ -31,22 +31,12 @@ The analysis app **does not need deploying**. It computes on the Mac and pushes,
 same pattern props already used and for the same reason — DK blocks Render's IPs. The
 cost: **the Analysis table is not reachable from a phone.**
 
-### The third consumer, added 2026-09-01
+### Other readers of this pair
 
-```
-  projections  ──── POST /api/projections/upload ────>  best-ball-draft
-       │
-       ├──── data/store.db      (read-only, by sleeper_id) ────>  sleeper
-       └──── data/stat_lines.json  (ESPN stats + blend + ADP) ──>  sleeper
-```
-
-`sleeper/` reads two files and imports no code — separate venv, separate cadence.
-The consequence for THIS repo: `data/store.db` and `tools/export_stat_lines.py`
-now have a reader outside the best-ball pair, so a change to the crosswalk schema
-or to that export's shape breaks something this file does not describe. The
-custom rankings board in `drafts.db` is also read by it, read-only, as the
-best-ball ranking source — the redraft and dynasty lists are separate files and
-must never be crossed.
+`sleeper/` and `dfs/` read the projections app's exports, and `sleeper/` also reads
+`drafts.db`'s `player_rankings`, read-only. So a change to the crosswalk schema or to
+any export's shape can break a project this file does not describe — check the seams
+page of `../../docs/architecture.html` before making one.
 
 ---
 

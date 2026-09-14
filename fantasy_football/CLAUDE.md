@@ -14,14 +14,17 @@ they win.
 | `sleeper/` | All four Sleeper leagues (2 redraft, 2 dynasty): draft board and queue, weekly start/sit, waivers, dynasty roster values. | `README.md`, `docs/DRAFT_DAY.md` | **live** |
 | `dfs/` | DraftKings daily: slates, salaries, salary-cap lineups. | `README.md`, `docs/STATUS.md` | **live, in season** |
 
-`docs/STATUS.md` in the draft app is **the map** for best-ball + projections: since
-the analysis split, no single repo holds that picture. Read it before changing
-either.
+**The map is `docs/architecture.html`, and it is the only one.** A clickable diagram
+with one page per part (Projections, Best Ball, Redraft, Dynasty, DFS), plus every seam,
+where every number comes from, the launchd schedule and the health checks. Open it in a
+browser; it is also published as a pinned Artifact, so republish after editing it.
+`docs/MAP.md` was folded into it and deleted on 2026-09-14 — do not start a second
+inventory. When the map disagrees with a project's own doc, the project's doc wins; fix
+the map.
 
-**The picture across all four is `docs/architecture.html`** — a clickable diagram with
-one page per part (Projections, Best Ball, Redraft, Dynasty, DFS), plus the seams, the
-launchd schedule and the health checks. `docs/MAP.md` is the same inventory in prose.
-When either disagrees with a project's own doc, the project's doc wins; fix the map.
+`best-ball-draft/docs/STATUS.md` is the running status log for best ball + projections
+(what is live, what is open, the traps), and `dfs/docs/STATUS.md` is the same for DFS.
+Read the relevant one before changing that project.
 
 Rookie drafts are next summer's problem. Nothing has been built for them.
 

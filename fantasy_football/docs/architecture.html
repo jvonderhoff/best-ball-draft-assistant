@@ -326,7 +326,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
 
     <p class="sec-title">Across all of them</p>
     <nav class="index" aria-label="Shared">
-      <a class="card plain" href="#seams"><span class="nm">What crosses between them</span><span class="ds">Every file and HTTP call that moves data from one project to another, what it's keyed on, and when it goes stale.</span></a>
+      <a class="card plain" href="#seams"><span class="nm">What crosses between them</span><span class="ds">Every file and HTTP call that moves data between projects, what it's keyed on, when it goes stale, and where every number comes from.</span></a>
       <a class="card plain" href="#schedule"><span class="nm">What runs by itself</span><span class="ds">The eight scheduled jobs on the Mac, laid out across the week.</span></a>
       <a class="card plain" href="#health"><span class="nm">Is anything broken?</span><span class="ds">One health command per project, the test suites, and what changes next season.</span></a>
     </nav>
@@ -1014,6 +1014,25 @@ cd ../sleeper
         <tr><td>By hand, both ways</td><td><code>names.py</code>, byte-identical below its header in <code>best-ball-draft/app/data/</code> and <code>projections/pipeline/core/</code></td><td>—</td><td>copy and paste</td><td class="num">must agree</td></tr>
       </tbody>
     </table></div>
+    <div class="blk" style="margin-top:34px">
+      <h2>Where every number comes from</h2>
+      <div class="tbl frame"><table>
+        <thead><tr><th>Number</th><th>Built from</th><th>Lives in</th></tr></thead>
+        <tbody>
+          <tr><td>Season points (<code>consensus_ppr</code>)</td><td>Sleeper + ESPN + FFToday, averaged</td><td><code>projections/analysis/build.py</code></td></tr>
+          <tr><td>Props correction</td><td>DK and Underdog season markets, applied per stat and de-meaned per position. Never averaged into the season points.</td><td><code>projections/analysis/sources/dkprops.py</code></td></tr>
+          <tr><td><code>sd</code></td><td>Position-level spread × <code>ppg</code>. Not measured weekly variance.</td><td><code>projections/pipeline/core/metrics.py</code></td></tr>
+          <tr><td><code>ceiling</code> (best ball)</td><td><code>ppg + 1.28·sd</code></td><td><code>best-ball-draft/static/recommender-v2.js</code></td></tr>
+          <tr><td>Value over replacement (Sleeper)</td><td>The league's own scoring applied to stat lines, minus the replacement starter</td><td><code>sleeper/leagues/scoring.py</code>, <code>board.py</code></td></tr>
+          <tr><td><b>This week's</b> points</td><td>DK per-game props only; a home-made weekly model lost to “season average”</td><td><code>projections/tools/export_props.py</code></td></tr>
+          <tr><td>Expected touchdowns</td><td><code>exp_td = p·(1 + 0.512p)</code>, fitted on 2024 and checked on 2025</td><td><code>projections/pipeline/td.py</code></td></tr>
+          <tr><td>Anytime-TD de-vig</td><td>The slate's own implied totals; one global factor (1.2287 when measured)</td><td><code>projections/pipeline/devig.py</code></td></tr>
+          <tr><td>Team defence</td><td>The opponent's implied total</td><td><code>projections/pipeline/dst.py</code></td></tr>
+          <tr><td>Dynasty value</td><td>KTC and FantasyCalc, side by side, never averaged</td><td><code>projections/tools/export_dynasty_values.py</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>Early September numbers from <code>defense.py</code> and <code>weekly.py</code> are last season's data wearing this year's hat. In week 1 there's nothing else.</p>
+    </div>
     <div class="grid2">
       <div class="blk">
         <h2>Three ways to be wrong without an error</h2>
