@@ -11,12 +11,17 @@ they win.
 |---|---|---|---|
 | `best-ball-draft/` | DK best-ball draft app + V1/V2 recommender. Public, on Render. | `CLAUDE.md`, `docs/STATUS.md` | **live, in season** |
 | `projections/` | Every external source, every derived metric, the Analysis UI. Local only. | `ARCHITECTURE.md`, `README.md` | **live, local** |
-| `sleeper/` | All four Sleeper leagues (2 redraft, 2 dynasty): board, draft plan, queue; start/sit and waivers still to come. | `README.md`, `docs/DRAFT_DAY.md` | **live** |
+| `sleeper/` | All four Sleeper leagues (2 redraft, 2 dynasty): draft board and queue, weekly start/sit, waivers, dynasty roster values. | `README.md`, `docs/DRAFT_DAY.md` | **live** |
 | `dfs/` | DraftKings daily: slates, salaries, salary-cap lineups. | `README.md`, `docs/STATUS.md` | **live, in season** |
 
 `docs/STATUS.md` in the draft app is **the map** for best-ball + projections: since
 the analysis split, no single repo holds that picture. Read it before changing
 either.
+
+**The picture across all four is `docs/architecture.html`** — a clickable diagram with
+one page per part (Projections, Best Ball, Redraft, Dynasty, DFS), plus the seams, the
+launchd schedule and the health checks. `docs/MAP.md` is the same inventory in prose.
+When either disagrees with a project's own doc, the project's doc wins; fix the map.
 
 Rookie drafts are next summer's problem. Nothing has been built for them.
 

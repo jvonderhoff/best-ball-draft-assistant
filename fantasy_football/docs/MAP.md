@@ -8,6 +8,10 @@ apply everywhere, and this holds the inventory.
 Counts and ages below were measured on 2026-09-08 and are there to show you the SHAPE
 of a healthy system. Do not trust the numbers themselves next season; run `doctor`.
 
+**Want the picture instead? Open `architecture.html` in this folder** — the same system
+as a clickable diagram, one page per part. The schedule (§5) and test counts (§6) were
+re-checked against the plists and `pytest --collect-only` on 2026-09-14.
+
 ---
 
 ## 1. The four projects, in one table
@@ -142,17 +146,20 @@ Two standing caveats worth re-reading each season:
 
 ## 5. What runs on its own, and what does not
 
-Five launchd jobs, all installed in `~/Library/LaunchAgents/` from plists checked into
+Eight launchd jobs, all installed in `~/Library/LaunchAgents/` from plists checked into
 the repos. launchd rather than cron **because cron silently skips a run on a sleeping
-Mac**; launchd fires at the next wake.
+Mac**; launchd fires at the next wake. Times are Central.
 
 | job | when | what | writes anything? |
 |---|---|---|---|
 | `com.bba.nightly` | Tue + Fri 07:30 | refresh every manual source, snapshot the DK pool, build the payload, **stop at the dry run**, write a dated report | no — never publishes |
-| `com.bba.marketreport` | the other 5 mornings, 07:30 | market movement report | no |
+| `com.bba.marketreport` | Sun, Mon, Wed, Thu, Sat 07:30 | market movement report, on the days nightly does not run | no |
 | `com.bba.newspoll` | every 3h | poll news feeds into the store | store only |
-| `com.bba.newspush` | every 3h | push news alerts | notifications |
-| `com.bba.autoqueue` | every 5 min, **when loaded** | keeps live DK draft queues stocked | **YES — writes to your DK entries** |
+| `com.bba.newspush` | every 3h | push the news bundle to `/news` on Render | `/news` only — no score |
+| `com.bba.standings` | Tue 07:30 | capture every best-ball entry's pod standing from DK, push to `/season` | `/season` only — no score |
+| `com.bba.autoqueue` | every 5 min, **when loaded** | keeps live DK draft queues stocked; its `--deadline` is 2026-09-07 21:00, so it is quiet until re-armed | **YES — writes to your DK entries** |
+| `com.dfs.sunday` | Sun 08:30 + 10:45 | refresh the props export, check it, commit and push it into `dfs/data/` | git push to the dfs repo |
+| `com.dfs.monday` | Mon + Tue 09:00 | import measured ownership from finished contests | local `ownership.db` only |
 
 `nightly` deliberately stops before publishing. On 2026-08-27 a refresh built a payload
 against a stale committed cache and passed every check the runbook says to read; the
@@ -183,7 +190,8 @@ schedule rather than taking it on trust.
 Do not loop it: it makes one live scrape, coverage grows toward kickoff, and props go
 stale at 24h. Run it once, late. Sunday morning beats Thursday.
 
-For daily, refresh the same export and copy it across:
+For daily, `com.dfs.sunday` refreshes the same export and commits the copy every Sunday
+(after inactives, before the noon lock). By hand, for any other slate:
 
 ```bash
 cd projections && .venv/bin/python tools/export_props.py
@@ -209,8 +217,8 @@ bad, not that the network is. In the draft app the same question is
 `GET /api/freshness`, surfaced at `/setup` and as a bar on `/recommend` that appears
 only when something is stale.
 
-Test suites: projections 112, sleeper 113, dfs 35. `best-ball-draft` has none — its
-guard is `tools/preflight.py`.
+Test suites, collected 2026-09-14: projections 147, sleeper 199, dfs 152.
+`best-ball-draft` has none — its guard is `tools/preflight.py`.
 
 **Healthy shape, measured 2026-09-08** (so you can recognise wrong):
 
@@ -239,6 +247,7 @@ touches the code; everything not listed is season-agnostic by design.
 | `projections/analysis/build.py:480` | `PBP_SEASON` — last completed season, always one behind |
 | `projections/pipeline/sources/fftoday.py:172` | `season` default |
 | `dfs/cli.py:205` | `--draftgroup` default — a DK slate id, changes **weekly**, not yearly |
+| `best-ball-draft/app/season.py` | `SEASONS` — add the year; a standings capture for an undeclared season is refused |
 | `best-ball-draft/drafts.db` | `player_rankings` is your board and starts empty each year |
 | `sleeper/rankings/2026-redraft-ppr.csv` | new file per season; nothing reads a blessed path, everything takes a PATH |
 

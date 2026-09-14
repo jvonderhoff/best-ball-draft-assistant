@@ -1,0 +1,1135 @@
+<title>Fantasy Football Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Type and neutrals follow best-ball-draft/docs/guide.html, the handbook that already
+   exists here. Added: one hue per project, used the same way on the map and on every
+   detail page, so a colour always means the same part. */
+:root{
+  --ground:#F5F8FB; --surface:#FFFFFF; --sunk:#EDF2F7;
+  --ink:#101720; --ink-2:#3B4757; --muted:#66748A;
+  --line:#DCE4EC; --line-2:#C2CEDB;
+  --accent:#15618F;
+  --pj:#15618F; --bb:#A3620C; --rd:#2A7A57; --dy:#74489C; --dfs:#AE4336;
+  --ok:#2A7A57; --warn:#A3620C; --bad:#B23B3B;
+  --display:"Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body:"IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --pj-t:color-mix(in srgb, var(--pj) 9%, var(--surface));
+  --bb-t:color-mix(in srgb, var(--bb) 10%, var(--surface));
+  --rd-t:color-mix(in srgb, var(--rd) 9%, var(--surface));
+  --dy-t:color-mix(in srgb, var(--dy) 9%, var(--surface));
+  --dfs-t:color-mix(in srgb, var(--dfs) 9%, var(--surface));
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0D131A; --surface:#141C25; --sunk:#1A2430;
+    --ink:#E5EBF1; --ink-2:#B3BFCC; --muted:#8392A3;
+    --line:#243140; --line-2:#344557;
+    --accent:#72B4DE;
+    --pj:#72B4DE; --bb:#DDA24C; --rd:#6BC39A; --dy:#B793D8; --dfs:#E3877B;
+    --ok:#6BC39A; --warn:#DDA24C; --bad:#E57F7F;
+    --pj-t:color-mix(in srgb, var(--pj) 13%, var(--surface));
+    --bb-t:color-mix(in srgb, var(--bb) 13%, var(--surface));
+    --rd-t:color-mix(in srgb, var(--rd) 13%, var(--surface));
+    --dy-t:color-mix(in srgb, var(--dy) 13%, var(--surface));
+    --dfs-t:color-mix(in srgb, var(--dfs) 13%, var(--surface));
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0D131A; --surface:#141C25; --sunk:#1A2430;
+  --ink:#E5EBF1; --ink-2:#B3BFCC; --muted:#8392A3;
+  --line:#243140; --line-2:#344557;
+  --accent:#72B4DE;
+  --pj:#72B4DE; --bb:#DDA24C; --rd:#6BC39A; --dy:#B793D8; --dfs:#E3877B;
+  --ok:#6BC39A; --warn:#DDA24C; --bad:#E57F7F;
+  --pj-t:color-mix(in srgb, var(--pj) 13%, var(--surface));
+  --bb-t:color-mix(in srgb, var(--bb) 13%, var(--surface));
+  --rd-t:color-mix(in srgb, var(--rd) 13%, var(--surface));
+  --dy-t:color-mix(in srgb, var(--dy) 13%, var(--surface));
+  --dfs-t:color-mix(in srgb, var(--dfs) 13%, var(--surface));
+}
+
+*{box-sizing:border-box}
+body{background:var(--ground); color:var(--ink); font:400 15.5px/1.6 var(--body); padding:0 20px; -webkit-font-smoothing:antialiased}
+.wrap{max-width:1140px; margin:0 auto; padding-block:28px 72px}
+a{color:var(--accent); text-underline-offset:3px}
+a:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:2px}
+h1,h2,h3{font-family:var(--display); text-wrap:balance; margin:0; color:var(--ink)}
+p{margin:0}
+code,kbd{font-family:var(--mono); font-size:.86em; background:var(--sunk); padding:.08em .35em; border-radius:3px; color:var(--ink)}
+
+/* top strip */
+.strip{display:flex; flex-wrap:wrap; gap:8px 20px; justify-content:space-between; align-items:baseline;
+  font:500 12px/1.4 var(--mono); color:var(--muted); border-bottom:1px solid var(--line); padding-bottom:12px}
+.strip b{font-weight:500; color:var(--ink-2)}
+
+/* map header */
+.head{display:grid; gap:14px; padding-block:34px 26px; max-width:760px}
+.head h1{font-size:clamp(34px, 5.4vw, 54px); font-weight:700; letter-spacing:-.015em; line-height:1.02}
+.lede{font-size:18px; line-height:1.55; color:var(--ink-2); max-width:64ch}
+
+/* diagrams */
+figure{margin:0}
+.scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+.dia{display:block; width:100%; height:auto}
+.dia.big{min-width:660px}
+.hint{display:none; font:500 11.5px var(--mono); color:var(--muted); margin:0 0 8px}
+@media (max-width: 720px){ .hint{display:block} }
+.dia.mini{min-width:720px}
+.dia .box{fill:var(--surface); stroke:var(--line-2); stroke-width:1.25}
+.dia .group{fill:var(--sunk); stroke:none}
+.dia .bracket{fill:none; stroke:var(--line-2); stroke-width:1.25; stroke-dasharray:4 4}
+.dia .chip{fill:var(--surface); stroke:var(--line); stroke-width:1}
+.dia .n-pj .box{fill:var(--pj-t); stroke:var(--pj)}
+.dia .n-bb .box{fill:var(--bb-t); stroke:var(--bb)}
+.dia .n-rd .box{fill:var(--rd-t); stroke:var(--rd)}
+.dia .n-dy .box{fill:var(--dy-t); stroke:var(--dy)}
+.dia .n-dfs .box{fill:var(--dfs-t); stroke:var(--dfs)}
+.dia .t{font:700 19px var(--display); fill:var(--ink)}
+.dia .t2{font:600 15px var(--display); fill:var(--ink)}
+.dia .t3{font:600 14px var(--display); fill:var(--ink)}
+.dia .s{font:500 11px var(--mono); fill:var(--muted)}
+.dia .q{font:500 13px var(--body); fill:var(--ink-2)}
+.dia .cn{font:600 13px var(--body); fill:var(--ink)}
+.dia .go{font:600 16px var(--body); fill:var(--muted)}
+.dia .edge{fill:none; stroke:var(--ink-2); stroke-width:1.5}
+.dia .dash{stroke-dasharray:5 4}
+.dia .seam{fill:none; stroke:var(--muted); stroke-width:1; stroke-dasharray:3 4}
+.dia .lab{font:500 11px var(--mono); fill:var(--ink-2)}
+.dia .head-fill{fill:var(--ink-2)}
+.dia a{cursor:pointer}
+.dia a .box{transition:stroke-width .12s ease}
+.dia a:hover .box{stroke-width:2.6}
+.dia a:hover .go{fill:var(--ink)}
+.dia a:focus{outline:none}
+.dia a:focus-visible .box{stroke-width:3.2}
+figcaption{font-size:13.5px; color:var(--muted); margin-top:12px; max-width:80ch; line-height:1.5}
+.frame{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:18px 18px 14px}
+
+/* map: idea row and index */
+.ideas{display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:18px 34px; padding-block:34px 8px; border-bottom:1px solid var(--line); padding-bottom:34px}
+.ideas h3{font-size:16px; font-weight:600; margin-bottom:6px}
+.ideas p{font-size:14.5px; color:var(--ink-2)}
+.sec-title{font:600 12px/1 var(--mono); letter-spacing:.09em; text-transform:uppercase; color:var(--muted); margin:36px 0 14px}
+.index{display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px}
+.card{display:grid; gap:4px; align-content:start; text-decoration:none; color:var(--ink); background:var(--surface);
+  border:1px solid var(--line); border-radius:8px; padding:14px 16px; transition:border-color .12s ease}
+.card:hover{border-color:var(--c, var(--line-2))}
+.card .nm{font:600 16px/1.25 var(--display); display:flex; align-items:center; gap:8px}
+.card .nm::before{content:""; width:9px; height:9px; border-radius:2px; background:var(--c, var(--muted)); flex:none}
+.card .fd{font:500 11.5px var(--mono); color:var(--muted)}
+.card .ds{font-size:13.5px; color:var(--ink-2); line-height:1.45}
+.card.plain .nm::before{display:none}
+
+/* detail pages */
+.back{display:inline-flex; gap:6px; align-items:center; font:500 13px var(--mono); text-decoration:none; color:var(--ink-2); padding-block:26px 0}
+.back:hover{color:var(--ink)}
+.dhead{display:grid; gap:12px; padding-block:18px 26px}
+.eyebrow{display:flex; gap:10px; align-items:center; font:500 12.5px var(--mono); color:var(--muted)}
+.eyebrow::before{content:""; width:11px; height:11px; border-radius:2px; background:var(--c)}
+.dhead h1{font-size:clamp(32px, 5vw, 48px); font-weight:700; letter-spacing:-.012em; line-height:1.04}
+.facts{display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:14px 26px; margin:4px 0 0; padding:16px 0 0; border-top:1px solid var(--line)}
+.facts div{display:grid; gap:2px; align-content:start}
+.facts dt{font:500 10.5px/1.3 var(--mono); letter-spacing:.09em; text-transform:uppercase; color:var(--muted)}
+.facts dd{margin:0; font-size:14px; line-height:1.45; color:var(--ink)}
+.note{border-left:3px solid var(--c, var(--accent)); background:var(--surface); padding:12px 16px; border-radius:0 6px 6px 0; font-size:14.5px; color:var(--ink-2); max-width:78ch}
+.note b{color:var(--ink)}
+
+.grid2{display:grid; grid-template-columns:minmax(0, 1.65fr) minmax(0, 1fr); gap:28px 48px; margin-top:34px}
+.col{display:grid; gap:32px; align-content:start}
+.blk{display:grid; gap:12px; align-content:start}
+.blk h2{font-size:20px; font-weight:600; letter-spacing:-.005em}
+.blk > p, .blk li{font-size:15px; color:var(--ink-2); max-width:68ch}
+.blk ul{margin:0; padding-left:18px; display:grid; gap:8px}
+.blk li b{color:var(--ink); font-weight:600}
+pre{margin:0; font:400 12.5px/1.65 var(--mono); background:var(--sunk); color:var(--ink); padding:12px 14px; border-radius:6px; overflow-x:auto; white-space:pre}
+pre .c{color:var(--muted)}
+
+.mods{display:grid; grid-template-columns:minmax(150px, max-content) 1fr; gap:8px 18px; margin:0}
+.mods dt{font:500 12.5px/1.5 var(--mono); color:var(--ink)}
+.mods dd{margin:0; font-size:14px; line-height:1.5; color:var(--ink-2)}
+.mods .grp{grid-column:1 / -1; font:500 10.5px var(--mono); letter-spacing:.09em; text-transform:uppercase; color:var(--muted); padding-top:8px; border-top:1px solid var(--line)}
+.mods .grp:first-child{border-top:0; padding-top:0}
+
+.tbl{overflow-x:auto}
+table{border-collapse:collapse; width:100%; font-size:14px}
+th{font:500 10.5px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); text-align:left; padding:0 12px 8px 0; border-bottom:1px solid var(--line-2); white-space:nowrap}
+td{padding:9px 12px 9px 0; border-bottom:1px solid var(--line); vertical-align:top; color:var(--ink-2); line-height:1.45}
+td:first-child{color:var(--ink)}
+td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
+.pill{display:inline-block; font:500 11px/1.5 var(--mono); padding:1px 7px; border-radius:99px; border:1px solid currentColor; white-space:nowrap}
+.pill.ok{color:var(--ok)} .pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)} .pill.mute{color:var(--muted)}
+.dot{display:inline-block; width:8px; height:8px; border-radius:2px; background:var(--c); margin-right:7px; vertical-align:1px}
+
+/* schedule week grid */
+.week th.d, .week td.d{text-align:center; padding-right:0; width:62px}
+.week td.d{font:500 12px var(--mono); color:var(--ink); font-variant-numeric:tabular-nums}
+.week td.span{text-align:center; font:500 12px var(--mono); color:var(--ink-2); background:var(--sunk); border-radius:4px}
+.week td.off{color:var(--line-2)}
+.week .job{font:500 12.5px var(--mono)}
+.week .what{font-size:13.5px; color:var(--ink-2)}
+
+@media (max-width: 860px){
+  .grid2{grid-template-columns:1fr}
+  .mods{grid-template-columns:1fr; gap:2px 0}
+  .mods dd{margin-bottom:8px}
+}
+@media (prefers-reduced-motion: reduce){ *{transition:none !important} }
+</style>
+
+<div class="wrap">
+  <div class="strip">
+    <span><b>fantasy_football/docs/architecture.html</b></span>
+    <span>checked against the code on 14 Sep 2026</span>
+  </div>
+
+  <!-- ─────────────────────────────── THE MAP ─────────────────────────────── -->
+  <main data-view="map">
+    <header class="head">
+      <h1>Fantasy Football Map</h1>
+      <p class="lede">Four projects, one set of players. Outside data comes in through one place, gets turned into numbers there, and flows out to the app for each kind of game. Click any box to see everything that part does.</p>
+    </header>
+
+    <figure class="frame">
+      <p class="hint">Scroll the diagram sideways → or jump straight to a part below.</p>
+      <div class="scroll">
+      <svg class="dia big" viewBox="0 0 1090 552" role="img" aria-label="Outside data flows into Projections, which pushes and exports results to Best Ball, Redraft, Dynasty and DFS. Redraft and Dynasty are one app, sleeper. Best Ball's player pool and rankings are read back by Projections.">
+        <defs>
+          <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path class="head-fill" d="M0,0 L10,5 L0,10 z" fill="#3B4757"/>
+          </marker>
+        </defs>
+
+        <!-- outside data -->
+        <rect class="group" x="10" y="16" width="220" height="524" rx="8" fill="#EDF2F7"/>
+        <text class="t2" x="26" y="44" fill="currentColor">Outside data</text>
+        <text class="s" x="26" y="62" fill="currentColor">fetched only in projections/</text>
+        <g>
+          <rect class="chip" x="26" y="80" width="188" height="44" rx="5" fill="#fff"/>
+          <text class="cn" x="38" y="99" fill="currentColor">Sleeper</text><text class="s" x="38" y="115" fill="currentColor">projections · player list</text>
+          <rect class="chip" x="26" y="135" width="188" height="44" rx="5" fill="#fff"/>
+          <text class="cn" x="38" y="154" fill="currentColor">ESPN</text><text class="s" x="38" y="170" fill="currentColor">season stat lines</text>
+          <rect class="chip" x="26" y="190" width="188" height="44" rx="5" fill="#fff"/>
+          <text class="cn" x="38" y="209" fill="currentColor">FFToday</text><text class="s" x="38" y="225" fill="currentColor">season projections</text>
+          <rect class="chip" x="26" y="245" width="188" height="44" rx="5" fill="#fff"/>
+          <text class="cn" x="38" y="264" fill="currentColor">DK sportsbook</text><text class="s" x="38" y="280" fill="currentColor">season + per-game props</text>
+          <rect class="chip" x="26" y="300" width="188" height="44" rx="5" fill="#fff"/>
+          <text class="cn" x="38" y="319" fill="currentColor">nflverse</text><text class="s" x="38" y="335" fill="currentColor">play-by-play · lines</text>
+          <rect class="chip" x="26" y="355" width="188" height="44" rx="5" fill="#fff"/>
+          <text class="cn" x="38" y="374" fill="currentColor">KTC · FantasyCalc</text><text class="s" x="38" y="390" fill="currentColor">dynasty trade values</text>
+          <rect class="chip" x="26" y="410" width="188" height="44" rx="5" fill="#fff"/>
+          <text class="cn" x="38" y="429" fill="currentColor">LateRound</text><text class="s" x="38" y="445" fill="currentColor">paid weekly ranks</text>
+          <rect class="chip" x="26" y="465" width="188" height="44" rx="5" fill="#fff"/>
+          <text class="cn" x="38" y="484" fill="currentColor">FF Calculator</text><text class="s" x="38" y="500" fill="currentColor">consensus ADP</text>
+        </g>
+        <path class="edge" d="M230 280 H288" marker-end="url(#am)"/>
+
+        <!-- projections -->
+        <a href="#projections" class="n-pj" aria-label="Open Projections and Analysis">
+          <rect class="box" x="290" y="160" width="250" height="240" rx="8" fill="#fff" stroke="#15618F"/>
+          <text class="t" x="310" y="194" fill="currentColor">Projections</text>
+          <text class="t" x="310" y="218" fill="currentColor">&amp; Analysis</text>
+          <text class="go" x="524" y="194" text-anchor="end" fill="currentColor">→</text>
+          <text class="s" x="310" y="240" fill="currentColor">projections/ · :8100</text>
+          <text class="q" x="310" y="276" fill="currentColor">fetches every outside source</text>
+          <text class="q" x="310" y="298" fill="currentColor">owns player ids (store.db)</text>
+          <text class="q" x="310" y="320" fill="currentColor">derives the numbers</text>
+          <text class="q" x="310" y="342" fill="currentColor">pushes and exports results</text>
+          <text class="s" x="310" y="378" fill="currentColor">Analysis page · news · doctor</text>
+        </a>
+
+        <!-- read-back from best ball -->
+        <path class="edge dash" d="M798 44 H415 V158" marker-end="url(#am)"/>
+        <text class="lab" x="428" y="36" fill="currentColor">reads the DK pool + your board</text>
+
+        <!-- bus out -->
+        <path class="edge" d="M540 280 H650 M650 74 V480"/>
+        <path class="edge" d="M650 74 H798" marker-end="url(#am)"/>
+        <path class="edge" d="M650 232 H798" marker-end="url(#am)"/>
+        <path class="edge" d="M650 344 H798" marker-end="url(#am)"/>
+        <path class="edge" d="M650 480 H798" marker-end="url(#am)"/>
+        <text class="lab" x="660" y="67" fill="currentColor">payload · HTTP push</text>
+        <text class="lab" x="660" y="225" fill="currentColor">stat lines · props</text>
+        <text class="lab" x="660" y="337" fill="currentColor">dynasty values</text>
+        <text class="lab" x="660" y="473" fill="currentColor">weekly props</text>
+
+        <!-- best ball -->
+        <a href="#best-ball" class="n-bb" aria-label="Open Best Ball">
+          <rect class="box" x="800" y="24" width="270" height="100" rx="8" fill="#fff" stroke="#A3620C"/>
+          <text class="t" x="816" y="54" fill="currentColor">Best Ball</text>
+          <text class="go" x="1056" y="54" text-anchor="end" fill="currentColor">→</text>
+          <text class="s" x="816" y="74" fill="currentColor">best-ball-draft/ · Render</text>
+          <text class="q" x="816" y="95" fill="currentColor">Who do I draft next?</text>
+          <text class="s" x="816" y="113" fill="currentColor">+ its own DK pool, ADP, drafts</text>
+        </a>
+
+        <!-- sleeper bracket -->
+        <rect class="bracket" x="786" y="150" width="296" height="254" rx="10" fill="none"/>
+        <text class="s" x="800" y="170" fill="currentColor">sleeper/ · one app · :8200</text>
+
+        <a href="#redraft" class="n-rd" aria-label="Open Redraft">
+          <rect class="box" x="800" y="182" width="270" height="100" rx="8" fill="#fff" stroke="#2A7A57"/>
+          <text class="t" x="816" y="212" fill="currentColor">Redraft</text>
+          <text class="go" x="1056" y="212" text-anchor="end" fill="currentColor">→</text>
+          <text class="s" x="816" y="232" fill="currentColor">NNCC · Justice League</text>
+          <text class="q" x="816" y="253" fill="currentColor">Who do I start, add, draft?</text>
+          <text class="s" x="816" y="271" fill="currentColor">+ Sleeper leagues &amp; rosters</text>
+        </a>
+        <a href="#dynasty" class="n-dy" aria-label="Open Dynasty">
+          <rect class="box" x="800" y="294" width="270" height="100" rx="8" fill="#fff" stroke="#74489C"/>
+          <text class="t" x="816" y="324" fill="currentColor">Dynasty</text>
+          <text class="go" x="1056" y="324" text-anchor="end" fill="currentColor">→</text>
+          <text class="s" x="816" y="344" fill="currentColor">Haters Club · Hastings</text>
+          <text class="q" x="816" y="365" fill="currentColor">What is my roster worth?</text>
+          <text class="s" x="816" y="383" fill="currentColor">+ Sleeper leagues &amp; rosters</text>
+        </a>
+
+        <!-- dfs -->
+        <a href="#dfs" class="n-dfs" aria-label="Open DFS">
+          <rect class="box" x="800" y="430" width="270" height="100" rx="8" fill="#fff" stroke="#AE4336"/>
+          <text class="t" x="816" y="460" fill="currentColor">DFS</text>
+          <text class="go" x="1056" y="460" text-anchor="end" fill="currentColor">→</text>
+          <text class="s" x="816" y="480" fill="currentColor">dfs/ · :8300</text>
+          <text class="q" x="816" y="501" fill="currentColor">Which nine fit the salary cap?</text>
+          <text class="s" x="816" y="519" fill="currentColor">+ DK salaries &amp; contests</text>
+        </a>
+      </svg>
+      </div>
+      <figcaption>Solid arrows carry data one way, always as a file or an HTTP call. No project imports another's code. The dashed arrow is the one thing read back: Projections builds against the player pool and rankings board that Best Ball owns. The small “+” line in each app is the data it fetches from its own platform.</figcaption>
+    </figure>
+
+    <section class="ideas" aria-label="What holds it together">
+      <div>
+        <h3>One direction</h3>
+        <p>Every outside source is fetched in <code>projections/</code> and nowhere else. The apps read what it hands them. Nothing flows back except the DK pool and your board.</p>
+      </div>
+      <div>
+        <h3>Ids, not names</h3>
+        <p>Each app keys on its own platform's id: <code>dk_player_id</code> for Best Ball, <code>sleeper_id</code> for Sleeper. They join through one table, <code>players</code> in <code>store.db</code>. If a player can't be matched, he gets reported, not guessed at.</p>
+      </div>
+      <div>
+        <h3>Split by product, not league type</h3>
+        <p>Redraft and Dynasty share an app, because you set a lineup the same way in both; only how a player is valued changes. Best Ball and DFS are both DraftKings but are different products, so they're separate.</p>
+      </div>
+    </section>
+
+    <p class="sec-title">Open a part</p>
+    <nav class="index" aria-label="Parts">
+      <a class="card" href="#projections" style="--c:var(--pj)"><span class="nm">Projections &amp; Analysis</span><span class="fd">projections/</span><span class="ds">Every source, the player-id table, the numbers, the Analysis page.</span></a>
+      <a class="card" href="#best-ball" style="--c:var(--bb)"><span class="nm">Best Ball</span><span class="fd">best-ball-draft/</span><span class="ds">DraftKings best ball drafts, the V1/V2 recommender, standings.</span></a>
+      <a class="card" href="#redraft" style="--c:var(--rd)"><span class="nm">Redraft</span><span class="fd">sleeper/ · horizon ros</span><span class="ds">Draft board, weekly start/sit, waivers for two Sleeper leagues.</span></a>
+      <a class="card" href="#dynasty" style="--c:var(--dy)"><span class="nm">Dynasty</span><span class="fd">sleeper/ · horizon dynasty</span><span class="ds">Roster prices from the trade market, plus the same weekly tools.</span></a>
+      <a class="card" href="#dfs" style="--c:var(--dfs)"><span class="nm">DFS</span><span class="fd">dfs/</span><span class="ds">DraftKings daily: slates, salaries, salary-cap lineups.</span></a>
+    </nav>
+
+    <p class="sec-title">Across all of them</p>
+    <nav class="index" aria-label="Shared">
+      <a class="card plain" href="#seams"><span class="nm">What crosses between them</span><span class="ds">Every file and HTTP call that moves data from one project to another, what it's keyed on, and when it goes stale.</span></a>
+      <a class="card plain" href="#schedule"><span class="nm">What runs by itself</span><span class="ds">The eight scheduled jobs on the Mac, laid out across the week.</span></a>
+      <a class="card plain" href="#health"><span class="nm">Is anything broken?</span><span class="ds">One health command per project, the test suites, and what changes next season.</span></a>
+    </nav>
+  </main>
+
+  <!-- ─────────────────────────────── PROJECTIONS ─────────────────────────────── -->
+  <section data-view="projections" style="--c:var(--pj)" hidden>
+    <a class="back" href="#">← The map</a>
+    <header class="dhead">
+      <span class="eyebrow">projections/ · its own git repo</span>
+      <h1>Projections &amp; Analysis</h1>
+      <p class="lede">Where every number starts. It's the only project that fetches outside data and the only one that decides which player is which. Everything else reads what it produces.</p>
+      <dl class="facts">
+        <div><dt>Runs</dt><dd>Locally only. Analysis page at <code>localhost:8100</code></dd></div>
+        <div><dt>Stores</dt><dd><code>data/store.db</code> (ids, snapshots) · <code>data/analysis.db</code></dd></div>
+        <div><dt>Keyed on</dt><dd><code>dk_player_id</code>, crosswalked to every other id</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 147 tests</dd></div>
+      </dl>
+    </header>
+
+    <figure class="frame">
+      <div class="scroll">
+      <svg class="dia mini" viewBox="-4 -4 1008 258" role="img" aria-label="Sources feed two paths, pipeline and analysis. Pipeline gives player ids to analysis. Results leave as JSON exports for Sleeper and DFS, a published payload for Best Ball, and the Analysis page for you.">
+        <defs><marker id="apj" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-fill" d="M0,0 L10,5 L0,10 z" fill="#3B4757"/></marker></defs>
+        <rect class="group" x="0" y="0" width="190" height="250" rx="8" fill="#EDF2F7"/>
+        <text class="t2" x="14" y="26" fill="currentColor">Sources</text>
+        <text class="s" x="14" y="50" fill="currentColor">Sleeper</text><text class="s" x="14" y="72" fill="currentColor">ESPN</text><text class="s" x="14" y="94" fill="currentColor">FFToday</text><text class="s" x="14" y="116" fill="currentColor">DK props</text><text class="s" x="14" y="138" fill="currentColor">DK pool (via Best Ball)</text><text class="s" x="14" y="160" fill="currentColor">nflverse</text><text class="s" x="14" y="182" fill="currentColor">KTC · FantasyCalc</text><text class="s" x="14" y="204" fill="currentColor">LateRound</text><text class="s" x="14" y="226" fill="currentColor">FF Calculator ADP</text>
+        <path class="edge" d="M190 60 H238" marker-end="url(#apj)"/>
+        <path class="edge" d="M190 190 H238" marker-end="url(#apj)"/>
+        <g class="n-pj"><rect class="box" x="240" y="10" width="260" height="100" rx="6" fill="#fff"/>
+          <text class="t2" x="254" y="36" fill="currentColor">pipeline/</text>
+          <text class="s" x="254" y="56" fill="currentColor">snapshots, never overwritten</text>
+          <text class="s" x="254" y="74" fill="currentColor">crosswalk: one id per player</text>
+          <text class="s" x="254" y="92" fill="currentColor">→ store.db</text></g>
+        <g><rect class="box" x="240" y="140" width="260" height="100" rx="6" fill="#fff"/>
+          <text class="t2" x="254" y="166" fill="currentColor">analysis/</text>
+          <text class="s" x="254" y="186" fill="currentColor">current values → analysis.db</text>
+          <text class="s" x="254" y="204" fill="currentColor">builds the six model fields</text>
+          <text class="s" x="254" y="222" fill="currentColor">moved from the draft app</text></g>
+        <path class="edge" d="M370 110 V138" marker-end="url(#apj)"/>
+        <text class="lab" x="380" y="129" fill="currentColor">ids · aDOT</text>
+        <path class="edge" d="M500 60 L558 34" marker-end="url(#apj)"/>
+        <path class="edge" d="M500 176 L558 50" marker-end="url(#apj)"/>
+        <path class="edge" d="M500 190 L558 125" marker-end="url(#apj)"/>
+        <path class="edge" d="M500 200 L558 218" marker-end="url(#apj)"/>
+        <g><rect class="box" x="560" y="4" width="210" height="56" rx="6" fill="#fff"/><text class="t2" x="574" y="28" fill="currentColor">Exports (JSON)</text><text class="s" x="574" y="47" fill="currentColor">stat lines · props · values</text></g>
+        <g><rect class="box" x="560" y="97" width="210" height="56" rx="6" fill="#fff"/><text class="t2" x="574" y="121" fill="currentColor">Publish</text><text class="s" x="574" y="140" fill="currentColor">POST the six fields</text></g>
+        <g><rect class="box" x="560" y="190" width="210" height="56" rx="6" fill="#fff"/><text class="t2" x="574" y="214" fill="currentColor">Analysis page</text><text class="s" x="574" y="233" fill="currentColor">localhost:8100 · news</text></g>
+        <path class="edge" d="M770 32 H818" marker-end="url(#apj)"/>
+        <path class="edge" d="M770 125 H818" marker-end="url(#apj)"/>
+        <path class="edge" d="M770 218 H818" marker-end="url(#apj)"/>
+        <g><rect class="box" x="820" y="4" width="180" height="56" rx="6" fill="#fff"/><text class="t2" x="834" y="28" fill="currentColor">Sleeper · DFS</text><text class="s" x="834" y="47" fill="currentColor">read the files</text></g>
+        <g class="n-bb"><rect class="box" x="820" y="97" width="180" height="56" rx="6" fill="#fff"/><text class="t2" x="834" y="121" fill="currentColor">Best Ball</text><text class="s" x="834" y="140" fill="currentColor">on Render</text></g>
+        <g><rect class="box" x="820" y="190" width="180" height="56" rx="6" fill="#fff"/><text class="t2" x="834" y="214" fill="currentColor">You</text><text class="s" x="834" y="233" fill="currentColor">at the Mac</text></g>
+      </svg>
+      </div>
+      <figcaption>Two paths live side by side on purpose. <code>pipeline/</code> is the tested rebuild: immutable snapshots, then the player-id crosswalk, then derived numbers. <code>analysis/</code> is the older fetch-and-build code that still produces the published payload. Add sources to the pipeline; add columns to analysis.</figcaption>
+    </figure>
+
+    <div class="grid2">
+      <div class="col">
+        <div class="blk">
+          <h2>Where the data comes from</h2>
+          <div class="tbl"><table>
+            <thead><tr><th>Source</th><th>What it gives</th><th>Used by</th></tr></thead>
+            <tbody>
+              <tr><td>Sleeper</td><td>Season projections, the player list, trending adds</td><td>Best Ball, Redraft</td></tr>
+              <tr><td>ESPN</td><td>Season stat lines, in Sleeper's own column names</td><td>Best Ball, Redraft, Dynasty</td></tr>
+              <tr><td>FFToday</td><td>Season projections with components (since 17 Aug)</td><td>Best Ball</td></tr>
+              <tr><td>DK sportsbook, season</td><td>A correction on top of the projections, per stat</td><td>Best Ball</td></tr>
+              <tr><td>DK sportsbook, per game</td><td>This week's yards, catches, touchdowns</td><td>Start/sit, waivers, DFS</td></tr>
+              <tr><td>DK player pool</td><td>The spine of the crosswalk, read from the draft app</td><td>Everything</td></tr>
+              <tr><td>nflverse</td><td>Play-by-play: aDOT, WOPR, Next Gen Stats; schedule and lines</td><td>Analysis page, defence model</td></tr>
+              <tr><td>KTC · FantasyCalc</td><td>Dynasty trade values</td><td>Dynasty</td></tr>
+              <tr><td>LateRound <span class="pill mute">paid</span></td><td>Weekly ranks, tiers, the only kicker numbers; captured in your browser</td><td>Start/sit</td></tr>
+              <tr><td>FF Calculator</td><td>Consensus ADP</td><td>Redraft board</td></tr>
+              <tr><td>FantasyPros season, Yahoo</td><td><span class="pill bad">dead</span> Paywalled, and ranks-only</td><td>—</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="blk">
+          <h2>What it hands out</h2>
+          <div class="tbl"><table>
+            <thead><tr><th>Output</th><th>For</th><th>Made by</th><th class="num">Stale after</th></tr></thead>
+            <tbody>
+              <tr><td>Six-field payload</td><td>Best Ball's V2 recommender</td><td><code>cli.py analysis-publish --no-dry-run</code></td><td class="num">48 h</td></tr>
+              <tr><td><code>stat_lines.json</code></td><td>Redraft &amp; Dynasty boards</td><td><code>tools/export_stat_lines.py</code></td><td class="num">7 days</td></tr>
+              <tr><td><code>weekly_props.json</code></td><td>Start/sit, waivers, DFS</td><td><code>tools/export_props.py</code></td><td class="num">24 h</td></tr>
+              <tr><td><code>dynasty_values.json</code></td><td>Dynasty</td><td><code>tools/export_dynasty_values.py</code></td><td class="num">14 days</td></tr>
+              <tr><td><code>lateround.json</code></td><td>Start/sit</td><td><code>tools/export_lateround.py</code></td><td class="num">weekly</td></tr>
+              <tr><td>News bundle</td><td>Best Ball's <code>/news</code> page</td><td><code>tools/news-push.sh</code></td><td class="num">every 3 h</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="blk">
+          <h2>Inside the folder</h2>
+          <dl class="mods">
+            <dt class="grp">pipeline/ — the tested path</dt>
+            <dt>sources/*.py</dt><dd>One file per source: sleeper, nflverse, fftoday, dkpool, ktc, fantasycalc, schedules. None knows the others exist.</dd>
+            <dt>core/ids.py</dt><dd>The crosswalk: one row per player, every platform's id. The heart of the whole system.</dd>
+            <dt>core/names.py</dt><dd>Name matching, used only as a fallback. A byte-identical copy lives in <code>best-ball-draft/app/data/</code>.</dd>
+            <dt>core/metrics.py · schema.py</dt><dd>The six model fields and the payload validation.</dd>
+            <dt>store.py · doctor.py</dt><dd>Snapshot store that never overwrites; the health report.</dd>
+            <dt>td.py · devig.py · dst.py</dt><dd>Touchdown probability to expected count, removing the book's hold, team defence projections.</dd>
+            <dt>weekly.py</dt><dd><span class="pill warn">do not use</span> A home-made weekly model that lost to “every week is his season average”. Kept as the record.</dd>
+            <dt class="grp">analysis/ — the path that publishes today</dt>
+            <dt>build.py · payload.py</dt><dd>Joins every source and builds the numbers the Analysis page and V2 read.</dd>
+            <dt>publish.py · verify.py</dt><dd>Push the payload to the draft app; diff it against the draft app's frozen copy.</dd>
+            <dt>spine.py</dt><dd>Reads the DK pool and your board from the draft app over HTTP.</dd>
+            <dt>news.py · trending.py · advisories.py</dt><dd>News digest, Sleeper trending adds, injury signals the model cannot see.</dd>
+            <dt>sources/*.py</dt><dd>ESPN, DK props (season and weekly), Underdog, ADP.</dd>
+            <dt class="grp">tools/ · research/ · web/</dt>
+            <dt>export_*.py</dt><dd>The four JSON files other projects read.</dd>
+            <dt>nightly.sh · refresh-sources.sh</dt><dd>Refresh everything, build, stop at the dry run (<code>--publish</code> to send).</dd>
+            <dt>market-watch.py</dt><dd>What the news said against what ADP actually did.</dd>
+            <dt>backtest_*.py</dt><dd>Re-derive every fitted constant, held out on a season it was not fitted on.</dd>
+            <dt>research/</dt><dd>One-off questions (Apex RB score, prop basis). Nothing reads them.</dd>
+            <dt>web/app.py</dt><dd>The Analysis and news pages. Read-only apart from its refresh and publish buttons.</dd>
+          </dl>
+        </div>
+
+        <div class="blk">
+          <h2>Rules worth remembering</h2>
+          <ul>
+            <li><b>Weekly numbers come from the market, and only there.</b> The home-made weekly model lost once its test stopped peeking at the season it was predicting.</li>
+            <li><b>Score <code>exp_td</code>, not <code>anytime_td</code>.</b> One is a count, the other a probability of scoring at all.</li>
+            <li><b><code>manual_overrides.json</code> is a to-do list.</b> Every entry is a place automatic matching failed.</li>
+            <li><b>Publishing is always your call.</b> The nightly job stops at the dry run on purpose.</li>
+            <li><b>Age comes from <code>generated_at</code>, never the file's timestamp.</b> A copy is stamped “now”.</li>
+          </ul>
+        </div>
+      </div>
+
+      <aside class="col">
+        <div class="blk">
+          <h2>Run it</h2>
+<pre>cd projections
+<span class="c"># Analysis page; needs the draft app up</span>
+.venv/bin/python cli.py analysis-serve
+
+<span class="c"># refresh sources, build, dry run</span>
+tools/refresh-sources.sh
+<span class="c"># ...and publish to Best Ball</span>
+tools/refresh-sources.sh --publish
+
+<span class="c"># health: never fetches</span>
+.venv/bin/python cli.py doctor</pre>
+          <p>Publishing needs <code>BBA_API_KEY</code>, which exists only in an interactive shell (<code>zsh -ic</code>).</p>
+        </div>
+        <div class="blk">
+          <h2>Runs by itself</h2>
+          <ul>
+            <li><b>Nightly</b>: Tue &amp; Fri 07:30. Refreshes, builds, stops at the dry run, writes a report.</li>
+            <li><b>Market report</b>: the other five mornings.</li>
+            <li><b>News poll &amp; push</b>: every 3 hours.</li>
+          </ul>
+          <p><a href="#schedule">Full schedule →</a></p>
+        </div>
+        <div class="blk">
+          <h2>Read more</h2>
+          <ul>
+            <li><code>projections/README.md</code>: how to run it</li>
+            <li><code>projections/ARCHITECTURE.md</code>: why it's shaped this way</li>
+            <li><code>best-ball-draft/docs/STATUS.md</code>: projections and best ball together</li>
+            <li>Slash commands <code>/update-projections</code>, <code>/nightly-review</code></li>
+          </ul>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────── BEST BALL ─────────────────────────────── -->
+  <section data-view="best-ball" style="--c:var(--bb)" hidden>
+    <a class="back" href="#">← The map</a>
+    <header class="dhead">
+      <span class="eyebrow">best-ball-draft/ · tracked by the parent repo</span>
+      <h1>Best Ball</h1>
+      <p class="lede">DraftKings best ball: draft 20 players and never touch them again. Your top scorers count each week automatically, so a player's ceiling matters and variance helps you. The app answers one question: who do I take next?</p>
+      <dl class="facts">
+        <div><dt>Runs</dt><dd>Public on Render · locally <code>./run.sh</code> at <code>:8000</code></dd></div>
+        <div><dt>Stores</dt><dd>Postgres (survives) · local <code>drafts.db</code></dd></div>
+        <div><dt>Keyed on</dt><dd><code>dk_player_id</code></dd></div>
+        <div><dt>Health</dt><dd><code>tools/preflight.py</code> · no test suite, by design</dd></div>
+      </dl>
+    </header>
+
+    <figure class="frame">
+      <div class="scroll">
+      <svg class="dia mini" viewBox="-4 -4 1008 238" role="img" aria-label="The DK pool, your rankings board and the pushed payload all land in the draft app on Render, which feeds the V1 and V2 recommenders running in your browser, shown on the recommend page.">
+        <defs><marker id="abb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-fill" d="M0,0 L10,5 L0,10 z" fill="#3B4757"/></marker></defs>
+        <g><rect class="box" x="0" y="8" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="14" y="32" fill="currentColor">DK pool &amp; ADP</text><text class="s" x="14" y="51" fill="currentColor">refreshes itself every 6h</text></g>
+        <g><rect class="box" x="0" y="87" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="14" y="111" fill="currentColor">Your rankings board</text><text class="s" x="14" y="130" fill="currentColor">edited at /rankings</text></g>
+        <g class="n-pj"><rect class="box" x="0" y="166" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="14" y="190" fill="currentColor">Six-field payload</text><text class="s" x="14" y="209" fill="currentColor">POST /api/projections/upload</text></g>
+        <path class="edge" d="M220 36 L268 84" marker-end="url(#abb)"/>
+        <path class="edge" d="M220 115 H268" marker-end="url(#abb)"/>
+        <path class="edge" d="M220 194 L268 148" marker-end="url(#abb)"/>
+        <g class="n-bb"><rect class="box" x="270" y="60" width="220" height="110" rx="6" fill="#fff"/>
+          <text class="t2" x="284" y="88" fill="currentColor">Draft app on Render</text>
+          <text class="s" x="284" y="110" fill="currentColor">Postgres keeps everything</text>
+          <text class="s" x="284" y="128" fill="currentColor">disk is wiped on deploy</text>
+          <text class="s" x="284" y="146" fill="currentColor">and on idle spin-down</text></g>
+        <path class="edge" d="M490 115 H538" marker-end="url(#abb)"/>
+        <g><rect class="box" x="540" y="87" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="554" y="111" fill="currentColor">V1 + V2 recommender</text><text class="s" x="554" y="130" fill="currentColor">runs in your browser</text></g>
+        <path class="edge" d="M760 115 H798" marker-end="url(#abb)"/>
+        <g><rect class="box" x="800" y="87" width="200" height="56" rx="6" fill="#fff"/><text class="t2" x="814" y="111" fill="currentColor">/recommend</text><text class="s" x="814" y="130" fill="currentColor">V1 first, V2 beside it</text></g>
+      </svg>
+      </div>
+      <figcaption>Only the DK pool refreshes by itself. The payload changes when someone publishes it from Projections. On <code>/api/projections-v2</code>, <code>source: pushed</code> means it's working; <code>local</code> means publishing has stopped and V2 has quietly fallen back to the frozen copy.</figcaption>
+    </figure>
+
+    <div class="grid2">
+      <div class="col">
+        <div class="blk">
+          <h2>Screens</h2>
+          <div class="tbl"><table>
+            <thead><tr><th>Page</th><th>What it's for</th></tr></thead>
+            <tbody>
+              <tr><td><code>/recommend</code></td><td>Live pick advice during a draft. A stale-data bar appears only when something is stale.</td></tr>
+              <tr><td><code>/rankings</code></td><td>Your board. The ★ in the header is per browser and <b>off by default</b>.</td></tr>
+              <tr><td><code>/history</code></td><td>Past drafts and player exposure.</td></tr>
+              <tr><td><code>/season</code></td><td>Every entry's pod standing, on one page that works on a phone. All scores are DK's.</td></tr>
+              <tr><td><code>/news</code></td><td>News pushed from the Mac. “Price moved” is the view worth reading.</td></tr>
+              <tr><td><code>/setup</code></td><td>DK sign-in, and the data freshness panel.</td></tr>
+              <tr><td><code>/sandbox</code></td><td>Replay and test drafts.</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="blk">
+          <h2>The recommender</h2>
+          <ul>
+            <li><b>V1</b> (<code>static/recommender.js</code>): built on ADP and roster fit. It's the primary column.</li>
+            <li><b>V2</b> (<code>static/recommender-v2.js</code>): built on points, using six fields from Projections: <code>ppg sd sources avail disagreement rec_share</code>. Its key number is <code>ceiling = ppg + 1.28·sd</code>.</li>
+            <li><b>Will he last to my next pick?</b> That estimate was calibrated on 33 real DraftKings boards, not the simulator.</li>
+            <li><b>V2 wins at every contest size measured</b>: +43% at an 18-team final, +49% at 45.</li>
+          </ul>
+        </div>
+
+        <div class="blk">
+          <h2>Inside the folder</h2>
+          <dl class="mods">
+            <dt class="grp">app/ — the server</dt>
+            <dt>app.py</dt><dd>Every page and API route.</dd>
+            <dt>*_store.py</dt><dd>Postgres copies of rankings, drafts, projections, news, standings and tokens: whatever must survive a deploy.</dd>
+            <dt>projections.py</dt><dd>Serves V2's inputs: the pushed payload, or the local fallback.</dd>
+            <dt>analysis.py</dt><dd><span class="pill warn">frozen</span> The old analysis code, kept as a fallback. Edit Projections instead.</dd>
+            <dt>season.py · news.py · dk_import.py</dt><dd>Standings, the news page, pulling finished drafts from DK.</dd>
+            <dt>data/names.py</dt><dd>Name matching, the twin of Projections' copy. The two must stay identical.</dd>
+            <dt>data/player_cache.json</dt><dd>Committed on purpose: it seeds a cold database after a deploy.</dd>
+            <dt class="grp">tools/ — run from the Mac</dt>
+            <dt>preflight.py</dt><dd>Is production serving real, current data? Every check is a failure that really happened.</dd>
+            <dt>refresh-seed.py</dt><dd>Refresh and validate the committed pool seed.</dd>
+            <dt>compare-models.js</dt><dd>The harness: V1 vs V2 through simulated drafts and seasons.</dd>
+            <dt>check-model-change.js</dt><dd>Who moved, in both models, on real boards. It also runs automatically when a scoring file is edited.</dd>
+            <dt>calibrate-survival.py · import-new-drafts.sh</dt><dd>Re-score “will he last?” as more real drafts finish.</dd>
+            <dt>auto-queue.py</dt><dd>Keeps live DK draft queues stocked with V1's picks.</dd>
+            <dt>capture-standings.py</dt><dd>Captures weekly standings from DK and pushes them to <code>/season</code>.</dd>
+            <dt>entry-spend.py · sync-ranks.py</dt><dd>What your entries cost, and pulling prod's board into local.</dd>
+          </dl>
+        </div>
+
+        <div class="blk">
+          <h2>Rules worth remembering</h2>
+          <ul>
+            <li><b>Pushing to <code>master</code> deploys production.</b> Commit freely; ask before pushing.</li>
+            <li><b>A 200 doesn't mean your deploy landed.</b> Poll for something only the new build serves.</li>
+            <li><b>Restart the server after editing a template</b>; it runs without reload.</li>
+            <li><b>Harness dollar figures are meaningless.</b> Read only V1 vs V2 differences; noise is about ±$2.</li>
+            <li><b>Check <code>rankings_hydrated</code></b> on <code>/api/stores/status</code> after a deploy. <code>false</code> means the live board is the seed file.</li>
+          </ul>
+        </div>
+      </div>
+
+      <aside class="col">
+        <div class="blk">
+          <h2>Run it</h2>
+<pre>cd best-ball-draft
+./run.sh                    <span class="c"># :8000</span>
+
+<span class="c"># before a draft, and after a deploy</span>
+python3 tools/preflight.py
+
+<span class="c"># before shipping a model change</span>
+node tools/check-model-change.js
+
+<span class="c"># refresh what V2 scores with</span>
+../projections/tools/refresh-sources.sh --publish</pre>
+        </div>
+        <div class="blk">
+          <h2>Runs by itself</h2>
+          <ul>
+            <li><b>Standings capture</b>: Tuesdays 07:30, pushed to <code>/season</code>.</li>
+            <li><b>Auto-queue</b>: every 5 min while loaded. Its deadline (7 Sep, 21:00) has passed, so it does nothing until you re-arm it.</li>
+            <li><b>Model-change hook</b>: on every edit to a scoring file.</li>
+          </ul>
+          <p><a href="#schedule">Full schedule →</a></p>
+        </div>
+        <div class="blk">
+          <h2>Read more</h2>
+          <ul>
+            <li><code>CLAUDE.md</code>: operations and traps</li>
+            <li><code>docs/STATUS.md</code>: what's live and what's open</li>
+            <li><code>docs/V2_DESIGN.md</code>: the model, and the dead ends in §4</li>
+            <li><code>docs/PROJECTIONS_SPLIT.md</code>: the contract with Projections</li>
+            <li><code>docs/guide.html</code>: the handbook</li>
+          </ul>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────── REDRAFT ─────────────────────────────── -->
+  <section data-view="redraft" style="--c:var(--rd)" hidden>
+    <a class="back" href="#">← The map</a>
+    <header class="dhead">
+      <span class="eyebrow">sleeper/ · horizon: ros · its own git repo</span>
+      <h1>Redraft</h1>
+      <p class="lede">Two season-long Sleeper leagues. You pick about nine starters each week and can replace anyone, so the median week and the matchup are what count. Variance mostly costs you.</p>
+      <dl class="facts">
+        <div><dt>Runs</dt><dd>CLI · live draft board at <code>:8200</code>, open to your wifi</dd></div>
+        <div><dt>Store</dt><dd><code>data/leagues.db</code>, a cache of Sleeper that's safe to delete</dd></div>
+        <div><dt>Keyed on</dt><dd><code>sleeper_id</code> · does no name matching</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 199 tests</dd></div>
+      </dl>
+    </header>
+
+    <p class="note"><b>Redraft and Dynasty are one app.</b> Setting a lineup and working waivers are the same in both; only how a player is valued changes. Sleeper's own <code>settings.type</code> sets <code>horizon</code>: <code>ros</code> here, <code>dynasty</code> <a href="#dynasty">there</a>.</p>
+
+    <figure class="frame" style="margin-top:24px">
+      <div class="scroll">
+      <svg class="dia mini" viewBox="-4 -4 1008 238" role="img" aria-label="Sleeper league rules and rosters, season stat lines and this week's props are scored under each league's own rules, which feeds the draft tools, weekly start/sit and waivers.">
+        <defs><marker id="ard" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-fill" d="M0,0 L10,5 L0,10 z" fill="#3B4757"/></marker></defs>
+        <g><rect class="box" x="0" y="8" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="14" y="32" fill="currentColor">Sleeper leagues</text><text class="s" x="14" y="51" fill="currentColor">rules, rosters, drafts</text></g>
+        <g class="n-pj"><rect class="box" x="0" y="87" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="14" y="111" fill="currentColor">stat_lines.json</text><text class="s" x="14" y="130" fill="currentColor">season stats · ADP · ranks</text></g>
+        <g class="n-pj"><rect class="box" x="0" y="166" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="14" y="190" fill="currentColor">weekly_props.json</text><text class="s" x="14" y="209" fill="currentColor">this week's DK markets</text></g>
+        <path class="edge" d="M220 36 L268 86" marker-end="url(#ard)"/>
+        <path class="edge" d="M220 115 H268" marker-end="url(#ard)"/>
+        <path class="edge" d="M220 194 L268 144" marker-end="url(#ard)"/>
+        <g class="n-rd"><rect class="box" x="270" y="55" width="240" height="120" rx="6" fill="#fff"/>
+          <text class="t2" x="284" y="83" fill="currentColor">Scored by league rules</text>
+          <text class="s" x="284" y="105" fill="currentColor">value over replacement</text>
+          <text class="s" x="284" y="123" fill="currentColor">availability checked first</text>
+          <text class="s" x="284" y="141" fill="currentColor">never a source's own total</text></g>
+        <path class="edge" d="M510 115 L578 38" marker-end="url(#ard)"/>
+        <path class="edge" d="M510 115 H578" marker-end="url(#ard)"/>
+        <path class="edge" d="M510 115 L578 192" marker-end="url(#ard)"/>
+        <g><rect class="box" x="580" y="8" width="420" height="56" rx="6" fill="#fff"/><text class="t2" x="594" y="32" fill="currentColor">Draft: board · plan · queue · serve</text><text class="s" x="594" y="51" fill="currentColor">live board follows the Sleeper draft</text></g>
+        <g><rect class="box" x="580" y="87" width="420" height="56" rx="6" fill="#fff"/><text class="t2" x="594" y="111" fill="currentColor">Weekly: startsit</text><text class="s" x="594" y="130" fill="currentColor">best legal lineup, close calls grouped</text></g>
+        <g><rect class="box" x="580" y="166" width="420" height="56" rx="6" fill="#fff"/><text class="t2" x="594" y="190" fill="currentColor">Waivers</text><text class="s" x="594" y="209" fill="currentColor">who to add, and who you would cut</text></g>
+      </svg>
+      </div>
+      <figcaption>Stat lines arrive <em>unscored</em>, because both redraft leagues pay 6 points per passing TD and a total scored ESPN's way can't be converted. This week's numbers come from DraftKings' per-game props, rescored under each league's rules.</figcaption>
+    </figure>
+
+    <div class="grid2">
+      <div class="col">
+        <div class="blk">
+          <h2>The leagues</h2>
+          <div class="tbl"><table>
+            <thead><tr><th>League</th><th>Size</th><th>Lineup</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>NNCC</td><td class="num">10 teams</td><td>QB 2RB 3WR TE 2FLEX K DEF</td><td>6pt pass TD, no FAAB</td></tr>
+              <tr><td>Justice League</td><td class="num">12 teams</td><td>QB 2RB 2WR TE 2FLEX DEF</td><td>6pt pass TD, FAAB $100, no K</td></tr>
+            </tbody>
+          </table></div>
+          <p>Both full PPR. Your redraft rankings: <code>rankings/2026-redraft-ppr.csv</code> (250 players, with tiers). Never reuse them for best ball or dynasty.</p>
+        </div>
+
+        <div class="blk">
+          <h2>How start/sit decides</h2>
+          <ul>
+            <li><b>Availability first.</b> Sleeper's IR/Out/Suspended flags, plus <code>data/unavailable.json</code> for what Sleeper can't say. Every entry there needs an <code>until</code> date.</li>
+            <li><b>The number is the market's.</b> Where DK hasn't posted a player's prop yet, he falls back to his season rate, and the row says so.</li>
+            <li><b>Defences are a model</b> built on the opponent's implied total, and counted separately from market prices.</li>
+            <li><b>The lineup is a maximum-weight matching</b>, not a sort. Flexible slots go to the latest kickoffs so a late scratch can still be swapped.</li>
+            <li><b>LateRound ranks annotate, never score.</b> They flag a benched player ranked above a starter.</li>
+            <li><b>It refuses a non-weekly lineup.</b> If no starter took a market number, it prints <code>NOT A WEEKLY LINEUP</code> and stops.</li>
+          </ul>
+        </div>
+
+        <div class="blk">
+          <h2>Inside the folder</h2>
+          <dl class="mods">
+            <dt class="grp">leagues/ — shared with Dynasty</dt>
+            <dt>sleeper.py</dt><dd>Read-only Sleeper client. Nothing here ever writes to Sleeper.</dd>
+            <dt>store.py · config.py</dt><dd>Local cache of league state; which account, leagues and season.</dd>
+            <dt>ids.py</dt><dd>Reads Projections' player-id table. Never rebuilds it.</dd>
+            <dt>scoring.py</dt><dd>Turns Sleeper's ~40 scoring keys into points for that league.</dd>
+            <dt class="grp">draft tools</dt>
+            <dt>board.py · draft.py</dt><dd>Value over replacement for this league; your real snake picks and who will last.</dd>
+            <dt>rankings.py · queue.py</dt><dd>Your ranks lead; the model only fills gaps and flags disagreements of 20+.</dd>
+            <dt>page.py · web/live.py</dt><dd>A standalone phone board, and the live board that follows the real draft.</dd>
+            <dt class="grp">weekly tools</dt>
+            <dt>weekly.py · lineup.py</dt><dd>This week's points from props; the best legal lineup.</dd>
+            <dt>weekly_ranks.py</dt><dd>Human rank sources (LateRound today), shown side by side and never averaged.</dd>
+            <dt>waivers.py</dt><dd>An add is a pair: the free agent against the player you'd actually cut.</dd>
+          </dl>
+        </div>
+      </div>
+
+      <aside class="col">
+        <div class="blk">
+          <h2>Every week</h2>
+<pre>cd sleeper
+<span class="c"># refresh props + stat lines, then start/sit</span>
+tools/weekly.sh
+
+<span class="c"># adds and cuts</span>
+.venv/bin/python cli.py waivers</pre>
+          <p>Or run <code>/startsit</code>. Run it once, late: coverage grows toward kickoff, so Sunday morning beats Thursday.</p>
+        </div>
+        <div class="blk">
+          <h2>Commands</h2>
+          <dl class="mods">
+            <dt>link · sync</dt><dd>Find your leagues; pull rules and rosters.</dd>
+            <dt>leagues · roster</dt><dd>What the rules really are; what has projections.</dd>
+            <dt>board · plan · queue</dt><dd>Draft prep.</dd>
+            <dt>page · serve</dt><dd>Phone board; live draft board.</dd>
+            <dt>startsit · waivers</dt><dd>The weekly calls.</dd>
+            <dt>snapshot · doctor</dt><dd>Refresh the committed stat lines; health.</dd>
+          </dl>
+        </div>
+        <div class="blk">
+          <h2>Still to build</h2>
+          <ul>
+            <li>FAAB bid guidance. There are already 120 real winning bids to learn from.</li>
+            <li>Trade evaluation.</li>
+          </ul>
+        </div>
+        <div class="blk">
+          <h2>Read more</h2>
+          <ul>
+            <li><code>sleeper/README.md</code></li>
+            <li><code>sleeper/docs/DRAFT_DAY.md</code>: runbook, queue by browser</li>
+            <li><code>.claude/commands/startsit.md</code></li>
+          </ul>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────── DYNASTY ─────────────────────────────── -->
+  <section data-view="dynasty" style="--c:var(--dy)" hidden>
+    <a class="back" href="#">← The map</a>
+    <header class="dhead">
+      <span class="eyebrow">sleeper/ · horizon: dynasty · same app as Redraft</span>
+      <h1>Dynasty</h1>
+      <p class="lede">Two keep-forever Sleeper leagues. The weekly lineup is the same question as redraft. Buying, selling and cutting look at a player's whole career, and the trade market answers those, not a list of yours.</p>
+      <dl class="facts">
+        <div><dt>Value source</dt><dd><code>projections/data/dynasty_values.json</code></dd></div>
+        <div><dt>Joined on</dt><dd><code>mfl_id</code> → <code>sleeper_id</code>, with no name matching</dd></div>
+        <div><dt>Stale after</dt><dd>14 days</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · tests shared with Redraft</dd></div>
+      </dl>
+    </header>
+
+    <figure class="frame">
+      <div class="scroll">
+      <svg class="dia mini" viewBox="-4 -4 1008 158" role="img" aria-label="KTC and FantasyCalc are joined on mfl_id in projections, written to dynasty_values.json keyed on sleeper_id, crossed into sleeper where cli.py dynasty prices your rosters and shows where the two markets disagree.">
+        <defs><marker id="ady" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-fill" d="M0,0 L10,5 L0,10 z" fill="#3B4757"/></marker></defs>
+        <line class="seam" x1="603.5" y1="6" x2="603.5" y2="146"/>
+        <text class="s" x="594" y="20" text-anchor="end" fill="currentColor">projections/</text>
+        <text class="s" x="613" y="20" fill="currentColor">sleeper/</text>
+        <g><rect class="box" x="0" y="50" width="170" height="64" rx="6" fill="#fff"/><text class="t3" x="12" y="77" fill="currentColor">KTC + FantasyCalc</text><text class="s" x="12" y="96" fill="currentColor">two trade markets</text></g>
+        <path class="edge" d="M170 82 H205" marker-end="url(#ady)"/>
+        <g><rect class="box" x="207" y="50" width="170" height="64" rx="6" fill="#fff"/><text class="t3" x="219" y="77" fill="currentColor">Joined on mfl_id</text><text class="s" x="219" y="96" fill="currentColor">no name matching</text></g>
+        <path class="edge" d="M377 82 H412" marker-end="url(#ady)"/>
+        <g class="n-pj"><rect class="box" x="414" y="50" width="170" height="64" rx="6" fill="#fff"/><text class="t3" x="426" y="77" fill="currentColor">dynasty_values.json</text><text class="s" x="426" y="96" fill="currentColor">keyed on sleeper_id</text></g>
+        <path class="edge" d="M584 82 H621" marker-end="url(#ady)"/>
+        <g><rect class="box" x="623" y="50" width="170" height="64" rx="6" fill="#fff"/><text class="t3" x="635" y="77" fill="currentColor">cli.py dynasty</text><text class="s" x="635" y="96" fill="currentColor">prices your rosters</text></g>
+        <path class="edge" d="M793 82 H828" marker-end="url(#ady)"/>
+        <g class="n-dy"><rect class="box" x="830" y="50" width="170" height="64" rx="6" fill="#fff"/><text class="t3" x="842" y="77" fill="currentColor">Where they disagree</text><text class="s" x="842" y="96" fill="currentColor">shown, never averaged</text></g>
+      </svg>
+      </div>
+      <figcaption>The dotted line is the boundary between the two projects: a JSON file, not shared code. FantasyCalc carries a Sleeper id on every row, so the whole chain resolves without comparing a single name.</figcaption>
+    </figure>
+
+    <div class="grid2">
+      <div class="col">
+        <div class="blk">
+          <h2>The leagues</h2>
+          <div class="tbl"><table>
+            <thead><tr><th>League</th><th>Size</th><th>Format</th><th>Board read</th></tr></thead>
+            <tbody>
+              <tr><td>Haters Club</td><td class="num">12 teams</td><td>Superflex, TE +0.5, 10 starters, 15 bench</td><td><code>tep</code></td></tr>
+              <tr><td>Hastings</td><td class="num">12 teams</td><td>Superflex, 9 starters, 12 bench</td><td><code>value</code></td></tr>
+            </tbody>
+          </table></div>
+          <p>Both full PPR, with 4-point passing TDs. With superflex, what drives quarterback value is how many you have to start, not the scoring.</p>
+        </div>
+
+        <div class="blk">
+          <h2>What's different from redraft</h2>
+          <ul>
+            <li><b>Two markets, side by side.</b> Where KTC and FantasyCalc disagree is the signal; a blend would erase it.</li>
+            <li><b>TE premium is a different board, not a different column.</b> KTC re-solves every player's rank; the output names which board it used.</li>
+            <li><b>Superflex is verified, not trusted.</b> A 2-QB request whose top 24 isn't QB-heavy gets refused.</li>
+            <li><b>Waiver cuts look at the whole career.</b> They use the better of the two market ranks, so a young stash doesn't get offered up.</li>
+            <li><b>Taxi and IR players are never offered as cuts.</b> Dropping one frees no active spot.</li>
+            <li><b>Prices are never points.</b> Start/sit doesn't read them.</li>
+          </ul>
+        </div>
+
+        <div class="blk">
+          <h2>Shared with Redraft</h2>
+          <p>Weekly start/sit, waivers, <code>tools/weekly.sh</code>, and every module in <code>leagues/</code> except <code>dynasty.py</code>. <a href="#redraft">See Redraft →</a></p>
+        </div>
+      </div>
+
+      <aside class="col">
+        <div class="blk">
+          <h2>Refresh and read</h2>
+<pre>cd projections
+.venv/bin/python cli.py fetch --source dynasty
+.venv/bin/python tools/export_dynasty_values.py
+
+cd ../sleeper
+.venv/bin/python cli.py dynasty</pre>
+        </div>
+        <div class="blk">
+          <h2>Where it lives</h2>
+          <dl class="mods">
+            <dt>sleeper/leagues/dynasty.py</dt><dd>Roster valuation and disagreement.</dd>
+            <dt>projections/pipeline/sources/ktc.py</dt><dd>KTC fetcher, with per-position checks so a partial board can't pass.</dd>
+            <dt>…/sources/fantasycalc.py</dt><dd>The spine of the join; refuses a file missing Sleeper ids.</dd>
+            <dt>…/tools/export_dynasty_values.py</dt><dd>Writes the file Sleeper reads.</dd>
+          </dl>
+        </div>
+        <div class="blk">
+          <h2>Still to build</h2>
+          <ul>
+            <li><b>Trade evaluation</b>, the first feature that truly differs by horizon.</li>
+            <li><b>Rookie drafts.</b> 84 pick values are already exported under <code>rookie_picks</code> and nothing reads them. Next summer.</li>
+          </ul>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────── DFS ─────────────────────────────── -->
+  <section data-view="dfs" style="--c:var(--dfs)" hidden>
+    <a class="back" href="#">← The map</a>
+    <header class="dhead">
+      <span class="eyebrow">dfs/ · its own git repo</span>
+      <h1>DFS</h1>
+      <p class="lede">DraftKings daily fantasy: nine players under a salary cap, rebuilt every slate. Same company as best ball, different product, which is why it's a separate app.</p>
+      <dl class="facts">
+        <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
+        <div><dt>Reads</dt><dd><code>data/weekly_props.json</code>, committed Sundays</dd></div>
+        <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 152 tests</dd></div>
+      </dl>
+    </header>
+
+    <figure class="frame">
+      <div class="scroll">
+      <svg class="dia mini" viewBox="-4 -4 1008 238" role="img" aria-label="DraftKings slates and salaries plus the weekly props file are joined on match keys, fed to an exact optimiser with stacking, exposure and ceiling controls, producing lineups as a CSV you upload yourself.">
+        <defs><marker id="adf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-fill" d="M0,0 L10,5 L0,10 z" fill="#3B4757"/></marker></defs>
+        <g><rect class="box" x="0" y="30" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="14" y="54" fill="currentColor">DK slates &amp; salaries</text><text class="s" x="14" y="73" fill="currentColor">fetched live by dfs/</text></g>
+        <g class="n-pj"><rect class="box" x="0" y="144" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="14" y="168" fill="currentColor">weekly_props.json</text><text class="s" x="14" y="187" fill="currentColor">from Projections, Sundays</text></g>
+        <path class="edge" d="M220 58 L268 104" marker-end="url(#adf)"/>
+        <path class="edge" d="M220 172 L268 126" marker-end="url(#adf)"/>
+        <g><rect class="box" x="270" y="87" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="284" y="111" fill="currentColor">Join on match_keys</text><text class="s" x="284" y="130" fill="currentColor">basis: market·season·thin</text></g>
+        <path class="edge" d="M490 115 H538" marker-end="url(#adf)"/>
+        <g class="n-dfs"><rect class="box" x="540" y="87" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="554" y="111" fill="currentColor">Optimiser (exact)</text><text class="s" x="554" y="130" fill="currentColor">stack · exposure · ceiling</text></g>
+        <path class="edge" d="M760 115 H798" marker-end="url(#adf)"/>
+        <g><rect class="box" x="800" y="87" width="200" height="56" rx="6" fill="#fff"/><text class="t2" x="814" y="111" fill="currentColor">Lineups → CSV</text><text class="s" x="814" y="130" fill="currentColor">you upload it to DK</text></g>
+      </svg>
+      </div>
+      <figcaption>Every player carries a <em>basis</em>. <code>market</code> means real yardage lines; <code>season</code> means the market hasn't posted yet, so his season rate stands in; <code>thin</code> means neither, and he's reported rather than invented. Re-export before lock and <code>season</code> rows turn into <code>market</code> rows.</figcaption>
+    </figure>
+
+    <div class="grid2">
+      <div class="col">
+        <div class="blk">
+          <h2>How a lineup is built</h2>
+          <ul>
+            <li><b>Solved exactly</b> (CBC), not greedily, so no salary is left on the table.</li>
+            <li><b><code>--stack</code></b> pairs a QB with his own pass catcher, only from teams implied at 23+ points.</li>
+            <li><b><code>--max-exposure</code></b> (0.6 default) stops five lineups from being the same bet.</li>
+            <li><b><code>--objective mean</code></b> for 50/50s and double-ups; <b><code>ceiling</code></b> for big tournaments.</li>
+            <li><b><code>--top-games 2 --min-bringback 1</code></b> takes quarterbacks from the highest-total games and adds an opposing player.</li>
+            <li><b>Defences are projected</b> from the opponent's implied total, so the optimiser no longer just buys the cheapest.</li>
+          </ul>
+        </div>
+
+        <div class="blk">
+          <h2>What seven Millionaires say</h2>
+          <div class="tbl"><table>
+            <thead><tr><th>Finding</th><th class="num">Lift into top 0.1%</th></tr></thead>
+            <tbody>
+              <tr><td>QB from one of the slate's two highest game totals</td><td class="num">1.24× median</td></tr>
+              <tr><td>QB + 1 pass catcher, with a bring-back</td><td class="num">1.24×</td></tr>
+              <tr><td>Naked QB, no bring-back: worst every year</td><td class="num">0.53×</td></tr>
+              <tr><td>Lineup ownership below 0.8× the field (contrarian)</td><td class="num">0.26×</td></tr>
+            </tbody>
+          </table></div>
+          <p>Week 1 contests 2020–2026 (medians from <code>dfs/README.md</code>). There's no ownership model on purpose: one was built and refused, because it predicted players well and lineups not at all.</p>
+        </div>
+
+        <div class="blk">
+          <h2>Inside the folder</h2>
+          <dl class="mods">
+            <dt>dfs/salaries.py</dt><dd>DK slates and salaries, this repo's own platform data. Refuses a slate with no DST.</dd>
+            <dt>dfs/props.py</dt><dd>Reads the props export and joins it with a punctuation fold and <code>match_keys</code>.</dd>
+            <dt>dfs/scoring.py</dt><dd>DK Classic scoring and roster rules.</dd>
+            <dt>dfs/optimize.py</dt><dd>Exact lineup construction, stacks, exposure, game environment.</dd>
+            <dt>dfs/showdown.py</dt><dd>Single-game Captain mode, a different product.</dd>
+            <dt>dfs/ceiling.py · contest.py</dt><dd>The score a finish takes, across seven years; the payout ladder.</dd>
+            <dt>dfs/standings.py</dt><dd>Measured ownership from DK's post-contest standings.</dd>
+            <dt>dfs/export.py</dt><dd>DK's upload CSV. A file, never an upload.</dd>
+            <dt>web/app.py</dt><dd>Lineups, value screen and stacks in tabs, with live sliders.</dd>
+          </dl>
+        </div>
+      </div>
+
+      <aside class="col">
+        <div class="blk">
+          <h2>Game day</h2>
+<pre>cd dfs
+.venv/bin/python cli.py slates
+.venv/bin/python cli.py contest &lt;id&gt;
+.venv/bin/python cli.py --draftgroup &lt;dg&gt; \
+  lineups -n 4 --stack --objective ceiling \
+  --top-games 2 --min-bringback 1 \
+  --allow-repeat-qb
+.venv/bin/python cli.py serve     <span class="c"># :8300</span></pre>
+        </div>
+        <div class="blk">
+          <h2>Commands</h2>
+          <dl class="mods">
+            <dt>slates · contest</dt><dd>Which slates exist; what a contest pays.</dd>
+            <dt>screen · stacks</dt><dd>Value within position; teams by implied total.</dd>
+            <dt>lineups · showdown</dt><dd>Classic and single-game builds.</dd>
+            <dt>ownership</dt><dd>Import measured ownership from standings.</dd>
+            <dt>serve · doctor</dt><dd>Web board; what it's resting on, and how old.</dd>
+          </dl>
+        </div>
+        <div class="blk">
+          <h2>Runs by itself</h2>
+          <ul>
+            <li><b>Sunday export</b>: 08:30 and 10:45. Refreshes props, checks them, commits and pushes, so another machine can pull.</li>
+            <li><b>Ownership import</b>: Monday and Tuesday 09:00.</li>
+          </ul>
+        </div>
+        <div class="blk">
+          <h2>Open right now</h2>
+          <ul>
+            <li>The web board doesn't expose <code>--top-games</code> or <code>--min-bringback</code> yet. That's mid-edit, uncommitted.</li>
+          </ul>
+        </div>
+        <div class="blk">
+          <h2>Read more</h2>
+          <ul>
+            <li><code>dfs/README.md</code>: what the app is</li>
+            <li><code>dfs/docs/STATUS.md</code>: where it stands, week by week</li>
+          </ul>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────── SEAMS ─────────────────────────────── -->
+  <section data-view="seams" style="--c:var(--accent)" hidden>
+    <a class="back" href="#">← The map</a>
+    <header class="dhead">
+      <span class="eyebrow">across all projects</span>
+      <h1>What crosses between them</h1>
+      <p class="lede">The complete list. If a change doesn't touch a row here, it can't break another project. Every row is a file or an HTTP call; none is an import.</p>
+    </header>
+    <div class="tbl frame"><table>
+      <thead><tr><th>From → to</th><th>What crosses</th><th>Keyed on</th><th>Written by</th><th class="num">Stale after</th></tr></thead>
+      <tbody>
+        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td>Six model fields, plus per-source ages and the publishing commit</td><td><code>dk_player_id</code></td><td><code>cli.py analysis-publish</code> → <code>POST /api/projections/upload</code></td><td class="num">48 h</td></tr>
+        <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball → <span class="dot" style="--c:var(--pj)"></span>Projections</td><td>The DK player pool and your rankings board</td><td><code>dk_player_id</code></td><td><code>analysis/spine.py</code> reads <code>/api/players</code>, <code>/api/rankings</code></td><td class="num">6 h pool</td></tr>
+        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>store.db</code> player-id table (read-only) and <code>stat_lines.json</code>, unscored</td><td><code>sleeper_id</code></td><td><code>tools/export_stat_lines.py</code></td><td class="num">7 days</td></tr>
+        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--dy)"></span>Dynasty</td><td><code>dynasty_values.json</code>: KTC + FantasyCalc</td><td><code>sleeper_id</code> via <code>mfl_id</code></td><td><code>tools/export_dynasty_values.py</code></td><td class="num">14 days</td></tr>
+        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper &amp; <span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>weekly_props.json</code>: per-game markets, <code>exp_td</code>, <code>match_keys</code></td><td><code>name_key</code> <span class="pill warn">a name</span> with <code>sleeper_id</code> inside</td><td><code>tools/export_props.py</code></td><td class="num">24 h</td></tr>
+        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>lateround.json</code>: weekly ranks and tiers, kicker projections</td><td><code>sleeper_id</code>; K and DEF on team</td><td><code>tools/export_lateround.py</code></td><td class="num">per capture</td></tr>
+        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td>News bundle for <code>/news</code></td><td>—</td><td><code>tools/news-push.sh</code> → <code>/api/news/upload</code></td><td class="num">3 h cadence</td></tr>
+        <tr><td><span class="dot" style="--c:var(--bb)"></span>Mac → <span class="dot" style="--c:var(--bb)"></span>Render</td><td>Weekly best-ball standings</td><td>DK <code>playerId</code></td><td><code>tools/capture-standings.sh</code> → <code>/api/season/upload</code></td><td class="num">weekly</td></tr>
+        <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>drafts.db</code> table <code>player_rankings</code>, your best-ball board, read-only</td><td><code>dk_player_id</code></td><td>You, at <code>/rankings</code></td><td class="num">—</td></tr>
+        <tr><td>By hand, both ways</td><td><code>names.py</code>, byte-identical below its header in <code>best-ball-draft/app/data/</code> and <code>projections/pipeline/core/</code></td><td>—</td><td>copy and paste</td><td class="num">must agree</td></tr>
+      </tbody>
+    </table></div>
+    <div class="grid2">
+      <div class="blk">
+        <h2>Three ways to be wrong without an error</h2>
+        <ul>
+          <li><b>The props file is keyed on a name.</b> Look players up through the <code>sleeper_id</code> field. Treat the key as an id and every lookup misses: a complete lineup renders with the market entirely absent.</li>
+          <li><b>Stat lines are unscored on purpose.</b> Two leagues pay 6 points per passing TD, and a total can't be un-scored.</li>
+          <li><b>Age comes from <code>generated_at</code>.</b> <code>cp</code> and <code>git clone</code> stamp a copy with “now”; a 31-hour-old file once read as 0.0 h.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────── SCHEDULE ─────────────────────────────── -->
+  <section data-view="schedule" style="--c:var(--accent)" hidden>
+    <a class="back" href="#">← The map</a>
+    <header class="dhead">
+      <span class="eyebrow">~/Library/LaunchAgents · Central time</span>
+      <h1>What runs by itself</h1>
+      <p class="lede">Eight jobs, all launchd rather than cron, because cron silently skips a run while the Mac sleeps and launchd fires at the next wake. Nothing on this list changes what the recommender scores with; publishing the payload is always done by hand.</p>
+    </header>
+    <div class="tbl frame"><table class="week">
+      <thead><tr><th>Job</th><th>What it does</th><th class="d">Sun</th><th class="d">Mon</th><th class="d">Tue</th><th class="d">Wed</th><th class="d">Thu</th><th class="d">Fri</th><th class="d">Sat</th><th>Writes outside the Mac?</th></tr></thead>
+      <tbody>
+        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.nightly</td><td class="what">Refresh every source, snapshot the DK pool, build, <b>stop at the dry run</b>, write a report</td><td class="d off">·</td><td class="d off">·</td><td class="d">07:30</td><td class="d off">·</td><td class="d off">·</td><td class="d">07:30</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.marketreport</td><td class="what">News and price movement, on the days nightly doesn't run</td><td class="d">07:30</td><td class="d">07:30</td><td class="d off">·</td><td class="d">07:30</td><td class="d">07:30</td><td class="d off">·</td><td class="d">07:30</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspoll</td><td class="what">Poll news feeds into <code>store.db</code></td><td class="span" colspan="7">every 3 hours</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspush</td><td class="what">Push the news bundle to <code>/news</code> on Render</td><td class="span" colspan="7">every 3 hours</td><td><span class="pill warn">/news only</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.standings</td><td class="what">Capture every best-ball entry's standing from DK, push to <code>/season</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">07:30</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">/season only</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.autoqueue</td><td class="what">Keep live DK draft queues stocked. Deadline 7 Sep 21:00 has passed, so it's quiet.</td><td class="span" colspan="7">every 5 minutes, while loaded</td><td><span class="pill bad">your DK queues</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership from finished contests</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
+      </tbody>
+    </table></div>
+    <div class="grid2">
+      <div class="blk">
+        <h2>Done by hand, on purpose</h2>
+        <ul>
+          <li><b>Publishing the payload</b> (<code>refresh-sources.sh --publish</code> or <code>/update-projections</code>). An automated publish once would have shipped a build against a stale cache.</li>
+          <li><b>The weekly start/sit</b> (<code>sleeper/tools/weekly.sh</code> or <code>/startsit</code>): once, late, before kickoff.</li>
+          <li><b>Entering lineups, setting Sleeper lineups, making claims.</b> Nothing here writes to Sleeper or enters a DFS contest.</li>
+        </ul>
+      </div>
+      <div class="blk">
+        <h2>Where the plists live</h2>
+        <ul>
+          <li><code>projections/tools/com.bba.{nightly,marketreport,newspoll,newspush}.plist</code></li>
+          <li><code>best-ball-draft/tools/com.bba.{standings,autoqueue}.plist</code></li>
+          <li><code>dfs/tools/com.dfs.{sunday,monday}.plist</code></li>
+        </ul>
+        <p>Jobs that run through <code>zsh -ic</code> get <code>BBA_API_KEY</code> from <code>~/.zshrc</code>; the others never see it.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────── HEALTH ─────────────────────────────── -->
+  <section data-view="health" style="--c:var(--accent)" hidden>
+    <a class="back" href="#">← The map</a>
+    <header class="dhead">
+      <span class="eyebrow">across all projects</span>
+      <h1>Is anything broken?</h1>
+      <p class="lede">The recurring bug here is a signal that looks the same whether or not the thing happened. So every project has one command that states the age and row count of what it rests on, never fetches, and exits non-zero on red.</p>
+    </header>
+    <div class="grid2">
+      <div class="col">
+        <div class="blk">
+          <h2>One command each</h2>
+          <div class="tbl"><table>
+            <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
+            <tbody>
+              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">147</td></tr>
+              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">199</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">152</td></tr>
+              <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
+            </tbody>
+          </table></div>
+          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026. Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+        </div>
+        <div class="blk">
+          <h2>What healthy looks like</h2>
+<pre><span class="c"># measured 8 Sep 2026: learn the shape, not the numbers</span>
+store.db    players 469 · snapshots 196 · unmatched 28,220
+drafts.db   drafts 82 · picks 1,860 · player_rankings 381
+leagues.db  leagues 4 · managers 47 · rosters 46</pre>
+          <p>A large <code>unmatched</code> is normal: it's every source row outside the DK best-ball pool, kept rather than dropped. The pool itself is ~450–460 and moves, so read it at run time.</p>
+        </div>
+      </div>
+      <aside class="col">
+        <div class="blk">
+          <h2>Next season, change these</h2>
+          <dl class="mods">
+            <dt>sleeper/config.json</dt><dd><code>season</code>, then <code>cli.py link</code>. Redraft league ids change; dynasty ids don't.</dd>
+            <dt>projections/analysis/trending.py</dt><dd><code>SEASON</code></dd>
+            <dt>projections/analysis/build.py</dt><dd>Sleeper URL season; <code>PBP_SEASON</code> (always one behind)</dd>
+            <dt>…/sources/fftoday.py</dt><dd><code>season</code> default</dd>
+            <dt>best-ball-draft/app/season.py</dt><dd>Add the year to <code>SEASONS</code></dd>
+            <dt>best-ball-draft/drafts.db</dt><dd><code>player_rankings</code> starts empty</dd>
+            <dt>sleeper/rankings/</dt><dd>A new CSV; nothing reads a fixed path</dd>
+            <dt>dfs/cli.py</dt><dd><code>--draftgroup</code> changes <b>weekly</b></dd>
+          </dl>
+        </div>
+      </aside>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  var views = Array.prototype.slice.call(document.querySelectorAll('[data-view]'));
+  function show(scroll){
+    var key = decodeURIComponent(location.hash.slice(1)) || 'map';
+    var hit = views.some(function(v){ return v.dataset.view === key; });
+    if (!hit) key = 'map';
+    views.forEach(function(v){ v.hidden = v.dataset.view !== key; });
+    if (scroll) window.scrollTo(0, 0);
+  }
+  window.addEventListener('hashchange', function(){ show(true); });
+  show(false);
+})();
+</script>
