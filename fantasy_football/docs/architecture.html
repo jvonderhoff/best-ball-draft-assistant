@@ -481,7 +481,7 @@ tools/refresh-sources.sh --publish
         <div class="blk">
           <h2>Runs by itself</h2>
           <ul>
-            <li><b>Nightly</b>: Tue &amp; Fri 07:30. Refreshes, builds, stops at the dry run, writes a report.</li>
+            <li><b>Nightly</b>: <span class="pill mute">disabled</span> since 14 Sep. It refreshed draft inputs, and best-ball drafting is over for 2026.</li>
             <li><b>Market report</b>: the other five mornings.</li>
             <li><b>News poll &amp; push</b>: every 3 hours.</li>
           </ul>
@@ -1051,12 +1051,12 @@ cd ../sleeper
     <header class="dhead">
       <span class="eyebrow">~/Library/LaunchAgents · Central time</span>
       <h1>What runs by itself</h1>
-      <p class="lede">Eight jobs, all launchd rather than cron, because cron silently skips a run while the Mac sleeps and launchd fires at the next wake. Nothing on this list changes what the recommender scores with; publishing the payload is always done by hand.</p>
+      <p class="lede">Eight jobs, all launchd rather than cron, because cron silently skips a run while the Mac sleeps and launchd fires at the next wake. The nightly draft refresh is disabled until next season. Nothing on this list changes what the recommender scores with; publishing the payload is always done by hand.</p>
     </header>
     <div class="tbl frame"><table class="week">
       <thead><tr><th>Job</th><th>What it does</th><th class="d">Sun</th><th class="d">Mon</th><th class="d">Tue</th><th class="d">Wed</th><th class="d">Thu</th><th class="d">Fri</th><th class="d">Sat</th><th>Writes outside the Mac?</th></tr></thead>
       <tbody>
-        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.nightly</td><td class="what">Refresh every source, snapshot the DK pool, build, <b>stop at the dry run</b>, write a report</td><td class="d off">·</td><td class="d off">·</td><td class="d">07:30</td><td class="d off">·</td><td class="d off">·</td><td class="d">07:30</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.nightly</td><td class="what">Refresh every draft source, build, <b>stop at the dry run</b>, write a report. Disabled 14 Sep, since drafting is over; re-enable before next season's drafts.</td><td class="span" colspan="7"><span class="pill mute">disabled</span> · was Tue &amp; Fri 07:30</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.marketreport</td><td class="what">News and price movement, on the days nightly doesn't run</td><td class="d">07:30</td><td class="d">07:30</td><td class="d off">·</td><td class="d">07:30</td><td class="d">07:30</td><td class="d off">·</td><td class="d">07:30</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspoll</td><td class="what">Poll news feeds into <code>store.db</code></td><td class="span" colspan="7">every 3 hours</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspush</td><td class="what">Push the news bundle to <code>/news</code> on Render</td><td class="span" colspan="7">every 3 hours</td><td><span class="pill warn">/news only</span></td></tr>

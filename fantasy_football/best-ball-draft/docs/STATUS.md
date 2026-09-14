@@ -11,6 +11,39 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-09-14: drafting is over — `/season` is the only live use
+
+Best-ball drafting for 2026 is finished. Render now serves one purpose: `/season`, pod
+standings for the 81 entries, fed every Tuesday 07:30 by `com.bba.standings`.
+
+**Expected red until next August. Do not chase these:**
+
+- `preflight.py` `[FAIL] seed age` — the committed `player_cache.json` goes stale because
+  nobody drafts against it (5.7 days old on 2026-09-14).
+- `[WARN] source ages` and `projections_warning` — the V2 payload was last published
+  around 2026-09-06 (185h old on 2026-09-14). Nothing republishes, and nothing needs to.
+- `[FAIL] DK pool / ADP` on the first run after a cold start. It clears on a re-run, as
+  the check says.
+
+**`com.bba.nightly` is disabled as of 2026-09-14** — it refreshed draft inputs. `bootout`
+stopped it and `disable` keeps it off across logins; the plist is still installed.
+
+**What `/season` still needs:** Firefox signed in to DraftKings (the capture reads its
+live cookies), and `BBA_API_KEY` in `~/.zshrc` matching the value on Render. Rotate one
+without the other and the Tuesday push fails.
+
+**Before next season's drafts**, in order:
+
+```bash
+launchctl enable gui/$(id -u)/com.bba.nightly
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.bba.nightly.plist
+python3 tools/refresh-seed.py                         # then commit it
+../projections/tools/refresh-sources.sh --publish
+python3 tools/preflight.py                            # should now go green
+```
+
+---
+
 ## The two apps
 
 ```
