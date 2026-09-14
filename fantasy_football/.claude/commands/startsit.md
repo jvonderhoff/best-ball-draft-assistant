@@ -59,11 +59,25 @@ and what he would have been worth. Read that block — and read the expired-asse
 warning above it, because an override nobody deletes keeps a healthy player benched.
 
 Your job is the case it cannot know. The tell: **a player with NO market at all, whose
-game IS priced.** DK prices ~26 players a game; a nominal starter the book will not take
-action on is usually a player who is not playing, and Sleeper's feed can be days behind
-or have no vocabulary for it at all — the commissioner exempt list reads back as
-`Active` / `NA`. Measured on Week 1, seven rostered skill players fit that description
-and they were not all the same thing:
+game has not kicked off yet.** DK prices ~26 players a game; a nominal starter the book
+will not take action on is usually a player who is not playing, and Sleeper's feed can be
+days behind or have no vocabulary for it at all — the commissioner exempt list reads back
+as `Active` / `NA`.
+
+Judge "not kicked off" against the real SCHEDULE, not against the props file. Neither
+half of that file can answer it: `defenses` carries all 32 teams every week, so a club
+whose game is over still appears, and DK drops a game from its board the moment it
+starts, so its priced players vanish exactly when they stop being a question. Checking
+`defenses` on 2026-09-13 flagged all 7 rostered NE and SF players (Evans, Purdy,
+Stevenson, Samuel...) as possible scratches when their games were simply final.
+
+`../projections/data/nflverse/games.csv` is the schedule — the same file `tools/weekly.sh`
+already derives the week from. **Normalise the team before looking it up:** nflverse and
+the props export write the Rams `LA` and Sleeper writes `LAR`, so an unnormalised lookup
+silently never checks a Rams player at all.
+
+Measured on Week 1, seven rostered skill players fit that description, and they were not
+all the same thing:
 
 - **Josh Jacobs** — GB depth chart **4**, groin, ADP down 58.7 with 23.5k drops. Real:
   he turned out to be on the commissioner exempt list, which Sleeper cannot express. He
@@ -81,10 +95,26 @@ one, add him to `sleeper/data/unavailable.json` with an `until` and a why:
 
 ```bash
 cd sleeper && .venv/bin/python - <<'PY'
-import sys; sys.path.insert(0,'.')
+import sys, csv, datetime as dt
+from zoneinfo import ZoneInfo
+sys.path.insert(0,'.')
 from leagues import config, sleeper, weekly
 from leagues.store import Store
-props = weekly.load_props(None); idx = props["by_sleeper_id"]
+props = weekly.load_props(None); idx = weekly.index_by_sleeper_id(props)
+season, week = props["meta"]["season"], props["meta"]["week"]
+
+# The schedule, not the props file: `defenses` lists all 32 teams every week, and
+# DK drops a game once it kicks off, so neither says what is still to come.
+kick = {}
+for r in csv.DictReader(open("../projections/data/nflverse/games.csv")):
+    if r["season"] != str(season) or r["week"] != str(week): continue
+    t = dt.datetime.strptime(f'{r["gameday"]} {r["gametime"]}', "%Y-%m-%d %H:%M")
+    kick[r["away_team"]] = kick[r["home_team"]] = t.replace(
+        tzinfo=ZoneInfo("America/New_York"))
+assert kick, "no schedule rows: cannot tell a game to come from one already played"
+now = dt.datetime.now(dt.timezone.utc)
+TEAM = {"LAR": "LA"}   # nflverse and the props say LA; Sleeper says LAR
+
 dump = sleeper.players(config.PLAYERS_CACHE)
 store = Store(config.STORE_PATH); cfg = config.load(); uid = cfg.require_user()
 unmatched = {n.lower() for n in props.get("unmatched", [])}
@@ -96,7 +126,9 @@ for lid in cfg.league_ids:
         seen.add(sid)
         i = dump.get(str(sid)) or {}
         if i.get("position") not in ("QB","RB","WR","TE"): continue
-        if str(sid) in idx or i.get("team") not in props["defenses"]: continue
+        if str(sid) in idx: continue                 # the book priced him
+        ko = kick.get(TEAM.get(i.get("team"), i.get("team")))
+        if not ko or ko <= now: continue             # bye, or already played
         near = [u for u in unmatched if (i.get("last_name") or "~").lower() in u]
         print(f"{i.get('full_name'):<22} {i.get('position')} {i.get('team'):<4} "
               f"depth={i.get('depth_chart_order')} {i.get('injury_status')} "
@@ -164,7 +196,11 @@ Per league, in this shape:
 `LR` is LateRound's rank and tier. The last column is for flags only, at most one
 word: **IN** for a change from what is currently set on Sleeper, `baseline` /
 `model` / `LR` where the number is not a market price, **empty** for an unfilled
-slot. The lineup diff against what is actually set is the point — get it from
+slot, `locked` for a player whose club is off the priced slate — his game is played, or
+it is a bye (`no_game` on the row). The tool uses that for SLOT PLACEMENT only
+(`lineup._placement_key` sorts him first, so a flexible slot is kept for a later
+kickoff); it does not stop him being started. Read a locked row as information and
+never suggest moving one — that week is already banked. The lineup diff against what is actually set is the point — get it from
 `roster_for_owner(...)["starters"]`, because "start Dowdle" is useful and a
 lineup the reader already has set is not.
 
