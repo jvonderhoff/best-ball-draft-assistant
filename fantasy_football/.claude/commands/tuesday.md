@@ -22,13 +22,15 @@ different scripts:
 | `lateround.com/rankings-tiers/weekly-rankings/` | `projections/tools/lateround-capture.js` | 4 CSVs |
 | `lateround.com/rankings-tiers/rest-of-season-rankings/` | `projections/tools/lateround-ros-capture.js` | 1 CSV |
 
-Both scripts trigger real downloads now staggered ~500ms apart — Chrome's
-download-blocker silently drops every file after the first when several land
-in the same tick, which is exactly what broke the first version of the weekly
-capture and cost a long chunked-JS workaround to recover from. If you (or an
-agent driving Claude-in-Chrome) run these and a file doesn't land in
-Downloads, that blocker is almost certainly why — check for a blocked-download
-indicator before assuming the script failed.
+The weekly script's four downloads are staggered ~500ms apart, but **that does
+not reliably fix Chrome's download-blocker** — verified by re-testing live on
+2026-09-16 and still only 1 of 4 files landed. DevTools console execution
+carries no page-level user gesture, so every download past the first reads as
+unsolicited no matter the spacing. **The working fallback, proven twice:**
+read each table's rows with a small `document.querySelectorAll('table')`
+snippet per call and write the CSV directly from the returned text, instead of
+clicking through the download. The single-file ROS capture has no
+multi-download problem — its one download lands every time.
 
 Move the captured CSVs into `projections/data/`, then:
 
