@@ -710,6 +710,16 @@ node tools/check-model-change.js
         </div>
 
         <div class="blk">
+          <h2>Waivers, and what to bid</h2>
+          <ul>
+            <li><b>An add is a pair.</b> Rosters are full, so the question is never "who is the best free agent" but "does he beat the man I would actually cut" — ranked on value over replacement, never raw points.</li>
+            <li><b>The suggested FAAB bid is fitted on your leagues' real bids</b> (<code>leagues/faab.py</code>, built 14 Sep), in <code>log1p(bid)</code>: bids floor at $0 and skew right, and a plain linear fit measured WORSE than guessing the league median ($13.1 against $11.6). The log fit clears it at $11.0 — a real but small edge, and the run prints n and MAE every time so a thin fit never reads as a confident one.</li>
+            <li><b>A dynasty bid is a third horizon.</b> Rest-of-season value predicts it no better than dynasty market rank (r=0.30 vs 0.29), because the bid buys option value on a career — Hastings' three biggest week-1 bids all went to fringe rookies. So dynasty fits on both, redraft on value alone.</li>
+            <li><b>Under 15 priced bids it refuses to fit</b> rather than show a number two points produced.</li>
+            <li><b>It is a proxy, not a backtest</b> — old bids are joined to today's numbers, because no historical stat-line snapshot exists. Read it as "what similar players went for", never as the number to type in.</li>
+          </ul>
+        </div>
+        <div class="blk">
           <h2>Inside the folder</h2>
           <dl class="mods">
             <dt class="grp">leagues/ — shared with Dynasty</dt>
@@ -724,7 +734,7 @@ node tools/check-model-change.js
             <dt class="grp">weekly tools</dt>
             <dt>weekly.py · lineup.py</dt><dd>This week's points from props; the best legal lineup.</dd>
             <dt>weekly_ranks.py</dt><dd>Human rank sources (LateRound today), shown side by side and never averaged.</dd>
-            <dt>waivers.py</dt><dd>An add is a pair: the free agent against the player you'd actually cut.</dd>
+            <dt>waivers.py · faab.py</dt><dd>An add is a pair: the free agent against the player you'd actually cut, plus a bid fitted on real winning bids.</dd>
           </dl>
         </div>
       </div>
@@ -738,24 +748,23 @@ tools/weekly.sh
 
 <span class="c"># adds and cuts</span>
 .venv/bin/python cli.py waivers</pre>
-          <p>Or run <code>/startsit</code>. Run it once, late: coverage grows toward kickoff, so Sunday morning beats Thursday.</p>
+          <p>Or run <code>/startsit</code>. Run it once, late: coverage grows toward kickoff, so Sunday morning beats Thursday. <code>/tuesday</code> is the pre-waivers routine — recapture LateRound, refresh the market, then read start/sit and every FAAB board.</p>
         </div>
         <div class="blk">
           <h2>Commands</h2>
           <dl class="mods">
-            <dt>link · sync</dt><dd>Find your leagues; pull rules and rosters.</dd>
+            <dt>link · sync</dt><dd>Find your leagues; pull rules, rosters and every FAAB league's bid history.</dd>
             <dt>leagues · roster</dt><dd>What the rules really are; what has projections.</dd>
             <dt>board · plan · queue</dt><dd>Draft prep.</dd>
             <dt>page · serve</dt><dd>Phone board; live draft board.</dd>
-            <dt>startsit · waivers</dt><dd>The weekly calls.</dd>
+            <dt>startsit · waivers</dt><dd>The weekly calls. <code>waivers</code> also suggests a FAAB bid.</dd>
             <dt>snapshot · doctor</dt><dd>Refresh the committed stat lines; health.</dd>
           </dl>
         </div>
         <div class="blk">
           <h2>Still to build</h2>
           <ul>
-            <li>FAAB bid guidance. There are already 120 real winning bids to learn from.</li>
-            <li>Trade evaluation.</li>
+            <li>Trade evaluation. <code>cli.py dynasty</code> prices a roster, which is the input a trade needs, but nothing evaluates a proposal yet.</li>
           </ul>
         </div>
         <div class="blk">
@@ -828,6 +837,7 @@ tools/weekly.sh
             <li><b>Superflex is verified, not trusted.</b> A 2-QB request whose top 24 isn't QB-heavy gets refused.</li>
             <li><b>Waiver cuts look at the whole career.</b> They use the better of the two market ranks, so a young stash doesn't get offered up.</li>
             <li><b>Taxi and IR players are never offered as cuts.</b> Dropping one frees no active spot.</li>
+            <li><b>A FAAB bid is fitted differently here.</b> A dynasty league's bid model uses value over replacement AND dynasty market rank, because the bid buys option value on a career; a redraft league uses value alone.</li>
             <li><b>Prices are never points.</b> Start/sit doesn't read them.</li>
           </ul>
         </div>
@@ -1008,6 +1018,7 @@ cd ../sleeper
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--dy)"></span>Dynasty</td><td><code>dynasty_values.json</code>: KTC + FantasyCalc</td><td><code>sleeper_id</code> via <code>mfl_id</code></td><td><code>tools/export_dynasty_values.py</code></td><td class="num">14 days</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper &amp; <span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>weekly_props.json</code>: per-game markets, <code>exp_td</code>, <code>match_keys</code></td><td><code>name_key</code> <span class="pill warn">a name</span> with <code>sleeper_id</code> inside</td><td><code>tools/export_props.py</code></td><td class="num">24 h</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>lateround.json</code>: weekly ranks and tiers, kicker projections</td><td><code>sleeper_id</code>; K and DEF on team</td><td><code>tools/export_lateround.py</code></td><td class="num">per capture</td></tr>
+        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>lateround_ros.json</code>: rest-of-season ranks, read by <code>waivers</code> rather than by start/sit</td><td><code>sleeper_id</code></td><td><code>tools/export_lateround_ros.py</code></td><td class="num">per capture</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td>News bundle for <code>/news</code></td><td>—</td><td><code>tools/news-push.sh</code> → <code>/api/news/upload</code></td><td class="num">3 h cadence</td></tr>
         <tr><td><span class="dot" style="--c:var(--bb)"></span>Mac → <span class="dot" style="--c:var(--bb)"></span>Render</td><td>Weekly best-ball standings</td><td>DK <code>playerId</code></td><td><code>tools/capture-standings.sh</code> → <code>/api/season/upload</code></td><td class="num">weekly</td></tr>
         <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>drafts.db</code> table <code>player_rankings</code>, your best-ball board, read-only</td><td><code>dk_player_id</code></td><td>You, at <code>/rankings</code></td><td class="num">—</td></tr>
@@ -1071,7 +1082,7 @@ cd ../sleeper
         <h2>Done by hand, on purpose</h2>
         <ul>
           <li><b>Publishing the payload</b> (<code>refresh-sources.sh --publish</code> or <code>/update-projections</code>). An automated publish once would have shipped a build against a stale cache.</li>
-          <li><b>The weekly start/sit</b> (<code>sleeper/tools/weekly.sh</code> or <code>/startsit</code>): once, late, before kickoff.</li>
+          <li><b>The weekly start/sit</b> (<code>sleeper/tools/weekly.sh</code> or <code>/startsit</code>): once, late, before kickoff. <code>/tuesday</code> is the pre-waivers pass.</li>
           <li><b>Entering lineups, setting Sleeper lineups, making claims.</b> Nothing here writes to Sleeper or enters a DFS contest.</li>
         </ul>
       </div>
