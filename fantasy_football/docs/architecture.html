@@ -171,6 +171,20 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
 .week .job{font:500 12.5px var(--mono)}
 .week .what{font-size:13.5px; color:var(--ink-2)}
 
+/* your week */
+.week-days{display:grid; margin-top:26px; border-top:1px solid var(--line)}
+.day{display:grid; grid-template-columns:170px minmax(0,1fr); gap:10px 30px; padding-block:26px; border-bottom:1px solid var(--line)}
+.dname{display:grid; gap:4px; align-content:start}
+.dname span{font:700 22px/1.1 var(--display); color:var(--ink)}
+.dname small{font:500 11.5px/1.4 var(--mono); color:var(--muted)}
+.dbody{display:grid; gap:12px; align-content:start; min-width:0}
+.dbody h3{font-size:16px; font-weight:600}
+.dbody p, .dbody li{font-size:15px; color:var(--ink-2); max-width:72ch}
+.dbody p.auto{font-size:13.5px; color:var(--muted)}
+.dbody ul{margin:0; padding-left:18px; display:grid; gap:6px}
+.dbody b{color:var(--ink); font-weight:600}
+@media (max-width: 720px){ .day{grid-template-columns:1fr} }
+
 @media (max-width: 860px){
   .grid2{grid-template-columns:1fr}
   .mods{grid-template-columns:1fr; gap:2px 0}
@@ -326,6 +340,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
 
     <p class="sec-title">Across all of them</p>
     <nav class="index" aria-label="Shared">
+      <a class="card plain" href="#week"><span class="nm">Your week</span><span class="ds">Every tool you run by hand, on the day to run it — Tuesday-night waivers through Monday night.</span></a>
       <a class="card plain" href="#seams"><span class="nm">What crosses between them</span><span class="ds">Every file and HTTP call that moves data between projects, what it's keyed on, when it goes stale, and where every number comes from.</span></a>
       <a class="card plain" href="#schedule"><span class="nm">What runs by itself</span><span class="ds">The eight scheduled jobs on the Mac, laid out across the week.</span></a>
       <a class="card plain" href="#health"><span class="nm">Is anything broken?</span><span class="ds">One health command per project, the test suites, and what changes next season.</span></a>
@@ -1001,6 +1016,142 @@ cd ../sleeper
     </div>
   </section>
 
+  <!-- ─────────────────────────────── YOUR WEEK ─────────────────────────────── -->
+  <section data-view="week" style="--c:var(--accent)" hidden>
+    <a class="back" href="#">← The map</a>
+    <header class="dhead">
+      <span class="eyebrow">what you run by hand · Central time</span>
+      <h1>Your week</h1>
+      <p class="lede">Everything you run yourself, on the day to run it. The fantasy week turns over on Tuesday night, when waivers are the question, and ends with Monday night's game — so the days run in that order. What runs by itself is noted on each day; the full list is <a href="#schedule">What runs by itself</a>.</p>
+    </header>
+
+    <p class="note"><b>Nothing here acts for you.</b> Every command reads and recommends. Waiver claims, lineups and DFS entries are always set by you, in Sleeper or DraftKings.</p>
+
+    <div class="week-days">
+
+      <div class="day">
+        <div class="dname"><span>Tuesday</span><small>night, before waivers run</small></div>
+        <div class="dbody">
+          <p class="auto"><span class="pill mute">runs itself</span> 07:30 best-ball standings to <code>/season</code> · 09:00 DFS ownership import, second attempt</p>
+          <h3>Run <code>/tuesday</code></h3>
+          <p>It does all three steps below and reads the output for you. By hand:</p>
+<pre><span class="c"># 1. LateRound, in your signed-in browser</span>
+<span class="c">#    weekly page   → projections/tools/lateround-capture.js</span>
+<span class="c">#    ROS page      → projections/tools/lateround-ros-capture.js</span>
+<span class="c">#    move the CSVs into projections/data/, then:</span>
+cd projections
+.venv/bin/python tools/export_lateround.py --week &lt;week&gt;
+.venv/bin/python tools/export_lateround_ros.py
+
+<span class="c"># 2. the market, and a first look at start/sit</span>
+cd ../sleeper &amp;&amp; tools/weekly.sh
+
+<span class="c"># 3. the waiver board, every league</span>
+.venv/bin/python cli.py waivers --league &lt;id&gt;</pre>
+          <ul>
+            <li><b>Check the export's coverage line:</b> about 150 ranked and 0 unmatched is a clean capture. Anything short, redo the browser step.</li>
+            <li><b>The weekly capture's four downloads don't all land</b> in Chrome. <code>/tuesday</code> carries the fallback that works.</li>
+            <li><b>Thin market coverage is expected on a Tuesday.</b> The point is claims, not Sunday's lineup.</li>
+          </ul>
+          <p><span class="pill warn">deadline</span> Claims must be in before the first league runs at <b>Wed 02:11</b> — Justice League and Hastings are Tuesday-night decisions.</p>
+        </div>
+      </div>
+
+      <div class="day">
+        <div class="dname"><span>Wednesday</span><small>waivers clear</small></div>
+        <div class="dbody">
+          <div class="tbl"><table>
+            <thead><tr><th>League</th><th>Waivers process</th><th>Type</th></tr></thead>
+            <tbody>
+              <tr><td>Justice League</td><td class="num">02:11</td><td>FAAB</td></tr>
+              <tr><td>Hastings</td><td class="num">02:12</td><td>FAAB</td></tr>
+              <tr><td>Haters Club</td><td class="num">09:06</td><td>FAAB</td></tr>
+              <tr><td>NNCC</td><td class="num">11:05</td><td>rolling priority</td></tr>
+            </tbody>
+          </table></div>
+          <p class="auto">Measured from Sleeper's processed claims on Wed 16 Sep 2026. The leagues' <code>daily_waivers_hour</code> settings don't map onto these cleanly, so re-measure if a commissioner changes them.</p>
+          <h3>After each league clears</h3>
+<pre>cd sleeper
+.venv/bin/python cli.py sync --league &lt;id&gt;       <span class="c"># rosters and bids have moved</span>
+.venv/bin/python cli.py waivers --league &lt;id&gt;    <span class="c"># what's left, now free agents</span></pre>
+          <p>Compare adds against your <b>starting lineup</b>, not just your worst bench player — an add only helps if he beats someone you'd actually start.</p>
+        </div>
+      </div>
+
+      <div class="day">
+        <div class="dname"><span>Thursday</span><small>first game</small></div>
+        <div class="dbody">
+          <p>Run <code>/startsit</code> <b>only if you start someone in Thursday's game.</b> Otherwise wait — DK's market fills in toward kickoff, so a Sunday run is better informed.</p>
+        </div>
+      </div>
+
+      <div class="day">
+        <div class="dname"><span>Friday</span><small>or Saturday</small></div>
+        <div class="dbody">
+          <h3>Refresh dynasty values</h3>
+<pre>cd projections
+.venv/bin/python cli.py fetch --source dynasty
+.venv/bin/python tools/export_dynasty_values.py
+cd ../sleeper &amp;&amp; .venv/bin/python cli.py dynasty</pre>
+          <p>Dynasty waiver cuts and FAAB bids read these prices, and they go stale after 14 days.</p>
+          <h3>Check the unavailable list</h3>
+          <p>Every entry in <code>sleeper/data/unavailable.json</code> has an <code>until</code> date. Extend or delete each before it lapses — an expired one silently makes a player look available again.</p>
+        </div>
+      </div>
+
+      <div class="day">
+        <div class="dname"><span>Sunday</span><small>lineups lock</small></div>
+        <div class="dbody">
+          <p class="auto"><span class="pill mute">runs itself</span> 08:30 and 10:45 DFS props export, committed and pushed</p>
+          <h3>After 10:45, before the noon lock</h3>
+<pre><span class="c"># final lineups, all four Sleeper leagues</span>
+cd sleeper &amp;&amp; tools/weekly.sh           <span class="c"># or /startsit</span>
+
+<span class="c"># DFS</span>
+cd ../dfs
+.venv/bin/python cli.py doctor
+.venv/bin/python cli.py slates
+.venv/bin/python cli.py contest &lt;contest id&gt;
+.venv/bin/python cli.py --draftgroup &lt;dg&gt; lineups -n 4 --stack \
+  --objective ceiling --top-games 2 --min-bringback 1 --allow-repeat-qb
+.venv/bin/python cli.py serve            <span class="c"># :8300</span></pre>
+          <ul>
+            <li><b>Look for late scratches:</b> a starter with no market at all, whose game hasn't kicked off, is usually not playing. <code>/startsit</code> walks through it.</li>
+            <li><b>Weigh LateRound against the model</b> where they disagree — an unranked-this-week player who is ranked rest-of-season usually means an injury doubt.</li>
+          </ul>
+          <p><span class="pill warn">11:30</span> Download <code>DKEntries.csv</code> — a contest can fill before lock, and editing entries is then the only way in. <span class="pill warn">12:00</span> lock.</p>
+        </div>
+      </div>
+
+      <div class="day">
+        <div class="dname"><span>Monday</span><small>last game</small></div>
+        <div class="dbody">
+          <p class="auto"><span class="pill mute">runs itself</span> 09:00 DFS ownership import from finished contests</p>
+          <p>Nothing required. A Monday-night starter stays swappable until his kickoff. If DFS ownership matters to you, confirm the import ran — small contests get purged by DraftKings, and a week not imported is gone.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="grid2">
+      <div class="blk">
+        <h2>Any day</h2>
+<pre>cd projections &amp;&amp; .venv/bin/python cli.py doctor
+cd sleeper     &amp;&amp; .venv/bin/python cli.py doctor
+cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
+        <p>Each never fetches and exits non-zero on red. See <a href="#health">Is anything broken?</a></p>
+      </div>
+      <div class="blk">
+        <h2>Off until next August</h2>
+        <ul>
+          <li><b>Best ball</b> needs nothing — <code>/season</code> updates itself on Tuesdays.</li>
+          <li><code>/update-projections</code>, <code>/nightly-review</code> and the nightly refresh are for drafting, which is over for 2026.</li>
+          <li><code>tools/preflight.py</code> will report red until then, deliberately — see <code>best-ball-draft/docs/STATUS.md</code>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
   <!-- ─────────────────────────────── SEAMS ─────────────────────────────── -->
   <section data-view="seams" style="--c:var(--accent)" hidden>
     <a class="back" href="#">← The map</a>
@@ -1062,7 +1213,7 @@ cd ../sleeper
     <header class="dhead">
       <span class="eyebrow">~/Library/LaunchAgents · Central time</span>
       <h1>What runs by itself</h1>
-      <p class="lede">Eight jobs, all launchd rather than cron, because cron silently skips a run while the Mac sleeps and launchd fires at the next wake. The nightly draft refresh is disabled until next season. Nothing on this list changes what the recommender scores with; publishing the payload is always done by hand.</p>
+      <p class="lede">Eight jobs, all launchd rather than cron, because cron silently skips a run while the Mac sleeps and launchd fires at the next wake. The nightly draft refresh is disabled until next season. What you run by hand each day is on <a href="#week">Your week</a>. Nothing on this list changes what the recommender scores with; publishing the payload is always done by hand.</p>
     </header>
     <div class="tbl frame"><table class="week">
       <thead><tr><th>Job</th><th>What it does</th><th class="d">Sun</th><th class="d">Mon</th><th class="d">Tue</th><th class="d">Wed</th><th class="d">Thu</th><th class="d">Fri</th><th class="d">Sat</th><th>Writes outside the Mac?</th></tr></thead>
