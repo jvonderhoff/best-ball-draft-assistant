@@ -196,7 +196,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
 <div class="wrap">
   <div class="strip">
     <span><b>fantasy_football/docs/architecture.html</b></span>
-    <span>checked against the code on 14 Sep 2026</span>
+    <span>checked against the code on 16 Sep 2026</span>
   </div>
 
   <!-- ─────────────────────────────── THE MAP ─────────────────────────────── -->
@@ -499,6 +499,7 @@ tools/refresh-sources.sh --publish
             <li><b>Nightly</b>: <span class="pill mute">disabled</span> since 14 Sep. It refreshed draft inputs, and best-ball drafting is over for 2026.</li>
             <li><b>Market report</b>: the other five mornings.</li>
             <li><b>News poll &amp; push</b>: every 3 hours.</li>
+            <li><b>Weekly xFP</b>: Tuesdays 08:00 — refreshes nflverse, scores the week that just finished (actual vs. expected FP, team pass rate/red-zone rate) into <code>store.db</code>, read by <code>/weekly</code>.</li>
           </ul>
           <p><a href="#schedule">Full schedule →</a></p>
         </div>
@@ -1032,7 +1033,7 @@ cd ../sleeper
       <div class="day">
         <div class="dname"><span>Tuesday</span><small>night, before waivers run</small></div>
         <div class="dbody">
-          <p class="auto"><span class="pill mute">runs itself</span> 07:30 best-ball standings to <code>/season</code> · 09:00 DFS ownership import, second attempt</p>
+          <p class="auto"><span class="pill mute">runs itself</span> 07:30 best-ball standings to <code>/season</code> · 08:00 weekly xFP snapshot (actual vs. expected FP + team stats) · 09:00 DFS ownership import, second attempt</p>
           <h3>Run <code>/tuesday</code></h3>
           <p>It does all three steps below and reads the output for you. By hand:</p>
 <pre><span class="c"># 1. LateRound, in your signed-in browser</span>
@@ -1213,7 +1214,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
     <header class="dhead">
       <span class="eyebrow">~/Library/LaunchAgents · Central time</span>
       <h1>What runs by itself</h1>
-      <p class="lede">Eight jobs, all launchd rather than cron, because cron silently skips a run while the Mac sleeps and launchd fires at the next wake. The nightly draft refresh is disabled until next season. What you run by hand each day is on <a href="#week">Your week</a>. Nothing on this list changes what the recommender scores with; publishing the payload is always done by hand.</p>
+      <p class="lede">Nine jobs, all launchd rather than cron, because cron silently skips a run while the Mac sleeps and launchd fires at the next wake. The nightly draft refresh is disabled until next season. What you run by hand each day is on <a href="#week">Your week</a>. Nothing on this list changes what the recommender scores with; publishing the payload is always done by hand.</p>
     </header>
     <div class="tbl frame"><table class="week">
       <thead><tr><th>Job</th><th>What it does</th><th class="d">Sun</th><th class="d">Mon</th><th class="d">Tue</th><th class="d">Wed</th><th class="d">Thu</th><th class="d">Fri</th><th class="d">Sat</th><th>Writes outside the Mac?</th></tr></thead>
@@ -1222,6 +1223,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.marketreport</td><td class="what">News and price movement, on the days nightly doesn't run</td><td class="d">07:30</td><td class="d">07:30</td><td class="d off">·</td><td class="d">07:30</td><td class="d">07:30</td><td class="d off">·</td><td class="d">07:30</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspoll</td><td class="what">Poll news feeds into <code>store.db</code></td><td class="span" colspan="7">every 3 hours</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspush</td><td class="what">Push the news bundle to <code>/news</code> on Render</td><td class="span" colspan="7">every 3 hours</td><td><span class="pill warn">/news only</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.weeklyxfp</td><td class="what">Refresh nflverse, find the week that just finished (every game final, not a calendar guess), score actual-vs-expected FP + team pass rate/red-zone rate/target-share into <code>store.db</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">08:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.standings</td><td class="what">Capture every best-ball entry's standing from DK, push to <code>/season</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">07:30</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">/season only</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.autoqueue</td><td class="what">Keep live DK draft queues stocked. Deadline 7 Sep 21:00 has passed, so it's quiet.</td><td class="span" colspan="7">every 5 minutes, while loaded</td><td><span class="pill bad">your DK queues</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
@@ -1240,7 +1242,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
       <div class="blk">
         <h2>Where the plists live</h2>
         <ul>
-          <li><code>projections/tools/com.bba.{nightly,marketreport,newspoll,newspush}.plist</code></li>
+          <li><code>projections/tools/com.bba.{nightly,marketreport,newspoll,newspush,weeklyxfp}.plist</code></li>
           <li><code>best-ball-draft/tools/com.bba.{standings,autoqueue}.plist</code></li>
           <li><code>dfs/tools/com.dfs.{sunday,monday}.plist</code></li>
         </ul>
