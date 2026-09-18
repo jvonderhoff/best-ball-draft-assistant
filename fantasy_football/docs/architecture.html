@@ -447,7 +447,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
             <dt>core/names.py</dt><dd>Name matching, used only as a fallback. A byte-identical copy lives in <code>best-ball-draft/app/data/</code>.</dd>
             <dt>core/metrics.py · schema.py</dt><dd>The six model fields and the payload validation.</dd>
             <dt>store.py · doctor.py</dt><dd>Snapshot store that never overwrites; the health report.</dd>
-            <dt>td.py · devig.py · dst.py</dt><dd>Touchdown probability to expected count, removing the book's hold, team defence projections.</dd>
+            <dt>td.py · devig.py · dst.py · kicker.py</dt><dd>Touchdown probability to expected count, removing the book's hold, team defence projections, kicker projections.</dd>
             <dt>weekly.py</dt><dd><span class="pill warn">do not use</span> A home-made weekly model that lost to “every week is his season average”. Kept as the record.</dd>
             <dt class="grp">analysis/ — the path that publishes today</dt>
             <dt>build.py · payload.py</dt><dd>Joins every source and builds the numbers the Analysis page and V2 read.</dd>
@@ -938,6 +938,7 @@ cd ../sleeper
             <li><b><code>--objective mean</code></b> for 50/50s and double-ups; <b><code>ceiling</code></b> for big tournaments.</li>
             <li><b><code>--top-games 2 --min-bringback 1</code></b> takes quarterbacks from the highest-total games and adds an opposing player.</li>
             <li><b>Defences are projected</b> from the opponent's implied total, so the optimiser no longer just buys the cheapest.</li>
+            <li><b>Kickers are projected too</b> (showdown only) — without a number they were never selectable at all. The level is the fix; the slope does not pick kickers, and <b>a kicker is never the captain</b>.</li>
           </ul>
         </div>
 
@@ -1195,6 +1196,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <tr><td>Expected touchdowns</td><td><code>exp_td = p·(1 + 0.512p)</code>, fitted on 2024 and checked on 2025</td><td><code>projections/pipeline/td.py</code></td></tr>
           <tr><td>Anytime-TD de-vig</td><td>The slate's own implied totals; one global factor (1.2287 when measured)</td><td><code>projections/pipeline/devig.py</code></td></tr>
           <tr><td>Team defence</td><td>The opponent's implied total</td><td><code>projections/pipeline/dst.py</code></td></tr>
+          <tr><td>Kicker</td><td>The team's own implied total — but corr is only +0.17, so this is the league mean (8.5) with a tilt</td><td><code>projections/pipeline/kicker.py</code></td></tr>
           <tr><td>Dynasty value</td><td>KTC and FantasyCalc, side by side, never averaged</td><td><code>projections/tools/export_dynasty_values.py</code></td></tr>
         </tbody>
       </table></div>
