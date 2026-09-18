@@ -977,11 +977,12 @@ cd ../sleeper
         <div class="blk">
           <h2>Game day</h2>
 <pre>cd dfs
-.venv/bin/python cli.py slates
+<span class="c"># Sunday, after 10:45: every contest you are in, off its ladder</span>
+tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
+<span class="c"># or by hand</span>
 .venv/bin/python cli.py contest &lt;id&gt;
 .venv/bin/python cli.py lineups -n 4 --contest &lt;id&gt;
-  <span class="c"># the ladder picks objective, stack, bring-back, top games</span>
-.venv/bin/python cli.py serve     <span class="c"># :8300</span>
+.venv/bin/python cli.py serve --contest &lt;id&gt;     <span class="c"># :8300</span>
 <span class="c"># Monday: where they would have finished, everywhere</span>
 .venv/bin/python cli.py replay --contest &lt;id&gt;</pre>
         </div>
@@ -994,7 +995,8 @@ cd ../sleeper
             <dt>screen · stacks</dt><dd>Value within position; teams by implied total.</dd>
             <dt>lineups · showdown</dt><dd>Classic and single-game builds.</dd>
             <dt>ownership</dt><dd>Import measured ownership from standings.</dd>
-            <dt>serve · doctor</dt><dd>Web board; what it's resting on, and how old.</dd>
+            <dt>serve · doctor</dt><dd>Web board, <code>--contest</code> opens it on one; what it's resting on, and how old.</dd>
+            <dt>tools/gameday.sh</dt><dd>The Sunday routine: newest export, doctor, one build per contest, the board.</dd>
           </dl>
         </div>
         <div class="blk">
@@ -1112,13 +1114,10 @@ cd ../sleeper &amp;&amp; .venv/bin/python cli.py dynasty</pre>
 <pre><span class="c"># final lineups, all four Sleeper leagues</span>
 cd sleeper &amp;&amp; tools/weekly.sh           <span class="c"># or /startsit</span>
 
-<span class="c"># DFS</span>
+<span class="c"># DFS -- or /sunday</span>
 cd ../dfs
-.venv/bin/python cli.py doctor
-.venv/bin/python cli.py slates
-.venv/bin/python cli.py contest &lt;contest id&gt;
-.venv/bin/python cli.py lineups -n 4 --contest &lt;contest id&gt;   <span class="c"># the ladder sets the flags</span>
-.venv/bin/python cli.py serve            <span class="c"># :8300</span></pre>
+tools/gameday.sh -n 4 &lt;contest id&gt; -n 1 &lt;contest id&gt; --serve
+  <span class="c"># newest export, doctor, one build per contest off its ladder, the board on :8300</span></pre>
           <ul>
             <li><b>Look for late scratches:</b> a starter with no market at all, whose game hasn't kicked off, is usually not playing. <code>/startsit</code> walks through it.</li>
             <li><b>Weigh LateRound against the model</b> where they disagree — an unranked-this-week player who is ranked rest-of-season usually means an injury doubt.</li>
