@@ -57,6 +57,10 @@ Two rules that hold everywhere:
   exist. `sleeper/` has no copy and does no name matching at all.
   A *weaker* rule used to exist in `dynasty-rankings/sources/normalize.py`; that
   app was deleted 2026-09-08 and the rule went with it rather than spreading.
+  `dfs/props.py` held a third such rule and was fixed the same way on 2026-09-12 -
+  by deleting the need for it, not by adding a copy. It still folds punctuation,
+  which is mechanical and cannot silently disagree; anything that RENAMES a player
+  belongs where `names.py` lives.
   Its replacement is the better answer: the dynasty export joins KTC to
   FantasyCalc on `mfl_id` and reads `sleeper_id` off FantasyCalc, so it does no
   name matching at all.
@@ -132,6 +136,22 @@ Two measured facts about that seam, because both are ways to be wrong invisibly:
   market absent. It shipped that way and the first real run scored 0/9 starters
   from the market against 349 keyed players. `startsit` now refuses a run where
   no starter took a market number.
+- **"No consumer needs a copy" was only half true, and the other half cost five
+  players.** A consumer arriving with its OWN spelling still had to build the key,
+  and `dfs` built it with a punctuation-only fold. DraftKings' sportsbook and its
+  DFS product disagree about their own players - Cameron/Cam Ward, Kenneth/Kenny
+  Gainwell, Nicholas/Nick Singleton, Andrew/Drew Ogletree, Matthew/Matt Hibner -
+  so on `dg=151307` (746 salaried) five playable men, a $5,100 starting quarterback
+  among them, were dropped by a bare `continue` and appeared in no count anywhere.
+  Fixed 2026-09-12 by making the claim true instead of adding a third copy of
+  `names.py`: every export record now carries `match_keys`, EVERY spelling that
+  resolves to it, expanded by the side that owns the nickname table. A consumer
+  folds punctuation, looks up, done. Measured on one export, 411 -> 406 unmatched
+  of 722, and the recovered set is exactly those five. **An id join is not
+  available here and is not worth revisiting**: the export's `dk_player_id` is the
+  best-ball DK pool's id space, DFS draftables carry `playerDkId`, overlap 0 of 746.
+  The general rule: when a consumer has to reconstruct a key, ship the keys, not
+  the rule that makes them.
 - **`anytime_td` is P(scores at all); `exp_td` is the count. Score `exp_td`.**
   Fixed 2026-09-08. The conversion now lives at `projections/pipeline/td.py` and
   travels with the export, because both consumers had been doing it themselves,
