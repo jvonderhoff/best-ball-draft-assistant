@@ -196,7 +196,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
 <div class="wrap">
   <div class="strip">
     <span><b>fantasy_football/docs/architecture.html</b></span>
-    <span>checked against the code on 16 Sep 2026</span>
+    <span>checked against the code on 17 Sep 2026</span>
   </div>
 
   <!-- ─────────────────────────────── THE MAP ─────────────────────────────── -->
@@ -905,7 +905,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>data/weekly_props.json</code>, committed Sundays</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 152 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 218 tests</dd></div>
       </dl>
     </header>
 
@@ -964,7 +964,8 @@ cd ../sleeper
             <dt>dfs/optimize.py</dt><dd>Exact lineup construction, stacks, exposure, game environment.</dd>
             <dt>dfs/showdown.py</dt><dd>Single-game Captain mode, a different product.</dd>
             <dt>dfs/ceiling.py · contest.py</dt><dd>The score a finish takes, across seven years; the payout ladder.</dd>
-            <dt>dfs/standings.py</dt><dd>Measured ownership from DK's post-contest standings.</dd>
+            <dt>dfs/standings.py</dt><dd>DK's post-contest standings: measured ownership, every entry's score, your own entries by id, the ladder. Served for any completed contest, entered or not.</dd>
+            <dt>dfs/replay.py</dt><dd>Where a score finishes in a stored field, and what that rank pays.</dd>
             <dt>dfs/export.py</dt><dd>DK's upload CSV. A file, never an upload.</dd>
             <dt>web/app.py</dt><dd>Lineups, value screen and stacks in tabs, with live sliders.</dd>
           </dl>
@@ -977,16 +978,18 @@ cd ../sleeper
 <pre>cd dfs
 .venv/bin/python cli.py slates
 .venv/bin/python cli.py contest &lt;id&gt;
-.venv/bin/python cli.py --draftgroup &lt;dg&gt; \
-  lineups -n 4 --stack --objective ceiling \
-  --top-games 2 --min-bringback 1 \
-  --allow-repeat-qb
-.venv/bin/python cli.py serve     <span class="c"># :8300</span></pre>
+.venv/bin/python cli.py lineups -n 4 --contest &lt;id&gt;
+  <span class="c"># the ladder picks objective, stack, bring-back, top games</span>
+.venv/bin/python cli.py serve     <span class="c"># :8300</span>
+<span class="c"># Monday: where they would have finished, everywhere</span>
+.venv/bin/python cli.py replay --contest &lt;id&gt;</pre>
         </div>
         <div class="blk">
           <h2>Commands</h2>
           <dl class="mods">
-            <dt>slates · contest</dt><dd>Which slates exist; what a contest pays.</dd>
+            <dt>slates · contest</dt><dd>Which slates exist; what a contest pays, and how to build for it (cash vs tournament, read off the ladder).</dd>
+            <dt>lineups --contest</dt><dd>Build for one contest: its slate, and its ladder's objective, stack, bring-back and game filter for any flag not given.</dd>
+            <dt>contests · replay</dt><dd>Every contest that ran on a slate (lobby snapshot before lock, id scan after); where your lineups would have finished in each of them.</dd>
             <dt>screen · stacks</dt><dd>Value within position; teams by implied total.</dd>
             <dt>lineups · showdown</dt><dd>Classic and single-game builds.</dd>
             <dt>ownership</dt><dd>Import measured ownership from standings.</dd>
@@ -997,13 +1000,13 @@ cd ../sleeper
           <h2>Runs by itself</h2>
           <ul>
             <li><b>Sunday export</b>: 08:30 and 10:45. Refreshes props, checks them, commits and pushes, so another machine can pull.</li>
-            <li><b>Ownership import</b>: Monday and Tuesday 09:00.</li>
+            <li><b>Ownership import</b>: Monday and Tuesday 09:00. Keeps the field and your entries for every contest you played, then the other big contests on those slates, so <code>replay</code> can place your lineups in all of them.</li>
           </ul>
         </div>
         <div class="blk">
           <h2>Open right now</h2>
           <ul>
-            <li>The web board doesn't expose <code>--top-games</code> or <code>--min-bringback</code> yet. That's mid-edit, uncommitted.</li>
+            <li><code>replay</code> says where a lineup finished, not whether a different build would have. A re-solve against the archived pre-lock props is the next step.</li>
           </ul>
         </div>
         <div class="blk">
@@ -1113,8 +1116,7 @@ cd ../dfs
 .venv/bin/python cli.py doctor
 .venv/bin/python cli.py slates
 .venv/bin/python cli.py contest &lt;contest id&gt;
-.venv/bin/python cli.py --draftgroup &lt;dg&gt; lineups -n 4 --stack \
-  --objective ceiling --top-games 2 --min-bringback 1 --allow-repeat-qb
+.venv/bin/python cli.py lineups -n 4 --contest &lt;contest id&gt;   <span class="c"># the ladder sets the flags</span>
 .venv/bin/python cli.py serve            <span class="c"># :8300</span></pre>
           <ul>
             <li><b>Look for late scratches:</b> a starter with no market at all, whose game hasn't kicked off, is usually not playing. <code>/startsit</code> walks through it.</li>
@@ -1127,8 +1129,10 @@ cd ../dfs
       <div class="day">
         <div class="dname"><span>Monday</span><small>last game</small></div>
         <div class="dbody">
-          <p class="auto"><span class="pill mute">runs itself</span> 09:00 DFS ownership import from finished contests</p>
+          <p class="auto"><span class="pill mute">runs itself</span> 09:00 DFS ownership import from finished contests, plus the field and your entries, plus the other contests on the slate</p>
           <p>Nothing required. A Monday-night starter stays swappable until his kickoff. If DFS ownership matters to you, confirm the import ran — small contests get purged by DraftKings, and a week not imported is gone.</p>
+<pre><span class="c"># Tuesday, once the import has run: the same lineups, in every contest that night</span>
+cd dfs &amp;&amp; .venv/bin/python cli.py replay</pre>
         </div>
       </div>
 
@@ -1226,8 +1230,8 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.weeklyxfp</td><td class="what">Refresh nflverse, find the week that just finished (every game final, not a calendar guess), score actual-vs-expected FP + team pass rate/red-zone rate/target-share into <code>store.db</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">08:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.standings</td><td class="what">Capture every best-ball entry's standing from DK, push to <code>/season</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">07:30</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">/season only</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.autoqueue</td><td class="what">Keep live DK draft queues stocked. Deadline 7 Sep 21:00 has passed, so it's quiet.</td><td class="span" colspan="7">every 5 minutes, while loaded</td><td><span class="pill bad">your DK queues</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership from finished contests</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo; snapshot the lobby's contests for the replay</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay)</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
       </tbody>
     </table></div>
     <div class="grid2">
@@ -1268,11 +1272,11 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">147</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">199</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">152</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">218</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026. Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (DFS 17 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>
