@@ -905,7 +905,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>data/weekly_props.json</code>, committed Sundays</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 222 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 227 tests</dd></div>
       </dl>
     </header>
 
@@ -953,7 +953,7 @@ cd ../sleeper
               <tr><td>Lineup ownership below 0.8× the field (contrarian)</td><td class="num">0.26×</td></tr>
             </tbody>
           </table></div>
-          <p>Week 1 contests 2020–2026 (medians from <code>dfs/README.md</code>). There's no ownership model on purpose: one was built and refused, because it predicted players well and lineups not at all.</p>
+          <p>Week 1 contests 2020–2026 (medians from <code>dfs/README.md</code>). Ownership is <em>estimated</em> before lock (per position, from projection and salary, fitted on every graded week) and printed beside each lineup as <code>own~</code>; it constrains nothing. Every Monday the job grades the estimate against the measured field and adds the week to the fit — <code>ownership --grades</code> is the record, and the case for ever letting it into the build.</p>
         </div>
 
         <div class="blk">
@@ -966,6 +966,7 @@ cd ../sleeper
             <dt>dfs/showdown.py</dt><dd>Single-game Captain mode, a different product.</dd>
             <dt>dfs/ceiling.py · contest.py</dt><dd>The score a finish takes, across seven years; the payout ladder.</dd>
             <dt>dfs/standings.py</dt><dd>DK's post-contest standings: measured ownership, every entry's score, your own entries by id, the ladder. Served for any completed contest, entered or not.</dd>
+            <dt>dfs/ownership.py</dt><dd>The pre-lock ownership estimate and its Monday grade; prints, never constrains.</dd>
             <dt>dfs/replay.py</dt><dd>Where a score finishes in a stored field, and what that rank pays.</dd>
             <dt>dfs/export.py</dt><dd>DK's upload CSV. A file, never an upload. Per-slot ids from the draftables API, or from the salary CSV when it refuses (its id is the slot id; FLEX is that plus one, measured and re-checked per slate).</dd>
             <dt>web/app.py</dt><dd>Lineups, value screen and stacks in tabs, with live sliders.</dd>
@@ -994,7 +995,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
             <dt>contests · replay</dt><dd>Every contest that ran on a slate (lobby snapshot before lock, id scan after); where your lineups would have finished in each of them.</dd>
             <dt>screen · stacks</dt><dd>Value within position; teams by implied total.</dd>
             <dt>lineups · showdown</dt><dd>Classic and single-game builds.</dd>
-            <dt>ownership</dt><dd>Import measured ownership from standings.</dd>
+            <dt>ownership</dt><dd>Import measured ownership from standings; <code>--estimate</code> before lock, <code>--grade</code> after, <code>--grades</code> for the record.</dd>
             <dt>serve · doctor</dt><dd>Web board, <code>--contest</code> opens it on one; what it's resting on, and how old.</dd>
             <dt>tools/gameday.sh</dt><dd>The Sunday routine: newest export, doctor, one build per contest, the board.</dd>
           </dl>
@@ -1232,7 +1233,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.standings</td><td class="what">Capture every best-ball entry's standing from DK, push to <code>/season</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">07:30</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">/season only</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.autoqueue</td><td class="what">Keep live DK draft queues stocked. Deadline 7 Sep 21:00 has passed, so it's quiet.</td><td class="span" colspan="7">every 5 minutes, while loaded</td><td><span class="pill bad">your DK queues</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo; snapshot the lobby's contests for the replay</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay)</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay); grade Sunday's ownership estimate</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
       </tbody>
     </table></div>
     <div class="grid2">
@@ -1273,7 +1274,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">147</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">199</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">222</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">227</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>

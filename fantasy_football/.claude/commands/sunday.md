@@ -29,7 +29,8 @@ cd dfs && tools/gameday.sh -n 4 <millionaire id> -n 1 <single-entry id>
 projections export across if it is newer, **refuses an export over 6 hours
 old** (on a Sunday that means the 10:45 job did not run -- check
 `data/sunday-export/latest.txt`, then run `tools/sunday-export.sh`), runs
-`doctor`, and builds each contest with its ladder's settings, writing
+`doctor`, makes and stores the ownership estimate (so each lineup prints
+`own~`), and builds each contest with its ladder's settings, writing
 `data/<date>-<id>.csv` for upload.
 
 ## Step 2 — read the output, and say what the script cannot
@@ -47,6 +48,10 @@ old** (on a Sunday that means the 10:45 job did not run -- check
 - **Each lineup's ceiling band.** `top 0.01% (2024) to top 6% (2026)` is the
   range across seven years; a lineup that reads `cash` at the low end is a
   lineup a high-scoring week will not pay.
+- **The `est own` on each lineup header, against the field.** Seven
+  Millionaires say 1.0-1.5x the field's summed ownership finished best and
+  below 0.8x lost every year. The estimate is one graded week old; say the
+  ratio, and say it is an estimate. Do not move a lineup for it.
 - **Whether the upload CSV was written.** DraftKings' draftables endpoint
   refused with 403 on 2026-09-17, and without it there are no per-slot ids.
   The lineups still print; say the file was skipped and that entry is by hand.
