@@ -358,7 +358,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
         <div><dt>Runs</dt><dd>Locally only. Analysis page at <code>localhost:8100</code></dd></div>
         <div><dt>Stores</dt><dd><code>data/store.db</code> (ids, snapshots) · <code>data/analysis.db</code></dd></div>
         <div><dt>Keyed on</dt><dd><code>dk_player_id</code>, crosswalked to every other id</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 164 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 165 tests</dd></div>
       </dl>
     </header>
 
@@ -905,7 +905,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>data/weekly_props.json</code>, committed Sundays</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 232 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 234 tests</dd></div>
       </dl>
     </header>
 
@@ -962,6 +962,7 @@ cd ../sleeper
             <dt>dfs/salaries.py</dt><dd>DK slates and salaries, this repo's own platform data. Refuses a slate with no DST.</dd>
             <dt>dfs/props.py</dt><dd>Reads the props export and joins it with a punctuation fold and <code>match_keys</code>.</dd>
             <dt>dfs/scoring.py points_for</dt><dd>market → season → sleeper, in trust order; the basis travels with every number.</dd>
+            <dt>dfs/showdown.py</dt><dd>Single-game captain mode — same scoring tiers as Classic, its own <code>from_sleeper</code> coverage count.</dd>
             <dt>dfs/scoring.py</dt><dd>DK Classic scoring and roster rules.</dd>
             <dt>dfs/optimize.py</dt><dd>Exact lineup construction, stacks, exposure, game environment.</dd>
             <dt>dfs/showdown.py</dt><dd>Single-game Captain mode, a different product.</dd>
@@ -1274,9 +1275,9 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <div class="tbl"><table>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
-              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">164</td></tr>
+              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">165</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">199</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">232</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">234</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
