@@ -196,7 +196,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
 <div class="wrap">
   <div class="strip">
     <span><b>fantasy_football/docs/architecture.html</b></span>
-    <span>checked against the code on 17 Sep 2026</span>
+    <span>checked against the code on 18 Sep 2026</span>
   </div>
 
   <!-- ─────────────────────────────── THE MAP ─────────────────────────────── -->
@@ -358,7 +358,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
         <div><dt>Runs</dt><dd>Locally only. Analysis page at <code>localhost:8100</code></dd></div>
         <div><dt>Stores</dt><dd><code>data/store.db</code> (ids, snapshots) · <code>data/analysis.db</code></dd></div>
         <div><dt>Keyed on</dt><dd><code>dk_player_id</code>, crosswalked to every other id</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 147 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 164 tests</dd></div>
       </dl>
     </header>
 
@@ -905,7 +905,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>data/weekly_props.json</code>, committed Sundays</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 227 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 232 tests</dd></div>
       </dl>
     </header>
 
@@ -917,14 +917,14 @@ cd ../sleeper
         <g class="n-pj"><rect class="box" x="0" y="144" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="14" y="168" fill="currentColor">weekly_props.json</text><text class="s" x="14" y="187" fill="currentColor">from Projections, Sundays</text></g>
         <path class="edge" d="M220 58 L268 104" marker-end="url(#adf)"/>
         <path class="edge" d="M220 172 L268 126" marker-end="url(#adf)"/>
-        <g><rect class="box" x="270" y="87" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="284" y="111" fill="currentColor">Join on match_keys</text><text class="s" x="284" y="130" fill="currentColor">basis: market·season·thin</text></g>
+        <g><rect class="box" x="270" y="87" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="284" y="111" fill="currentColor">Join on match_keys</text><text class="s" x="284" y="130" fill="currentColor">basis: market·season·sleeper</text></g>
         <path class="edge" d="M490 115 H538" marker-end="url(#adf)"/>
         <g class="n-dfs"><rect class="box" x="540" y="87" width="220" height="56" rx="6" fill="#fff"/><text class="t2" x="554" y="111" fill="currentColor">Optimiser (exact)</text><text class="s" x="554" y="130" fill="currentColor">stack · exposure · ceiling</text></g>
         <path class="edge" d="M760 115 H798" marker-end="url(#adf)"/>
         <g><rect class="box" x="800" y="87" width="200" height="56" rx="6" fill="#fff"/><text class="t2" x="814" y="111" fill="currentColor">Lineups → CSV</text><text class="s" x="814" y="130" fill="currentColor">you upload it to DK</text></g>
       </svg>
       </div>
-      <figcaption>Every player carries a <em>basis</em>. <code>market</code> means real yardage lines; <code>season</code> means the market hasn't posted yet, so his season rate stands in; <code>thin</code> means neither, and he's reported rather than invented. Re-export before lock and <code>season</code> rows turn into <code>market</code> rows.</figcaption>
+      <figcaption>Every player carries a <em>basis</em>. <code>market</code> means real yardage lines; <code>season</code> means DK propped him but not on yardage, so his ESPN season rate stands in; <code>sleeper</code> (added 18 Sep) means DK priced nothing at all, so even <code>season</code> had no record to fall back onto — Sleeper's weekly model fills that gap, joined by id, checked last; <code>thin</code> means none of the three. Re-export before lock and <code>season</code>/<code>sleeper</code> rows turn into <code>market</code> rows.</figcaption>
     </figure>
 
     <div class="grid2">
@@ -961,6 +961,7 @@ cd ../sleeper
           <dl class="mods">
             <dt>dfs/salaries.py</dt><dd>DK slates and salaries, this repo's own platform data. Refuses a slate with no DST.</dd>
             <dt>dfs/props.py</dt><dd>Reads the props export and joins it with a punctuation fold and <code>match_keys</code>.</dd>
+            <dt>dfs/scoring.py points_for</dt><dd>market → season → sleeper, in trust order; the basis travels with every number.</dd>
             <dt>dfs/scoring.py</dt><dd>DK Classic scoring and roster rules.</dd>
             <dt>dfs/optimize.py</dt><dd>Exact lineup construction, stacks, exposure, game environment.</dd>
             <dt>dfs/showdown.py</dt><dd>Single-game Captain mode, a different product.</dd>
@@ -1197,6 +1198,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <tr><td>Anytime-TD de-vig</td><td>The slate's own implied totals; one global factor (1.2287 when measured)</td><td><code>projections/pipeline/devig.py</code></td></tr>
           <tr><td>Team defence</td><td>The opponent's implied total</td><td><code>projections/pipeline/dst.py</code></td></tr>
           <tr><td>Kicker</td><td>The team's own implied total — but corr is only +0.17, so this is the league mean (8.5) with a tilt</td><td><code>projections/pipeline/kicker.py</code></td></tr>
+              <tr><td>Weekly fallback tier 3</td><td>Sleeper's own weekly projection, joined by id — only for a player DK priced nothing for at all</td><td><code>projections/pipeline/sources/sleeper.py</code></td></tr>
           <tr><td>Dynasty value</td><td>KTC and FantasyCalc, side by side, never averaged</td><td><code>projections/tools/export_dynasty_values.py</code></td></tr>
         </tbody>
       </table></div>
@@ -1272,9 +1274,9 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <div class="tbl"><table>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
-              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">147</td></tr>
+              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">164</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">199</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">227</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">232</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
