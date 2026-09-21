@@ -904,7 +904,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>data/weekly_props.json</code>, committed Sundays</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 240 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 247 tests</dd></div>
       </dl>
     </header>
 
@@ -997,6 +997,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
             <dt>screen · stacks</dt><dd>Value within position; teams by implied total.</dd>
             <dt>lineups · showdown</dt><dd>Classic and single-game builds.</dd>
             <dt>ownership</dt><dd>Import measured ownership from standings; <code>--estimate</code> before lock, <code>--grade</code> after, <code>--grades</code> for the record.</dd>
+            <dt>record</dt><dd>The season: fees, winnings, ROI and each entry's finish percentile, from DK's own history. <code>--offline</code> reads the stored copy.</dd>
             <dt>serve · doctor</dt><dd>Web board, <code>--contest</code> opens it on one; what it's resting on, and how old.</dd>
             <dt>tools/gameday.sh</dt><dd>The Sunday routine: newest export, doctor, one build per contest, the board.</dd>
           </dl>
@@ -1046,7 +1047,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
           <tr><td>Thursday</td><td>—</td><td><code>/startsit</code> <b>only</b> if you start someone Thursday night.</td></tr>
           <tr><td>Fri / Sat</td><td>—</td><td>Refresh dynasty values (three commands below); tidy <code>unavailable.json</code>.</td></tr>
           <tr><td>Sunday</td><td>DFS props export 08:30 &amp; 10:45</td><td>After 10:45: <b><code>/startsit</code></b>, set Sleeper lineups. <b><code>/sunday &lt;contest ids&gt;</code></b>, upload DFS lineups. <span class="pill warn">lock 12:00</span></td></tr>
-          <tr><td>Monday</td><td>DFS ownership import + estimate grade 09:00</td><td>Nothing. Glance at <code>ownership --grades</code> if curious.</td></tr>
+          <tr><td>Monday</td><td>DFS ownership import + estimate grade 09:00</td><td>Nothing. <code>dfs/cli.py record --offline</code> for the season so far.</td></tr>
                   </tbody>
       </table></div>
       <p>Three things a week, really: <code>/tuesday</code>, <code>/startsit</code> + <code>/sunday</code> on Sunday morning, and dynasty values before the weekend. The days below are the detail.</p>
@@ -1251,7 +1252,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.standings</td><td class="what">Capture every best-ball entry's standing from DK, push to <code>/season</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">07:30</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">/season only</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.autoqueue</td><td class="what">Keep live DK draft queues stocked. Deadline 7 Sep 21:00 has passed, so it's quiet.</td><td class="span" colspan="7">every 5 minutes, while loaded</td><td><span class="pill bad">your DK queues</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo; snapshot the lobby's contests for the replay</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay); grade Sunday's ownership estimate per player and on a 1-in-40 sample of the field's lineups</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay); grade Sunday's ownership estimate per player and on a 1-in-40 sample of the field's lineups; refresh the season record</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
       </tbody>
     </table></div>
     <div class="grid2">
@@ -1292,7 +1293,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">170</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">199</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">240</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">247</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
