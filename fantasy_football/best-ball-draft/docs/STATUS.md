@@ -11,6 +11,35 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-09-21: weekly xFP overstated red-zone touchdowns — fixed
+
+`/weekly`'s expected points (`pipeline/core/xfp.py`, fit by `tools/backtest_xfp.py`)
+scored a target's TD term as the depth bucket's completion rate times a per-completion
+TD rate. That is a product of marginals: red-zone throws complete less often (0.55 at
+the goal line, 0.69 open), so league receiving TDs ran **+16.0% in-sample, +14.8% held
+out**, all inside the 20. Worse, the per-completion cells were thin enough that several
+goal-line cells fell back to a depth marginal near zero — a 5-yard throw from the 5 was
+worth 0.044 TDs where every 2024 catch in that cell scored. Too high on some goal-line
+targets, near zero on others, and the league total read "~2-3%" because the point per
+reception diluted it. **FPOE for red-zone-heavy players was wrong in both directions
+through weeks 1-2.**
+
+Now fit per target per (depth, field) cell, thin cells shrunk toward their field
+marginal: TDs **+0.16% / −0.78%**. The backtest reports TD bias on its own line, the
+rate-table keys were renamed so a stale table raises, and `tests/test_xfp.py` fails on
+the old code. Weeks 1-2 rebuilt; on week 2, 174 of 226 players moved < 0.1.
+
+**Same day, the Tuesday job could have skipped a week silently.** `weekly-xfp.sh`
+judged "week complete" from `data/nflverse/games.csv` but never fetched it — it only
+refreshes as a side effect of `export_props`. It now refetches the schedule every run.
+First run with the fix: 2026-09-22 08:00, which should build week 2 with **32 teams**.
+
+**Open:** QB passing xFP is still unbuilt (scoped: reuse the target cells, own buckets
+for throwaways, scrambles and INTs). The rushing fit has no position filter, so QB kneels
+and scrambles sit in the RB rates — unmeasured how much that moves them.
+
+---
+
 ## 2026-09-14: drafting is over — `/season` is the only live use
 
 Best-ball drafting for 2026 is finished. Render now serves one purpose: `/season`, pod

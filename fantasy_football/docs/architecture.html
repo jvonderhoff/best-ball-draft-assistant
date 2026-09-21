@@ -498,7 +498,7 @@ tools/refresh-sources.sh --publish
           <ul>
             <li><b>Nightly</b>: <span class="pill mute">disabled</span> since 14 Sep. It refreshed draft inputs, and best-ball drafting is over for 2026.</li>
             <li><b>Market report, news poll &amp; push</b>: <span class="pill mute">unloaded</span> in-season, as planned — preseason tools. <code>/news</code> keeps serving its last bundle, with its clock red.</li>
-            <li><b>Weekly xFP</b>: Tuesdays 08:00 — refreshes nflverse, scores the week that just finished (actual vs. expected FP, team pass rate/red-zone rate) into <code>store.db</code>, read by <code>/weekly</code>.</li>
+            <li><b>Weekly xFP</b>: Tuesdays 08:00 — refreshes nflverse and the schedule, scores the week that just finished (actual vs. expected FP, team pass rate/red-zone rate) into <code>store.db</code>, read by <code>/weekly</code>.</li>
           </ul>
           <p><a href="#schedule">Full schedule →</a></p>
         </div>
@@ -1247,7 +1247,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.marketreport</td><td class="what">News and price movement, on the days nightly doesn't run</td><td class="span" colspan="7"><span class="pill mute">unloaded</span> · retired in-season, as planned; was five mornings 07:30</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspoll</td><td class="what">Poll news feeds into <code>store.db</code></td><td class="span" colspan="7"><span class="pill mute">unloaded</span> · retired in-season, as planned; was every 3 hours</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspush</td><td class="what">Push the news bundle to <code>/news</code> on Render</td><td class="span" colspan="7"><span class="pill mute">unloaded</span> · retired in-season, as planned; was every 3 hours</td><td><span class="pill warn">/news only</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.weeklyxfp</td><td class="what">Refresh nflverse, find the week that just finished (every game final, not a calendar guess), score actual-vs-expected FP + team pass rate/red-zone rate/target-share into <code>store.db</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">08:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.weeklyxfp</td><td class="what">Refresh nflverse and <code>games.csv</code>, find the week that just finished (every game final, not a calendar guess — and the schedule is refetched, or a stale copy reads Monday night as unplayed and the week is skipped), score actual-vs-expected FP + team pass rate/red-zone rate/target-share into <code>store.db</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">08:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.standings</td><td class="what">Capture every best-ball entry's standing from DK, push to <code>/season</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">07:30</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">/season only</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.autoqueue</td><td class="what">Keep live DK draft queues stocked. Deadline 7 Sep 21:00 has passed, so it's quiet.</td><td class="span" colspan="7">every 5 minutes, while loaded</td><td><span class="pill bad">your DK queues</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo; snapshot the lobby's contests for the replay</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
@@ -1290,13 +1290,13 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <div class="tbl"><table>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
-              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">165</td></tr>
+              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">170</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">199</td></tr>
               <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">240</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (DFS 21 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (DFS and Projections 21 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>
