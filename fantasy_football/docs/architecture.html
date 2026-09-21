@@ -196,7 +196,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
 <div class="wrap">
   <div class="strip">
     <span><b>fantasy_football/docs/architecture.html</b></span>
-    <span>checked against the code on 18 Sep 2026</span>
+    <span>checked against the code on 21 Sep 2026</span>
   </div>
 
   <!-- ─────────────────────────────── THE MAP ─────────────────────────────── -->
@@ -342,7 +342,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
     <nav class="index" aria-label="Shared">
       <a class="card plain" href="#week"><span class="nm">Your week</span><span class="ds">Every tool you run by hand, on the day to run it — Tuesday-night waivers through Monday night.</span></a>
       <a class="card plain" href="#seams"><span class="nm">What crosses between them</span><span class="ds">Every file and HTTP call that moves data between projects, what it's keyed on, when it goes stale, and where every number comes from.</span></a>
-      <a class="card plain" href="#schedule"><span class="nm">What runs by itself</span><span class="ds">The eight scheduled jobs on the Mac, laid out across the week.</span></a>
+      <a class="card plain" href="#schedule"><span class="nm">What runs by itself</span><span class="ds">The scheduled jobs on the Mac, and which ones are actually on in-season.</span></a>
       <a class="card plain" href="#health"><span class="nm">Is anything broken?</span><span class="ds">One health command per project, the test suites, and what changes next season.</span></a>
     </nav>
   </main>
@@ -433,7 +433,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
               <tr><td><code>weekly_props.json</code></td><td>Start/sit, waivers, DFS</td><td><code>tools/export_props.py</code></td><td class="num">24 h</td></tr>
               <tr><td><code>dynasty_values.json</code></td><td>Dynasty</td><td><code>tools/export_dynasty_values.py</code></td><td class="num">14 days</td></tr>
               <tr><td><code>lateround.json</code></td><td>Start/sit</td><td><code>tools/export_lateround.py</code></td><td class="num">weekly</td></tr>
-              <tr><td>News bundle</td><td>Best Ball's <code>/news</code> page</td><td><code>tools/news-push.sh</code></td><td class="num">every 3 h</td></tr>
+              <tr><td>News bundle</td><td>Best Ball's <code>/news</code> page</td><td><code>tools/news-push.sh</code></td><td class="num">off in-season</td></tr>
             </tbody>
           </table></div>
         </div>
@@ -497,8 +497,7 @@ tools/refresh-sources.sh --publish
           <h2>Runs by itself</h2>
           <ul>
             <li><b>Nightly</b>: <span class="pill mute">disabled</span> since 14 Sep. It refreshed draft inputs, and best-ball drafting is over for 2026.</li>
-            <li><b>Market report</b>: the other five mornings.</li>
-            <li><b>News poll &amp; push</b>: every 3 hours.</li>
+            <li><b>Market report, news poll &amp; push</b>: <span class="pill mute">unloaded</span> in-season, as planned — preseason tools. <code>/news</code> keeps serving its last bundle, with its clock red.</li>
             <li><b>Weekly xFP</b>: Tuesdays 08:00 — refreshes nflverse, scores the week that just finished (actual vs. expected FP, team pass rate/red-zone rate) into <code>store.db</code>, read by <code>/weekly</code>.</li>
           </ul>
           <p><a href="#schedule">Full schedule →</a></p>
@@ -905,7 +904,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>data/weekly_props.json</code>, committed Sundays</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 234 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 240 tests</dd></div>
       </dl>
     </header>
 
@@ -1036,6 +1035,22 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
     </header>
 
     <p class="note"><b>Nothing here acts for you.</b> Every command reads and recommends. Waiver claims, lineups and DFS entries are always set by you, in Sleeper or DraftKings.</p>
+
+    <div class="blk" style="margin-top:26px">
+      <h2>At a glance</h2>
+      <div class="tbl frame"><table>
+        <thead><tr><th>Day</th><th>Runs by itself</th><th>You do</th></tr></thead>
+        <tbody>
+          <tr><td>Tuesday</td><td>best-ball standings, weekly xFP, DFS import retry</td><td><b><code>/tuesday</code></b> in the evening, then make waiver claims. <span class="pill warn">by Wed 02:11</span></td></tr>
+          <tr><td>Wednesday</td><td>—</td><td>Optional: re-check waivers after each league clears.</td></tr>
+          <tr><td>Thursday</td><td>—</td><td><code>/startsit</code> <b>only</b> if you start someone Thursday night.</td></tr>
+          <tr><td>Fri / Sat</td><td>—</td><td>Refresh dynasty values (three commands below); tidy <code>unavailable.json</code>.</td></tr>
+          <tr><td>Sunday</td><td>DFS props export 08:30 &amp; 10:45</td><td>After 10:45: <b><code>/startsit</code></b>, set Sleeper lineups. <b><code>/sunday &lt;contest ids&gt;</code></b>, upload DFS lineups. <span class="pill warn">lock 12:00</span></td></tr>
+          <tr><td>Monday</td><td>DFS ownership import + estimate grade 09:00</td><td>Nothing. Glance at <code>ownership --grades</code> if curious.</td></tr>
+                  </tbody>
+      </table></div>
+      <p>Three things a week, really: <code>/tuesday</code>, <code>/startsit</code> + <code>/sunday</code> on Sunday morning, and dynasty values before the weekend. The days below are the detail.</p>
+    </div>
 
     <div class="week-days">
 
@@ -1178,7 +1193,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper &amp; <span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>weekly_props.json</code>: per-game markets, <code>exp_td</code>, <code>match_keys</code></td><td><code>name_key</code> <span class="pill warn">a name</span> with <code>sleeper_id</code> inside</td><td><code>tools/export_props.py</code></td><td class="num">24 h</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>lateround.json</code>: weekly ranks and tiers, kicker projections</td><td><code>sleeper_id</code>; K and DEF on team</td><td><code>tools/export_lateround.py</code></td><td class="num">per capture</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>lateround_ros.json</code>: rest-of-season ranks, read by <code>waivers</code> rather than by start/sit</td><td><code>sleeper_id</code></td><td><code>tools/export_lateround_ros.py</code></td><td class="num">per capture</td></tr>
-        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td>News bundle for <code>/news</code></td><td>—</td><td><code>tools/news-push.sh</code> → <code>/api/news/upload</code></td><td class="num">3 h cadence</td></tr>
+        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td>News bundle for <code>/news</code></td><td>—</td><td><code>tools/news-push.sh</code> → <code>/api/news/upload</code></td><td class="num">off in-season</td></tr>
         <tr><td><span class="dot" style="--c:var(--bb)"></span>Mac → <span class="dot" style="--c:var(--bb)"></span>Render</td><td>Weekly best-ball standings</td><td>DK <code>playerId</code></td><td><code>tools/capture-standings.sh</code> → <code>/api/season/upload</code></td><td class="num">weekly</td></tr>
         <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>drafts.db</code> table <code>player_rankings</code>, your best-ball board, read-only</td><td><code>dk_player_id</code></td><td>You, at <code>/rankings</code></td><td class="num">—</td></tr>
         <tr><td>By hand, both ways</td><td><code>names.py</code>, byte-identical below its header in <code>best-ball-draft/app/data/</code> and <code>projections/pipeline/core/</code></td><td>—</td><td>copy and paste</td><td class="num">must agree</td></tr>
@@ -1223,20 +1238,20 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
     <header class="dhead">
       <span class="eyebrow">~/Library/LaunchAgents · Central time</span>
       <h1>What runs by itself</h1>
-      <p class="lede">Nine jobs, all launchd rather than cron, because cron silently skips a run while the Mac sleeps and launchd fires at the next wake. The nightly draft refresh is disabled until next season. What you run by hand each day is on <a href="#week">Your week</a>. Nothing on this list changes what the recommender scores with; publishing the payload is always done by hand.</p>
+      <p class="lede">Nine jobs, all launchd rather than cron, because cron silently skips a run while the Mac sleeps and launchd fires at the next wake. <b>In season only four do anything</b>: the Tuesday standings and xFP, and the two DFS jobs. The nightly refresh is disabled and the news and market report are unloaded until next preseason (re-load with <code>launchctl load ~/Library/LaunchAgents/&lt;job&gt;.plist</code>); auto-queue is loaded but past its deadline. Checked with <code>launchctl print</code> on 21 Sep 2026. What you run by hand each day is on <a href="#week">Your week</a>. Nothing on this list changes what the recommender scores with; publishing the payload is always done by hand.</p>
     </header>
     <div class="tbl frame"><table class="week">
       <thead><tr><th>Job</th><th>What it does</th><th class="d">Sun</th><th class="d">Mon</th><th class="d">Tue</th><th class="d">Wed</th><th class="d">Thu</th><th class="d">Fri</th><th class="d">Sat</th><th>Writes outside the Mac?</th></tr></thead>
       <tbody>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.nightly</td><td class="what">Refresh every draft source, build, <b>stop at the dry run</b>, write a report. Disabled 14 Sep, since drafting is over; re-enable before next season's drafts.</td><td class="span" colspan="7"><span class="pill mute">disabled</span> · was Tue &amp; Fri 07:30</td><td><span class="pill ok">no</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.marketreport</td><td class="what">News and price movement, on the days nightly doesn't run</td><td class="d">07:30</td><td class="d">07:30</td><td class="d off">·</td><td class="d">07:30</td><td class="d">07:30</td><td class="d off">·</td><td class="d">07:30</td><td><span class="pill ok">no</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspoll</td><td class="what">Poll news feeds into <code>store.db</code></td><td class="span" colspan="7">every 3 hours</td><td><span class="pill ok">no</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspush</td><td class="what">Push the news bundle to <code>/news</code> on Render</td><td class="span" colspan="7">every 3 hours</td><td><span class="pill warn">/news only</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.marketreport</td><td class="what">News and price movement, on the days nightly doesn't run</td><td class="span" colspan="7"><span class="pill mute">unloaded</span> · retired in-season, as planned; was five mornings 07:30</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspoll</td><td class="what">Poll news feeds into <code>store.db</code></td><td class="span" colspan="7"><span class="pill mute">unloaded</span> · retired in-season, as planned; was every 3 hours</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspush</td><td class="what">Push the news bundle to <code>/news</code> on Render</td><td class="span" colspan="7"><span class="pill mute">unloaded</span> · retired in-season, as planned; was every 3 hours</td><td><span class="pill warn">/news only</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.weeklyxfp</td><td class="what">Refresh nflverse, find the week that just finished (every game final, not a calendar guess), score actual-vs-expected FP + team pass rate/red-zone rate/target-share into <code>store.db</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">08:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.standings</td><td class="what">Capture every best-ball entry's standing from DK, push to <code>/season</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">07:30</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">/season only</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.autoqueue</td><td class="what">Keep live DK draft queues stocked. Deadline 7 Sep 21:00 has passed, so it's quiet.</td><td class="span" colspan="7">every 5 minutes, while loaded</td><td><span class="pill bad">your DK queues</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo; snapshot the lobby's contests for the replay</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay); grade Sunday's ownership estimate</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay); grade Sunday's ownership estimate per player and on a 1-in-40 sample of the field's lineups</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
       </tbody>
     </table></div>
     <div class="grid2">
@@ -1277,11 +1292,11 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">165</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">199</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">234</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">240</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (DFS 17 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (DFS 21 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>
