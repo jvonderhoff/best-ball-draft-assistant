@@ -42,6 +42,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime
 from collections import Counter
 from pathlib import Path
 
@@ -54,7 +55,11 @@ from app import season as seasons  # noqa: E402
 
 MYCONTESTS = 'https://www.draftkings.com/mycontests'
 DRAFTABLES = 'https://api.draftkings.com/draftgroups/v1/draftgroups/{dg}/draftables?format=json'
-LEADERBOARD = 'https://api.draftkings.com/scores/v1/leaderboards/{cid}?format=json&embed=leaderboard'
+# The MEGA contest's board, not scores/v1/leaderboards/{cid}: that one and the scorecard
+# below both stopped at week 1 (seen 2026-09-22) while this one carried the season
+# totals, and it agreed with /mycontests on rank and points for 81 of 81 entries.
+LEADERBOARD = ('https://api.draftkings.com/scores/v2/megacontests/{mid}/leaderboard'
+               '?format=json&embed=leaderboard')
 SCORECARD = 'https://api.draftkings.com/scores/v2/entries/{dg}/{eid}?format=json&embed=roster'
 GAME_TYPE_BESTBALL = 145
 PACE = 0.25
@@ -171,12 +176,12 @@ def capture(s, pace: float = PACE, say=print) -> dict:
         }
 
         try:
-            board = get_json(s, LEADERBOARD.format(cid=cid),
-                             f'{cid} leaderboard').get('leaderBoard') or []
+            board = get_json(s, LEADERBOARD.format(mid=e['mega_contest_id'] or cid),
+                             f'{cid} leaderboard').get('leaderboard') or []
             # Totals only. The other eleven usernames are not needed for a line, and
             # the page this feeds is on the public internet.
             e['pod'] = [round(float(r.get('fantasyPoints') or 0), 2) for r in board]
-            mine = [r for r in board if str(r.get('entryKey')) == eid]
+            mine = [r for r in board if str(r.get('megaEntryKey')) == eid]
             if not mine:
                 problems.append(f'{cid}: this entry is not on its own leaderboard')
             else:
@@ -229,7 +234,22 @@ def capture(s, pace: float = PACE, say=print) -> dict:
     if len(weeks) > 1:
         problems.append(f'scorecards span weeks {sorted(weeks)}; filed under week {games_week}')
     total = sum(games.values())
-    if games['Upcoming'] == total:
+    now_iso = time.strftime('%Y-%m-%dT%H:%M', time.gmtime())
+    calendar_week = seasons.week_of(year, now_iso)
+    if calendar_week and games_week < calendar_week - 1:
+        # DK froze the scorecards on an old week (week 1 all through 2026 week 2): they
+        # describe no week the standings do. The standings are current, so they are
+        # filed under the week just finished — but only while no game of the new week
+        # can have kicked off, since without scorecards live and final look alike.
+        day = (datetime.strptime(now_iso, '%Y-%m-%dT%H:%M') + seasons._ET).weekday()
+        if day not in (1, 2):      # Tuesday, Wednesday
+            raise CaptureError(f'scorecards are frozen on week {games_week} in calendar week '
+                               f'{calendar_week}, and from Thursday on there is no telling a '
+                               f'live week from a finished one. Capture on Tuesday.')
+        problems.append(f'scorecards frozen on week {games_week}; week '
+                        f'{calendar_week - 1} filed as standings only, no rosters')
+        status, week = 'pre', calendar_week - 1
+    elif games['Upcoming'] == total:
         if not any(e['points'] for e in entries):
             raise CaptureError(f'no week {games_week} game has kicked off and no entry has '
                                f'points — nothing to capture yet')
