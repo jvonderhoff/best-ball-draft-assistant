@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Capture the week's best-ball standings every Tuesday morning and push them to /season.
+  Capture the week's best-ball standings Tuesday and Wednesday mornings, push to /season.
 
       mkdir -p /Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/data/season
       cp tools/com.bba.standings.plist ~/Library/LaunchAgents/
@@ -8,8 +8,14 @@
       launchctl start com.bba.standings                                  # run once now
       launchctl unload ~/Library/LaunchAgents/com.bba.standings.plist   # stop it
 
-  Tuesday 07:30 because the week is over by then — Monday night ends around midnight —
-  and it is a time somebody will read the log. StartCalendarInterval, not an interval:
+  Tuesday 08:30, after com.bba.weeklyxfp (08:00) has written projections'
+  dk_scores.json. Since 2026 week 2 DK's per-player scorecards are frozen on week 1, and
+  the capture rebuilds each lineup from that export; at the old 07:30 it ran before the
+  export existed and could only file standings. Wednesday 08:30 is the retry, for a
+  week the export held back because nflverse's stats file did not have Monday night yet
+  (unmeasured whether it ever does by Tuesday). The capture accepts a frozen-scorecard
+  week only on Tuesday or Wednesday, and a re-run of a captured week is harmless:
+  standings are replaced, and rosters are kept if the re-run has none (season.merge). StartCalendarInterval, not an interval:
   a Mac asleep at 07:30 runs it at the next wake instead of skipping the week, and a
   skipped week is a hole in the rank history DraftKings will not refill.
 
@@ -49,16 +55,26 @@
     <key>WorkingDirectory</key>
     <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft</string>
 
-    <!-- Tuesday 07:30 -->
+    <!-- Tuesday and Wednesday 08:30 -->
     <key>StartCalendarInterval</key>
-    <dict>
-        <key>Weekday</key>
-        <integer>2</integer>
-        <key>Hour</key>
-        <integer>7</integer>
-        <key>Minute</key>
-        <integer>30</integer>
-    </dict>
+    <array>
+        <dict>
+            <key>Weekday</key>
+            <integer>2</integer>
+            <key>Hour</key>
+            <integer>8</integer>
+            <key>Minute</key>
+            <integer>30</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>3</integer>
+            <key>Hour</key>
+            <integer>8</integer>
+            <key>Minute</key>
+            <integer>30</integer>
+        </dict>
+    </array>
 
     <key>StandardOutPath</key>
     <string>/Users/jvonderhoff/Development/projects/fantasy_football/best-ball-draft/data/season/standings.out</string>

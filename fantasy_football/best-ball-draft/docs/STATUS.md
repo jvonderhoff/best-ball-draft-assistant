@@ -60,10 +60,11 @@ best-ball:   frozen scorecard's 20 players ─ playerId -> draftables -> dk_ ids
 - `/season` labels these scores "nflverse, checked vs DK totals". Week 2 was re-pushed
   this way (81 of 81 rosters).
 
-**Timing trap, open:** the export runs in `weekly-xfp.sh` at Tuesday 08:00, the capture at
-07:30 — so the Tuesday job captures before the export and files standings only. Either
-move `com.bba.standings` after 08:00 or re-run the capture by Wednesday. Also unmeasured:
-whether nflverse's stats file has Monday night by Tuesday morning at all.
+**Timing: `com.bba.standings` moved to Tuesday AND Wednesday 08:30** (same day). At 07:30
+it ran before `weekly-xfp.sh` (Tuesday 08:00) wrote the export, so it could only file
+standings. Wednesday is the retry for a week the export held back. Still unmeasured:
+whether nflverse's stats file has Monday night by Tuesday morning — the first Tuesday
+report (`weekly-xfp-*.txt`, `held back` line) answers it.
 
 **New guard, `refuse_reason()`:** a finished-week capture where most entries' totals are
 not in their own pod, or most lineups do not explain their points, is refused before
@@ -107,7 +108,7 @@ and scrambles sit in the RB rates — unmeasured how much that moves them.
 ## 2026-09-14: drafting is over — `/season` is the only live use
 
 Best-ball drafting for 2026 is finished. Render now serves one purpose: `/season`, pod
-standings for the 81 entries, fed every Tuesday 07:30 by `com.bba.standings`.
+standings for the 81 entries, fed by `com.bba.standings` (Tuesday 07:30; Tue + Wed 08:30 from 2026-09-22).
 
 **Expected red until next August. Do not chase these:**
 
@@ -204,7 +205,7 @@ DraftKings already keeps the score; what it does not do is show 81 entries at on
 |---|---|
 | capture + archive, dry run | `.venv/bin/python tools/capture-standings.py` |
 | ...and push | `tools/capture-standings.sh` (needs `BBA_API_KEY`, so `zsh -ic`) |
-| every Tuesday 07:30 | `tools/com.bba.standings.plist` — install steps in its header |
+| Tue + Wed 08:30 | `tools/com.bba.standings.plist` — install steps in its header |
 
 It runs on the Mac, not Render, because the dependable DK session is Firefox's. The key
 check on the upload **fails closed** — unlike the older endpoints in open thread 11.
