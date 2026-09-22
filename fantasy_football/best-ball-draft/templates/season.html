@@ -169,6 +169,7 @@ function renderHeader() {
     ['entries', m.entries, ''],
   ];
   if (!m.has_rosters) bits.push(['player scores', 'not captured', 'missing']);
+  else if (m.roster_source === 'nflverse') bits.push(['player scores', 'nflverse, checked vs DK totals', '']);
   else if (m.rosters_captured_at && Math.abs(m.rosters_captured_at - m.captured_at) > 60) {
     bits.push(['player scores', ago((Date.now() / 1000 - m.rosters_captured_at) / 3600), '']);
   }
@@ -251,7 +252,7 @@ function renderPlayers() {
   if (!D.meta.has_rosters) {
     document.getElementById('count').textContent = '';
     document.getElementById('list').innerHTML =
-      '<div class="empty">No player scores in this capture — DraftKings had already moved its scorecards on to next week.</div>';
+      '<div class="empty">No player scores in this capture. DraftKings did not have them for this week, and the nflverse rebuild was not available when it ran.</div>';
     return;
   }
   const q = Q.toLowerCase().trim();

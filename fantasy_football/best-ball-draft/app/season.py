@@ -248,6 +248,9 @@ def meta(snap: dict | None, cfg: dict) -> dict:
         'age_hours': round(age / 3600, 1) if age is not None else None,
         'state': state,
         'has_rosters': bool(snap.get('has_rosters')),
+        # 'nflverse' when DK's per-player scores were unavailable and the capture
+        # rebuilt them from box scores — the page says so rather than passing them off.
+        'roster_source': snap.get('roster_source') or 'dk',
         'rosters_captured_at': snap.get('rosters_captured_at'),
         'entries': len(snap.get('entries') or []),
         'warnings': snap.get('warnings') or [],

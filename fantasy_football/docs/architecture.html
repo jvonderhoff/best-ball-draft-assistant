@@ -358,7 +358,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
         <div><dt>Runs</dt><dd>Locally only. Analysis page at <code>localhost:8100</code></dd></div>
         <div><dt>Stores</dt><dd><code>data/store.db</code> (ids, snapshots) · <code>data/analysis.db</code></dd></div>
         <div><dt>Keyed on</dt><dd><code>dk_player_id</code>, crosswalked to every other id</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 170 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 185 tests</dd></div>
       </dl>
     </header>
 
@@ -428,6 +428,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
           <div class="tbl"><table>
             <thead><tr><th>Output</th><th>For</th><th>Made by</th><th class="num">Stale after</th></tr></thead>
             <tbody>
+              <tr><td><code>dk_scores.json</code></td><td>Best Ball's <code>/season</code> player scores</td><td><code>tools/export_dk_scores.py</code></td><td class="num">weekly</td></tr>
               <tr><td>Six-field payload</td><td>Best Ball's V2 recommender</td><td><code>cli.py analysis-publish --no-dry-run</code></td><td class="num">48 h</td></tr>
               <tr><td><code>stat_lines.json</code></td><td>Redraft &amp; Dynasty boards</td><td><code>tools/export_stat_lines.py</code></td><td class="num">7 days</td></tr>
               <tr><td><code>weekly_props.json</code></td><td>Start/sit, waivers, DFS</td><td><code>tools/export_props.py</code></td><td class="num">24 h</td></tr>
@@ -447,6 +448,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
             <dt>core/names.py</dt><dd>Name matching, used only as a fallback. A byte-identical copy lives in <code>best-ball-draft/app/data/</code>.</dd>
             <dt>core/metrics.py · schema.py</dt><dd>The six model fields and the payload validation.</dd>
             <dt>store.py · doctor.py</dt><dd>Snapshot store that never overwrites; the health report.</dd>
+            <dt>dk_score.py</dt><dd>DraftKings points from a real box score. Matched DK's own week-1 scores for 266 of 266 players.</dd>
             <dt>td.py · devig.py · dst.py · kicker.py</dt><dd>Touchdown probability to expected count, removing the book's hold, team defence projections, kicker projections.</dd>
             <dt>weekly.py</dt><dd><span class="pill warn">do not use</span> A home-made weekly model that lost to “every week is his season average”. Kept as the record.</dd>
             <dt class="grp">analysis/ — the path that publishes today</dt>
@@ -498,7 +500,7 @@ tools/refresh-sources.sh --publish
           <ul>
             <li><b>Nightly</b>: <span class="pill mute">disabled</span> since 14 Sep. It refreshed draft inputs, and best-ball drafting is over for 2026.</li>
             <li><b>Market report, news poll &amp; push</b>: <span class="pill mute">unloaded</span> in-season, as planned — preseason tools. <code>/news</code> keeps serving its last bundle, with its clock red.</li>
-            <li><b>Weekly xFP</b>: Tuesdays 08:00 — refreshes nflverse and the schedule, scores the week that just finished (actual vs. expected FP, team pass rate/red-zone rate) into <code>store.db</code>, read by <code>/weekly</code>.</li>
+            <li><b>Weekly xFP</b>: Tuesdays 08:00 — refreshes nflverse and the schedule, scores the week that just finished (actual vs. expected FP, team pass rate/red-zone rate) into <code>store.db</code>, read by <code>/weekly</code>. Also writes <code>dk_scores.json</code> for best ball's <code>/season</code>.</li>
           </ul>
           <p><a href="#schedule">Full schedule →</a></p>
         </div>
@@ -564,7 +566,7 @@ tools/refresh-sources.sh --publish
               <tr><td><code>/recommend</code></td><td>Live pick advice during a draft. A stale-data bar appears only when something is stale.</td></tr>
               <tr><td><code>/rankings</code></td><td>Your board. The ★ in the header is per browser and <b>off by default</b>.</td></tr>
               <tr><td><code>/history</code></td><td>Past drafts and player exposure.</td></tr>
-              <tr><td><code>/season</code></td><td>Every entry's pod standing, on one page that works on a phone. All scores are DK's. <b>Standings only since week 2</b>: DK's per-entry lineups stopped at week 1, so there is no who-scored-what after it.</td></tr>
+              <tr><td><code>/season</code></td><td>Every entry's pod standing, on one page that works on a phone. All scores are DK's. <b>Since week 2 the player scores are rebuilt from nflverse</b>, because DK's per-entry lineups stopped at week 1; every rebuilt lineup must equal DK's own entry total, and the page labels them.</td></tr>
               <tr><td><code>/news</code></td><td>News pushed from the Mac. “Price moved” is the view worth reading.</td></tr>
               <tr><td><code>/setup</code></td><td>DK sign-in, and the data freshness panel.</td></tr>
               <tr><td><code>/sandbox</code></td><td>Replay and test drafts.</td></tr>
@@ -600,7 +602,7 @@ tools/refresh-sources.sh --publish
             <dt>check-model-change.js</dt><dd>Who moved, in both models, on real boards. It also runs automatically when a scoring file is edited.</dd>
             <dt>calibrate-survival.py · import-new-drafts.sh</dt><dd>Re-score “will he last?” as more real drafts finish.</dd>
             <dt>auto-queue.py</dt><dd>Keeps live DK draft queues stocked with V1's picks.</dd>
-            <dt>capture-standings.py</dt><dd>Captures weekly standings from DK and pushes them to <code>/season</code>. Pods come from the tournament-wide (mega contest) leaderboard, the one DK endpoint still updating. It refuses, rather than archives, a capture whose parts disagree.</dd>
+            <dt>capture-standings.py</dt><dd>Captures weekly standings from DK and pushes them to <code>/season</code>. Pods come from the tournament-wide (mega contest) leaderboard, the one DK endpoint still updating. When DK's lineups are frozen it rebuilds them from Projections' <code>dk_scores.json</code>. It refuses, rather than archives, a capture whose parts disagree.</dd>
             <dt>entry-spend.py · sync-ranks.py</dt><dd>What your entries cost, and pulling prod's board into local.</dd>
           </dl>
         </div>
@@ -1195,6 +1197,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>lateround.json</code>: weekly ranks and tiers, kicker projections</td><td><code>sleeper_id</code>; K and DEF on team</td><td><code>tools/export_lateround.py</code></td><td class="num">per capture</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>lateround_ros.json</code>: rest-of-season ranks, read by <code>waivers</code> rather than by start/sit</td><td><code>sleeper_id</code></td><td><code>tools/export_lateround_ros.py</code></td><td class="num">per capture</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td>News bundle for <code>/news</code></td><td>—</td><td><code>tools/news-push.sh</code> → <code>/api/news/upload</code></td><td class="num">off in-season</td></tr>
+        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>dk_scores.json</code>: DK points per pool player per completed week, read by the standings capture</td><td><code>dk_player_id</code></td><td><code>tools/export_dk_scores.py</code>, in <code>weekly-xfp.sh</code></td><td class="num">weekly</td></tr>
         <tr><td><span class="dot" style="--c:var(--bb)"></span>Mac → <span class="dot" style="--c:var(--bb)"></span>Render</td><td>Weekly best-ball standings</td><td>DK <code>playerId</code></td><td><code>tools/capture-standings.sh</code> → <code>/api/season/upload</code></td><td class="num">weekly</td></tr>
         <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>drafts.db</code> table <code>player_rankings</code>, your best-ball board, read-only</td><td><code>dk_player_id</code></td><td>You, at <code>/rankings</code></td><td class="num">—</td></tr>
         <tr><td>By hand, both ways</td><td><code>names.py</code>, byte-identical below its header in <code>best-ball-draft/app/data/</code> and <code>projections/pipeline/core/</code></td><td>—</td><td>copy and paste</td><td class="num">must agree</td></tr>
@@ -1216,6 +1219,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <tr><td>Team defence</td><td>The opponent's implied total</td><td><code>projections/pipeline/dst.py</code></td></tr>
           <tr><td>Kicker</td><td>The team's own implied total — but corr is only +0.17, so this is the league mean (8.5) with a tilt</td><td><code>projections/pipeline/kicker.py</code></td></tr>
               <tr><td>Weekly fallback tier 3</td><td>Sleeper's own weekly projection, joined by id — only for a player DK priced nothing for at all</td><td><code>projections/pipeline/sources/sleeper.py</code></td></tr>
+          <tr><td>Best-ball player scores, week 2 on</td><td>nflverse box scores under DK's rules; each rebuilt lineup must equal DK's entry total</td><td><code>projections/pipeline/dk_score.py</code></td></tr>
           <tr><td>Dynasty value</td><td>KTC and FantasyCalc, side by side, never averaged</td><td><code>projections/tools/export_dynasty_values.py</code></td></tr>
         </tbody>
       </table></div>
@@ -1248,7 +1252,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.marketreport</td><td class="what">News and price movement, on the days nightly doesn't run</td><td class="span" colspan="7"><span class="pill mute">unloaded</span> · retired in-season, as planned; was five mornings 07:30</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspoll</td><td class="what">Poll news feeds into <code>store.db</code></td><td class="span" colspan="7"><span class="pill mute">unloaded</span> · retired in-season, as planned; was every 3 hours</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.newspush</td><td class="what">Push the news bundle to <code>/news</code> on Render</td><td class="span" colspan="7"><span class="pill mute">unloaded</span> · retired in-season, as planned; was every 3 hours</td><td><span class="pill warn">/news only</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.weeklyxfp</td><td class="what">Refresh nflverse and <code>games.csv</code>, find the week that just finished (every game final, not a calendar guess — and the schedule is refetched, or a stale copy reads Monday night as unplayed and the week is skipped), score actual-vs-expected FP + team pass rate/red-zone rate/target-share into <code>store.db</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">08:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.weeklyxfp</td><td class="what">Refresh nflverse and <code>games.csv</code>, find the week that just finished (every game final, not a calendar guess — and the schedule is refetched, or a stale copy reads Monday night as unplayed and the week is skipped), score actual-vs-expected FP + team pass rate/red-zone rate/target-share into <code>store.db</code>; export DK points per player (<code>dk_scores.json</code>) for <code>/season</code>. <b>Runs after the 07:30 standings capture</b>, so that capture files standings only until it is re-run.</td><td class="d off">·</td><td class="d off">·</td><td class="d">08:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.standings</td><td class="what">Capture every best-ball entry's standing from DK, push to <code>/season</code></td><td class="d off">·</td><td class="d off">·</td><td class="d">07:30</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">/season only</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.autoqueue</td><td class="what">Keep live DK draft queues stocked. Deadline 7 Sep 21:00 has passed, so it's quiet.</td><td class="span" colspan="7">every 5 minutes, while loaded</td><td><span class="pill bad">your DK queues</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo; snapshot the lobby's contests for the replay</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
@@ -1291,13 +1295,13 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <div class="tbl"><table>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
-              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">170</td></tr>
+              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">185</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">199</td></tr>
               <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">247</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (DFS and Projections 21 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (DFS 21 Sep, Projections 22 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>

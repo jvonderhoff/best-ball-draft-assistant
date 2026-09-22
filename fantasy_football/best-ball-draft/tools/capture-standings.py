@@ -64,6 +64,13 @@ SCORECARD = 'https://api.draftkings.com/scores/v2/entries/{dg}/{eid}?format=json
 GAME_TYPE_BESTBALL = 145
 PACE = 0.25
 ARCHIVE = ROOT / 'data' / 'season'
+# DK points per pool player per completed week, from box scores — projections/ owns
+# nflverse and the scoring (pipeline/dk_score.py); this only reads its export.
+SCORES = ROOT.parent / 'projections' / 'data' / 'dk_scores.json'
+# DK best ball's weekly lineup, measured off week 1's scorecards: QB, 2 RB, 3 WR, TE,
+# one FLEX from RB/WR/TE, twelve on the bench. Each week the top scorers fill it.
+LINEUP = (('QB', 1), ('RB', 2), ('WR', 3), ('TE', 1))
+FLEX_FROM = ('RB', 'WR', 'TE')
 UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36')
 
@@ -134,7 +141,83 @@ def best_ball_contests(s) -> list:
     return list(found.values())
 
 
-def capture(s, pace: float = PACE, say=print) -> dict:
+def best_lineup(roster: list, pos_of: dict) -> list:
+    """[[key, slot, points]] for a whole best-ball roster, the week's best lineup
+    slotted and the rest BN — what DK does automatically every week. Filling the
+    fixed slots first and then FLEX from what is left is optimal for this shape:
+    FLEX takes any of three positions, so it can only ever want the best leftover."""
+    by_pos, out = {}, []
+    for key, pts in sorted(roster, key=lambda kp: -kp[1]):
+        by_pos.setdefault(pos_of.get(key), []).append([key, pts])
+    for pos, n in LINEUP:
+        for key, pts in by_pos.get(pos, [])[:n]:
+            out.append([key, pos, pts])
+        by_pos[pos] = by_pos.get(pos, [])[n:]
+    rest = sorted((kp for pos in FLEX_FROM for kp in by_pos.get(pos, [])), key=lambda kp: -kp[1])
+    if rest:
+        out.append([rest[0][0], 'FLEX', rest[0][1]])
+    used = {k for k, _, _ in out}
+    out += [[key, 'BN', pts] for key, pts in roster if key not in used]
+    return out
+
+
+def rebuild_rosters(entries: list, week: int, draftables: dict, players: dict,
+                    scores_path: Path, problems: list) -> bool:
+    """Fill each entry's roster for `week` from projections' DK-points export.
+
+    For when DK's scorecards are frozen on an old week: they still list each entry's
+    20 players — a best-ball roster never changes — just not this week's points.
+    Every rebuilt lineup is then held to DK's own entry totals by check_lineups(),
+    and refuse_reason() stops the capture if most disagree. Measured 2026-09-22:
+    81 of 81 week-2 lineups matched DK's week-2 gain to the cent.
+    """
+    try:
+        data = json.loads(scores_path.read_text())
+    except (OSError, ValueError) as exc:
+        problems.append(f'no rosters: DK-points export unreadable at {scores_path} ({exc})')
+        return False
+    age_h = (time.time() - (data.get('generated_at') or 0)) / 3600
+    if week not in (data.get('weeks') or []):
+        held = (data.get('held_back') or {}).get(str(week))
+        problems.append(f"no rosters: DK-points export ({age_h:.0f}h old) has weeks "
+                        f"{data.get('weeks')}, not {week}" + (f' — {held}' if held else '')
+                        + '. Re-run projections/tools/export_dk_scores.py, then this.')
+        return False
+    by_dk = data.get('players') or {}
+    # DK playerId -> the crosswalk's ids, which are `dk_` + a DRAFTABLE id. One player
+    # has several draftables in one group (Drake Maye had two), so this is a set.
+    dk_ids = {}
+    for did, d in draftables.items():
+        if d.get('playerId'):
+            dk_ids.setdefault(str(d['playerId']), set()).add(f'dk_{did}')
+    rebuilt, unscorable = 0, {}
+    for e in entries:
+        roster = []
+        for key, _, _ in e['roster']:
+            pts = {by_dk[i]['points'].get(str(week)) for i in dk_ids.get(key, ()) if i in by_dk}
+            pts.discard(None)
+            if len(pts) != 1:
+                unscorable[key] = players.get(key, {}).get('name') or key
+                roster = None
+                break
+            roster.append([key, pts.pop()])
+        if roster is None:
+            # "Could not be scored" must never be read as 0: a wrong lineup looks
+            # exactly as plausible as a right one.
+            e['roster'] = []
+            e.pop('lineup_points', None)
+            continue
+        e['roster'] = best_lineup(roster, {k: p.get('pos') for k, p in players.items()})
+        e['lineup_points'] = round(sum(pts for _, slot, pts in e['roster'] if slot != 'BN'), 2)
+        rebuilt += 1
+    if unscorable:
+        problems.append(f'{len(entries) - rebuilt} entries without a roster: '
+                        f'{len(unscorable)} player(s) not in the DK-points export '
+                        f'({", ".join(sorted(unscorable.values())[:5])})')
+    return rebuilt > 0
+
+
+def capture(s, pace: float = PACE, say=print, scores_path: Path = SCORES) -> dict:
     contests = best_ball_contests(s)
     year = Counter(seasons.season_of(o.get('ContestStartDate'))
                    for o in contests).most_common(1)[0][0]
@@ -234,6 +317,7 @@ def capture(s, pace: float = PACE, say=print) -> dict:
     if len(weeks) > 1:
         problems.append(f'scorecards span weeks {sorted(weeks)}; filed under week {games_week}')
     total = sum(games.values())
+    frozen = False
     now_iso = time.strftime('%Y-%m-%dT%H:%M', time.gmtime())
     calendar_week = seasons.week_of(year, now_iso)
     if calendar_week and games_week < calendar_week - 1:
@@ -246,9 +330,7 @@ def capture(s, pace: float = PACE, say=print) -> dict:
             raise CaptureError(f'scorecards are frozen on week {games_week} in calendar week '
                                f'{calendar_week}, and from Thursday on there is no telling a '
                                f'live week from a finished one. Capture on Tuesday.')
-        problems.append(f'scorecards frozen on week {games_week}; week '
-                        f'{calendar_week - 1} filed as standings only, no rosters')
-        status, week = 'pre', calendar_week - 1
+        status, week, frozen = 'pre', calendar_week - 1, True
     elif games['Upcoming'] == total:
         if not any(e['points'] for e in entries):
             raise CaptureError(f'no week {games_week} game has kicked off and no entry has '
@@ -264,7 +346,16 @@ def capture(s, pace: float = PACE, say=print) -> dict:
     else:
         status, week = 'live', games_week
 
-    has_rosters = status != 'pre'
+    has_rosters, roster_source = status != 'pre', 'dk'
+    if frozen and rebuild_rosters(entries, week, draftables, players, scores_path, problems):
+        # Kept visible rather than quiet: these are nflverse box scores under DK's
+        # rules, checked against DK's totals — not DK's own per-player numbers.
+        problems.append(f'scorecards frozen on week {games_week}; week {week} player '
+                        f'scores rebuilt from nflverse, checked against DK totals below')
+        has_rosters, roster_source = True, 'nflverse'
+    elif frozen:
+        problems.append(f'scorecards frozen on week {games_week}; week {week} filed as '
+                        f'standings only, no rosters')
     if not has_rosters:
         for e in entries:
             e['roster'] = []
@@ -279,7 +370,7 @@ def capture(s, pace: float = PACE, say=print) -> dict:
     return {
         'season': year, 'week': week, 'status': status, 'games_week': games_week,
         'games': dict(games),
-        'captured_at': now, 'has_rosters': has_rosters,
+        'captured_at': now, 'has_rosters': has_rosters, 'roster_source': roster_source,
         'rosters_captured_at': now if has_rosters else None,
         'players': players, 'entries': entries,
         'problems': problems, 'timing': timing,
@@ -415,6 +506,8 @@ def main(argv=None) -> int:
     ap.add_argument('--push', action='store_true', help='send to the draft app (default: dry run)')
     ap.add_argument('--target', default=os.environ.get('DRAFT_APP_URL', ''),
                     help='draft app base URL (default: $DRAFT_APP_URL)')
+    ap.add_argument('--scores', type=Path, default=SCORES,
+                    help='projections DK-points export, for weeks DK has no scorecards for')
     ap.add_argument('--pace', type=float, default=PACE,
                     help=f'seconds between DK requests (default {PACE})')
     ap.add_argument('--quiet', action='store_true', help='one summary line — what launchd logs')
@@ -427,7 +520,7 @@ def main(argv=None) -> int:
               f'Refusing rather than guessing a host.')
         return 2
     try:
-        snap = capture(dk_session(), pace=args.pace, say=say)
+        snap = capture(dk_session(), pace=args.pace, say=say, scores_path=args.scores)
     except CaptureError as exc:
         print(f'capture-standings {stamp}: FAILED — {exc}')
         return 1

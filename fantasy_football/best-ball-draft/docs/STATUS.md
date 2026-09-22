@@ -11,7 +11,7 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
-## 2026-09-22: `/season` week 2 — DK froze its scorecards; standings only
+## 2026-09-22: `/season` week 2 — DK froze its scorecards; rosters rebuilt from nflverse
 
 The Tuesday capture failed, and fixing it turned up two things wrong, one hiding the other.
 
@@ -32,19 +32,46 @@ cross-checked 81 of 81 (pods, lineups, line, margin).
 `/mycontests` on rank and points for 81 of 81 entries, all 12-row pods. Pods come from it
 now. `MegaContestId == ContestId` for every entry this season.
 
-**What is gone: week-by-week rosters.** No current source found. When the scorecards sit
-two or more weeks behind the calendar, the capture files the week just finished as `pre`
-— standings, no rosters — **on Tuesday or Wednesday only**, and refuses from Thursday,
-when a live week and a finished one look alike without scorecards. Week 2 was pushed this
-way (81 entries, 16 advancing, durable), with one warning saying so. Expect that warning
-every week until a roster source turns up.
+**Week-by-week rosters: rebuilt from nflverse (same day).** DK has no current
+per-player source, so when the scorecards sit two or more weeks behind the calendar the
+capture files the week just finished as `pre` — **on Tuesday or Wednesday only**, refusing
+from Thursday, when a live week and a finished one look alike without scorecards — and
+rebuilds each entry's lineup from box scores:
+
+```
+projections: nflverse stats_player_week ─ pipeline/dk_score.py ─ tools/export_dk_scores.py
+             ──> data/dk_scores.json  (dk_player_id -> points per completed week)
+best-ball:   frozen scorecard's 20 players ─ playerId -> draftables -> dk_ ids ─ best lineup
+             ──> check_lineups() against DK's own entry totals ──> archive / push
+```
+
+- **The scoring is DK's to the cent:** 266 of 266 rostered players against DK's week-1
+  scorecards, every one joined by id. DK best ball scores exactly like DK Classic.
+- **The lineups are DK's to the cent:** 81 of 81 week-2 entries' best lineups equal the
+  points DK credited them for week 2. That check runs on every capture, so a scoring or
+  join error refuses the week rather than publishing it (tested: numbers 10% off -> 81 of
+  81 disagree -> refused).
+- **"Could not be scored" is never 0.** A rostered player missing from the export costs
+  his entries their lineup, named in a warning; a pool player with a gsis_id but no stat
+  row scored 0 and is written as 0.
+- **A week is exported only when every game is in the stats file**, not just final on the
+  schedule — nflverse rebuilds that file on its own clock, and a copy that predates Monday
+  night would zero a whole team.
+- `/season` labels these scores "nflverse, checked vs DK totals". Week 2 was re-pushed
+  this way (81 of 81 rosters).
+
+**Timing trap, open:** the export runs in `weekly-xfp.sh` at Tuesday 08:00, the capture at
+07:30 — so the Tuesday job captures before the export and files standings only. Either
+move `com.bba.standings` after 08:00 or re-run the capture by Wednesday. Also unmeasured:
+whether nflverse's stats file has Monday night by Tuesday morning at all.
 
 **New guard, `refuse_reason()`:** a finished-week capture where most entries' totals are
 not in their own pod, or most lineups do not explain their points, is refused before
 archive or push. Warnings were not enough — rc 3 still archived and would have pushed.
 
-Commits `a6973cb`, `923fe75`. Claude in Chrome refuses draftkings.com ("safety
-restrictions"); the mega endpoint was found in the user's own DevTools.
+Commits `a6973cb`, `923fe75`, and the nflverse rebuild after them. Claude in Chrome
+refuses draftkings.com ("safety restrictions"); the mega endpoint was found in the
+user's own DevTools.
 
 ---
 
@@ -217,11 +244,9 @@ Still open:
 Draft `192300034` (2026-07-14, $1M Play Action, no fee) is in history but not on DK —
 probably a cancelled contest. The page lists it rather than dropping it.
 
-**Not built, deliberately: our own scoring from nflverse.** It works — 5 of 5 players
-matched DK to the cent through the crosswalk — but DK's score is the one that pays, so a
-second scorer would only be a check. Worth building only if DK's week-by-week detail
-turns out to be unrecoverable. **As of 2026-09-22 it is, from every endpoint found** — this
-is now the candidate for week-2+ rosters. Not started.
+**Our own scoring from nflverse — built 2026-09-22, as a fallback only.** DK's score is
+the one that pays, so this fills player scores only when DK's scorecards are frozen, and
+every rebuilt lineup must equal DK's own entry total. See the 2026-09-22 entry above.
 
 ---
 
