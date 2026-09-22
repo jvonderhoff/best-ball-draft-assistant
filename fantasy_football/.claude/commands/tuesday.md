@@ -43,6 +43,37 @@ Each prints a coverage line (`N ranked, M unmatched`, by-position counts). Read
 it before moving on — 0 unmatched and ~150 ranked is a clean capture; anything
 short of that, redo the browser step rather than trusting a partial one.
 
+## Step 1b — capture the week's waiver columns
+
+The wire's best add is routinely a player with no stat line and no LateRound
+rank, so he is invisible to both of the columns above — he shows up in the
+board's coverage line as one of the ~400 who "carry no number at all". Three
+outside signals cover him, and `tools/weekly.sh` refreshes two of them for
+free (Sleeper's trending adds, the news RSS). The third is a capture, and it
+is the only part that needs you.
+
+**Read this week's waiver columns and write `projections/data/waiver-articles.json`**
+— FantasyPros, Yahoo, SI and Dynasty Nerds were the four used on 2026-09-22,
+and any comparable set is fine. One row per (player, source), because two
+writers naming the same player IS the consensus signal:
+
+```json
+{"name": "Jonah Coleman", "pos": "RB", "team": "DEN",
+ "source": "FantasyPros", "faab_pct": 16, "note": "Dobbins hurt, lead back"}
+```
+
+Keep `captured_at` and `week` current at the top of the file. Then let step 2
+run the exporter, or run it directly:
+
+```bash
+cd projections && .venv/bin/python tools/export_waiver_buzz.py
+```
+
+It prints one line per leg. **Every article row must match** — an unmatched row
+is a spelling this repo cannot resolve, and it is reported rather than dropped.
+Fix the name in the capture and re-run; do not leave it, because a player you
+meant to track silently not being there is the whole failure this guards.
+
 ## Step 2 — refresh everything else, read start/sit
 
 ```bash
@@ -83,10 +114,23 @@ summed into VOR or into each other:
   opinion on the exact question the `ROS`/`VOR` columns already answer from a
   stat line. `--` means LateRound doesn't rank that player at all, which is
   common outside their top ~150 and is not itself a signal.
+- **`BUZZ`** — what the rest of the world is doing: Sleeper trending adds
+  (`310k`) and how many waiver columns named him (`2★`). Popularity, never
+  points — it is not summed into anything and cannot be compared with a VOR.
 - **`KTC`/`DYN#`** — the dynasty trade market, dynasty leagues only.
 - **`BID`** — a suggested FAAB dollar amount, printed with its own honesty
   line (`n`, MAE vs. the naive baseline) every time. Read it as a range, never
   as the number to type into Sleeper — see `leagues/faab.py`'s header for why.
+
+**Read the section under each board — `THE FIELD IS ADDING THESE, and the
+table above did not`.** On a Tuesday this is often where the real claim is: the
+ranked table can only rank players it has a number for, and the man who
+inherited a job on Sunday has neither a stat line nor a LateRound rank. Each
+row carries our own number where one exists (`ros 0.6`) or `no number` where it
+genuinely does not, plus the add count, which columns named him, the FAAB range
+they suggested, and one line of why. A big add count next to a low `ros` is not
+a contradiction — it is the crowd pricing a job change that the season rate has
+not caught up with yet, which is exactly the disagreement worth reading.
 
 A league whose FAAB board prints "only N winning FAAB bid(s) synced" below the
 15-bid minimum is not broken; it just doesn't have enough history yet for a
@@ -98,3 +142,7 @@ bid suggestion, and the VOR/LR columns are still worth reading on their own.
 ever synced at all (distinct from genuinely having zero bids so far), and
 whether the player dump or crosswalk have gone stale. Run it if a waiver board
 looks thinner than last week's for no reason you can see.
+
+It also ages the three buzz legs separately — trending is a 24-hour
+measurement, the article capture is a Tuesday snapshot — and flags any article
+row that matched no player.
