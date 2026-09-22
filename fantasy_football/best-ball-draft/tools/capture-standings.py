@@ -74,7 +74,10 @@ def dk_session() -> requests.Session:
         raise CaptureError('no DraftKings cookies in the local Firefox profile. '
                            'Log in to draftkings.com in Firefox and re-run.')
     s = requests.Session()
-    s.headers.update({'User-Agent': UA, 'Accept': 'application/json, text/html, */*',
+    # No browser User-Agent on the session. Since 2026-09-22 api.draftkings.com answers
+    # a Chrome UA from a Python TLS stack with Akamai's 403 "Access Denied", while the
+    # same request with requests' own UA returns 200. The UA goes only on /mycontests.
+    s.headers.update({'Accept': 'application/json, text/html, */*',
                       'Referer': 'https://www.draftkings.com/'})
     # Scoped to draftkings.com, never `cookies.update(dict)`: that makes domain-less
     # cookies requests sends to ANY host, and a DK export that redirected to S3 once
@@ -103,7 +106,7 @@ def get_json(s, url: str, what: str, timeout: int = 30) -> dict:
 def best_ball_contests(s) -> list:
     """Every best-ball entry on the account, from the JSON embedded in /mycontests."""
     try:
-        html = s.get(MYCONTESTS, timeout=30).text
+        html = s.get(MYCONTESTS, headers={'User-Agent': UA}, timeout=30).text
     except requests.RequestException as exc:
         raise CaptureError(f'/mycontests unreachable: {exc}') from exc
     dec, idx, found = json.JSONDecoder(), 0, {}
@@ -301,6 +304,36 @@ def check_lineups(snap: dict) -> tuple[list, str]:
     return bad, f'{checked} lineups checked, {len(bad)} disagree'
 
 
+def refuse_reason(snap: dict, mismatches: list) -> str | None:
+    """Why a capture must not be archived or pushed, or None.
+
+    Written 2026-09-22, when DK's scorecard AND leaderboard endpoints stayed frozen on
+    week 1 while /mycontests moved on to the season total. Nothing raised: the week was
+    read off week-1 kickoffs, so a "week 1 final" of season points over week-1 pods and
+    lineups went to disk over the real week 1 (archive() runs before anything else),
+    and only an unrelated 403 kept it off /season. Warnings were not enough — rc 3 still
+    archives and pushes. A finished week whose parts disagree is refused whole.
+    """
+    if snap['status'] == 'live':
+        # Mid-week the endpoints update independently; disagreement then is timing.
+        return None
+    with_pod = [e for e in snap['entries'] if e['pod']]
+    # An entry's own total must be one of its pod's totals. Both come from DK, from
+    # different endpoints, so this needs no archive and cannot be skipped.
+    off = [e for e in with_pod
+           if not any(abs(e['points'] - p) <= 0.011 for p in e['pod'])]
+    if with_pod and len(off) * 2 > len(with_pod):
+        e = off[0]
+        return (f"{len(off)} of {len(with_pod)} entries have a total that is not in their own "
+                f"pod (e.g. {e['contest_id']}: {e['points']:.2f} vs pod top {max(e['pod']):.2f}) — "
+                f"/mycontests and the leaderboard describe different weeks")
+    checked = sum(1 for e in snap['entries'] if e['roster'])
+    if checked and len(mismatches) * 2 > checked:
+        return (f"{len(mismatches)} of {checked} lineups do not explain their entry's points — "
+                f"the scorecards are not this week's")
+    return None
+
+
 def archive(snap: dict) -> Path:
     d = ARCHIVE / str(snap['season'])
     d.mkdir(parents=True, exist_ok=True)
@@ -380,6 +413,11 @@ def main(argv=None) -> int:
         return 1
 
     mismatches, lineup_note = check_lineups(snap)
+    refused = refuse_reason(snap, mismatches)
+    if refused:
+        print(f"capture-standings {stamp}: REFUSED week {snap['week']} {snap['status']}, "
+              f"nothing archived or pushed — {refused}")
+        return 1
     problems, timing = snap.pop('problems'), snap.pop('timing') + mismatches
     # Mid-week, DK's endpoints update independently and a play can land between two
     # requests, so disagreement then is timing rather than a fault. Warning on it every
