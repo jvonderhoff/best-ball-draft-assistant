@@ -434,6 +434,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
               <tr><td><code>weekly_props.json</code></td><td>Start/sit, waivers, DFS</td><td><code>tools/export_props.py</code></td><td class="num">24 h</td></tr>
               <tr><td><code>dynasty_values.json</code></td><td>Dynasty</td><td><code>tools/export_dynasty_values.py</code></td><td class="num">14 days</td></tr>
               <tr><td><code>lateround.json</code></td><td>Start/sit</td><td><code>tools/export_lateround.py</code></td><td class="num">weekly</td></tr>
+              <tr><td><code>waiver_buzz.json</code></td><td>Waivers — trending adds, news, the week's columns</td><td><code>tools/export_waiver_buzz.py</code></td><td class="num">72 h</td></tr>
               <tr><td>News bundle</td><td>Best Ball's <code>/news</code> page</td><td><code>tools/news-push.sh</code></td><td class="num">off in-season</td></tr>
             </tbody>
           </table></div>
@@ -668,7 +669,7 @@ node tools/check-model-change.js
         <div><dt>Runs</dt><dd>CLI · live draft board at <code>:8200</code>, open to your wifi</dd></div>
         <div><dt>Store</dt><dd><code>data/leagues.db</code>, a cache of Sleeper that's safe to delete</dd></div>
         <div><dt>Keyed on</dt><dd><code>sleeper_id</code> · does no name matching</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 199 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 239 tests</dd></div>
       </dl>
     </header>
 
@@ -751,7 +752,7 @@ node tools/check-model-change.js
             <dt class="grp">weekly tools</dt>
             <dt>weekly.py · lineup.py</dt><dd>This week's points from props; the best legal lineup.</dd>
             <dt>weekly_ranks.py</dt><dd>Human rank sources (LateRound today), shown side by side and never averaged.</dd>
-            <dt>waivers.py · faab.py</dt><dd>An add is a pair: the free agent against the player you'd actually cut, plus a bid fitted on real winning bids.</dd>
+            <dt>waivers.py · faab.py</dt><dd>An add is a pair: the free agent against the player you'd actually cut, plus a bid fitted on real winning bids. A <code>BUZZ</code> column and a closing section carry what the rest of the world is doing — trending adds, headlines, the week's columns — including the players this app has no number for.</dd>
           </dl>
         </div>
       </div>
@@ -906,7 +907,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>data/weekly_props.json</code>, committed Sundays</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 247 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 263 tests</dd></div>
       </dl>
     </header>
 
@@ -970,6 +971,7 @@ cd ../sleeper
             <dt>dfs/ceiling.py · contest.py</dt><dd>The score a finish takes, across seven years; the payout ladder.</dd>
             <dt>dfs/standings.py</dt><dd>DK's post-contest standings: measured ownership, every entry's score, your own entries by id, the ladder. Served for any completed contest, entered or not.</dd>
             <dt>dfs/ownership.py</dt><dd>The pre-lock ownership estimate and its Monday grade; prints, never constrains.</dd>
+            <dt>dfs/captains.py</dt><dd>Showdown captain ownership, estimated from the projection (share ~ proj<sup>k</sup>, fitted on graded games), stored only before kickoff, graded Monday. Tournament fields only.</dd>
             <dt>dfs/replay.py</dt><dd>Where a score finishes in a stored field, and what that rank pays.</dd>
             <dt>dfs/export.py</dt><dd>DK's upload CSV. A file, never an upload. Per-slot ids from the draftables API, or from the salary CSV when it refuses (its id is the slot id; FLEX is that plus one, measured and re-checked per slate).</dd>
             <dt>web/app.py</dt><dd>Lineups, value screen and stacks in tabs, with live sliders.</dd>
@@ -997,7 +999,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
             <dt>lineups --contest</dt><dd>Build for one contest: its slate, and its ladder's objective, stack, bring-back and game filter for any flag not given.</dd>
             <dt>contests · replay</dt><dd>Every contest that ran on a slate (lobby snapshot before lock, id scan after); where your lineups would have finished in each of them.</dd>
             <dt>screen · stacks</dt><dd>Value within position; teams by implied total.</dd>
-            <dt>lineups · showdown</dt><dd>Classic and single-game builds.</dd>
+            <dt>lineups · showdown</dt><dd>Classic and single-game builds. <code>showdown</code> also prints estimated captain ownership (<code>cpt~</code>).</dd>
             <dt>ownership</dt><dd>Import measured ownership from standings; <code>--estimate</code> before lock, <code>--grade</code> after, <code>--grades</code> for the record.</dd>
             <dt>record</dt><dd>The season: fees, winnings, ROI and each entry's finish percentile, from DK's own history. <code>--offline</code> reads the stored copy.</dd>
             <dt>serve · doctor</dt><dd>Web board, <code>--contest</code> opens it on one; what it's resting on, and how old.</dd>
@@ -1071,6 +1073,10 @@ cd projections
 .venv/bin/python tools/export_lateround.py --week &lt;week&gt;
 .venv/bin/python tools/export_lateround_ros.py
 
+<span class="c"># 1b. the week's waiver columns → projections/data/waiver-articles.json</span>
+<span class="c">#     (one row per player per column, with each writer's FAAB %)</span>
+.venv/bin/python tools/export_waiver_buzz.py
+
 <span class="c"># 2. the market, and a first look at start/sit</span>
 cd ../sleeper &amp;&amp; tools/weekly.sh
 
@@ -1080,6 +1086,7 @@ cd ../sleeper &amp;&amp; tools/weekly.sh
             <li><b>Check the export's coverage line:</b> about 150 ranked and 0 unmatched is a clean capture. Anything short, redo the browser step.</li>
             <li><b>The weekly capture's four downloads don't all land</b> in Chrome. <code>/tuesday</code> carries the fallback that works.</li>
             <li><b>Thin market coverage is expected on a Tuesday.</b> The point is claims, not Sunday's lineup.</li>
+            <li><b>Read the section under each board</b> — <i>the field is adding these, and the table above did not</i>. On a Tuesday the real claim is often there: a player who inherited a job on Sunday has no stat line and no rank, so the ranked table cannot see him.</li>
           </ul>
           <p><span class="pill warn">deadline</span> Claims must be in before the first league runs at <b>Wed 02:11</b> — Justice League and Hastings are Tuesday-night decisions.</p>
         </div>
@@ -1196,6 +1203,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper &amp; <span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>weekly_props.json</code>: per-game markets, <code>exp_td</code>, <code>match_keys</code></td><td><code>name_key</code> <span class="pill warn">a name</span> with <code>sleeper_id</code> inside</td><td><code>tools/export_props.py</code></td><td class="num">24 h</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>lateround.json</code>: weekly ranks and tiers, kicker projections</td><td><code>sleeper_id</code>; K and DEF on team</td><td><code>tools/export_lateround.py</code></td><td class="num">per capture</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>lateround_ros.json</code>: rest-of-season ranks, read by <code>waivers</code> rather than by start/sit</td><td><code>sleeper_id</code></td><td><code>tools/export_lateround_ros.py</code></td><td class="num">per capture</td></tr>
+        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>waiver_buzz.json</code>: Sleeper trending adds + news RSS + a capture of the week's waiver columns. Popularity, never scored</td><td><code>sleeper_id</code>, resolved against the FULL Sleeper universe — <b>not</b> the crosswalk, which is the DK pool and misses the wire</td><td><code>tools/export_waiver_buzz.py</code></td><td class="num">72 h</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td>News bundle for <code>/news</code></td><td>—</td><td><code>tools/news-push.sh</code> → <code>/api/news/upload</code></td><td class="num">off in-season</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>dk_scores.json</code>: DK points per pool player per completed week, read by the standings capture</td><td><code>dk_player_id</code></td><td><code>tools/export_dk_scores.py</code>, in <code>weekly-xfp.sh</code></td><td class="num">weekly</td></tr>
         <tr><td><span class="dot" style="--c:var(--bb)"></span>Mac → <span class="dot" style="--c:var(--bb)"></span>Render</td><td>Weekly best-ball standings</td><td>DK <code>playerId</code></td><td><code>tools/capture-standings.sh</code> → <code>/api/season/upload</code></td><td class="num">weekly</td></tr>
@@ -1256,7 +1264,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.standings</td><td class="what">Capture every best-ball entry's standing from DK, push to <code>/season</code>. After weekly xFP, because it reads that job's <code>dk_scores.json</code>; Wednesday is the retry.</td><td class="d off">·</td><td class="d off">·</td><td class="d">08:30</td><td class="d">08:30</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">/season only</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.autoqueue</td><td class="what">Keep live DK draft queues stocked. Deadline 7 Sep 21:00 has passed, so it's quiet.</td><td class="span" colspan="7">every 5 minutes, while loaded</td><td><span class="pill bad">your DK queues</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo; snapshot the lobby's contests for the replay</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay); grade Sunday's ownership estimate per player and on a 1-in-40 sample of the field's lineups; refresh the season record</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay); grade Sunday's ownership estimate per player and on a 1-in-40 sample of the field's lineups, and each showdown's captain estimate; refresh the season record</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
       </tbody>
     </table></div>
     <div class="grid2">
@@ -1296,12 +1304,12 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">185</td></tr>
-              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">199</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">247</td></tr>
+              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">239</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">263</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (DFS 21 Sep, Projections 22 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (DFS, Projections and Sleeper 22 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>
