@@ -196,7 +196,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
 <div class="wrap">
   <div class="strip">
     <span><b>fantasy_football/docs/architecture.html</b></span>
-    <span>checked against the code on 21 Sep 2026</span>
+    <span>checked against the code on 22 Sep 2026</span>
   </div>
 
   <!-- ─────────────────────────────── THE MAP ─────────────────────────────── -->
@@ -564,7 +564,7 @@ tools/refresh-sources.sh --publish
               <tr><td><code>/recommend</code></td><td>Live pick advice during a draft. A stale-data bar appears only when something is stale.</td></tr>
               <tr><td><code>/rankings</code></td><td>Your board. The ★ in the header is per browser and <b>off by default</b>.</td></tr>
               <tr><td><code>/history</code></td><td>Past drafts and player exposure.</td></tr>
-              <tr><td><code>/season</code></td><td>Every entry's pod standing, on one page that works on a phone. All scores are DK's.</td></tr>
+              <tr><td><code>/season</code></td><td>Every entry's pod standing, on one page that works on a phone. All scores are DK's. <b>Standings only since week 2</b>: DK's per-entry lineups stopped at week 1, so there is no who-scored-what after it.</td></tr>
               <tr><td><code>/news</code></td><td>News pushed from the Mac. “Price moved” is the view worth reading.</td></tr>
               <tr><td><code>/setup</code></td><td>DK sign-in, and the data freshness panel.</td></tr>
               <tr><td><code>/sandbox</code></td><td>Replay and test drafts.</td></tr>
@@ -600,7 +600,7 @@ tools/refresh-sources.sh --publish
             <dt>check-model-change.js</dt><dd>Who moved, in both models, on real boards. It also runs automatically when a scoring file is edited.</dd>
             <dt>calibrate-survival.py · import-new-drafts.sh</dt><dd>Re-score “will he last?” as more real drafts finish.</dd>
             <dt>auto-queue.py</dt><dd>Keeps live DK draft queues stocked with V1's picks.</dd>
-            <dt>capture-standings.py</dt><dd>Captures weekly standings from DK and pushes them to <code>/season</code>.</dd>
+            <dt>capture-standings.py</dt><dd>Captures weekly standings from DK and pushes them to <code>/season</code>. Pods come from the tournament-wide (mega contest) leaderboard, the one DK endpoint still updating. It refuses, rather than archives, a capture whose parts disagree.</dd>
             <dt>entry-spend.py · sync-ranks.py</dt><dd>What your entries cost, and pulling prod's board into local.</dd>
           </dl>
         </div>
@@ -635,7 +635,7 @@ node tools/check-model-change.js
         <div class="blk">
           <h2>Runs by itself</h2>
           <ul>
-            <li><b>Standings capture</b>: Tuesdays 07:30, pushed to <code>/season</code>.</li>
+            <li><b>Standings capture</b>: Tuesdays 07:30, pushed to <code>/season</code>. If it misses, re-run <code>tools/capture-standings.sh</code> by Wednesday: while DK's lineups stay frozen it refuses from Thursday, when a live week and a finished one look alike.</li>
             <li><b>Auto-queue</b>: every 5 min while loaded. Its deadline (7 Sep, 21:00) has passed, so it does nothing until you re-arm it.</li>
             <li><b>Model-change hook</b>: on every edit to a scoring file.</li>
           </ul>
@@ -1168,7 +1168,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
       <div class="blk">
         <h2>Off until next August</h2>
         <ul>
-          <li><b>Best ball</b> needs nothing — <code>/season</code> updates itself on Tuesdays.</li>
+          <li><b>Best ball</b> needs nothing — <code>/season</code> updates itself on Tuesdays. Check <code>best-ball-draft/data/season/standings.out</code> if it looks a week behind.</li>
           <li><code>/update-projections</code>, <code>/nightly-review</code> and the nightly refresh are for drafting, which is over for 2026.</li>
           <li><code>tools/preflight.py</code> will report red until then, deliberately — see <code>best-ball-draft/docs/STATUS.md</code>.</li>
         </ul>

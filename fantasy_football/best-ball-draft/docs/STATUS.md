@@ -11,6 +11,43 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-09-22: `/season` week 2 — DK froze its scorecards; standings only
+
+The Tuesday capture failed, and fixing it turned up two things wrong, one hiding the other.
+
+**1. A 403 from `api.draftkings.com`.** Akamai now answers the session's Chrome
+User-Agent from a Python client with `Access Denied`; the same request with requests' own
+UA returns 200. The UA now goes only on `/mycontests`, which still needs it.
+
+**2. Behind it: DK's per-contest scores stopped at week 1.** `scores/v1/leaderboards/{cid}`
+and `scores/v2/entries/{dg}/{eid}` both still return week 1 — same pods, same lineups, same
+82.36 — while `/mycontests` carries the season total (244.64). No week parameter moves
+them. The capture read the week off week-1 kickoffs, called it "week 1 final", and
+**archived season points over the real `week01.json`**: `archive()` runs before anything
+checks. Only the 403 kept it off `/season`. The file was rebuilt from Render's copy and
+cross-checked 81 of 81 (pods, lineups, line, margin).
+
+**What is current: the mega contest's board**, `scores/v2/megacontests/{mid}/leaderboard`
+(key `leaderboard`, entries matched on `megaEntryKey` = our `UserContestId`). It matched
+`/mycontests` on rank and points for 81 of 81 entries, all 12-row pods. Pods come from it
+now. `MegaContestId == ContestId` for every entry this season.
+
+**What is gone: week-by-week rosters.** No current source found. When the scorecards sit
+two or more weeks behind the calendar, the capture files the week just finished as `pre`
+— standings, no rosters — **on Tuesday or Wednesday only**, and refuses from Thursday,
+when a live week and a finished one look alike without scorecards. Week 2 was pushed this
+way (81 entries, 16 advancing, durable), with one warning saying so. Expect that warning
+every week until a roster source turns up.
+
+**New guard, `refuse_reason()`:** a finished-week capture where most entries' totals are
+not in their own pod, or most lineups do not explain their points, is refused before
+archive or push. Warnings were not enough — rc 3 still archived and would have pushed.
+
+Commits `a6973cb`, `923fe75`. Claude in Chrome refuses draftkings.com ("safety
+restrictions"); the mega endpoint was found in the user's own DevTools.
+
+---
+
 ## 2026-09-21: weekly xFP overstated red-zone touchdowns — fixed
 
 `/weekly`'s expected points (`pipeline/core/xfp.py`, fit by `tools/backtest_xfp.py`)
@@ -154,7 +191,8 @@ Measured on the first captures, and each one is a trap:
 
 - **`PaidPositionThresholdPoints` is not the advance line.** On `/mycontests` it equals
   the pod LEADER's points, 12 of 12 tournament types. The line is read off the 12-row
-  leaderboard.
+  leaderboard — the MEGA contest's (`scores/v2/megacontests/{mid}/leaderboard`); the
+  per-contest `scores/v1/leaderboards/{cid}` froze at week 1 (2026-09-22 entry above).
 - **Every tournament advances 2 of 12** (`LastWinningMegaEntry.Rank`), measured not assumed.
 - **Draftable ids are not identities.** Drake Maye had two in ONE draft group, and every
   season's pool mints new ones. Standings key players by DK `playerId`.
@@ -163,13 +201,16 @@ Measured on the first captures, and each one is a trap:
 - **The scorecards reconcile:** DK's non-bench player scores summed to the entry total on
   81 of 81 lineups in week 1.
 
-Open, and settled only by captures after week 1:
+Settled by the first week-2 capture (2026-09-22):
 
-1. Whether a scorecard shows the WEEK's points or the season's from week 2 on. The
-   capture checks each lineup against the points the entry gained that week, so if it is
-   the season's, every entry fails loudly on the first week-2 capture.
-2. When DK rolls its scorecards on to the next week. A capture after the roll is filed
-   `pre`: standings kept, rosters carried over from the earlier capture of that week.
+1. ~~Week's points or season's?~~ Neither: the scorecard stays on **week 1**. It did not
+   fail loudly as planned — the week was read off those same week-1 kickoffs, so the
+   capture believed it was week 1. The pod-contains-total check now catches it.
+2. ~~When DK rolls its scorecards on.~~ It did not, through week 2. Frozen scorecards are
+   handled as `pre` on Tuesday/Wednesday; a genuine roll still takes the old `pre` path.
+
+Still open:
+
 3. What happens to contest ids when an entry advances into week 15. `round`,
    `mega_contest_id`, `lineup_id` and `tournament_key` are stored for that day.
 
@@ -179,7 +220,8 @@ probably a cancelled contest. The page lists it rather than dropping it.
 **Not built, deliberately: our own scoring from nflverse.** It works — 5 of 5 players
 matched DK to the cent through the crosswalk — but DK's score is the one that pays, so a
 second scorer would only be a check. Worth building only if DK's week-by-week detail
-turns out to be unrecoverable.
+turns out to be unrecoverable. **As of 2026-09-22 it is, from every endpoint found** — this
+is now the candidate for week-2+ rosters. Not started.
 
 ---
 
