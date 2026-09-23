@@ -1,5 +1,5 @@
 ---
-description: Tuesday-night routine, before waivers process — recapture LateRound (weekly + rest-of-season), refresh the market, then read start/sit and every FAAB league's waiver board.
+description: Tuesday-night routine, before waivers process — recapture LateRound (weekly + rest-of-season) and the week's waiver columns, refresh the market and the field, then read start/sit, every FAAB league's waiver board, and the roster-shape view across all four leagues.
 argument-hint: ""
 ---
 
