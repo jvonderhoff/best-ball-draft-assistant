@@ -1081,11 +1081,16 @@ cd projections
 cd ../sleeper &amp;&amp; tools/weekly.sh
 
 <span class="c"># 3. the waiver board, every league</span>
-.venv/bin/python cli.py waivers --league &lt;id&gt;</pre>
+.venv/bin/python cli.py waivers --league &lt;id&gt;
+
+<span class="c"># 4. roster shape: who you hold that the list skips, who it ranks that is free,</span>
+<span class="c">#    and who of yours a free player is rated over</span>
+.venv/bin/python cli.py gaps</pre>
           <ul>
             <li><b>Check the export's coverage line:</b> about 150 ranked and 0 unmatched is a clean capture. Anything short, redo the browser step.</li>
             <li><b>The weekly capture's four downloads don't all land</b> in Chrome. <code>/tuesday</code> carries the fallback that works.</li>
             <li><b>Thin market coverage is expected on a Tuesday.</b> The point is claims, not Sunday's lineup.</li>
+            <li><b>Zero ranked free agents is a finding</b>, not an empty screen — <code>gaps</code> prints it for both dynasty leagues, where every ranked player is owned. That says trade, not claim.</li>
             <li><b>Read the section under each board</b> — <i>the field is adding these, and the table above did not</i>. On a Tuesday the real claim is often there: a player who inherited a job on Sunday has no stat line and no rank, so the ranked table cannot see him.</li>
           </ul>
           <p><span class="pill warn">deadline</span> Claims must be in before the first league runs at <b>Wed 02:11</b> — Justice League and Hastings are Tuesday-night decisions.</p>

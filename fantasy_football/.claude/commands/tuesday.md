@@ -11,6 +11,10 @@ LateRound pages, not one: the **weekly** page for this-week start/sit, the
 column. Running only one and skipping the other silently answers half the
 question.
 
+Four steps: recapture LateRound, refresh the market, read every waiver board,
+then read the roster-shape view. The last one is what catches a league the
+waiver board has nothing to say about.
+
 ## Step 1 — recapture LateRound
 
 Both captures are member-only pages that 302 for a scripted fetch, so both are
@@ -135,6 +139,36 @@ not caught up with yet, which is exactly the disagreement worth reading.
 A league whose FAAB board prints "only N winning FAAB bid(s) synced" below the
 15-bid minimum is not broken; it just doesn't have enough history yet for a
 bid suggestion, and the VOR/LR columns are still worth reading on their own.
+
+## Step 4 — read the roster-shape view, every league
+
+```bash
+cd sleeper && .venv/bin/python cli.py gaps
+```
+
+No `--league` runs all four. Where `waivers` asks "who should I add", this asks
+"does my roster still make sense", and it covers the leagues the waiver board
+has nothing to say about. Three sections per league:
+
+- **`UNRANKED, on your roster`** — who you carry that LateRound's 150 does not
+  reach, with his slot and depth-chart spot. Not a verdict: the list runs out
+  at roughly a startable WR5, and a player can be unranked and still be the
+  week's biggest add (Tre Tucker, 990k adds, unranked, 2026-09-22).
+- **`RANKED and free`** — their ranked players nobody rosters, each marked
+  `free` or `ON WAIVERS until <day>`.
+- **`OUTRANKED by someone free`** — the row worth acting on, and the one the
+  other two miss. A ranked player of yours with better free players above him
+  never appears in the unranked list at all: on 2026-09-22 that was Dallas
+  Goedert, TE19, with three free tight ends rated over him.
+
+**Zero ranked free agents is a finding, not an empty screen.** Both dynasty
+leagues print it, because in 12-team superflex with 12- and 15-man benches
+every ranked player is owned. That says trade, not claim, and no amount of
+staring at the waiver board will say it.
+
+K and DEF are skipped throughout and the command says so — the ROS page ranks
+QB/RB/WR/TE only, so an unranked kicker reports the source's scope rather than
+anything about him.
 
 ## If something looks wrong
 
