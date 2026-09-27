@@ -907,7 +907,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>data/weekly_props.json</code>, committed Sundays</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 263 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 284 tests</dd></div>
       </dl>
     </header>
 
@@ -973,6 +973,7 @@ cd ../sleeper
             <dt>dfs/ownership.py</dt><dd>The pre-lock ownership estimate and its Monday grade; prints, never constrains.</dd>
             <dt>dfs/captains.py</dt><dd>Showdown captain ownership, estimated from the projection (share ~ proj<sup>k</sup>, fitted on graded games), stored only before kickoff, graded Monday. Tournament fields only.</dd>
             <dt>dfs/replay.py</dt><dd>Where a score finishes in a stored field, and what that rank pays.</dd>
+            <dt>dfs/paper.py</dt><dd>Paper trading. First read (Weeks 1–2): the entry count moved the spread, not the sign — every lineup rests on the same projections, so whether volume pays is whether the edge holds across weeks.</dd>
             <dt>dfs/export.py</dt><dd>DK's upload CSV. A file, never an upload. Per-slot ids from the draftables API, or from the salary CSV when it refuses (its id is the slot id; FLEX is that plus one, measured and re-checked per slate).</dd>
             <dt>web/app.py</dt><dd>Lineups, value screen and stacks in tabs, with live sliders.</dd>
           </dl>
@@ -997,7 +998,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
           <dl class="mods">
             <dt>slates · contest</dt><dd>Which slates exist; what a contest pays, and how to build for it (cash vs tournament, read off the ladder).</dd>
             <dt>lineups --contest</dt><dd>Build for one contest: its slate, and its ladder's objective, stack, bring-back and game filter for any flag not given.</dd>
-            <dt>contests · replay</dt><dd>Every contest that ran on a slate (lobby snapshot before lock, id scan after); where your lineups would have finished in each of them.</dd>
+            <dt>contests · replay</dt><dd>Every contest that ran on a slate (lobby snapshot before lock, id scan after); where your lineups would have finished in each of them. <code>replay --volume</code>: the paper-trading record — would more entries have made money, week by week.</dd>
             <dt>screen · stacks</dt><dd>Value within position; teams by implied total.</dd>
             <dt>lineups · showdown</dt><dd>Classic and single-game builds. <code>showdown</code> also prints estimated captain ownership (<code>cpt~</code>).</dd>
             <dt>ownership</dt><dd>Import measured ownership from standings; <code>--estimate</code> before lock, <code>--grade</code> after, <code>--grades</code> for the record.</dd>
@@ -1010,7 +1011,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
           <h2>Runs by itself</h2>
           <ul>
             <li><b>Sunday export</b>: 08:30 and 10:45. Refreshes props, checks them, commits and pushes, so another machine can pull.</li>
-            <li><b>Ownership import</b>: Monday and Tuesday 09:00. Keeps the field and your entries for every contest you played, then the other big contests on those slates, so <code>replay</code> can place your lineups in all of them.</li>
+            <li><b>Ownership import</b>: Monday and Tuesday 09:00. Keeps the field and your entries for every contest you played, then the other big contests on those slates, so <code>replay</code> can place your lineups in all of them. Then it paper-trades the slate: 150 lineups off the last props commit before lock, replayed at 1–150 entries (<code>replay --volume</code>).</li>
           </ul>
         </div>
         <div class="blk">
@@ -1051,7 +1052,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
           <tr><td>Thursday</td><td>—</td><td><code>/startsit</code> <b>only</b> if you start someone Thursday night.</td></tr>
           <tr><td>Fri / Sat</td><td>—</td><td>Refresh dynasty values (three commands below); tidy <code>unavailable.json</code>.</td></tr>
           <tr><td>Sunday</td><td>DFS props export 08:30 &amp; 10:45</td><td>After 10:45: <b><code>/startsit</code></b>, set Sleeper lineups. <b><code>/sunday &lt;contest ids&gt;</code></b>, upload DFS lineups. <span class="pill warn">lock 12:00</span></td></tr>
-          <tr><td>Monday</td><td>DFS ownership import + estimate grade 09:00</td><td>Nothing. <code>dfs/cli.py record --offline</code> for the season so far.</td></tr>
+          <tr><td>Monday</td><td>DFS ownership import + estimate grade + paper trading 09:00</td><td>Nothing. <code>dfs/cli.py record --offline</code> for the season so far; <code>replay --volume</code> for whether more entries would pay.</td></tr>
                   </tbody>
       </table></div>
       <p>Three things a week, really: <code>/tuesday</code>, <code>/startsit</code> + <code>/sunday</code> on Sunday morning, and dynasty values before the weekend. The days below are the detail.</p>
@@ -1162,7 +1163,7 @@ tools/gameday.sh -n 4 &lt;contest id&gt; -n 1 &lt;contest id&gt; --serve
       <div class="day">
         <div class="dname"><span>Monday</span><small>last game</small></div>
         <div class="dbody">
-          <p class="auto"><span class="pill mute">runs itself</span> 09:00 DFS ownership import from finished contests, plus the field and your entries, plus the other contests on the slate</p>
+          <p class="auto"><span class="pill mute">runs itself</span> 09:00 DFS ownership import from finished contests, plus the field and your entries, plus the other contests on the slate, then the paper trade (<code>replay --volume</code>)</p>
           <p>Nothing required. A Monday-night starter stays swappable until his kickoff. If DFS ownership matters to you, confirm the import ran — small contests get purged by DraftKings, and a week not imported is gone.</p>
 <pre><span class="c"># Tuesday, once the import has run: the same lineups, in every contest that night</span>
 cd dfs &amp;&amp; .venv/bin/python cli.py replay</pre>
@@ -1269,7 +1270,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.standings</td><td class="what">Capture every best-ball entry's standing from DK, push to <code>/season</code>. After weekly xFP, because it reads that job's <code>dk_scores.json</code>; Wednesday is the retry.</td><td class="d off">·</td><td class="d off">·</td><td class="d">08:30</td><td class="d">08:30</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">/season only</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.autoqueue</td><td class="what">Keep live DK draft queues stocked. Deadline 7 Sep 21:00 has passed, so it's quiet.</td><td class="span" colspan="7">every 5 minutes, while loaded</td><td><span class="pill bad">your DK queues</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo; snapshot the lobby's contests for the replay</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay); grade Sunday's ownership estimate per player and on a 1-in-40 sample of the field's lineups, and each showdown's captain estimate; refresh the season record</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay); grade Sunday's ownership estimate per player and on a 1-in-40 sample of the field's lineups, and each showdown's captain estimate; refresh the season record; paper-trade the slate (150 pre-lock lineups, replayed at 1–150 entries: <code>replay --volume</code>)</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
       </tbody>
     </table></div>
     <div class="grid2">
@@ -1310,11 +1311,11 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">185</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">239</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">263</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">284</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (DFS, Projections and Sleeper 22 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (Projections and Sleeper 22 Sep, DFS 26 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>
