@@ -181,8 +181,15 @@ cd ../sleeper && .venv/bin/python cli.py trades
 
 Run AFTER step 1: it measures LateRound's rest-of-season list against the
 FantasyPros consensus, so a stale capture is a stale disagreement. Both
-exports are public fetches (no login) and refuse a partial board. Redraft
-leagues only -- a dynasty league is skipped and says so.
+exports are public fetches (no login) and refuse a partial board.
+
+The dynasty leagues run through the same command against LateRound's DYNASTY
+board and the KTC/FantasyCalc market (see `sleeper/README.md`). That board is
+captured separately (`tools/lateround-dynasty-capture.js`) and changes rarely —
+**read its `PAGE UPDATED` line first**. Past three weeks the command warns, and
+the BUY list is mostly the market having moved on games the list predates;
+lean on the `now` column and the `COSTS NOW` / `STARTER` flags, which read
+this week's data.
 
 - **`BUY`** — players on other rosters LateRound puts a whole tier (its own
   tier breaks) above where the consensus does. `OUTSIDE-ALL-EXPERTS` means

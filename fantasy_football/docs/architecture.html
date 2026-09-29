@@ -358,7 +358,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
         <div><dt>Runs</dt><dd>Locally only. Analysis page at <code>localhost:8100</code></dd></div>
         <div><dt>Stores</dt><dd><code>data/store.db</code> (ids, snapshots) · <code>data/analysis.db</code></dd></div>
         <div><dt>Keyed on</dt><dd><code>dk_player_id</code>, crosswalked to every other id</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 189 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 193 tests</dd></div>
       </dl>
     </header>
 
@@ -436,6 +436,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
               <tr><td><code>weekly_props.json</code></td><td>Start/sit, waivers, DFS</td><td><code>tools/export_props.py</code></td><td class="num">24 h</td></tr>
               <tr><td><code>dynasty_values.json</code></td><td>Dynasty</td><td><code>tools/export_dynasty_values.py</code></td><td class="num">14 days</td></tr>
               <tr><td><code>lateround.json</code></td><td>Start/sit</td><td><code>tools/export_lateround.py</code></td><td class="num">weekly</td></tr>
+              <tr><td><code>lateround_dynasty.json</code></td><td>Dynasty trades — LateRound's career board</td><td><code>tools/export_lateround_dynasty.py</code></td><td class="num">per capture</td></tr>
               <tr><td><code>fantasypros_ros.json</code></td><td>Trades — the consensus (6 of 30 experts, the free page)</td><td><code>tools/export_fantasypros_ros.py</code></td><td class="num">weekly</td></tr>
               <tr><td><code>redraft_values.json</code></td><td>Trades — FantasyCalc redraft prices, one board per league shape</td><td><code>tools/export_redraft_values.py</code></td><td class="num">weekly</td></tr>
               <tr><td><code>waiver_buzz.json</code></td><td>Waivers — trending adds, news, the week's columns</td><td><code>tools/export_waiver_buzz.py</code></td><td class="num">72 h</td></tr>
@@ -673,7 +674,7 @@ node tools/check-model-change.js
         <div><dt>Runs</dt><dd>CLI · live draft board at <code>:8200</code>, open to your wifi</dd></div>
         <div><dt>Store</dt><dd><code>data/leagues.db</code>, a cache of Sleeper that's safe to delete</dd></div>
         <div><dt>Keyed on</dt><dd><code>sleeper_id</code> · does no name matching</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 292 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 299 tests</dd></div>
       </dl>
     </header>
 
@@ -757,7 +758,7 @@ node tools/check-model-change.js
             <dt>weekly.py · lineup.py</dt><dd>This week's points from props; the best legal lineup.</dd>
             <dt>weekly_ranks.py</dt><dd>Human rank sources (LateRound today), shown side by side and never averaged.</dd>
             <dt>waivers.py · faab.py</dt><dd>An add is a pair: the free agent against the player you'd actually cut, plus a bid fitted on real winning bids. A <code>BUZZ</code> column and a closing section carry what the rest of the world is doing — trending adds, headlines, the week's columns — including the players this app has no number for.</dd>
-            <dt>trades.py</dt><dd>Redraft trade board: where LateRound ROS rates a player a tier or more away from the FantasyPros consensus (measured in LateRound's own tiers, never rank arithmetic), priced by FantasyCalc redraft values. Buy, sell, fair 1-for-1 pairs; injured players listed, never paired. Dynasty trades are not built yet.</dd>
+            <dt>trades.py</dt><dd>Trade board: where LateRound rates a player a tier or more away from the market (measured in LateRound's own tiers, never rank arithmetic). Redraft: LateRound ROS vs FantasyPros, priced by FantasyCalc. Dynasty: LateRound dynasty vs KTC, FantasyCalc confirming, with win-now flags. Buy, sell, fair 1-for-1 pairs; injured players listed, never paired.</dd>
           </dl>
         </div>
       </div>
@@ -791,7 +792,7 @@ tools/weekly.sh
         <div class="blk">
           <h2>Still to build</h2>
           <ul>
-            <li>Trades, second half. <code>cli.py trades</code> finds buy/sell targets and fair 1-for-1s; it does not yet do 2-for-1 packages or check either roster's lineup needs.</li>
+            <li>Trades, the rest. <code>cli.py trades</code> finds buy/sell targets and fair 1-for-1s in every league; it does not yet do 2-for-1 packages or check either roster's lineup needs.</li>
           </ul>
         </div>
         <div class="blk">
@@ -812,7 +813,7 @@ tools/weekly.sh
     <header class="dhead">
       <span class="eyebrow">sleeper/ · horizon: dynasty · same app as Redraft</span>
       <h1>Dynasty</h1>
-      <p class="lede">Two keep-forever Sleeper leagues. The weekly lineup is the same question as redraft. Buying, selling and cutting look at a player's whole career, and the trade market answers those, not a list of yours.</p>
+      <p class="lede">Two keep-forever Sleeper leagues. The weekly lineup is the same question as redraft. Buying, selling and cutting look at a player's whole career: the trade market prices it, and LateRound's dynasty board is the opinion measured against it.</p>
       <dl class="facts">
         <div><dt>Value source</dt><dd><code>projections/data/dynasty_values.json</code></dd></div>
         <div><dt>Joined on</dt><dd><code>mfl_id</code> → <code>sleeper_id</code>, with no name matching</dd></div>
@@ -866,6 +867,7 @@ tools/weekly.sh
             <li><b>Taxi and IR players are never offered as cuts.</b> Dropping one frees no active spot.</li>
             <li><b>A FAAB bid is fitted differently here.</b> A dynasty league's bid model uses value over replacement AND dynasty market rank, because the bid buys option value on a career; a redraft league uses value alone.</li>
             <li><b>Prices are never points.</b> Start/sit doesn't read them.</li>
+            <li><b>Trades: LateRound's dynasty board against KTC</b>, on the league's TE-premium board, with FantasyCalc confirming. Win-now is built in: each row shows this season's LateRound tier, a pair that is worse this year says <code>COSTS NOW</code>, and your starters are marked. <span class="pill warn">check the page date</span> The first capture was of an 08/31 page; the command warns past 21 days.</li>
           </ul>
         </div>
 
@@ -881,9 +883,12 @@ tools/weekly.sh
 <pre>cd projections
 .venv/bin/python cli.py fetch --source dynasty
 .venv/bin/python tools/export_dynasty_values.py
+<span class="c"># LateRound dynasty: lateround-dynasty-capture.js, then</span>
+.venv/bin/python tools/export_lateround_dynasty.py
 
 cd ../sleeper
-.venv/bin/python cli.py dynasty</pre>
+.venv/bin/python cli.py dynasty
+.venv/bin/python cli.py trades --league &lt;id&gt;</pre>
         </div>
         <div class="blk">
           <h2>Where it lives</h2>
@@ -892,12 +897,14 @@ cd ../sleeper
             <dt>projections/pipeline/sources/ktc.py</dt><dd>KTC fetcher, with per-position checks so a partial board can't pass.</dd>
             <dt>…/sources/fantasycalc.py</dt><dd>The spine of the join; refuses a file missing Sleeper ids.</dd>
             <dt>…/tools/export_dynasty_values.py</dt><dd>Writes the file Sleeper reads.</dd>
+            <dt>…/tools/export_lateround_dynasty.py</dt><dd>LateRound's dynasty board (<code>sf</code> and <code>sf_tep</code>), keyed on <code>sleeper_id</code>, with the page's own date.</dd>
+            <dt>sleeper/leagues/trades.py</dt><dd>The trade finder, shared with Redraft; the dynasty adapters and win-now flags live here.</dd>
           </dl>
         </div>
         <div class="blk">
           <h2>Still to build</h2>
           <ul>
-            <li><b>Trade evaluation</b>, the first feature that truly differs by horizon. The redraft half exists (<code>cli.py trades</code>); dynasty is skipped by it, on purpose.</li>
+            <li><b>Trades beyond 1-for-1.</b> 2-for-1 packages, and rookie picks as currency.</li>
             <li><b>Rookie drafts.</b> 84 pick values are already exported under <code>rookie_picks</code> and nothing reads them. Next summer.</li>
           </ul>
         </div>
@@ -1225,6 +1232,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>lateround.json</code>: weekly ranks and tiers, kicker projections</td><td><code>sleeper_id</code>; K and DEF on team</td><td><code>tools/export_lateround.py</code></td><td class="num">per capture</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>lateround_ros.json</code>: rest-of-season ranks, read by <code>waivers</code> rather than by start/sit</td><td><code>sleeper_id</code></td><td><code>tools/export_lateround_ros.py</code></td><td class="num">per capture</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>fantasypros_ros.json</code>: FantasyPros ROS consensus ranks and expert range, read by <code>trades</code>; ordinal, never scored</td><td><code>sleeper_id</code> via the crosswalk, which now carries <code>fp_id</code></td><td><code>tools/export_fantasypros_ros.py</code></td><td class="num">weekly</td></tr>
+        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--dy)"></span>Dynasty</td><td><code>lateround_dynasty.json</code>: LateRound's dynasty superflex ranks, two boards (<code>sf</code>, <code>sf_tep</code>), plus the page's own date; read by <code>trades</code></td><td><code>sleeper_id</code></td><td><code>tools/export_lateround_dynasty.py</code></td><td class="num">per capture · warns at 21 d page age</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>redraft_values.json</code>: FantasyCalc redraft trade values per league shape. A price, never points</td><td><code>sleeper_id</code> (FantasyCalc's own)</td><td><code>tools/export_redraft_values.py</code></td><td class="num">weekly</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>waiver_buzz.json</code>: Sleeper trending adds + news RSS + a capture of the week's waiver columns. Popularity, never scored</td><td><code>sleeper_id</code>, resolved against the FULL Sleeper universe — <b>not</b> the crosswalk, which is the DK pool and misses the wire</td><td><code>tools/export_waiver_buzz.py</code></td><td class="num">72 h</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td>News bundle for <code>/news</code></td><td>—</td><td><code>tools/news-push.sh</code> → <code>/api/news/upload</code></td><td class="num">off in-season</td></tr>
@@ -1326,8 +1334,8 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <div class="tbl"><table>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
-              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">189</td></tr>
-              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">292</td></tr>
+              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">193</td></tr>
+              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">299</td></tr>
               <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">284</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
