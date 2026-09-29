@@ -1,5 +1,5 @@
 ---
-description: Tuesday-night routine, before waivers process — recapture LateRound (weekly + rest-of-season) and the week's waiver columns, refresh the market and the field, then read start/sit, every FAAB league's waiver board, and the roster-shape view across all four leagues.
+description: Tuesday-night routine, before waivers process — recapture LateRound (weekly + rest-of-season) and the week's waiver columns, refresh the market and the field, then read start/sit, every FAAB league's waiver board, the roster-shape view across all four leagues, and the redraft trade board.
 argument-hint: ""
 ---
 
@@ -11,9 +11,10 @@ LateRound pages, not one: the **weekly** page for this-week start/sit, the
 column. Running only one and skipping the other silently answers half the
 question.
 
-Four steps: recapture LateRound, refresh the market, read every waiver board,
-then read the roster-shape view. The last one is what catches a league the
-waiver board has nothing to say about.
+Five steps: recapture LateRound, refresh the market, read every waiver board,
+read the roster-shape view, then read the redraft trade board. The roster-shape
+view is what catches a league the waiver board has nothing to say about; the
+trade board is what to do about one whose wire is empty.
 
 ## Step 1 — recapture LateRound
 
@@ -169,6 +170,35 @@ staring at the waiver board will say it.
 K and DEF are skipped throughout and the command says so — the ROS page ranks
 QB/RB/WR/TE only, so an unranked kicker reports the source's scope rather than
 anything about him.
+
+## Step 5 — read the redraft trade board
+
+```bash
+cd projections && .venv/bin/python tools/export_fantasypros_ros.py \
+  && .venv/bin/python tools/export_redraft_values.py
+cd ../sleeper && .venv/bin/python cli.py trades
+```
+
+Run AFTER step 1: it measures LateRound's rest-of-season list against the
+FantasyPros consensus, so a stale capture is a stale disagreement. Both
+exports are public fetches (no login) and refuse a partial board. Redraft
+leagues only -- a dynasty league is skipped and says so.
+
+- **`BUY`** — players on other rosters LateRound puts a whole tier (its own
+  tier breaks) above where the consensus does. `OUTSIDE-ALL-EXPERTS` means
+  LateRound's spot is beyond every expert's in the consensus — the strongest
+  flag, and they sort first.
+- **`SELL`** — yours, the other way round: the consensus (roughly what the
+  other managers are reading) rates him higher than LateRound does.
+- **`1-for-1 PAIRS`** — LateRound prefers what comes in, FantasyCalc prices
+  the two within ±15%, and at least one side is a disagreement. A starting
+  point for an offer, not a finished trade: it does not check the partner's
+  roster needs or yours.
+- **`NOT PAIRED`** — injured or asserted out. A buy-low there is a bet on a
+  return date, which none of the three lists knows.
+
+The consensus is **6 of 30 experts** — the free page's set — and the header
+says so. Trade deadlines print per league.
 
 ## If something looks wrong
 
