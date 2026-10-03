@@ -11,6 +11,32 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-10-02: weekly xFP charged RBs a quarterback's goal-line rate — fixed
+
+Found by comparing `/weekly`'s xFP against two outside models over 2026 weeks 1-3:
+NFLSavant (`/api/fantasy/opportunity`, public, keyed on gsis_id) and LateRound's Data
+Dump (paid, now HTML tables rather than an .xlsx). Overall agreement was close — r 0.993
+to 0.998, MAE ~0.3-0.5 pts/game, about the same as the two outside models agree with each
+other — and week-1-2 xFP predicted week 3 as well as NFLSavant's did (r .453 vs .448).
+**But RBs ran 5.4% above LateRound and 2.8% above NFLSavant while WR/TE did not.**
+
+Cause: the rushing table was pooled across every carrier. Inside the 10 a QB scores two
+to three times as often as a back (inside the 5: .507 vs .386 in 2024, .472 vs .374 in
+2025), so RB rushing TDs ran **+7.9% in-sample and +6.5% held out**, QBs −19%/−23%, and
+the two cancelled in the league total — the same disguise as the 09-21 receiving bug.
+
+Now fit per carrier group (`xfp.rush_group`: RB/FB vs everyone else), thin group cells
+falling back to the pooled rate: RB rushing TDs **0.0% / −1.0%**, others 0.0% / +2.0%.
+The backtest reports rushing TD bias per group on its own line, and `tests/test_xfp.py`
+has a held-out-2025 regression that reads +6.4% on the pooled table. Weeks 1-3 rebuilt;
+RBs now 1.031 of LateRound against NFLSavant's 1.024.
+
+Not a model problem, and left alone: 2026 RBs have scored fewer rushing TDs than any
+fitted rate expects so far (still 1.26 of actual with the fix, ~55 TDs). Same pooling
+shape, smaller and unfixed, in receiving TDs: TEs under (0.88 in 2025), WRs over (1.085).
+
+---
+
 ## 2026-09-22: `/season` week 2 — DK froze its scorecards; rosters rebuilt from nflverse
 
 The Tuesday capture failed, and fixing it turned up two things wrong, one hiding the other.
@@ -101,7 +127,8 @@ First run with the fix: 2026-09-22 08:00, which should build week 2 with **32 te
 
 **Open:** QB passing xFP is still unbuilt (scoped: reuse the target cells, own buckets
 for throwaways, scrambles and INTs). The rushing fit has no position filter, so QB kneels
-and scrambles sit in the RB rates — unmeasured how much that moves them.
+and scrambles sit in the RB rates — unmeasured how much that moves them. *(Measured and
+fixed 2026-10-02 — see above.)*
 
 ---
 
