@@ -32,8 +32,16 @@ has a held-out-2025 regression that reads +6.4% on the pooled table. Weeks 1-3 r
 RBs now 1.031 of LateRound against NFLSavant's 1.024.
 
 Not a model problem, and left alone: 2026 RBs have scored fewer rushing TDs than any
-fitted rate expects so far (still 1.26 of actual with the fix, ~55 TDs). Same pooling
-shape, smaller and unfixed, in receiving TDs: TEs under (0.88 in 2025), WRs over (1.085).
+fitted rate expects so far (still 1.26 of actual with the fix, ~55 TDs).
+
+**Receiving TDs, same day: backs split, WR/TE measured and left pooled.** Over 2022-25
+(2022-23 play-by-play pulled for the check only) RB receiving TDs ran 0.99 / 0.86 / 0.85 /
+0.80 of the pooled rate, but TEs 0.98 / 1.02 / 1.04 / 0.88 and WRs over in every season
+except the fit one — season drift, not position. Per-position cells made held-out 2025
+TEs WORSE (0.884 → 0.852) and a 2022-24 fit dropped the league line from 0.990 to 0.946,
+so neither shipped. Backs now get their own cells shrunk toward the pooled cell
+(`fit_receiving_td_rb`): RB receiving TDs −14.6% → −7.2% in-sample, −20.2% → −14.4% held
+out. Worth ~20 TDs a season across all backs; RBs move 1.031 → 1.034 of LateRound.
 
 ---
 
