@@ -674,7 +674,7 @@ node tools/check-model-change.js
         <div><dt>Runs</dt><dd>CLI · live draft board at <code>:8200</code>, open to your wifi</dd></div>
         <div><dt>Store</dt><dd><code>data/leagues.db</code>, a cache of Sleeper that's safe to delete</dd></div>
         <div><dt>Keyed on</dt><dd><code>sleeper_id</code> · does no name matching</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 299 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 316 tests</dd></div>
       </dl>
     </header>
 
@@ -792,7 +792,7 @@ tools/weekly.sh
         <div class="blk">
           <h2>Still to build</h2>
           <ul>
-            <li>Trades, the rest. <code>cli.py trades</code> finds buy/sell targets and fair 1-for-1s in every league; it does not yet do 2-for-1 packages or check either roster's lineup needs.</li>
+            <li>Trades, the rest. <code>cli.py trades</code> finds buy/sell targets and fair 1-for-1s in every league; every pair is checked against both whole rosters (starters plus depth, <code>THINS</code> when a position falls short); it does not yet do 2-for-1 packages.</li>
           </ul>
         </div>
         <div class="blk">
@@ -1335,12 +1335,12 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">193</td></tr>
-              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">299</td></tr>
+              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">316</td></tr>
               <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">284</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (Projections and Sleeper 29 Sep, DFS 26 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (Projections 29 Sep, Sleeper 3 Oct, DFS 26 Sep). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>
