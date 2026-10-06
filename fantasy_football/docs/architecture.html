@@ -923,7 +923,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>projections/data/weekly_props.json</code>; its own committed copy only when that is absent (a clone)</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 338 tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 348 tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
       </dl>
     </header>
 
@@ -957,6 +957,7 @@ cd ../sleeper
             <li><b><code>--top-games 2 --min-bringback 1</code></b> takes quarterbacks from the highest-total games and adds an opposing player.</li>
             <li><b>Defences are projected</b> from the opponent's implied total, so the optimiser no longer just buys the cheapest.</li>
             <li><b>Kickers are projected too</b> (showdown only) — without a number they were never selectable at all. The level is the fix; the slope does not pick kickers, and <b>a kicker is never the captain</b>.</li>
+            <li><b>Showdown leaves out cheap blanks</b>: under $1,500, no market number, projecting under 4 — 88% of them scored zero. The <code>punts:</code> line names them; <code>--lock</code> one by name (a backup whose starter is OUT), or <code>--keep-punts</code>.</li>
           </ul>
         </div>
 
@@ -1019,7 +1020,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
             <dt>lineups --contest</dt><dd>Build for one contest: its slate, and its ladder's objective, stack, bring-back and game filter for any flag not given.</dd>
             <dt>contests · replay</dt><dd>Every contest that ran on a slate (lobby snapshot before lock, id scan after); where your lineups would have finished in each of them. <code>replay --volume</code>: the paper-trading record — would more entries have made money, week by week. <code>--showdown</code>: the same, game by game.</dd>
             <dt>screen · stacks</dt><dd>Value within position; teams by implied total.</dd>
-            <dt>lineups · showdown</dt><dd>Classic and single-game builds. <code>showdown</code> exports its own game's props first (<code>export_props.py --game</code> — the weekly export refuses late in the week), prints estimated captain ownership (<code>cpt~</code>), caps the night at two per player across builds with <code>--ledger</code>, and before kickoff archives its props for the showdown paper trade.</dd>
+            <dt>lineups · showdown</dt><dd>Classic and single-game builds. <code>showdown</code> exports its own game's props first (<code>export_props.py --game</code> — the weekly export refuses late in the week), prints estimated captain ownership (<code>cpt~</code>), names the cheap non-market players it left out (<code>punts:</code>; <code>--keep-punts</code> to allow them), caps the night at two per player across builds with <code>--ledger</code>, and before kickoff archives its props for the showdown paper trade.</dd>
             <dt>ownership</dt><dd>Import measured ownership from standings; <code>--estimate</code> before lock, <code>--grade</code> after, <code>--grades</code> for the record.</dd>
             <dt>record</dt><dd>The season: fees, winnings, ROI and each entry's finish percentile, from DK's own history. <code>--offline</code> reads the stored copy.</dd>
             <dt>accuracy</dt><dd>The projections against what players scored, every stored game and slate; grades anything new (fetches DK salaries), <code>--offline</code> prints the record.</dd>
@@ -1342,11 +1343,11 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">207</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">316</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">338</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">348</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (Projections 4 Oct, Sleeper 3 Oct, DFS 5 Oct). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (Projections 4 Oct, Sleeper 3 Oct, DFS 6 Oct). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>
