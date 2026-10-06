@@ -196,7 +196,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
 <div class="wrap">
   <div class="strip">
     <span><b>fantasy_football/docs/architecture.html</b></span>
-    <span>checked against the code on 29 Sep 2026</span>
+    <span>checked against the code on 29 Sep 2026 · DFS jobs 6 Oct</span>
   </div>
 
   <!-- ─────────────────────────────── THE MAP ─────────────────────────────── -->
@@ -923,7 +923,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>projections/data/weekly_props.json</code>; its own committed copy only when that is absent (a clone)</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 348 tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 361 tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
       </dl>
     </header>
 
@@ -1033,7 +1033,8 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
           <h2>Runs by itself</h2>
           <ul>
             <li><b>Sunday export</b>: 08:30 and 10:45. Refreshes props, checks them, commits and pushes, so another machine can pull.</li>
-            <li><b>Ownership import</b>: Monday and Tuesday 09:00. Keeps the field and your entries for every contest you played, then the other big contests on those slates, so <code>replay</code> can place your lineups in all of them. Then it paper-trades the slate: 150 lineups off the last props commit before lock, replayed at 1–150 entries (<code>replay --volume</code>). Then every showdown with archived props: its fields, entered or not, and 20 lineups per kind at 1–20 entries (<code>replay --volume --showdown</code>). Then it grades the point projections of every new game against what players scored (<code>accuracy</code>). Last, the scorecard: <code>data/scorecard.html</code>, which a Claude session republishes as its Artifact — launchd cannot.</li>
+            <li><b>Ownership import</b>: Monday and Tuesday 09:00. Keeps the field and your entries for every contest you played, then the other big contests on those slates, so <code>replay</code> can place your lineups in all of them. Then it paper-trades the slate: 150 lineups off the last props commit before lock, replayed at 1–150 entries (<code>replay --volume</code>). Then every showdown with archived props: its fields, entered or not, and 20 lineups per kind at 1–20 entries (<code>replay --volume --showdown</code>). Then it grades the point projections of every new game against what players scored (<code>accuracy</code>). Then the scorecard: <code>data/scorecard.html</code>, which a Claude session republishes as its Artifact — launchd cannot. Last, <code>cli.py backup</code>: a rotated copy of <code>ownership.db</code>, the one file DraftKings won't refill (on this disk only, for now).</li>
+            <li><b>Each run keeps its own log</b> in <code>data/sunday-export/</code> or <code>data/monday-ownership/</code>; <code>latest.txt</code> is the last <em>scheduled</em> run, and <code>doctor</code> says when one exited non-zero.</li>
           </ul>
         </div>
         <div class="blk">
@@ -1075,7 +1076,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
           <tr><td>Thursday</td><td>—</td><td><code>/startsit</code> <b>only</b> if you start someone Thursday night.</td></tr>
           <tr><td>Fri / Sat</td><td>—</td><td>Refresh dynasty values (three commands below); tidy <code>unavailable.json</code>.</td></tr>
           <tr><td>Sunday</td><td>DFS props export 08:30 &amp; 10:45</td><td>After 10:45: <b><code>/startsit</code></b>, set Sleeper lineups. <b><code>/sunday &lt;contest ids&gt;</code></b>, upload DFS lineups. <span class="pill warn">lock 12:00</span></td></tr>
-          <tr><td>Monday</td><td>DFS ownership import + estimate grade + paper trading + projection grade + scorecard 09:00</td><td>Read the DFS scorecard: ask a session to republish <code>dfs/data/scorecard.html</code>, or <code>dfs/cli.py scorecard</code>. A flagged row means re-read that rule's evidence.</td></tr>
+          <tr><td>Monday</td><td>DFS ownership import + estimate grade + paper trading + projection grade + scorecard + db backup 09:00</td><td>Read the DFS scorecard: ask a session to republish <code>dfs/data/scorecard.html</code>, or <code>dfs/cli.py scorecard</code>. A flagged row means re-read that rule's evidence.</td></tr>
                   </tbody>
       </table></div>
       <p>Three things a week, really: <code>/tuesday</code>, <code>/startsit</code> + <code>/sunday</code> on Sunday morning, and dynasty values before the weekend. The days below are the detail.</p>
@@ -1301,8 +1302,8 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td class="job"><span class="dot" style="--c:var(--pj)"></span>com.bba.weeklyxfp</td><td class="what">Refresh nflverse and <code>games.csv</code>, find the week that just finished (every game final, not a calendar guess — and the schedule is refetched, or a stale copy reads Monday night as unplayed and the week is skipped), score actual-vs-expected FP + team pass rate/red-zone rate/target-share into <code>store.db</code>; export DK points per player (<code>dk_scores.json</code>) for <code>/season</code>. The standings capture runs after it, at 08:30.</td><td class="d off">·</td><td class="d off">·</td><td class="d">08:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.standings</td><td class="what">Capture every best-ball entry's standing from DK, push to <code>/season</code>. After weekly xFP, because it reads that job's <code>dk_scores.json</code>; Wednesday is the retry.</td><td class="d off">·</td><td class="d off">·</td><td class="d">08:30</td><td class="d">08:30</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">/season only</span></td></tr>
         <tr><td class="job"><span class="dot" style="--c:var(--bb)"></span>com.bba.autoqueue</td><td class="what">Keep live DK draft queues stocked. Deadline 7 Sep 21:00 has passed, so it's quiet.</td><td class="span" colspan="7">every 5 minutes, while loaded</td><td><span class="pill bad">your DK queues</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo; snapshot the lobby's contests for the replay</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
-        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay); grade Sunday's ownership estimate per player and on a 1-in-40 sample of the field's lineups, and each showdown's captain estimate; refresh the season record; paper-trade the slate (150 pre-lock lineups, replayed at 1–150 entries: <code>replay --volume</code>) and every showdown with archived props (<code>--showdown</code>); grade the point projections of every new game against what players scored (<code>accuracy</code>); last, write the weekly scorecard (<code>data/scorecard.html</code>: every rule's threshold against its current reading), which a session publishes</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.sunday</td><td class="what">Export this week's props, check them, commit and push the dfs repo; snapshot the lobby's contests for the replay. Commits the snapshot's one path and rebases only when origin moved (6 Oct: both 4 Oct runs committed and <b>neither pushed</b>, and a hand dry run overwrote the log that said why)</td><td class="d">08:30<br>10:45</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill warn">git push</span></td></tr>
+        <tr><td class="job"><span class="dot" style="--c:var(--dfs)"></span>com.dfs.monday</td><td class="what">Import measured ownership, the field and your entries from finished contests, plus the other contests on those slates (replay); grade Sunday's ownership estimate per player and on a 1-in-40 sample of the field's lineups, and each showdown's captain estimate; refresh the season record; paper-trade the slate (150 pre-lock lineups, replayed at 1–150 entries: <code>replay --volume</code>) and every showdown with archived props (<code>--showdown</code>); grade the point projections of every new game against what players scored (<code>accuracy</code>); write the weekly scorecard (<code>data/scorecard.html</code>: every rule's threshold against its current reading), which a session publishes; last, back up <code>ownership.db</code> (<code>cli.py backup</code>: 8 rotated gzipped copies, ~13MB each, <b>on this disk only</b> until iCloud has room)</td><td class="d off">·</td><td class="d">09:00</td><td class="d">09:00</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td class="d off">·</td><td><span class="pill ok">no</span></td></tr>
       </tbody>
     </table></div>
     <div class="grid2">
@@ -1322,6 +1323,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <li><code>dfs/tools/com.dfs.{sunday,monday}.plist</code></li>
         </ul>
         <p>Jobs that run through <code>zsh -ic</code> get <code>BBA_API_KEY</code> from <code>~/.zshrc</code>; the others never see it.</p>
+        <p><b>The DFS jobs' logs</b> (since 6 Oct): every run writes its own <code>data/{sunday-export,monday-ownership}/&lt;date&gt;-&lt;HHMM&gt;[-dry-run].txt</code>, ending in <code>exit N</code>. Only a launchd run (<code>--scheduled</code>) replaces <code>latest.txt</code>; <code>launchd.out</code> is a one-line-per-run ledger, and <code>launchd.err</code> gets a failed run's reasons.</p>
       </div>
     </div>
   </section>
@@ -1343,7 +1345,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">207</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">316</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">348</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">361</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
@@ -1356,6 +1358,10 @@ store.db    players 469 · snapshots 196 · unmatched 28,220
 drafts.db   drafts 82 · picks 1,860 · player_rankings 381
 leagues.db  leagues 4 · managers 47 · rosters 46</pre>
           <p>A large <code>unmatched</code> is normal: it's every source row outside the DK best-ball pool, kept rather than dropped. The pool itself is ~450–460 and moves, so read it at run time.</p>
+        </div>
+        <div class="blk">
+          <h2>The one file that can't be re-fetched</h2>
+          <p><code>dfs/data/ownership.db</code> (95MB, gitignored: it holds the season's fees, winnings and DK transactions) is the only store DraftKings won't refill. The Monday job backs it up last (<code>cli.py backup</code>: SQLite's online backup, integrity-checked, gzipped, 8 kept in <code>data/backups/</code>). DFS <code>doctor</code> is <b>RED</b> with no copy or the newest over 8 days, and <b>AMBER</b> when either DFS job's last scheduled run exited non-zero. <b>Every copy is still on this Mac</b>: iCloud was full on 6 Oct, and <code>data/backup-target.txt</code> adds an off-machine folder once it isn't (dfs README, "ownership.db backups").</p>
         </div>
       </div>
       <aside class="col">
