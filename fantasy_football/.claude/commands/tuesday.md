@@ -16,6 +16,9 @@ read the roster-shape view, then read the redraft trade board. The roster-shape
 view is what catches a league the waiver board has nothing to say about; the
 trade board is what to do about one whose wire is empty.
 
+The report at the end has a fixed shape — see **The report** at the bottom.
+Claims come first, because they are the reason this routine exists.
+
 ## Step 1 — recapture LateRound
 
 Both captures are member-only pages that 302 for a scripted fetch, so both are
@@ -206,6 +209,64 @@ this week's data.
 
 The consensus is **6 of 30 experts** — the free page's set — and the header
 says so. Trade deadlines print per league.
+
+## The report
+
+The routine started as "should I put a FAAB bid or a waiver claim on anyone",
+and the report answers that before anything else. Five sections, always in
+this order, and nothing from the steps above is pasted in raw:
+
+**1. Claims to make** — one table, every league, ordered by when its waivers
+run (earliest first), with the league's FAAB left in the header:
+
+```
+| League (FAAB left, runs) | Claim | Bid | Drop | Why |
+|---|---|---|---|---|
+| Justice League ($79, Wed 06:00) | Will Shipley RB PHI | $10–12 | Joe Mixon | Barkley + Bigsby hurt; 3 columns, 866k adds |
+| NNCC (no FAAB, Wed 12:00) | Brian Robinson RB ATL | priority claim | Jaylen Wright | RB39 free vs your RB56 |
+| Haters Club ($85, Wed 07:00) | — no claim | | | every ranked player owned; trade instead |
+```
+
+- Every league gets a row, including the ones with no claim — say why in
+  `Why` ("wire empty", "nothing beats your bench").
+- `Bid` is a dollar RANGE drawn from the columns' FAAB % and the board's own
+  `BID` (state which), or `priority claim` in a non-FAAB league. Never one
+  number to type in.
+- `Drop` is a real player. Never an IR/taxi slot (it frees nothing), and
+  never a position's only healthy starter, whatever `gaps` suggests.
+- `Why` is one line: the job change or injury, plus how strong the signal is
+  (columns naming him, adds).
+
+Under the table, a short **Don't** list for things the boards suggest that
+would be wrong: a drop candidate who is this week's hot add, a top-VOR row
+whose player is out for the season, a "drop" that is your only QB.
+
+**2. Decisions only you can make** — numbered, each one a yes/no question:
+an `unavailable.json` assertion expiring, a bid range to choose, a claim that
+depends on Wednesday news. Leave it out if there are none.
+
+**3. This week's lineup flags** — only what changes a start because of a
+claim or an injury (e.g. "start Shipley over Pollard if Barkley is ruled
+out"). Not the full start/sit; that is `/startsit`'s job later in the week.
+
+**4. Trades** — at most three lines per league: the SELL worth acting on and
+the one pair that fits a roster need. Name the dynasty board's age if it is
+past three weeks.
+
+Judge "roster need" on the REST-OF-SEASON roster, not this week's. The trade
+board's depth line used to count only healthy players, so a starter who was
+Out for a week read as a hole; since 2026-10-06 it counts him back in and
+says so (`WR 4/4 (1 out wk)`). A bye still never shows there -- check it. On 2026-10-06 that turned
+DeVonta Smith (Out, hamstring) and McMillan (bye) into a "WR shortage", and
+the report recommended selling Hampton for a WR, leaving Justice League thin
+at RB for the season to fix a one-week problem. Count short-term absences
+back in; only IR / season-ending absences are real holes. Prefer the pair at
+the same position (Hampton -> Tuten) when the SELL is a starter.
+
+**5. Inputs** — last and compact, one line each: LateRound weekly and ROS
+(ranked / unmatched, captured), waiver columns (rows matched, sources and
+dates, flag any written before the weekend's games), market coverage. Anything
+unmatched is named here, not buried.
 
 ## If something looks wrong
 
