@@ -37,7 +37,12 @@ carries no page-level user gesture, so every download past the first reads as
 unsolicited no matter the spacing. **The working fallback, proven twice:**
 read each table's rows with a small `document.querySelectorAll('table')`
 snippet per call and write the CSV directly from the returned text, instead of
-clicking through the download. The single-file ROS capture has no
+clicking through the download. Write the CSV headers the script writes, and
+map **by the page's header labels, not by column position**: the kicker table's
+fourth column has been **Tier** since 2026-09-23, so it goes under `tier` in
+`rank,kicker,team,opponent,projection,tier` (leave `projection` blank). The
+week-5 capture put it under `projection` and Reichard reached startsit at 1.0
+points; `export_lateround.py` now refuses that board. The single-file ROS capture has no
 multi-download problem — its one download lands every time.
 
 Move the captured CSVs into `projections/data/`, then:
