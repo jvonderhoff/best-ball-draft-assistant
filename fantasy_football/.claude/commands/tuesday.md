@@ -232,6 +232,11 @@ run (earliest first), with the league's FAAB left in the header:
 - `Bid` is a dollar RANGE drawn from the columns' FAAB % and the board's own
   `BID` (state which), or `priority claim` in a non-FAAB league. Never one
   number to type in.
+- A row the board tags **CONTESTED** (named by nearly every column, still a
+  claim) is priced off the board's `the most-bid add each week here went for`
+  line, NOT the columns' %. Week 5: the columns said 9-12% for Shipley and he
+  went for $55 and $100; the user bid $10 and $16 and lost both. Say plainly
+  what it will likely take, and let the user decide if he is worth it.
 - `Drop` is a real player. Never an IR/taxi slot (it frees nothing), and
   never a position's only healthy starter, whatever `gaps` suggests.
 - `Why` is one line: the job change or injury, plus how strong the signal is
