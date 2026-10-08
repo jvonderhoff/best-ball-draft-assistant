@@ -674,7 +674,7 @@ node tools/check-model-change.js
         <div><dt>Runs</dt><dd>CLI · live draft board at <code>:8200</code>, open to your wifi</dd></div>
         <div><dt>Store</dt><dd><code>data/leagues.db</code>, a cache of Sleeper that's safe to delete</dd></div>
         <div><dt>Keyed on</dt><dd><code>sleeper_id</code> · does no name matching</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 316 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 346 tests</dd></div>
       </dl>
     </header>
 
@@ -724,6 +724,7 @@ node tools/check-model-change.js
           <h2>How start/sit decides</h2>
           <ul>
             <li><b>Availability first.</b> Sleeper's IR/Out/Suspended flags, plus <code>data/unavailable.json</code> for what Sleeper can't say. Every entry there needs an <code>until</code> date.</li>
+            <li><b>Your IR slot is not your lineup.</b> A player there can't start until he's moved to the active roster, which needs a bench spot, so he's left out and listed under <code>IN YOUR IR SLOT</code> with the number he would have had (7 Oct: it had started Goedert from IR).</li>
             <li><b>The number is the market's.</b> Where DK hasn't posted a player's prop yet, he falls back to his season rate, and the row says so.</li>
             <li><b>Defences are a model</b> built on the opponent's implied total, and counted separately from market prices.</li>
             <li><b>The lineup is a maximum-weight matching</b>, not a sort. Flexible slots go to the latest kickoffs so a late scratch can still be swapped.</li>
@@ -1071,14 +1072,15 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
       <div class="tbl frame"><table>
         <thead><tr><th>Day</th><th>Runs by itself</th><th>You do</th></tr></thead>
         <tbody>
-          <tr><td>Tuesday</td><td>best-ball standings, weekly xFP, DFS import retry</td><td><b><code>/tuesday</code></b> in the evening, then make waiver claims. <span class="pill warn">by Wed 02:11</span></td></tr>
+          <tr><td>Tuesday</td><td>best-ball standings, weekly xFP, DFS import retry · <b>19:13 the <code>/tuesday</code> report</b> (Claude task)</td><td>Read the report it sends, then make waiver claims. <span class="pill warn">by Wed 02:11</span></td></tr>
           <tr><td>Wednesday</td><td>best-ball standings retry</td><td>Optional: re-check waivers after each league clears.</td></tr>
           <tr><td>Thursday</td><td>—</td><td><code>/startsit</code> <b>only</b> if you start someone Thursday night.</td></tr>
           <tr><td>Fri / Sat</td><td>—</td><td>Refresh dynasty values (three commands below); tidy <code>unavailable.json</code>.</td></tr>
-          <tr><td>Sunday</td><td>DFS props export 08:30 &amp; 10:45</td><td>After 10:45: <b><code>/startsit</code></b>, set Sleeper lineups. <b><code>/sunday &lt;contest ids&gt;</code></b>, upload DFS lineups. <span class="pill warn">lock 12:00</span></td></tr>
+          <tr><td>Sunday</td><td>DFS props export 08:30 &amp; 10:45 · <b>11:03 the <code>/startsit</code> report</b> (Claude task)</td><td>Read the start/sit report, set Sleeper lineups. <b><code>/sunday &lt;contest ids&gt;</code></b>, upload DFS lineups. <span class="pill warn">lock 12:00</span></td></tr>
           <tr><td>Monday</td><td>DFS ownership import + estimate grade + paper trading + projection grade + scorecard + db backup 09:00</td><td>Read the DFS scorecard: ask a session to republish <code>dfs/data/scorecard.html</code>, or <code>dfs/cli.py scorecard</code>. A flagged row means re-read that rule's evidence.</td></tr>
                   </tbody>
       </table></div>
+      <p><b>Two of these run themselves since 8 Oct</b>, as scheduled Claude tasks (Scheduled, in the Claude app's sidebar), not launchd: <code>fantasy-tuesday-waivers</code> (Tue 19:13) and <code>fantasy-sunday-startsit</code> (Sun 11:03). Each writes the report and sends one notification. They run only while the Claude app is open — a closed app runs them on next launch, which on a Sunday can be after the lock. They never claim, bid or set a lineup. Tuesday's LateRound recapture needs your signed-in Chrome; if the login has lapsed the report says so on its first line and uses the last capture.</p>
       <p>Three things a week, really: <code>/tuesday</code>, <code>/startsit</code> + <code>/sunday</code> on Sunday morning, and dynasty values before the weekend. The days below are the detail.</p>
     </div>
 
@@ -1345,12 +1347,12 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">207</td></tr>
-              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">316</td></tr>
+              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">346</td></tr>
               <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">374</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (Projections 4 Oct, Sleeper 3 Oct, DFS 7 Oct). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (Projections 4 Oct, Sleeper 8 Oct, DFS 7 Oct). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>
