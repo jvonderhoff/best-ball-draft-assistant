@@ -11,7 +11,7 @@ LateRound pages, not one: the **weekly** page for this-week start/sit, the
 column. Running only one and skipping the other silently answers half the
 question.
 
-Five steps: recapture LateRound, refresh the market, read every waiver board,
+Five steps: recapture LateRound, refresh the market and the columns, read every waiver board,
 read the roster-shape view, then read the redraft trade board. The roster-shape
 view is what catches a league the waiver board has nothing to say about; the
 trade board is what to do about one whose wire is empty.
@@ -51,36 +51,33 @@ Each prints a coverage line (`N ranked, M unmatched`, by-position counts). Read
 it before moving on — 0 unmatched and ~150 ranked is a clean capture; anything
 short of that, redo the browser step rather than trusting a partial one.
 
-## Step 1b — capture the week's waiver columns
+## Step 1b — the week's waiver columns (automatic)
 
 The wire's best add is routinely a player with no stat line and no LateRound
 rank, so he is invisible to both of the columns above — he shows up in the
 board's coverage line as one of the ~400 who "carry no number at all". Three
-outside signals cover him, and `tools/weekly.sh` refreshes two of them for
-free (Sleeper's trending adds, the news RSS). The third is a capture, and it
-is the only part that needs you.
+outside signals cover him: Sleeper's trending adds, the news RSS, and the
+week's waiver columns. Since 2026-10-07 `tools/weekly.sh` (step 2) fetches all
+three; the columns come from FantasyPros, SI, DynastyNerds, CBS and Yahoo via
+`projections/tools/capture_waiver_columns.py`.
 
-**Read this week's waiver columns and write `projections/data/waiver-articles.json`**
-— FantasyPros, Yahoo, SI and Dynasty Nerds were the four used on 2026-09-22,
-and any comparable set is fine. One row per (player, source), because two
-writers naming the same player IS the consensus signal:
-
-```json
-{"name": "Jonah Coleman", "pos": "RB", "team": "DEN",
- "source": "FantasyPros", "faab_pct": 16, "note": "Dobbins hurt, lead back"}
-```
-
-Keep `captured_at` and `week` current at the top of the file. Then let step 2
-run the exporter, or run it directly:
+**Read its five lines.** Each source prints its row count and publish date, or
+`SKIPPED —` and why: no column for this week on the index yet, a page dated
+outside this week (it refuses last season's article), or a short parse (a
+layout change). A skip early in the week is usually just a column not posted
+yet. If a source you want is missing, point it at the article directly:
 
 ```bash
-cd projections && .venv/bin/python tools/export_waiver_buzz.py
+cd projections && .venv/bin/python tools/capture_waiver_columns.py --week <n> --url SI=https://...
 ```
 
-It prints one line per leg. **Every article row must match** — an unmatched row
-is a spelling this repo cannot resolve, and it is reported rather than dropped.
-Fix the name in the capture and re-run; do not leave it, because a player you
-meant to track silently not being there is the whole failure this guards.
+A column the tool does not know (Rotoballer, a podcast's list) can still be
+added by hand to `projections/data/waiver-articles.json`, one row per
+(player, source); re-runs keep hand-added sources for the same week.
+
+**Every article row must match** — the buzz export's `articles:` line says
+`N of N rows`. An unmatched row is a spelling this repo cannot resolve, and it
+is reported rather than dropped; fix it before reading the boards.
 
 ## Step 2 — refresh everything else, read start/sit
 
