@@ -156,7 +156,11 @@ has nothing to say about. Three sections per league:
   at roughly a startable WR5, and a player can be unranked and still be the
   week's biggest add (Tre Tucker, 990k adds, unranked, 2026-09-22).
 - **`RANKED and free`** — their ranked players nobody rosters, each marked
-  `free` or `ON WAIVERS until <day>`.
+  `free` or `ON WAIVERS until <day>`. Every running back (here and in the
+  unranked list) also says whose job he is one injury from: `RB2 behind J.
+  Taylor (RB4)`, `lead back while S. Barkley (RB16, Questionable) is hurt`, or
+  `NEXT UP` when every back ahead is out. That is the case for a backup a
+  low rank cannot make on its own — read it before calling RB50 vs RB56 noise.
 - **`OUTRANKED by someone free`** — the row worth acting on, and the one the
   other two miss. A ranked player of yours with better free players above him
   never appears in the unranked list at all: on 2026-09-22 that was Dallas
