@@ -923,7 +923,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>projections/data/weekly_props.json</code>; its own committed copy only when that is absent (a clone)</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 361 tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 374 tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
       </dl>
     </header>
 
@@ -985,7 +985,7 @@ cd ../sleeper
             <dt>dfs/scoring.py</dt><dd>DK Classic scoring and roster rules.</dd>
             <dt>dfs/optimize.py</dt><dd>Exact lineup construction, stacks, exposure, game environment.</dd>
             <dt>dfs/showdown.py</dt><dd>Single-game Captain mode, a different product.</dd>
-            <dt>dfs/ceiling.py · contest.py</dt><dd>The score a finish takes, across seven years; the payout ladder.</dd>
+            <dt>dfs/ceiling.py · contest.py</dt><dd>The score a finish takes, across seven years; the payout ladder. The position CVs behind every ceiling were tested held out by <code>tools/backtest_cv.py</code>, which runs a control first: QB right, DST narrow, RB projected about 14% high. Nothing recalibrated yet.</dd>
             <dt>dfs/standings.py</dt><dd>DK's post-contest standings: measured ownership, every entry's score, your own entries by id, the ladder. Served for any completed contest, entered or not.</dd>
             <dt>dfs/ownership.py</dt><dd>The pre-lock ownership estimate and its Monday grade; prints, never constrains.</dd>
             <dt>dfs/captains.py</dt><dd>Showdown captain ownership, estimated from the projection (share ~ proj<sup>k</sup>, fitted on graded games), stored only before kickoff, graded Monday. Tournament fields only. It under-called the top captain by ~9 points three games running; six other forms tested held out (<code>tools/backtest_captains.py</code>) did not shrink that miss, so the form stands.</dd>
@@ -1345,11 +1345,11 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">207</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">316</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">361</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">374</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (Projections 4 Oct, Sleeper 3 Oct, DFS 6 Oct). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 14 Sep 2026 (Projections 4 Oct, Sleeper 3 Oct, DFS 7 Oct). Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>
