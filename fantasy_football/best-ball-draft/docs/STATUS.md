@@ -11,6 +11,30 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-10-07: the props export carried preseason teams -- fixed
+
+The crosswalk's `team` is the DK best-ball pool's, written when the pool was built.
+The nightly that rebuilt it has been off since 09-14, so every signing since then
+was invisible to `export_props.py`. On the Week 5 export, `dfs` refused six salaried
+players on the Thursday slate because their teams didn't match: Ekeler, Cooks,
+Slayton, Valdes-Scantling, Tinsley and Ertz. Ertz and Cooks were written out on
+team `FA` even though DK propped them inside PHI @ JAX and SF @ SEA. Worse, `FA`
+then counted as a team playing in the export, so the Sleeper fallback added free
+agents under it.
+
+`current_teams()` now replaces each crosswalk team with Sleeper's current one,
+read by `sleeper_id`, so it is an id join and not a name match. It runs before any
+record is built. Where Sleeper names no team, the crosswalk's team is kept and the
+player is reported: a kept team still meets the consumer's mismatch refusal. The
+fallback's team scope never includes `FA`. Both lists travel in `meta`
+(`team_moves`, `team_unconfirmed`). On the re-export, 16 teams moved and 4 were
+unconfirmed. `dfs doctor` on dg=154467 went from 6 refused and 283/741 joined to
+none refused and 398/741 joined. Much of that jump is just a fresher export.
+6 tests, 213 total.
+
+**Still true:** `store.db` itself keeps the stale teams. Anything else reading the
+crosswalk's `team` column for current rosters has the same problem.
+
 ## 2026-10-02: weekly xFP charged RBs a quarterback's goal-line rate — fixed
 
 Found by comparing `/weekly`'s xFP against two outside models over 2026 weeks 1-3:
