@@ -202,9 +202,13 @@ this week's data.
 - **`SELL`** — yours, the other way round: the consensus (roughly what the
   other managers are reading) rates him higher than LateRound does.
 - **`1-for-1 PAIRS`** — LateRound prefers what comes in, FantasyCalc prices
-  the two within ±15%, and at least one side is a disagreement. A starting
-  point for an offer, not a finished trade: it does not check the partner's
-  roster needs or yours.
+  the two within ±15%, and at least one side is a disagreement. Each pair
+  carries `roster` (your side, with `THINS` / `WEAKER ROSTER`) and, under it,
+  `their fit`: +1 if the other manager is short at what he gets, +1 if he is
+  deep at what he gives, -1 for the reverse of each, measured against the
+  league's median at that position. A negative fit is an offer he has a reason
+  to refuse, and it sorts below the rest. Lead with the pair's edge, then say
+  why HE would take it -- the fit line is that sentence.
 - **`NOT PAIRED`** — injured or asserted out. A buy-low there is a bet on a
   return date, which none of the three lists knows.
 
