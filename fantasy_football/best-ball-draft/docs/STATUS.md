@@ -11,6 +11,16 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-10-08: ladder hold measured per stat; below-first-rung integration fixed
+
+`dkprops_weekly.HOLD` replaces the flat 6%: 0.229 for receiving, rushing and
+receptions, 0.06 for passing yards, 0.363 for passing TDs. These were fitted on
+four weeks of committed exports against nflverse (`tools/backtest_ladder_hold.py`),
+fitted on weeks 1-2 and scored on 3-4. `_below_first_rung` stops reading a QB
+ladder as flat below 150 yards, which had put passing yards 15% low every week.
+The export now carries the raw `ladders` for a re-fit on the rungs. `sleeper`
+reads the same expected values, so its start/sit moves with this too. 5 tests.
+
 ## 2026-10-08: the props export carries interceptions and yardage-bonus odds
 
 `pipeline/bonus.py` writes each QB's `exp_int` (a model: 2.944 per 1,000

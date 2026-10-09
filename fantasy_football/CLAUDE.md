@@ -190,9 +190,14 @@ Two measured facts about that seam, because both are ways to be wrong invisibly:
   longshots is unmeasured — it needs historical odds joined to outcomes and this repo
   stores no odds history. The de-vig is proportional because that is the only part
   measured; `method='power'` exists and is labelled unproven.
-  **Also still open: the ladders' 6% is itself an unmeasured constant**, and the two
-  corrections now differ by 3x. Plausible (a one-sided longshot market carries more
-  hold than a yardage ladder) but not established.
+  **The ladders' hold is measured now** (2026-10-08, `tools/backtest_ladder_hold.py`):
+  23% for receiving, rushing and receptions, 36% for passing TDs, and 6% for passing
+  yards, which measured right at the old constant. The flat 6% had made skill
+  players' yards read ~15% high. Passing yards had read 15% LOW for a different
+  reason: the integration treated the area below a ladder's first rung (150 yards
+  for a QB) as flat. The two TD-ish markets now agree: one-sided DK player markets
+  carry ~20% hold. Fitted on four weeks of rescaled expected values; the export now
+  archives the raw `ladders`, so re-fit on the rungs.
 
 **A scoring rule that lifts a whole position lifts its replacement just as fast.**
 Measured 2026-08-31: six-point passing TDs raise QB1's season total by 52.6 points

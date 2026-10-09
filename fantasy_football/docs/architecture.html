@@ -358,7 +358,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
         <div><dt>Runs</dt><dd>Locally only. Analysis page at <code>localhost:8100</code></dd></div>
         <div><dt>Stores</dt><dd><code>data/store.db</code> (ids, snapshots) · <code>data/analysis.db</code></dd></div>
         <div><dt>Keyed on</dt><dd><code>dk_player_id</code>, crosswalked to every other id</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 239 tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 244 tests</dd></div>
       </dl>
     </header>
 
@@ -1264,6 +1264,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <tr><td><code>ceiling</code> (best ball)</td><td><code>ppg + 1.28·sd</code></td><td><code>best-ball-draft/static/recommender-v2.js</code></td></tr>
           <tr><td>Value over replacement (Sleeper)</td><td>The league's own scoring applied to stat lines, minus the replacement starter</td><td><code>sleeper/leagues/scoring.py</code>, <code>board.py</code></td></tr>
           <tr><td><b>This week's</b> points</td><td>DK per-game props only; a home-made weekly model lost to “season average”</td><td><code>projections/tools/export_props.py</code></td></tr>
+          <tr><td>Yardage from a ladder</td><td>The area under DK's milestone curve, with a MEASURED hold removed per market: 23% receiving/rushing/receptions, 6% passing yards, 36% passing TDs (was a flat 6%). The rungs themselves are archived in the export for a re-fit</td><td><code>projections/analysis/sources/dkprops_weekly.py</code></td></tr>
           <tr><td>Interceptions &amp; yardage bonuses</td><td><code>exp_int</code> = 2.944 per 1,000 expected passing yards (a model; DK posts no market). P(300+)/P(100+) off the ladders, a lognormal where they stop short. DFS scores the interceptions; the bonus stays a step on the mean until the yards stop reading high</td><td><code>projections/pipeline/bonus.py</code></td></tr>
           <tr><td>Expected touchdowns</td><td><code>exp_td = p·(1 + 0.512p)</code>, fitted on 2024 and checked on 2025</td><td><code>projections/pipeline/td.py</code></td></tr>
           <tr><td>Anytime-TD de-vig</td><td>The slate's own implied totals; one global factor (1.2287 when measured)</td><td><code>projections/pipeline/devig.py</code></td></tr>
@@ -1347,7 +1348,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <div class="tbl"><table>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
-              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">239</td></tr>
+              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">244</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">346</td></tr>
               <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">384</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
