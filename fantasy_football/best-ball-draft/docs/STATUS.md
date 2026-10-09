@@ -11,6 +11,21 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-10-08: the props export carries interceptions and yardage-bonus odds
+
+`pipeline/bonus.py` writes each QB's `exp_int` (a model: 2.944 per 1,000
+expected passing yards, fitted on 2024 and scored on 2025; DK posts no market).
+`dkprops_weekly.survival_at` reads each ladder's P(300+)/P(100+) into
+`<stat>_p300`/`_p100`, with the same 6% hold as the expected value. Where a ladder
+stops short of the threshold, a lognormal fills the gap, and `bonus_basis` says
+which source each value came from. Fallback spreads were measured on 2026's
+committed market means (weeks 1-2), and on weeks 3-4 they beat both the step rule
+and the base rate.
+`../dfs` scores the interceptions and, after measuring, not yet the bonus odds:
+see its STATUS. Consumers that do not read the new fields are unchanged: `sleeper`
+reads named keys only, and `has_yardage` ignores derived fields. 7 tests
+(`tests/test_bonus.py`).
+
 ## 2026-10-07: the props export carried preseason teams -- fixed
 
 The crosswalk's `team` is the DK best-ball pool's, written when the pool was built.
