@@ -925,7 +925,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>projections/data/weekly_props.json</code>; its own committed copy only when that is absent (a clone)</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 384 tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 397 tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
       </dl>
     </header>
 
@@ -991,6 +991,7 @@ cd ../sleeper
             <dt>dfs/standings.py</dt><dd>DK's post-contest standings: measured ownership, every entry's score, your own entries by id, the ladder. Served for any completed contest, entered or not.</dd>
             <dt>dfs/ownership.py</dt><dd>The pre-lock ownership estimate and its Monday grade; prints, never constrains.</dd>
             <dt>dfs/captains.py</dt><dd>Showdown captain ownership, estimated from the projection (share ~ proj<sup>k</sup>, fitted on graded games), stored only before kickoff, graded Monday. Tournament fields only. It under-called the top captain by ~9 points three games running; six other forms tested held out (<code>tools/backtest_captains.py</code>) did not shrink that miss, so the form stands.</dd>
+            <dt>dfs/flexown.py · dupes.py</dt><dd>Showdown FLEX ownership (share ~ proj<sup>k</sup>, held out on 8 games at Spearman 0.92), and how many entries will hold a lineup: copies come from optimizer consensus (the gap from the board's best projected lineup), not from player ownership. Printed beside every lineup with <code>--contest</code>. The penalty (<code>--dupe-weight</code>) is off, because on 8 games it cost score and did not pay. <code>replay</code> and the paper trades split tied prizes as DraftKings does.</dd>
             <dt>dfs/projgrade.py</dt><dd>The point projections graded against what players scored: each showdown off its archived pre-kickoff props, each Classic slate off its last props commit before lock, through the build's own pool, against the largest stored field. Per basis (market, season, sleeper, DST) and market by position, with the props' age before kickoff; props taken after kickoff are refused. Table <code>projection_grades</code>.</dd>
             <dt>dfs/replay.py</dt><dd>Where a score finishes in a stored field, and what that rank pays.</dd>
             <dt>dfs/paper.py</dt><dd>Paper trading. First read (Weeks 1–2): the entry count moved the spread, not the sign — every lineup rests on the same projections, so whether volume pays is whether the edge holds across weeks.</dd>
@@ -1351,7 +1352,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">244</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">350</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">384</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">397</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
