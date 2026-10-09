@@ -68,3 +68,6 @@ before lock; `lineups --entries` fills it. **12:00** lock.
 
 Monday, once the ownership job has run: `cli.py replay --contest <id>` places
 these lineups in every contest that ran on the slate.
+
+Showdowns (Thursday, Sunday night, Monday) have their own routine, `/showdown`,
+which also puts the builds on the Fantasy HQ DFS tab. This one is Classic only.
