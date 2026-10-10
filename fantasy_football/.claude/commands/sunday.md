@@ -56,6 +56,19 @@ old** (on a Sunday that means the 10:45 job did not run -- check
   refused with 403 on 2026-09-17, and without it there are no per-slot ids.
   The lineups still print; say the file was skipped and that entry is by hand.
 
+## Step 2b — the dashboard
+
+`gameday.sh` passes `--json data/dashboard/classic-day.json` to every build and
+writes the rows (`data/dashboard/cl_*.json`). Put them on the Classic view of the
+Fantasy HQ DFS tab (https://claude.ai/artifact/V29D8kzo8Qenzr8U7nnAvq): read the
+six dataset documents (`datasets/cl_run`, `cl_builds`, `cl_lineups`, `cl_slots`,
+`cl_pool`, `cl_exposure`) for their current `source.url` and `version`; upload
+each file with the Artifact tool (`asset: true`, one call per file); one
+ArtifactData `batch` of six `update`s pinned with `if_version`, setting `source`
+to the new `/_blob/` url and name and `updated` to now; then delete the six old
+assets. Never touch `files/index.html` or another view's datasets. If the
+exposure table shows anyone over two in the KEPT column, say so first.
+
 ## Step 3 — the board, on the contest
 
 ```bash
@@ -70,4 +83,4 @@ Monday, once the ownership job has run: `cli.py replay --contest <id>` places
 these lineups in every contest that ran on the slate.
 
 Showdowns (Thursday, Sunday night, Monday) have their own routine, `/showdown`,
-which also puts the builds on the Fantasy HQ DFS tab. This one is Classic only.
+which puts its builds on the DFS tab's Showdown view. This one is Classic only.
