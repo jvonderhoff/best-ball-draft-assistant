@@ -928,7 +928,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>projections/data/weekly_props.json</code>; its own committed copy only when that is absent (a clone)</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 404 tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · 406 tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
       </dl>
     </header>
 
@@ -1028,7 +1028,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
             <dt>contests · replay</dt><dd>Every contest that ran on a slate (lobby snapshot before lock, id scan after); where your lineups would have finished in each of them. <code>replay --volume</code>: the paper-trading record — would more entries have made money, week by week. <code>--showdown</code>: the same, game by game.</dd>
             <dt>screen · stacks</dt><dd>Value within position; teams by implied total.</dd>
             <dt>lineups · showdown</dt><dd>Classic and single-game builds. <code>showdown</code> exports its own game's props first (<code>export_props.py --game</code> — the weekly export refuses late in the week), prints estimated captain ownership (<code>cpt~</code>), names the cheap non-market players it left out (<code>punts:</code>; <code>--keep-punts</code> to allow them), caps the night at two per player across builds with <code>--ledger</code>, and before kickoff archives its props for the showdown paper trade. <code>--json</code> merges each build into the day's file for the Fantasy HQ DFS tab (<code>tools/dashboard_showdown.py</code> counts exposure across builds).</dd>
-            <dt>winners</dt><dd>Per showdown: what won, the top captains, the players the top was built on against the field, our projection against what they scored, and how much of the top our builder could have made.</dd>
+            <dt>winners</dt><dd>Per showdown: what won, the top captains, the players the top was built on against the field, our projection against what they scored, and how much of the top our builder could have made. <code>--classic</code>: each Classic tournament's top 100 against our tournament rules and against the field sample; first reading (3 slates), the top-games filter is broken by the top as often as by the field and blocks about two-thirds of it.</dd>
             <dt>ownership</dt><dd>Import measured ownership from standings; <code>--estimate</code> before lock, <code>--grade</code> after, <code>--grades</code> for the record.</dd>
             <dt>record</dt><dd>The season: fees, winnings, ROI and each entry's finish percentile, from DK's own history. <code>--offline</code> reads the stored copy.</dd>
             <dt>accuracy</dt><dd>The projections against what players scored, every stored game and slate; grades anything new (fetches DK salaries), <code>--offline</code> prints the record.</dd>
@@ -1359,7 +1359,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">244</td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">350</td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">404</td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num">406</td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
