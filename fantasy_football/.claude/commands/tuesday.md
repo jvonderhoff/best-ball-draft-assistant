@@ -220,6 +220,18 @@ this week's data.
 The consensus is **6 of 30 experts** — the free page's set — and the header
 says so. Trade deadlines print per league.
 
+## Step 6 — the quarterback projection check (one line)
+
+```bash
+cd projections && .venv/bin/python tools/backtest_qb_parts.py
+```
+
+Reads the box scores the 08:00 launchd job fetched; fetches nothing. Report the
+newest week's line only: its passing-yards bias and total Spearman. Weeks 1-4
+ran ~32 yards LOW from a ladder-integration bug fixed 2026-10-08, so week 5 on
+should read near zero. If the newest week is still 20+ yards low, say so in
+Inputs as a regression to look at; anything else is one quiet line.
+
 ## The report
 
 The routine started as "should I put a FAAB bid or a waiver claim on anyone",
@@ -280,8 +292,9 @@ the same position (Hampton -> Tuten) when the SELL is a starter.
 
 **5. Inputs** — last and compact, one line each: LateRound weekly and ROS
 (ranked / unmatched, captured), waiver columns (rows matched, sources and
-dates, flag any written before the weekend's games), market coverage. Anything
-unmatched is named here, not buried.
+dates, flag any written before the weekend's games), market coverage, and Step 6's
+QB line (newest week's passing-yards bias). Anything unmatched is named here, not
+buried.
 
 ## If something looks wrong
 
