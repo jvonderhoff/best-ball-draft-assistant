@@ -1,14 +1,15 @@
 ---
 description: A showdown night (Thursday, Sunday night, Monday) — build the lineups for the contests being entered, keep the night under the two-per-player cap, and put the builds on the Fantasy HQ DFS tab.
-argument-hint: "<contest id> [<contest id> ...]"
+argument-hint: "<contest id> [<contest id> ...] [scripts:<$1 contest id>]"
 ---
 
 One game, one question per contest: which captain and five, for THIS ladder.
 The ladder sets mean or ceiling, so the only inputs are the contests and how
 many lineups each.
 
-**Arguments: `$ARGUMENTS`.** DraftKings contest ids, from the lobby URL. If none
-are given, find the game's draft group with `cli.py slates`, list candidates with
+**Arguments: `$ARGUMENTS`.** DraftKings contest ids, from the lobby URL. An id
+written `scripts:<id>` gets the five game-script lineups (Step 1b) instead of
+the ordinary two. If none are given, find the game's draft group with `cli.py slates`, list candidates with
 `cli.py contests --draftgroup <dg>`, and ask which, rather than guessing.
 
 ## Step 1 — build every contest into one ledger and one day file
@@ -25,6 +26,23 @@ holds the night to two lineups per player, DST included, across every build
 cash well above chance, 4+ at chance. A rebuild of the same contest replaces its
 entry in the day file but APPENDS to the ledger, so delete that contest's old
 rows from the ledger before rebuilding.
+
+## Step 1b — game scripts, for a `scripts:` contest (after Step 1)
+
+```bash
+cd dfs && .venv/bin/python cli.py showdown --contest <id> --scripts \
+    --json data/dashboard/showdown-day.json
+```
+
+Five lineups, each a bet on one game script: 3 heavy on the favourite, 2 on the
+underdog, stars repeated on purpose (`showdown.game_scripts`; on 12 games they
+took 1.25 top-1% finishes per game against 0.50 for any blend, and they are
+tracked as `5x$1 scripts` on the scorecard row `sd-five-dollar`). They go in
+$1 tournaments, one lineup per entry. **No `--ledger`**: script lineups are
+outside the night's two-per-player cap, which keeps applying to the ordinary
+builds; build those FIRST so the cap is spent on them. A tournament ladder only
+-- the command refuses a cash contest. Each lineup prints its script
+(`LA script`); say which side each backs and whose captain it took.
 
 ## Step 2 — read the output, and say what the script cannot
 
