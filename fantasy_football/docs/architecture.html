@@ -1082,7 +1082,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
       <div class="tbl frame"><table>
         <thead><tr><th>Day</th><th>Runs by itself</th><th>You do</th></tr></thead>
         <tbody>
-          <tr><td>Tuesday</td><td>best-ball standings, weekly xFP, DFS import retry · <b>19:13 the <code>/tuesday</code> report</b> (Claude task), which also refreshes Fantasy HQ's Usage &amp; luck</td><td>Read the report it sends, then make waiver claims. <span class="pill warn">by Wed 02:11</span></td></tr>
+          <tr><td>Tuesday</td><td>best-ball standings, weekly xFP, DFS import retry · <b>14:13 the <code>/tuesday</code> report</b> (Claude task), which also refreshes Fantasy HQ's Usage &amp; luck</td><td>Read the report it sends, then make waiver claims. <span class="pill warn">by Wed 02:11</span></td></tr>
           <tr><td>Wednesday</td><td>best-ball standings retry</td><td>Optional: re-check waivers after each league clears.</td></tr>
           <tr><td>Thursday</td><td>—</td><td><code>/startsit</code> <b>only</b> if you start someone Thursday night. <code>/showdown &lt;contest ids&gt;</code> for the night's showdown.</td></tr>
           <tr><td>Fri / Sat</td><td>—</td><td>Refresh dynasty values (three commands below); tidy <code>unavailable.json</code>.</td></tr>
@@ -1090,7 +1090,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
           <tr><td>Monday</td><td>DFS ownership import + estimate grade + paper trading + projection grade + scorecard + db backup 09:00</td><td>Read the DFS scorecard: ask a session to republish <code>dfs/data/scorecard.html</code>, or <code>dfs/cli.py scorecard</code>. A flagged row means re-read that rule's evidence. <code>dfs/cli.py winners</code> for how the weekend's showdowns were won.</td></tr>
                   </tbody>
       </table></div>
-      <p><b>Two of these run themselves since 8 Oct</b>, as scheduled Claude tasks (Scheduled, in the Claude app's sidebar), not launchd: <code>fantasy-tuesday-waivers</code> (Tue 19:13) and <code>fantasy-sunday-startsit</code> (Sun 11:03). Each writes the report and sends one notification. They run only while the Claude app is open — a closed app runs them on next launch, which on a Sunday can be after the lock. They never claim, bid or set a lineup. Tuesday's LateRound recapture needs your signed-in Chrome; if the login has lapsed the report says so on its first line and uses the last capture.</p>
+      <p><b>Two of these run themselves since 8 Oct</b>, as scheduled Claude tasks (Scheduled, in the Claude app's sidebar), not launchd: <code>fantasy-tuesday-waivers</code> (Tue 14:13) and <code>fantasy-sunday-startsit</code> (Sun 11:03). Each writes the report and sends one notification. They run only while the Claude app is open — a closed app runs them on next launch, which on a Sunday can be after the lock. They never claim, bid or set a lineup. Tuesday's LateRound recapture needs your signed-in Chrome; if the login has lapsed the report says so on its first line and uses the last capture.</p>
       <p>Three things a week, really: <code>/tuesday</code>, <code>/startsit</code> + <code>/sunday</code> on Sunday morning, and dynasty values before the weekend. The days below are the detail.</p>
     </div>
 
