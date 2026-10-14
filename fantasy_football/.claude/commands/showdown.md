@@ -9,7 +9,7 @@ many lineups each.
 
 **Arguments: `$ARGUMENTS`.** DraftKings contest ids, from the lobby URL. An id
 written `scripts:<id>` gets the five game-script lineups (Step 1b) instead of
-the ordinary two. If none are given, find the game's draft group with `cli.py slates`, list candidates with
+the ordinary two -- and on a script night they replace the $2-5 entries. If none are given, find the game's draft group with `cli.py slates`, list candidates with
 `cli.py contests --draftgroup <dg>`, and ask which, rather than guessing.
 
 ## Step 1 — build every contest into one ledger and one day file
@@ -27,7 +27,21 @@ cash well above chance, 4+ at chance. A rebuild of the same contest replaces its
 entry in the day file but APPENDS to the ledger, so delete that contest's old
 rows from the ledger before rebuilding.
 
-## Step 1b — game scripts, for a `scripts:` contest (after Step 1)
+## Step 1b — game scripts, for a `scripts:` contest
+
+**A script night REPLACES the two at $2-5; it is not added on top** (the user's
+call, 2026-10-13). Five at $1 is $5, the same money as two at $2-5, so it is not
+a raise in stakes, and the scorecard row `sd-five-dollar` (5x$1 scripts vs
+2x$2-5, revisit at 15 games, ~Nov 30) is the comparison being run with real
+money. So when the arguments hold a `scripts:` id, do not also build or
+recommend $2-5 tournament entries for that game; if they hold both, ask which
+the night is before building. A double-up beside a script night is fine --
+it is a different ladder -- and it still takes Step 1 and the ledger.
+
+Script builds record to `data/<date>-<game>-scripts.csv`, apart from the
+ordinary `-built.csv`, so a script night's real entries can be told from an
+ordinary night's when the season is judged. Say in the summary that tonight
+is a script night.
 
 ```bash
 cd dfs && .venv/bin/python cli.py showdown --contest <id> --scripts \
@@ -39,8 +53,8 @@ underdog, stars repeated on purpose (`showdown.game_scripts`; on 12 games they
 took 1.25 top-1% finishes per game against 0.50 for any blend, and they are
 tracked as `5x$1 scripts` on the scorecard row `sd-five-dollar`). They go in
 $1 tournaments, one lineup per entry. **No `--ledger`**: script lineups are
-outside the night's two-per-player cap, which keeps applying to the ordinary
-builds; build those FIRST so the cap is spent on them. A tournament ladder only
+outside the night's two-per-player cap, which keeps applying to any ordinary
+build (a double-up); build that FIRST so the cap is spent on it. A tournament ladder only
 -- the command refuses a cash contest. Each lineup prints its script
 (`LA script`); say which side each backs and whose captain it took.
 
