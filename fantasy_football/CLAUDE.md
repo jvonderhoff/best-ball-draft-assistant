@@ -55,15 +55,8 @@ Two rules that hold everywhere:
   byte-identically (below its header) in `best-ball-draft/app/data/` and
   `projections/pipeline/core/` on purpose, and the two must agree while both apps
   exist. `sleeper/` has no copy and does no name matching at all.
-  A *weaker* rule used to exist in `dynasty-rankings/sources/normalize.py`; that
-  app was deleted 2026-09-08 and the rule went with it rather than spreading.
-  `dfs/props.py` held a third such rule and was fixed the same way on 2026-09-12 -
-  by deleting the need for it, not by adding a copy. It still folds punctuation,
-  which is mechanical and cannot silently disagree; anything that RENAMES a player
-  belongs where `names.py` lives.
-  Its replacement is the better answer: the dynasty export joins KTC to
-  FantasyCalc on `mfl_id` and reads `sleeper_id` off FantasyCalc, so it does no
-  name matching at all.
+  How the other copies were removed, and why the dynasty export needs no name
+  matching at all: `docs/DECISIONS.md`.
 
 ## Sharing is a data seam, not a code library
 
@@ -73,15 +66,11 @@ nothing else. No common Python package: four projects with separate venvs and
 separate deploy cadences would be coupled by one, and the single genuinely
 duplicated function is duplicated deliberately.
 
-**Corrected the same day, and worth keeping as a lesson.** The first version of
-this split redraft and dynasty into separate apps — the wrong seam. Format does
-not change how a lineup is picked; start/sit and waiver mechanics are identical
-across them. It changes only how a player is VALUED. So they are one app with a
-`horizon` (`ros` | `dynasty`) derived from Sleeper's `settings.type`, and the axis
-to split on is **platform mechanics vs valuation horizon**, never league format.
-The tell was measurable: the only format-specific line in the whole repo was one
-filter. When a proposed split leaves the shared modules untouched, it is not a
-split.
+**Split on platform mechanics vs valuation horizon, never league format.** Redraft
+and dynasty are one app (`sleeper/`) with a `horizon` (`ros` | `dynasty`) derived
+from Sleeper's `settings.type`: format changes how a player is VALUED, not how a
+lineup is picked. When a proposed split leaves the shared modules untouched, it is
+not a split. (The seam was drawn wrong once, the same day: `docs/DECISIONS.md`.)
 
 ```
               projections/  (owns every source and the crosswalk)
@@ -94,10 +83,8 @@ keyed dk_player_id  │              keyed sleeper_id       keyed by DK salary n
 ```
 
 **The axis is platform AND product mechanics, never data.** DK best ball and DK
-daily are the same operator and different products — one drafts twenty players
-and holds them, the other fills a salary cap weekly — so they are separate. An
-application never lives in `projections/`: a lineup optimiser sat in
-`projections/tools/` for a day, importing across the seam, and was moved out.
+daily are the same operator and different products, so they are separate. An
+application never lives in `projections/`.
 
 **The crosswalk covers the DK best-ball pool, not the waiver wire.** That is
 ~450-460 players and it MOVES as DK's pool changes, so read the count at run time
@@ -126,84 +113,21 @@ numbers. The one genuine weekly source is DraftKings' own per-game player props:
 `projections/pipeline/weekly.py` and its own header says do not wire it in - it
 lost to assuming every week is a player's season average (bug class 5 below).
 
-Two measured facts about that seam, because both are ways to be wrong invisibly:
+Two rules for anything that reads that export. The measurements behind them, and
+the de-vig and ladder-hold fits, are in `projections/README.md` under *What the
+seam has measured* — read it before touching the export or a consumer of it:
 
-- **The props file is keyed on `name_key`, not on an id** - uniquely among the
-  seams here, because the exporter owns `names.py` and does the join there so no
-  consumer needs a copy. Each record carries `sleeper_id` as a FIELD. Reading the
-  dict key as an id raises nothing: every lookup misses, every player falls back
-  to his season week, and a complete lineup of plausible numbers renders with the
-  market absent. It shipped that way and the first real run scored 0/9 starters
-  from the market against 349 keyed players. `startsit` now refuses a run where
-  no starter took a market number.
-- **"No consumer needs a copy" was only half true, and the other half cost five
-  players.** A consumer arriving with its OWN spelling still had to build the key,
-  and `dfs` built it with a punctuation-only fold. DraftKings' sportsbook and its
-  DFS product disagree about their own players - Cameron/Cam Ward, Kenneth/Kenny
-  Gainwell, Nicholas/Nick Singleton, Andrew/Drew Ogletree, Matthew/Matt Hibner -
-  so on `dg=151307` (746 salaried) five playable men, a $5,100 starting quarterback
-  among them, were dropped by a bare `continue` and appeared in no count anywhere.
-  Fixed 2026-09-12 by making the claim true instead of adding a third copy of
-  `names.py`: every export record now carries `match_keys`, EVERY spelling that
-  resolves to it, expanded by the side that owns the nickname table. A consumer
-  folds punctuation, looks up, done. Measured on one export, 411 -> 406 unmatched
-  of 722, and the recovered set is exactly those five. **An id join is not
-  available here and is not worth revisiting**: the export's `dk_player_id` is the
-  best-ball DK pool's id space, DFS draftables carry `playerDkId`, overlap 0 of 746.
-  The general rule: when a consumer has to reconstruct a key, ship the keys, not
-  the rule that makes them.
-- **`anytime_td` is P(scores at all); `exp_td` is the count. Score `exp_td`.**
-  Fixed 2026-09-08. The conversion now lives at `projections/pipeline/td.py` and
-  travels with the export, because both consumers had been doing it themselves,
-  neither measured, and in OPPOSITE directions - `dfs` read the probability as
-  the count, `sleeper` used `-ln(1-p)`. Measured on 2025 play-by-play, fitted on
-  2024, over the `p>=0.45` group a lineup actually turns on: identity MAE 0.176 /
-  bias -24.6%, Poisson 0.128 / +9.7%, `p*(1+0.512p)` 0.094 / -3.5%. Poisson loses
-  because scoring is clustered - a goal-line back's second touchdown is not
-  independent of his first. Re-derive with `tools/backtest_td.py` rather than
-  trusting the constant. Consumers keep their old conversion as a fallback for a
-  pre-`exp_td` file and REPORT when it fires; do not copy the fit across the seam.
-- **The anytime-TD market IS de-vigged now** — fixed 2026-09-08, `pipeline/devig.py`.
-  It cannot be de-vigged the normal way: DK publishes one `ToScoreAnyTime` selection
-  per player and **no "No" side**, so there is no complement to normalise against.
-  The constraint comes from outside the market instead — the slate's own implied
-  totals, via `scorers = -0.0645 + 0.09324 * points`, fitted on 2024 team-games and
-  confirmed on 2025 (out-of-sample MAE 0.555 against its own fit's 0.553, so the
-  relationship is real rather than tuned).
-  **The fit is deliberately LINEAR**: an implied total is E[points], and for a
-  non-linear f, E[f(X)] ≠ f(E[X]). Linearity makes it unbiased at the level the
-  correction is applied.
-  **One GLOBAL factor, estimated from well-covered teams only.** Per-team ratios
-  correlate **+0.668 with how many players DK actually propped** (≤9 propped → 1.075,
-  ≥12 → 1.224): that is coverage, not hold, and normalising per team would scale a
-  thin team's players by 8% and a covered team's by 22% for the same hold. It also
-  explains the old 25.7% figure — that was a fuller board; a thin one dilutes the
-  measurement, which is why the factor must not be read off the whole board.
-  Measured 2026-09-08: **factor 1.2287** on 11 covered teams. `anytime_td` keeps its
-  literal meaning, `anytime_td_devig` is the corrected one, and `exp_td` is built
-  from the corrected value — so both consumers got the fix without changing a line.
-  **Validated from a direction it was not fitted on**: the corrected slate sums to
-  2.34 offensive TDs per team against a historical 2.44, and sits just below because
-  only propped players are counted. Before the fix it was 2.95 — above any rate the
-  league has produced. Re-derive with `tools/backtest_devig.py`.
-  **Still open: the SHAPE.** Whether the hold sits proportionally or falls harder on
-  longshots is unmeasured — it needs historical odds joined to outcomes and this repo
-  stores no odds history. The de-vig is proportional because that is the only part
-  measured; `method='power'` exists and is labelled unproven.
-  **The ladders' hold is measured now** (2026-10-08, `tools/backtest_ladder_hold.py`):
-  23% for receiving, rushing and receptions, 36% for passing TDs, and 6% for passing
-  yards, which measured right at the old constant. The flat 6% had made skill
-  players' yards read ~15% high. Passing yards had read 15% LOW for a different
-  reason: the integration treated the area below a ladder's first rung (150 yards
-  for a QB) as flat. The two TD-ish markets now agree: one-sided DK player markets
-  carry ~20% hold. Fitted on four weeks of rescaled expected values; the export now
-  archives the raw `ladders`, so re-fit on the rungs.
+- **Join on `match_keys`, never on the dict key.** The file is keyed on `name_key`
+  and carries `sleeper_id` as a FIELD. Misreading the key raises nothing: every
+  player silently falls back to his season week. Fold punctuation, look up, done;
+  anything that renames a player belongs in `names.py`, not in a consumer.
+- **Score `exp_td`, not `anytime_td`.** One is a count, the other P(scores at all).
+  A consumer keeps its old conversion only as a fallback for a pre-`exp_td` file
+  and REPORTS when it fires; never copy the fit across the seam.
 
-**A scoring rule that lifts a whole position lifts its replacement just as fast.**
-Measured 2026-08-31: six-point passing TDs raise QB1's season total by 52.6 points
-and his value over replacement by 0.7. What moves positional value is how many of
-a position must be STARTED — superflex takes QB1 from ~80 VOR to 130. Check the
-lineup before the scoring when a league "feels" like it favours a position.
+Positional value moves with how many of a position must be STARTED, not with the
+scoring rules: check the lineup before the scoring when a league "feels" like it
+favours a position (measured: `docs/DECISIONS.md`).
 
 ## Environment
 
@@ -220,28 +144,8 @@ in any non-interactive shell, which is how a cron publish fails silently.
 Repos: `best-ball-draft/` is tracked by the parent repo at `Development/projects`.
 `projections/`, `sleeper/` and `dfs/` are their own repos, gitignored by the parent.
 
-**`dynasty-rankings/` was removed 2026-09-08**, and this is the shape of a
-correct deletion. It was the only thing producing a rest-of-career valuation, so
-it was not simply dropped: its two market sources moved to
-`projections/pipeline/sources/{ktc,fantasycalc}.py`, behind the crosswalk, and
-`tools/export_dynasty_values.py` writes the seam that `sleeper/cli.py dynasty`
-reads. What died was the standalone Flask app and its weaker `normalize.py` —
-what it *knew* moved to where sources live. Its git history is intact at
-`github.com/jvonderhoff/dynasty-rankings`.
-
-The two dynasty sources join on `mfl_id` and FantasyCalc carries `sleeper_id` on
-every row, so the whole dynasty export resolves **without one name comparison** —
-the strongest version of the identity rule above, and the reason the deletion
-improved matters rather than merely tidying.
-
-**`best-ball-extension/` was removed 2026-09-08** — a Chrome overlay for the DK
-draft room, dormant since June. It is in git history if it is ever wanted back. Three
-things went with it, and the reasons are worth keeping: a `pre-commit` hook that
-copied the extension's `recommender.js` over the served one (the two had diverged by
-15KB and six commits, so the next commit to the extension would have silently reverted
-the live recommender), the `/api/rankings/export` endpoint and its button, and a
-`players.js` fallback in `/api/players`. The extension directory was never inside
-`render.yaml`'s `rootDir`, so every one of those paths was already dead in production.
+`dynasty-rankings/` and `best-ball-extension/` were removed 2026-09-08. What a
+correct deletion looks like, and what went with each: `docs/DECISIONS.md`.
 
 ## The bug classes this codebase keeps hitting
 
