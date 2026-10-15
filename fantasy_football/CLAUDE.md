@@ -144,6 +144,14 @@ in any non-interactive shell, which is how a cron publish fails silently.
 Repos: `best-ball-draft/` is tracked by the parent repo at `Development/projects`.
 `projections/`, `sleeper/` and `dfs/` are their own repos, gitignored by the parent.
 
+**The rules above that a machine can check are checked** — `names.py` agreement, one
+home for name matching, no imports across the seam. Run it after touching any of them;
+non-zero on FAIL, and a missing project prints SKIP, never PASS:
+
+```bash
+projections/.venv/bin/python tools/check_rules.py          # its own tests: -m pytest tools/ -q
+```
+
 `dynasty-rankings/` and `best-ball-extension/` were removed 2026-09-08. What a
 correct deletion looks like, and what went with each: `docs/DECISIONS.md`.
 
