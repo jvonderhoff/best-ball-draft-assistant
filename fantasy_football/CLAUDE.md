@@ -152,6 +152,11 @@ non-zero on FAIL, and a missing project prints SKIP, never PASS:
 projections/.venv/bin/python tools/check_rules.py          # its own tests: -m pytest tools/ -q
 ```
 
+A Stop hook runs it for you, plus the tests of any project whose `.py` files changed
+(`.claude/settings.json` → `tools/hooks/stop_check.py`; prove it with
+`tools/hooks/test_stop_check.sh`). Red caused this session blocks "done" once, then
+goes to the user.
+
 `dynasty-rankings/` and `best-ball-extension/` were removed 2026-09-08. What a
 correct deletion looks like, and what went with each: `docs/DECISIONS.md`.
 

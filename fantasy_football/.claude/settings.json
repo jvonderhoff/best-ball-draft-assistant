@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for p in projections sleeper dfs; do py=\"$CLAUDE_PROJECT_DIR/$p/.venv/bin/python\"; [ -x \"$py\" ] && exec \"$py\" \"$CLAUDE_PROJECT_DIR/tools/hooks/stop_check.py\"; done; echo '{\"systemMessage\": \"stop check could not run: no project .venv found\"}'",
+            "timeout": 300,
+            "statusMessage": "Checking the rules and any project you changed…"
+          }
+        ]
+      }
+    ]
+  }
+}
