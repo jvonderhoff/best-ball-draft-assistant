@@ -676,7 +676,7 @@ node tools/check-model-change.js
         <div><dt>Runs</dt><dd>CLI · live draft board at <code>:8200</code>, open to your wifi</dd></div>
         <div><dt>Store</dt><dd><code>data/leagues.db</code>, a cache of Sleeper that's safe to delete</dd></div>
         <div><dt>Keyed on</dt><dd><code>sleeper_id</code> · does no name matching</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="sleeper">351</span> tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="sleeper">358</span> tests</dd></div>
       </dl>
     </header>
 
@@ -928,7 +928,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>projections/data/weekly_props.json</code>; its own committed copy only when that is absent (a clone)</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="dfs">450</span> tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="dfs">453</span> tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
       </dl>
     </header>
 
@@ -1003,8 +1003,10 @@ cd ../sleeper
             <dt>dfs/paper.py</dt><dd>Paper trading. First read (Weeks 1–2): the entry count moved the spread, not the sign — every lineup rests on the same projections, so whether volume pays is whether the edge holds across weeks.</dd>
             <dt>dfs/scorecard.py</dt><dd>The weekly scorecard: real results by product, both paper trades, showdown lineups by build order, the estimate grades, the projection grade, your entries against the builder's nearest lineup, and every standing rule's threshold against a reading it computes. Reads <code>ownership.db</code>, never fetches. The same rules head <code>docs/STATUS.md</code>.</dd>
             <dt>dfs/paper_showdown.py</dt><dd>Paper trading for showdown: 20 lineups per kind per game, off the props <code>showdown</code> archives whenever it runs before kickoff (nothing else keeps a TNF/MNF export). First read (7 games): the builder's lineups 1–3 cash 57% against ~21% chance, lineups 4–20 at chance — enter 1–3 a game.</dd>
-            <dt>dfs/export.py</dt><dd>DK's upload CSV. A file, never an upload. Per-slot ids from the draftables API, or from the salary CSV when it refuses (its id is the slot id; FLEX is that plus one, measured and re-checked per slate).</dd>
-            <dt>web/app.py</dt><dd>Lineups, value screen and stacks in tabs, with live sliders.</dd>
+            <dt>dfs/export.py</dt><dd>DK's upload CSV. A file, never an upload. Per-slot ids from the draftables API, or from the salary CSV when it refuses (its id is the slot id; FLEX is that plus one, measured and re-checked per slate). Showdown too since 14 Oct (<code>showdown --csv</code>): CPT + five FLEX, the captain's id read off the 1.5x price pair — before that every showdown entry was typed by hand.</dd>
+            <dt>web/app.py</dt><dd>The board, three tabs. <b>Run</b> builds for real; <b>Explore</b> shows what the sliders would build (Classic lineups, value screen, implied totals, Showdown) and writes nothing; <b>Track</b> reads the results. Explore starts where the real build does — the CLI's defaults, the props file the build refreshed, tonight's builds or ledger in the cap — because on 15 Oct the old slider tabs and the real build disagreed with nothing on screen to say why.</dd>
+            <dt>web/runs.py</dt><dd>The Run tab's presets (Classic tournament / double-up, Showdown tournament / double-up, script night). A preset is the routine's own command — <code>gameday.sh</code> or <code>cli.py showdown</code> — never a second solver. Tonight's day files are the night: each run's <code>--prior</code> or ledger comes from them, a showdown rebuild takes its old rows out of the ledger first, and every run is logged to <code>data/board/runs.jsonl</code>. Refuses a contest on the wrong ladder (compared cash-or-not: the first version spelled it differently from <code>contest.profile</code> and refused every tournament on the first real night).</dd>
+            <dt>web/track.py</dt><dd>The Track tab: real money by run preset, script nights against the two at $2–5, and the age and row count of every table it reads.</dd>
           </dl>
         </div>
       </div>
@@ -1015,6 +1017,8 @@ cd ../sleeper
 <pre>cd dfs
 <span class="c"># Sunday, after 10:45: every contest you are in, off its ladder</span>
 tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
+<span class="c"># or on the board: Run tab, pick a preset, paste the id, Build</span>
+.venv/bin/python cli.py serve                    <span class="c"># :8300</span>
 <span class="c"># or by hand</span>
 .venv/bin/python cli.py contest &lt;id&gt;
 .venv/bin/python cli.py lineups -n 4 --contest &lt;id&gt;
@@ -1035,7 +1039,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
             <dt>record</dt><dd>The season: fees, winnings, ROI and each entry's finish percentile, from DK's own history. <code>--offline</code> reads the stored copy.</dd>
             <dt>accuracy</dt><dd>The projections against what players scored, every stored game and slate; grades anything new (fetches DK salaries), <code>--offline</code> prints the record.</dd>
             <dt>scorecard</dt><dd>The week on one page, each number beside the decision it feeds; a crossed threshold is flagged. <code>--html</code> writes the page, <code>--markdown</code> the table atop STATUS.md.</dd>
-            <dt>serve · doctor</dt><dd>Web board, <code>--contest</code> opens it on one; what it's resting on, and how old.</dd>
+            <dt>serve · doctor</dt><dd>Web board (Run / Explore / Track), <code>--contest</code> opens it on one; what it's resting on, and how old.</dd>
             <dt>tools/gameday.sh</dt><dd>The Sunday routine: newest export, doctor, one build per contest, the board. Every build also goes to the Fantasy HQ DFS tab's Classic view (<code>lineups --json</code>, <code>tools/dashboard_classic.py</code>); <code>/sunday</code> uploads it.</dd>
             <dt>/showdown</dt><dd>The showdown-night routine (Thursday, Sunday night, Monday): one ledger and one day file for every contest, then the Fantasy HQ DFS tab.</dd>
           </dl>
@@ -1360,8 +1364,8 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">245</span></td></tr>
-              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">351</span></td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">450</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">358</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">453</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
