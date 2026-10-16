@@ -131,8 +131,11 @@ favours a position (measured: `docs/DECISIONS.md`).
 
 ## Environment
 
-Python **3.11 via `uv`**, per project, in `.venv/`. The machine default is 3.9 —
-do not use it, and do not suggest conda (anaconda was deleted 2026-08-14).
+Python **3.11 via `uv`**, per project, in `.venv/`. Never a bare `python3`: in an
+interactive shell it is uv's 3.12 (`~/.local/bin`), and in any shell without that
+on PATH (launchd, cron, some agent shells) it is the system's `/usr/bin/python3`,
+3.9. Call the project's `.venv/bin/python`. Do not suggest conda (anaconda was
+deleted 2026-08-14).
 
 ```bash
 uv venv --python 3.11 && uv pip install --python .venv/bin/python requests pytest
