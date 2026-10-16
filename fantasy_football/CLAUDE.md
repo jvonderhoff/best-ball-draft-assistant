@@ -163,6 +163,11 @@ the launchd jobs the map names, dead paths in the CLAUDE.md, DECISIONS and memor
 and the memory index. Read-only; a chore list, not a gate, so it is not in the hook.
 Every test count on the map is tagged `<span data-tests="…">` so it can be checked.
 
+**The agent's reports are graded too**: `evals/startsit/grade.py <report.md> <startsit.json>`
+checks a /startsit report against the skill's own promises (weekly gate, one table per
+league, no OUT/IR starter, empty slots called, brevity). Real runs go in
+`evals/startsit/runs/<date>/`, gitignored: this repo is public.
+
 `dynasty-rankings/` and `best-ball-extension/` were removed 2026-09-08. What a
 correct deletion looks like, and what went with each: `docs/DECISIONS.md`.
 

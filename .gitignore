@@ -51,3 +51,6 @@ fantasy_football/best-ball-draft/ssl.key
 
 # auto-queue run logs and its record of what it queued — runtime output, not source
 fantasy_football/best-ball-draft/data/
+
+# Real eval runs: league ids, rosters, report text. This repo is public.
+fantasy_football/evals/*/runs/
