@@ -41,9 +41,12 @@ NOT checked, because a script cannot judge them: whether the Don't list catches 
 boards got wrong, whether a lineup flag is caused by a claim or an injury, whether a
 trade's "roster need" is a rest-of-season hole rather than a one-week absence.
 
-The JSON is what `cli.py waivers --json` would write if it existed (it does not yet; see
-README.md for the proposal). Until then a run's file is assembled from that run's printed
-board, and the run's NOTE.md says so. Shape:
+The JSON is what `sleeper/cli.py waivers --json PATH` writes (since 2026-10-16). Runs
+before then had their file assembled from the printed board, and their NOTE.md says so.
+`waiver_run` is MEASURED from when the league's claims were processed, with
+`waiver_run_basis` saying so; the settings-derived hour is a late bound and only a
+labelled fallback. The CLI cannot know whether LateRound was recaptured that day, so the
+task adds `lateround_recaptured` itself (absent reads as recaptured). Shape:
 
   {"finished_at": ISO-with-offset, "lateround_recaptured": bool,
    "dynasty_board_age_days": float | null,

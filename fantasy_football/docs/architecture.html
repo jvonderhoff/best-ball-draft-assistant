@@ -1150,11 +1150,11 @@ cd ../sleeper &amp;&amp; .venv/bin/python cli.py trades</pre>
             <tbody>
               <tr><td>Justice League</td><td class="num">02:11</td><td>FAAB</td></tr>
               <tr><td>Hastings</td><td class="num">02:12</td><td>FAAB</td></tr>
-              <tr><td>Haters Club</td><td class="num">09:06</td><td>FAAB</td></tr>
+              <tr><td>Haters Club</td><td class="num">02:16</td><td>FAAB</td></tr>
               <tr><td>NNCC</td><td class="num">11:05</td><td>rolling priority</td></tr>
             </tbody>
           </table></div>
-          <p class="auto">Measured from Sleeper's processed claims on Wed 16 Sep 2026. The leagues' <code>daily_waivers_hour</code> settings don't map onto these cleanly, so re-measure if a commissioner changes them.</p>
+          <p class="auto">Measured from Sleeper's processed claims, 16 Oct 2026. Haters Club moved from 09:06 to 02:16 on 23 Sep, and this table said 09:06 for four weeks afterwards. The leagues' <code>daily_waivers_hour</code> settings don't map onto these cleanly, so the times are measured, not read: <code>sleeper/cli.py waivers --json</code> re-measures every league from its last 28 days of processed claims on every run, and its <code>waiver_run</code> beats this table.</p>
           <h3>After each league clears</h3>
 <pre>cd sleeper
 .venv/bin/python cli.py sync --league &lt;id&gt;       <span class="c"># rosters and bids have moved</span>
