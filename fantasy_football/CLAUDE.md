@@ -157,6 +157,12 @@ A Stop hook runs it for you, plus the tests of any project whose `.py` files cha
 `tools/hooks/test_stop_check.sh`). Red caused this session blocks "done" once, then
 goes to the user.
 
+**Drift between the docs and the code is found, not remembered**:
+`projections/.venv/bin/python tools/drift.py` checks the map's and READMEs' test counts,
+the launchd jobs the map names, dead paths in the CLAUDE.md, DECISIONS and memory files,
+and the memory index. Read-only; a chore list, not a gate, so it is not in the hook.
+Every test count on the map is tagged `<span data-tests="…">` so it can be checked.
+
 `dynasty-rankings/` and `best-ball-extension/` were removed 2026-09-08. What a
 correct deletion looks like, and what went with each: `docs/DECISIONS.md`.
 
