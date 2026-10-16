@@ -64,6 +64,11 @@ def test_control_passes_every_check():
     assert failed(GOOD) == []
 
 
+def test_footer_is_not_commentary():
+    footed = GOOD + '\n> Dashboard: refreshed\n> Eval: 13/13 checks passed\n'
+    assert failed(footed) == []
+
+
 def test_prose_report_fails_tables_and_brevity():
     # The shape of the real Oct 11 report: right calls, bulleted prose, no tables.
     prose = ('### Alpha League — no changes\n'

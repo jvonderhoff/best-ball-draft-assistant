@@ -66,8 +66,10 @@ def has_table(lines):
 
 
 def prose_lines(report):
+    # `>` lines are the run's footer (dashboard status, this eval's own score), which
+    # the Sunday task appends after grading; they are metadata, not commentary.
     return [l for l in report.splitlines()
-            if l.strip() and not l.strip().startswith(('|', '#', '**Bench'))]
+            if l.strip() and not l.strip().startswith(('|', '#', '**Bench', '>'))]
 
 
 def grade(report, data):
