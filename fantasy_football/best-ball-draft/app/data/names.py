@@ -45,6 +45,7 @@ NICKNAMES = {
     'ron': 'ronald',       'rick': 'richard',     'ricky': 'richard',
     'pat': 'patrick',      'andy': 'andrew',      'drew': 'andrew',
     'charlie': 'charles',  'jake': 'jacob',       'tyler': 'tyler',
+    'chig': 'chigoziem',
 }
 
 _SUFFIX_RE = re.compile(r"\b(jr\.?|sr\.?|ii|iii|iv|v)\b")
