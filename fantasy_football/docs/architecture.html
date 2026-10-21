@@ -677,7 +677,7 @@ node tools/check-model-change.js
         <div><dt>Runs</dt><dd>CLI · live draft board at <code>:8200</code>, open to your wifi</dd></div>
         <div><dt>Store</dt><dd><code>data/leagues.db</code>, a cache of Sleeper that's safe to delete</dd></div>
         <div><dt>Keyed on</dt><dd><code>sleeper_id</code> · does no name matching</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="sleeper">366</span> tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="sleeper">380</span> tests</dd></div>
       </dl>
     </header>
 
@@ -762,6 +762,7 @@ node tools/check-model-change.js
             <dt class="grp">weekly tools</dt>
             <dt>weekly.py · lineup.py</dt><dd>This week's points from props; the best legal lineup.</dd>
             <dt>weekly_ranks.py</dt><dd>Human rank sources (LateRound today), shown side by side and never averaged.</dd>
+            <dt>needs.py</dt><dd>What a roster is short of, off its LateRound rest-of-season lineup: positions under their floor, slots a bye or an Out empties (this week and the next two), whole-tier upgrades, and free players at those positions only. The <code>/tuesday</code> report starts here (20 Oct).</dd>
             <dt>waivers.py · faab.py</dt><dd>An add is a pair: the free agent against the player you'd actually cut, plus a bid fitted on real winning bids. A <code>BUZZ</code> column and a closing section carry what the rest of the world is doing — trending adds, headlines, the week's columns — including the players this app has no number for.</dd>
             <dt>trades.py</dt><dd>Trade board: where LateRound rates a player a tier or more away from the market (measured in LateRound's own tiers, never rank arithmetic). Redraft: LateRound ROS vs FantasyPros, priced by FantasyCalc. Dynasty: LateRound dynasty vs KTC, FantasyCalc confirming, with win-now flags. Buy, sell, fair 1-for-1 pairs; injured players listed, never paired. Each pair also says whether the other manager has a reason to accept (<code>their fit</code>: short at what he gets, deep at what he gives, against the league median).</dd>
           </dl>
@@ -775,12 +776,13 @@ node tools/check-model-change.js
 <span class="c"># refresh props + stat lines, then start/sit</span>
 tools/weekly.sh
 
-<span class="c"># adds and cuts</span>
+<span class="c"># what each roster needs, then adds and cuts</span>
+.venv/bin/python cli.py needs
 .venv/bin/python cli.py waivers
 
 <span class="c"># trades: LateRound vs consensus, priced by FantasyCalc</span>
 .venv/bin/python cli.py trades</pre>
-          <p>Or run <code>/startsit</code>. Run it once, late: coverage grows toward kickoff, so Sunday morning beats Thursday. <code>/tuesday</code> is the pre-waivers routine — recapture LateRound, refresh the market, then read start/sit and every FAAB board.</p>
+          <p>Or run <code>/startsit</code>. Run it once, late: coverage grows toward kickoff, so Sunday morning beats Thursday. <code>/tuesday</code> is the pre-waivers routine — recapture LateRound, refresh the market, then read start/sit, what each roster needs, and every FAAB board.</p>
         </div>
         <div class="blk">
           <h2>Commands</h2>
@@ -790,6 +792,7 @@ tools/weekly.sh
             <dt>board · plan · queue</dt><dd>Draft prep.</dd>
             <dt>page · serve</dt><dd>Phone board; live draft board.</dd>
             <dt>startsit · waivers</dt><dd>The weekly calls. <code>waivers</code> also suggests a FAAB bid. <code>startsit --json</code> writes the lineups for Fantasy HQ; <code>tools/dashboard_rows.py</code> and <code>tools/dashboard_usage.py</code> flatten them, and the usage export, for its tabs.</dd>
+            <dt>needs</dt><dd>What each roster is short of, off its lineup: a position below its floor (IR gone, a one-week Out not), a slot a bye or an Out empties this week or the next two, a starter a free player beats by a whole tier. Then the free players at those positions only, each with a drop that keeps every floor. <code>--json</code> feeds the <code>/tuesday</code> eval.</dd>
             <dt>gaps · trades</dt><dd>Roster shape against a rank list — every running back it lists says whose job he is one injury from (<code>RB2 behind J. Taylor (RB4)</code>); the redraft trade board (LateRound vs consensus, priced by FantasyCalc).</dd>
             <dt>snapshot · doctor</dt><dd>Refresh the committed stat lines; health.</dd>
           </dl>
@@ -1107,7 +1110,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
         <div class="dbody">
           <p class="auto"><span class="pill mute">runs itself</span> 08:00 weekly xFP snapshot (actual vs. expected FP + team stats) and DK points export · 08:30 best-ball standings to <code>/season</code> · 09:00 DFS ownership import, second attempt</p>
           <h3>Run <code>/tuesday</code></h3>
-          <p>It does all five steps below and reads the output for you. By hand:</p>
+          <p>It does all six steps below and reads the output for you, starting from what each roster needs: every claim in the report names the need it fills. By hand:</p>
 <pre><span class="c"># 1. LateRound, in your signed-in browser</span>
 <span class="c">#    weekly page   → projections/tools/lateround-capture.js</span>
 <span class="c">#    ROS page      → projections/tools/lateround-ros-capture.js</span>
@@ -1124,6 +1127,10 @@ cd projections
 <span class="c"># 2. the market, and a first look at start/sit</span>
 cd ../sleeper &amp;&amp; tools/weekly.sh
 
+<span class="c"># 2b. what each roster needs: season holes, this week's and the next two</span>
+<span class="c">#     weeks' bye holes, and the free players who fill them</span>
+.venv/bin/python cli.py needs
+
 <span class="c"># 3. the waiver board, every league</span>
 .venv/bin/python cli.py waivers --league &lt;id&gt;
 
@@ -1139,6 +1146,7 @@ cd ../sleeper &amp;&amp; .venv/bin/python cli.py trades</pre>
           <ul>
             <li><b>Check the export's coverage line:</b> about 150 ranked and 0 unmatched is a clean capture. Anything short, redo the browser step.</li>
             <li><b>The weekly capture's four downloads don't all land</b> in Chrome. <code>/tuesday</code> carries the fallback that works.</li>
+            <li><b>A claim fills a need, or says why not.</b> Added 20 Oct, when the report proposed a receiver to rosters not short of one and missed NNCC's empty QB slot. <code>nothing free fills it</code> under a season need means trade.</li>
             <li><b>Thin market coverage is expected on a Tuesday.</b> The point is claims, not Sunday's lineup.</li>
             <li><b>Zero ranked free agents is a finding</b>, not an empty screen — <code>gaps</code> prints it for both dynasty leagues, where every ranked player is owned. That says trade, not claim.</li>
             <li><b>Read the section under each board</b> — <i>the field is adding these, and the table above did not</i>. On a Tuesday the real claim is often there: a player who inherited a job on Sunday has no stat line and no rank, so the ranked table cannot see him.</li>
@@ -1366,7 +1374,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">256</span></td></tr>
-              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">366</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">380</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">468</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
