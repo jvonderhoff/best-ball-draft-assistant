@@ -677,7 +677,7 @@ node tools/check-model-change.js
         <div><dt>Runs</dt><dd>CLI · live draft board at <code>:8200</code>, open to your wifi</dd></div>
         <div><dt>Store</dt><dd><code>data/leagues.db</code>, a cache of Sleeper that's safe to delete</dd></div>
         <div><dt>Keyed on</dt><dd><code>sleeper_id</code> · does no name matching</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="sleeper">380</span> tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="sleeper">387</span> tests</dd></div>
       </dl>
     </header>
 
@@ -762,7 +762,7 @@ node tools/check-model-change.js
             <dt class="grp">weekly tools</dt>
             <dt>weekly.py · lineup.py</dt><dd>This week's points from props; the best legal lineup.</dd>
             <dt>weekly_ranks.py</dt><dd>Human rank sources (LateRound today), shown side by side and never averaged.</dd>
-            <dt>needs.py</dt><dd>What a roster is short of, off its LateRound rest-of-season lineup: positions under their floor, slots a bye or an Out empties (this week and the next two), whole-tier upgrades, and free players at those positions only. The <code>/tuesday</code> report starts here (20 Oct).</dd>
+            <dt>needs.py</dt><dd>What a roster is short of, off its LateRound rest-of-season lineup: positions under their floor, slots a bye or an Out empties (this week and the next two), whole-tier upgrades, and free players at those positions only, each labelled by what it rests on: the waiver columns and trending adds, next man up off the depth chart, or LateRound rank and points a game (in that order, because a backup who just inherited a job has neither a rank nor a rate). The <code>/tuesday</code> report starts here (20 Oct).</dd>
             <dt>waivers.py · faab.py</dt><dd>An add is a pair: the free agent against the player you'd actually cut, plus a bid fitted on real winning bids. A <code>BUZZ</code> column and a closing section carry what the rest of the world is doing — trending adds, headlines, the week's columns — including the players this app has no number for.</dd>
             <dt>trades.py</dt><dd>Trade board: where LateRound rates a player a tier or more away from the market (measured in LateRound's own tiers, never rank arithmetic). Redraft: LateRound ROS vs FantasyPros, priced by FantasyCalc. Dynasty: LateRound dynasty vs KTC, FantasyCalc confirming, with win-now flags. Buy, sell, fair 1-for-1 pairs; injured players listed, never paired. Each pair also says whether the other manager has a reason to accept (<code>their fit</code>: short at what he gets, deep at what he gives, against the league median).</dd>
           </dl>
@@ -1374,7 +1374,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">256</span></td></tr>
-              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">380</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">387</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">468</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>

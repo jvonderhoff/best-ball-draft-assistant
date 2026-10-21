@@ -137,14 +137,34 @@ each), the depth line, then **NEEDS**, numbered, each tagged with its kind:
 
 Then `surplus` (positions above their floor, where a cut costs nothing) and
 **TARGETS**: free players at a needed position only, each with the drop that
-leaves every position at its floor (in dynasty, the lowest KTC). `nothing free
-fills it` under a need is a finding: a season need goes to the trade board, a
-week's need to the bench or Wednesday's free agents.
+leaves every position at its floor (in dynasty, the lowest KTC). Each target
+prints the signal it rests on, under it:
+
+- **the field** — the columns that named him with their FAAB range, and his
+  trending adds (`CBS, Yahoo [3-5%] · 552k adds`);
+- **next up** — off Sleeper's depth chart: `next up for X (IR)`, or `starting
+  while X (Out) is hurt`;
+- **ranked** — LateRound's rank and tier, with actual points a game.
+
+They are ordered field and next-up first (by adds), ranked-only last, because
+the man who inherited a job on Sunday has neither a rank nor a rate. Added
+2026-10-20 after the user asked "It's all based on PPG? What about waiver
+articles. Injuries happen and need the next guy up": the first version offered
+Kimani Vidal (RB53, no columns) for Justice League's RB hole and never showed
+Tyrone Tracy (two columns, 553k adds, NYG's RB2 with Skattebo benched).
+
+`start X — no claim needed` under a this-week or bye need means an unranked
+bench player who plays fills it; that player is never offered as the drop.
+`nothing free fills it` is a finding: a season need goes to the trade board, a
+week's need to Wednesday's free agents.
 
 **Every claim in the report must fill one of these needs, or say why it is
 worth a roster spot anyway.** A big-buzz add that fills no need (the week's hot
 handcuff, a dynasty stash) can still be right, but it has to say so; the
-waiver board's top VOR row is not a reason on its own. Where the waiver board's
+waiver board's top VOR row is not a reason on its own. At a needed position, a
+target with a field or next-up signal beats one with points a game alone; pick
+the points over the signal only with a reason in `Why` (Gesicki's 13.0 a game
+over Mayer's three columns, say). Where the waiver board's
 `ROS` for a target is marked `p` (preseason) or disagrees with the actual
 points a game this view prints, believe the actual points.
 
