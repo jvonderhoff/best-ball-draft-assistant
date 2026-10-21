@@ -22,3 +22,11 @@ from ~09:06 to 02:16 on Sep 23, which the map still said a month later.
 Not in the CLI, because only the task knows: `lateround_recaptured`. Not in `waivers`:
 the dynasty board's age (that comes from `trades`). Runs before 2026-10-16 were rebuilt
 from the printed boards (`runs/<date>/build_json.py`).
+
+## The needs: `cli.py needs --json`
+
+Built 2026-10-20, when the user said the report should "look at my roster and see what
+I need". The task writes it beside `tuesday.json` as `needs.json`; `grade.py` picks it up
+from there and adds `needs-line` (each league's needs bullet names every this-week, short
+and empty need) and `claim-need` (every claim names the need it fills, or says why not).
+Runs without one skip both checks.

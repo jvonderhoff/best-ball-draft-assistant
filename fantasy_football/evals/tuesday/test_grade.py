@@ -278,3 +278,83 @@ def test_cli_exit_codes(tmp_path):
     assert grade.main([str(r), str(d)]) == 0
     r.write_text(GOOD + '\nstray commentary\n')
     assert grade.main([str(r), str(d)]) == 1
+
+
+# -- the needs checks: the report starts from the roster (2026-10-20) --------
+
+NEEDS = {'week': 6, 'leagues': [
+    {'name': 'Alpha League', 'needs': [{'kind': 'short', 'pos': 'RB', 'week': None},
+                                       {'kind': 'upgrade', 'pos': 'WR', 'week': None}]},
+    {'name': 'Bravo Dynasty', 'needs': [{'kind': 'short', 'pos': 'TE', 'week': None}]},
+    {'name': 'Charlie Club', 'needs': [{'kind': 'this_week', 'pos': 'DEF', 'week': 6},
+                                       {'kind': 'short', 'pos': 'RB', 'week': None}]}]}
+
+GOOD_N = (GOOD
+          .replace('## 1. Claims to make\n\n',
+                   '## 1. Needs and claims\n\n'
+                   '- **Alpha League**: RB short for the season (3 of 4).\n'
+                   '- **Bravo Dynasty**: TE short (1 of 2); nothing ranked free, trade.\n'
+                   '- **Charlie Club**: DEF this week (Gotham bye); RB short.\n\n')
+          .replace('| League (FAAB left, runs) | Claim |', '| League (FAAB left, runs) | Need | Claim |')
+          .replace('|---|---|---|---|---|', '|---|---|---|---|---|---|')
+          .replace('| Alpha League ($80, Wed 02:10) |', '| Alpha League ($80, Wed 02:10) | RB short |')
+          .replace('| Alpha League (same run) |', '| Alpha League (same run) | WR upgrade |')
+          .replace('| Bravo Dynasty ($55, Wed 07:00) |', '| Bravo Dynasty ($55, Wed 07:00) | TE short |')
+          .replace('| Charlie Club (no FAAB, Wed 11:00) |', '| Charlie Club (no FAAB, Wed 11:00) | RB short |')
+          .replace('| Charlie Club, free add now |', '| Charlie Club, free add now | DEF this week |'))
+
+
+def failed_n(report, needs=NEEDS):
+    return sorted(n for n, s, _ in grade.grade(report, DATA, needs) if s == 'FAIL')
+
+
+def test_needs_control_passes():
+    res = grade.grade(GOOD_N, DATA, NEEDS)
+    assert [r for r in res if r[1] == 'FAIL'] == []
+    assert sum(1 for r in res if r[0].startswith(('needs-line', 'claim-need'))) == 3 + 4
+
+
+def test_needs_checks_skip_without_needs_json():
+    # Runs before 2026-10-20 have no needs.json and must still grade clean.
+    assert not [r for r in grade.grade(GOOD, DATA) if r[0].startswith('needs-line')]
+
+
+def test_a_league_with_no_needs_line():
+    bad = sub('- **Bravo Dynasty**: TE short (1 of 2); nothing ranked free, trade.\n', '', GOOD_N)
+    assert failed_n(bad) == ['needs-line: Bravo Dynasty']
+
+
+def test_a_needs_line_that_skips_this_weeks_hole():
+    # Justice League, 2026-10-20: the empty DEF slot was the one real hole.
+    bad = sub('DEF this week (Gotham bye); RB short.', 'RB short.', GOOD_N)
+    assert failed_n(bad) == ['needs-line: Charlie Club']
+
+
+def test_a_claim_that_fills_no_need_must_say_why():
+    # Ridley, 2026-10-20: the board's top "gain" at a position the roster was not short of.
+    bad = sub('| Alpha League (same run) | WR upgrade |', '| Alpha League (same run) | QB depth |', GOOD_N)
+    assert failed_n(bad) == ['claim-need: Alpha League: Mo Quiet WR']
+    ok = sub('| Alpha League (same run) | WR upgrade |',
+             '| Alpha League (same run) | none — contested handcuff, block the rival |', GOOD_N)
+    assert failed_n(ok) == []
+    bare = sub('| Alpha League (same run) | WR upgrade |', '| Alpha League (same run) | none |', GOOD_N)
+    assert failed_n(bare) == ['claim-need: Alpha League: Mo Quiet WR']
+
+
+def test_no_need_column_at_all():
+    fails = failed_n(GOOD.replace('## 1. Claims to make\n\n', '## 1. Claims to make\n\n'
+                                  '- **Alpha League**: RB short.\n- **Bravo Dynasty**: TE short.\n'
+                                  '- **Charlie Club**: DEF this week; RB short.\n\n'))
+    assert fails and all(f.startswith('claim-need') for f in fails)
+
+
+def test_needs_json_beside_the_input_is_picked_up(tmp_path):
+    import json
+    r, d = tmp_path / 'r.md', tmp_path / 'tuesday.json'
+    d.write_text(json.dumps(DATA))
+    r.write_text(GOOD)                       # no needs line, no Need column
+    assert grade.main([str(r), str(d)]) == 0
+    (tmp_path / 'needs.json').write_text(json.dumps(NEEDS))
+    assert grade.main([str(r), str(d)]) == 1
+    r.write_text(GOOD_N)
+    assert grade.main([str(r), str(d)]) == 0

@@ -9,8 +9,17 @@ found its report drifting because the task prompt contradicted the skill.
 
     projections/.venv/bin/python evals/tuesday/grade.py <report.md> <tuesday.json>
 
+A `needs.json` beside the JSON (`sleeper/cli.py needs --json`, since 2026-10-20) adds the
+two needs checks; without it they are skipped, so runs before then still grade.
+
 Exits 1 if any check fails. Each check is a promise the skill (or the task) makes:
 
+  needs-line          (needs.json) one bullet per league above the table naming every
+                      this-week, short and empty need by position: the report starts
+                      from the roster, not the wire (2026-10-20: "it needs to look at
+                      my roster and see what I need")
+  claim-need          (needs.json) every claim's Need cell names one of that league's
+                      needs, or says "none —" and why the spot is worth it anyway
   sections            Claims, Decisions (optional), Lineup flags, Trades, Inputs, in order
   claims-first        nothing before the claims table but a title, and the task's
                       "LateRound NOT recaptured" line when (only when) it was skipped
@@ -79,6 +88,20 @@ UNMATCHED_NAME_MAX = 10
 FOOTER = re.compile(r'usage\s*&\s*luck|push|notification|^>|eval:', re.I)
 RANGE = re.compile(r'\$\s*(\d+)\s*[–—-]\s*\$?\s*(\d+)')
 BID_SOURCE = re.compile(r'column|%|\bBID\b|most-bid|contested', re.I)
+# The needs the report must name on each league's line; upgrades and later byes are
+# its call. A flex need may be filled by any position the slot takes.
+NAMED_NEEDS = {'this_week', 'short', 'empty'}
+POS_WORDS = {'SUPER_FLEX': r'super\s*-?_?flex|\bsf\b', 'FLEX': r'\bflex\b',
+             'DEF': r'\bdef\b|\bd/?st\b|defen[cs]e', 'K': r'\bk\b|kicker'}
+FLEX_TAKES = {'FLEX': ('RB', 'WR', 'TE'), 'SUPER_FLEX': ('QB', 'RB', 'WR', 'TE'),
+              'REC_FLEX': ('WR', 'TE'), 'WRRB_FLEX': ('RB', 'WR')}
+
+
+def pos_named(pos, text):
+    """Does the free text name this need's position (or, for a flex, one it takes)?"""
+    words = [POS_WORDS.get(pos, r'\b' + pos.lower() + r'\b')]
+    words += [r'\b' + p.lower() + r'\b' for p in FLEX_TAKES.get(pos, ())]
+    return any(re.search(w, text.lower()) for w in words)
 
 
 def key(league_name):
@@ -149,7 +172,7 @@ def when(iso):
     return datetime.fromisoformat(iso)
 
 
-def grade(report, data):
+def grade(report, data, needs=None):
     results = []
 
     def check(name, ok, detail=''):
@@ -173,6 +196,9 @@ def grade(report, data):
 
     rows = table(secs.get('claims', []))
     leagues = data['leagues']
+    need_of = {key(L['name']): L for L in (needs or {}).get('leagues', [])}
+    bullets = [l for l in secs.get('claims', [])
+               if re.match(r'\s*[-*]\s', l) and not l.strip().startswith('|')]
     first_row = {}
     for L in leagues:
         name, k = L['name'], key(L['name'])
@@ -181,6 +207,14 @@ def grade(report, data):
         if not mine:
             continue
         first_row[name] = rows.index(mine[0])
+        N = need_of.get(k) if needs is not None else None
+        if N is not None:
+            line = next((b for b in bullets if k in b.lower()), None)
+            named = sorted({n['pos'] for n in N['needs'] if n['kind'] in NAMED_NEEDS})
+            unnamed = [pos for pos in named if not (line and pos_named(pos, line))]
+            check(f'needs-line: {name}', line is not None and not unnamed,
+                  'no needs bullet for this league above the table' if line is None
+                  else f'needs line never names {unnamed}')
         head = mine[0]['league']
         if L.get('faab_left') is not None:
             check(f'faab-header: {name}', f"${L['faab_left']}" in head.replace(' ', ''),
@@ -202,6 +236,15 @@ def grade(report, data):
                   else 'claimed player is not on this league\'s wire')
             bad = [p['name'] for p in claimed if (p.get('status') or '').lower() in OUT]
             check(f'never-out: {name}: {label}', not bad, f'claims {", ".join(bad)}')
+            if N is not None:
+                cell = re.sub(r'[*_]', '', r.get('need', '')).strip()
+                none_why = re.match(r'none\b\W*(.*)', cell, re.I)
+                fills = any(pos_named(n['pos'], cell) for n in N['needs'])
+                check(f'claim-need: {name}: {label}',
+                      fills or bool(none_why and len(none_why.group(1)) > 8),
+                      'no Need column in the claims table' if 'need' not in r
+                      else f'Need "{cell[:30]}" names none of {sorted({n["pos"] for n in N["needs"]}) or "no needs"}'
+                           ' and does not say "none —" with a reason')
 
             bid = r.get('bid', '')
             m = RANGE.search(bid)
@@ -297,7 +340,11 @@ def main(argv=None):
         return 2
     report = Path(argv[0]).read_text()
     data = json.loads(Path(argv[1]).read_text())
-    res = grade(report, data)
+    npath = Path(argv[1]).with_name('needs.json')
+    needs = json.loads(npath.read_text()) if npath.exists() else None
+    if needs is None:
+        print('needs.json not beside the JSON: needs-line and claim-need skipped')
+    res = grade(report, data, needs)
     for name, status, detail in res:
         print(f'{status}  {name}' + (f'  ({detail})' if status == 'FAIL' else ''))
     fails = sum(1 for _, s, _ in res if s == 'FAIL')

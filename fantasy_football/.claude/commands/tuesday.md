@@ -1,23 +1,32 @@
 ---
-description: Tuesday-night routine, before waivers process — recapture LateRound (weekly + rest-of-season) and the week's waiver columns, refresh the market and the field, then read start/sit, every FAAB league's waiver board, the roster-shape view across all four leagues, and the redraft trade board.
+description: Tuesday-night routine, before waivers process — recapture LateRound (weekly + rest-of-season) and the week's waiver columns, refresh the market and the field, then read start/sit, what each roster needs, every FAAB league's waiver board, the roster-shape view across all four leagues, and the redraft trade board.
 argument-hint: ""
 ---
 
-The Tuesday-night question is not "what do I start Sunday" — it is "is there a
-free agent worth claiming before waivers clear, and does anyone on my bench
-need a start THIS week that the wire would fill better." That needs both
+The Tuesday-night question is not "what do I start Sunday" — it is "what is
+each of my rosters short of, and is there a free agent who fills it before
+waivers clear." It starts from the ROSTER, not the wire: on 2026-10-20 the
+report ranked free agents player-against-player, proposed Calvin Ridley in two
+leagues as the top "gain" (a preseason number; he was scoring 2.6 a game), and
+found Justice League's empty DEF slot by luck. The user's verdict: "not that
+helpful. It needs to look at my roster and see what I need." So Step 2b reads
+the needs first, and every claim in the report names the need it fills.
+
+Answering that needs both
 LateRound pages, not one: the **weekly** page for this-week start/sit, the
 **rest-of-season** page as a second opinion on the waiver board's own VOR
 column. Running only one and skipping the other silently answers half the
 question.
 
-Five steps: recapture LateRound, refresh the market and the columns, read every waiver board,
-read the roster-shape view, then read the redraft trade board. The roster-shape
-view is what catches a league the waiver board has nothing to say about; the
-trade board is what to do about one whose wire is empty.
+Six steps: recapture LateRound, refresh the market and the columns, read what
+each roster needs, read every waiver board, read the roster-shape view, then
+read the redraft trade board. The needs view says what to look for; the waiver
+board says what it costs; the trade board is what to do about a need the wire
+cannot fill.
 
 The report at the end has a fixed shape — see **The report** at the bottom.
-Claims come first, because they are the reason this routine exists.
+Needs and the claims that fill them come first, because they are the reason
+this routine exists.
 
 ## Step 1 — recapture LateRound
 
@@ -102,6 +111,42 @@ Thursday run of the same command would. The point of running this on Tuesday
 is narrow — catch a start-worthy free agent before you lose the waiver
 priority to claim him, not finalize Sunday's lineup. Re-run `/startsit` on its
 own later in the week for that.
+
+## Step 2b — what each roster needs
+
+```bash
+cd sleeper && .venv/bin/python cli.py needs
+```
+
+No `--league` runs all four. Per league: the best legal lineup on LateRound's
+rest-of-season list (healthy players only, with actual points a game beside
+each), the depth line, then **NEEDS**, numbered, each tagged with its kind:
+
+- **`this_week`** — a slot nobody ranked who plays can fill this week: a bye
+  (JAX DEF, 2026-10-20) or an Out starter with no ranked backup. It names the
+  unranked bench players who DO play; often the answer is "start Bourne", not
+  a claim.
+- **`short`** — a position below its floor (slots + depth, the trade board's
+  rule): IR, PUP, a suspension or an `unavailable.json` assertion is gone for
+  the season; a one-week Out is not.
+- **`empty`** — a slot nobody ranked can fill at all.
+- **`upgrade`** — a starter that a free player beats by a WHOLE LateRound tier.
+  Inside one tier it is noise and is not listed.
+- **`bye`** — the same as `this_week`, for the next two weeks: claim ahead of it,
+  or plan to stream.
+
+Then `surplus` (positions above their floor, where a cut costs nothing) and
+**TARGETS**: free players at a needed position only, each with the drop that
+leaves every position at its floor (in dynasty, the lowest KTC). `nothing free
+fills it` under a need is a finding: a season need goes to the trade board, a
+week's need to the bench or Wednesday's free agents.
+
+**Every claim in the report must fill one of these needs, or say why it is
+worth a roster spot anyway.** A big-buzz add that fills no need (the week's hot
+handcuff, a dynasty stash) can still be right, but it has to say so; the
+waiver board's top VOR row is not a reason on its own. Where the waiver board's
+`ROS` for a target is marked `p` (preseason) or disagrees with the actual
+points a game this view prints, believe the actual points.
 
 ## Step 3 — read every FAAB league's waiver board
 
@@ -238,19 +283,33 @@ The routine started as "should I put a FAAB bid or a waiver claim on anyone",
 and the report answers that before anything else. Five sections, always in
 this order, and nothing from the steps above is pasted in raw:
 
-**1. Claims to make** — one table, every league, ordered by when its waivers
-run (earliest first), with the league's FAAB left in the header:
+**1. Needs and claims** — first, one bullet per league (same order as the
+table) saying what that roster needs, off Step 2b: every `this_week`, `short`
+and `empty` need by position, plus a `bye` in the next two weeks if it changes
+a claim. "No needs" is a valid line. Then one table, every league, ordered by
+when its waivers run (earliest first), with the league's FAAB left in the
+header:
 
 ```
-| League (FAAB left, runs) | Claim | Bid | Drop | Why |
-|---|---|---|---|---|
-| Justice League ($79, Wed 06:00) | Will Shipley RB PHI | $10–12 | Joe Mixon | Barkley + Bigsby hurt; 3 columns, 866k adds |
-| NNCC (no FAAB, Wed 12:00) | Brian Robinson RB ATL | priority claim | Jaylen Wright | RB39 free vs your RB56 |
-| Haters Club ($85, Wed 07:00) | — no claim | | | every ranked player owned; trade instead |
+- **Justice League**: DEF this week (JAX bye); RB short for the season (3 of 4).
+- **NNCC**: QB this week (Daniels bye); TE short (1 of 2).
+- **Haters Club**: TE short (1 of 2); nothing ranked is free — trade.
+
+| League (FAAB left, runs) | Need | Claim | Bid | Drop | Why |
+|---|---|---|---|---|---|
+| Justice League ($79, Wed 02:11) | RB short | Will Shipley RB PHI | $40–60 (most-bid line) | Kenny Gainwell | Barkley + Bigsby hurt; 3 columns, 866k adds |
+| NNCC (no FAAB, Wed 11:04) | QB this week | Kyler Murray QB ARI | free add | Mike Washington | Daniels on bye; Murray QB17 is free now, Stroud costs the claim |
+| Haters Club ($85, Wed 02:16) | TE short | — no claim | | | no ranked TE free; trade (section 4) |
 ```
 
 - Every league gets a row, including the ones with no claim — say why in
   `Why` ("wire empty", "nothing beats your bench").
+- `Need` names the Step 2b need the claim fills (`RB short`, `DEF this week`,
+  `TE upgrade`). A claim that fills none says `none —` and why it is worth the
+  spot anyway (a contested handcuff, a dynasty stash); expect few of those.
+- A need the wire cannot fill is not dropped from the report: a season need
+  goes to **Trades**, a this-week need to **lineup flags** (start the unranked
+  bench player Step 2b named, or a Wednesday free agent).
 - `Bid` is a dollar RANGE drawn from the columns' FAAB % and the board's own
   `BID` (state which), or `priority claim` in a non-FAAB league. Never one
   number to type in.
@@ -277,8 +336,9 @@ claim or an injury (e.g. "start Shipley over Pollard if Barkley is ruled
 out"). Not the full start/sit; that is `/startsit`'s job later in the week.
 
 **4. Trades** — at most three lines per league: the SELL worth acting on and
-the one pair that fits a roster need. Name the dynasty board's age if it is
-past three weeks.
+the one pair that fits a roster need — a Step 2b season need the wire could not
+fill comes first, and the pair should spend a `surplus` position on it. Name
+the dynasty board's age if it is past three weeks.
 
 Judge "roster need" on the REST-OF-SEASON roster, not this week's. The trade
 board's depth line used to count only healthy players, so a starter who was
