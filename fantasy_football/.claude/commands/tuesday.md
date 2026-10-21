@@ -153,6 +153,14 @@ articles. Injuries happen and need the next guy up": the first version offered
 Kimani Vidal (RB53, no columns) for Justice League's RB hole and never showed
 Tyrone Tracy (two columns, 553k adds, NYG's RB2 with Skattebo benched).
 
+A player who cannot play yet but whom two or more columns name is listed under
+a SEASON need as `STASH: IR, cannot play yet`, after the fills, with a drop of
+its own (only ever an unranked player; `no cut worth it` otherwise). Never put
+a stash in a this-week row. If the user claims both a fill and a stash, the
+two must drop different players, and the fill goes above the stash: on
+2026-10-20 Jonah Coleman (all four columns, IR) sat above Tracy with the same
+drop, so a Coleman win would have voided the Tracy claim.
+
 `start X — no claim needed` under a this-week or bye need means an unranked
 bench player who plays fills it; that player is never offered as the drop.
 `nothing free fills it` is a finding: a season need goes to the trade board, a
