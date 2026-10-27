@@ -87,8 +87,10 @@ pinned with `if_version`, setting `source` to the new `/_blob/` url and name and
 or another tab's datasets. If the exposure table shows anyone over the cap in
 the KEPT column, say so first.
 
-Monday, once the ownership job has run: `cli.py postmortem --draftgroup <dg>`
-grades the night. It finds our lineups itself (DK's imported entries first,
+The morning after, once the ownership job has run -- 09:00 Monday AND Tuesday,
+so a Thursday or Sunday-night game is graded Monday and Monday night's on
+Tuesday (a Monday-morning postmortem of MNF finds no field yet and says so):
+`cli.py postmortem --draftgroup <dg>` grades the night. It finds our lineups itself (DK's imported entries first,
 else this night's record files), places them in the field they were really
 entered in -- the DAL @ PHI five were built for the Singleback and uploaded to
 the First Down, and only DK's history knew -- and names what sank each one and
