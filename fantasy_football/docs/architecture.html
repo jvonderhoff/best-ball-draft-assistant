@@ -677,7 +677,7 @@ node tools/check-model-change.js
         <div><dt>Runs</dt><dd>CLI · live draft board at <code>:8200</code>, open to your wifi</dd></div>
         <div><dt>Store</dt><dd><code>data/leagues.db</code>, a cache of Sleeper that's safe to delete</dd></div>
         <div><dt>Keyed on</dt><dd><code>sleeper_id</code> · does no name matching</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="sleeper">390</span> tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="sleeper">399</span> tests</dd></div>
       </dl>
     </header>
 
@@ -793,7 +793,7 @@ tools/weekly.sh
             <dt>page · serve</dt><dd>Phone board; live draft board.</dd>
             <dt>startsit · waivers</dt><dd>The weekly calls. <code>waivers</code> also suggests a FAAB bid. <code>startsit --json</code> writes the lineups for Fantasy HQ; <code>tools/dashboard_rows.py</code> and <code>tools/dashboard_usage.py</code> flatten them, and the usage export, for its tabs.</dd>
             <dt>needs</dt><dd>What each roster is short of, off its lineup: a position below its floor (IR gone, a one-week Out not), a slot a bye or an Out empties this week or the next two, a starter a free player beats by a whole tier. Then the free players at those positions only, each with a drop that keeps every floor. <code>--json</code> feeds the <code>/tuesday</code> eval.</dd>
-            <dt>gaps · trades</dt><dd>Roster shape against a rank list — every running back it lists says whose job he is one injury from (<code>RB2 behind J. Taylor (RB4)</code>); the redraft trade board (LateRound vs consensus, priced by FantasyCalc).</dd>
+            <dt>gaps · trades</dt><dd>Roster shape against a rank list. It opens each league with <code>THIS WEEK</code>: the lineup as set in Sleeper, each slot that is EMPTY (DEF included), on a BYE, OUT, or a BACKUP on his team's depth chart, with the bench players who could cover (22 Oct: an empty DEF slot, a QB3 in the lineup and an IR pickup all went unseen). Free players who cannot play are marked and never paired as an add. Every running back it lists says whose job he is one injury from (<code>RB2 behind J. Taylor (RB4)</code>); the redraft trade board (LateRound vs consensus, priced by FantasyCalc).</dd>
             <dt>snapshot · doctor</dt><dd>Refresh the committed stat lines; health.</dd>
           </dl>
         </div>
@@ -932,7 +932,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>projections/data/weekly_props.json</code>; its own committed copy only when that is absent (a clone)</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="dfs">468</span> tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="dfs">508</span> tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
       </dl>
     </header>
 
@@ -1038,6 +1038,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
             <dt>contests · replay</dt><dd>Every contest that ran on a slate (lobby snapshot before lock, id scan after); where your lineups would have finished in each of them. <code>replay --volume</code>: the paper-trading record — would more entries have made money, week by week. <code>--showdown</code>: the same, game by game.</dd>
             <dt>screen · stacks</dt><dd>Value within position; teams by implied total.</dd>
             <dt>lineups · showdown</dt><dd>Classic and single-game builds. <code>showdown</code> exports its own game's props first (<code>export_props.py --game</code> — the weekly export refuses late in the week), prints estimated captain ownership (<code>cpt~</code>), names the cheap non-market players it left out (<code>punts:</code>; <code>--keep-punts</code> to allow them), caps the night at two per player across builds with <code>--ledger</code>, <code>--scripts</code> builds five game-script lineups for a $1 tournament instead (3 favourite-heavy, 2 underdog-heavy, outside the cap) and records them to <code>data/&lt;date&gt;-&lt;game&gt;-scripts.csv</code> — on a script night they <b>replace</b> the two at $2–5, same money (your call, 13 Oct; <code>/showdown scripts:&lt;id&gt;</code>), and before kickoff archives its props for the showdown paper trade. <code>--json</code> merges each build into the day's file for the Fantasy HQ DFS tab (<code>tools/dashboard_showdown.py</code> counts exposure across builds).</dd>
+            <dt>postmortem</dt><dd>One showdown from our side: our lineups (DK's imported entries, else the night's record files) scored and placed in the field really entered, what sank each one, the ordinary build beside them, and which of the winners' levers we held. A field that was never stored is replaced by the nearest one, marked <code>PROXY</code>. First run (DAL @ PHI): scores and ranks matched DK's exactly, and it found the five were entered in the First Down, not the Singleback they were built for.</dd>
             <dt>winners</dt><dd>Per showdown: what won, the top captains, the players the top was built on against the field, our projection against what they scored, and how much of the top our builder could have made. <code>--classic</code>: each Classic tournament's top 100 against our tournament rules and against the field sample; first reading (3 slates), the top-games filter is broken by the top as often as by the field and blocks about two-thirds of it.</dd>
             <dt>ownership</dt><dd>Import measured ownership from standings; <code>--estimate</code> before lock, <code>--grade</code> after, <code>--grades</code> for the record.</dd>
             <dt>record</dt><dd>The season: fees, winnings, ROI and each entry's finish percentile, from DK's own history. <code>--offline</code> reads the stored copy.</dd>
@@ -1096,7 +1097,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
           <tr><td>Thursday</td><td>—</td><td><code>/startsit</code> <b>only</b> if you start someone Thursday night. <code>/showdown &lt;contest ids&gt;</code> for the night's showdown.</td></tr>
           <tr><td>Fri / Sat</td><td>—</td><td>Refresh dynasty values (three commands below); tidy <code>unavailable.json</code>.</td></tr>
           <tr><td>Sunday</td><td>DFS props export 08:30 &amp; 10:45 · <b>11:03 the <code>/startsit</code> report</b> (Claude task), which also refreshes Fantasy HQ's This week</td><td>Read the start/sit report, set Sleeper lineups. <b><code>/sunday &lt;contest ids&gt;</code></b>, upload DFS lineups. <span class="pill warn">lock 12:00</span></td></tr>
-          <tr><td>Monday</td><td>DFS ownership import + estimate grade + paper trading + projection grade + scorecard + db backup 09:00</td><td>Read the DFS scorecard: ask a session to republish <code>dfs/data/scorecard.html</code>, or <code>dfs/cli.py scorecard</code>. A flagged row means re-read that rule's evidence. <code>dfs/cli.py winners</code> for how the weekend's showdowns were won.</td></tr>
+          <tr><td>Monday</td><td>DFS ownership import + estimate grade + paper trading + projection grade + scorecard + db backup 09:00</td><td>Read the DFS scorecard: ask a session to republish <code>dfs/data/scorecard.html</code>, or <code>dfs/cli.py scorecard</code>. A flagged row means re-read that rule's evidence. <code>dfs/cli.py postmortem</code> to grade each showdown night from our side, <code>dfs/cli.py winners</code> for how it was won.</td></tr>
                   </tbody>
       </table></div>
       <p><b>Two of these run themselves since 8 Oct</b>, as scheduled Claude tasks (Scheduled, in the Claude app's sidebar), not launchd: <code>fantasy-tuesday-waivers</code> (Tue 14:13) and <code>fantasy-sunday-startsit</code> (Sun 11:03). Each writes the report and sends one notification. They run only while the Claude app is open — a closed app runs them on next launch, which on a Sunday can be after the lock. They never claim, bid or set a lineup. Tuesday's LateRound recapture needs your signed-in Chrome; if the login has lapsed the report says so on its first line and uses the last capture. <b>One one-off is pending</b>: <code>dfs-classic-top-games-decision</code>, Mon 19 Oct 10:00, after the Monday import. It reads the scorecard's top-games row over 6 slates and, if the median is under 1.0, turns the ladder's top-games default off and commits to dfs without pushing; it never enters a contest. Same rule: the app has to be open.</p>
@@ -1374,12 +1375,12 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">256</span></td></tr>
-              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">390</span></td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">468</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">399</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">508</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 20 Oct 2026. Every count on this map is tagged <code>data-tests</code>, so <code>tools/drift.py</code> checks it against the code. Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 27 Oct 2026. Every count on this map is tagged <code>data-tests</code>, so <code>tools/drift.py</code> checks it against the code. Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>
