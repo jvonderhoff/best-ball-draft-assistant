@@ -87,5 +87,12 @@ pinned with `if_version`, setting `source` to the new `/_blob/` url and name and
 or another tab's datasets. If the exposure table shows anyone over the cap in
 the KEPT column, say so first.
 
-Monday, once the ownership job has run: `cli.py winners --draftgroup <dg>` reads
-how the top of the field won, and whether these builds could have made it.
+Monday, once the ownership job has run: `cli.py postmortem --draftgroup <dg>`
+grades the night. It finds our lineups itself (DK's imported entries first,
+else this night's record files), places them in the field they were really
+entered in -- the DAL @ PHI five were built for the Singleback and uploaded to
+the First Down, and only DK's history knew -- and names what sank each one and
+which of the winners' levers we held. Read its first two lines before the
+rest: a `PROXY` field, or DK's points disagreeing with ours, means the grade
+rests on something other than the real contest. `cli.py winners --draftgroup
+<dg>` is the field's side of the same night.
