@@ -677,7 +677,7 @@ node tools/check-model-change.js
         <div><dt>Runs</dt><dd>CLI · live draft board at <code>:8200</code>, open to your wifi</dd></div>
         <div><dt>Store</dt><dd><code>data/leagues.db</code>, a cache of Sleeper that's safe to delete</dd></div>
         <div><dt>Keyed on</dt><dd><code>sleeper_id</code> · does no name matching</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="sleeper">415</span> tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="sleeper">423</span> tests</dd></div>
       </dl>
     </header>
 
@@ -791,7 +791,7 @@ tools/weekly.sh
             <dt>leagues · roster</dt><dd>What the rules really are; what has projections.</dd>
             <dt>board · plan · queue</dt><dd>Draft prep.</dd>
             <dt>page · serve</dt><dd>Phone board; live draft board.</dd>
-            <dt>startsit · waivers</dt><dd>The weekly calls. <code>waivers</code> also suggests a FAAB bid. <code>startsit --json</code> writes the lineups for Fantasy HQ; <code>tools/dashboard_rows.py</code> and <code>tools/dashboard_usage.py</code> flatten them, and the usage export, for its tabs, and <code>tools/dashboard_waivers.py</code> turns <code>needs --json</code> + <code>waivers --json</code> into its Waivers tab (needs, options with the drop, deadlines, LateRound's ROS list unrostered, your roster against it worst-first; no invented bid). <code>startsit</code> also lists free players who would raise the lineup this week, scored on the market else Sleeper's weekly projection (<code>sleeper_weekly</code> in the props export), never a season average.</dd>
+            <dt>startsit · waivers</dt><dd>The weekly calls. <code>waivers</code> also suggests a FAAB bid. <code>startsit --json</code> writes the lineups for Fantasy HQ, whose lineups, free adds and option order follow LateRound's ranks with the market beside them for contrast (the market's lineup only if no capture covers the week); <code>tools/dashboard_rows.py</code> and <code>tools/dashboard_usage.py</code> flatten them, and the usage export, for its tabs, and <code>tools/dashboard_waivers.py</code> turns <code>needs --json</code> + <code>waivers --json</code> into its Waivers tab (needs, options with the drop, deadlines, LateRound's ROS list unrostered, your roster against it worst-first; no invented bid). <code>startsit</code> also lists free players who would raise the lineup this week, scored on the market else Sleeper's weekly projection (<code>sleeper_weekly</code> in the props export), never a season average.</dd>
             <dt>needs</dt><dd>What each roster is short of, off its lineup: a position below its floor (IR gone, a one-week Out not), a slot a bye or an Out empties this week or the next two, a starter a free player beats by a whole tier. Then the free players at those positions only, each with a drop that keeps every floor. <code>--json</code> feeds the <code>/tuesday</code> eval.</dd>
             <dt>gaps · trades</dt><dd>Roster shape against a rank list. It opens each league with <code>THIS WEEK</code>: the lineup as set in Sleeper, each slot that is EMPTY (DEF included), on a BYE, OUT, or a BACKUP on his team's depth chart, with the bench players who could cover (22 Oct: an empty DEF slot, a QB3 in the lineup and an IR pickup all went unseen). Free players who cannot play are marked and never paired as an add. Every running back it lists says whose job he is one injury from (<code>RB2 behind J. Taylor (RB4)</code>); the redraft trade board (LateRound vs consensus, priced by FantasyCalc).</dd>
             <dt>snapshot · doctor</dt><dd>Refresh the committed stat lines; health.</dd>
@@ -1375,7 +1375,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">256</span></td></tr>
-              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">415</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">423</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">508</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
