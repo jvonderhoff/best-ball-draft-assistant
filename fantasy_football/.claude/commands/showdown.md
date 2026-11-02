@@ -10,7 +10,8 @@ many lineups each.
 **Arguments: `$ARGUMENTS`.** DraftKings contest ids, from the lobby URL. An id
 written `scripts:<id>` gets the five game-script lineups (Step 1b) instead of
 the ordinary two -- and on a script night they replace the $2-5 entries. If none are given, find the game's draft group with `cli.py slates`, list candidates with
-`cli.py contests --draftgroup <dg>`, and ask which, rather than guessing.
+`cli.py --draftgroup <dg> contests` (the flag is global: it goes BEFORE the
+subcommand, and after it argparse refuses it), and ask which, rather than guessing.
 
 ## Step 1 — build every contest into one ledger and one day file
 
@@ -45,8 +46,12 @@ is a script night.
 
 ```bash
 cd dfs && .venv/bin/python cli.py showdown --contest <id> --scripts \
-    --json data/dashboard/showdown-day.json
+    --json data/dashboard/showdown-day.json --csv data/<date>-<game>-<id>.csv
 ```
+
+`--csv` is the upload file; without it the lineups only print. Rebuilding to add
+it APPENDS another five to `-scripts.csv`, so delete those rows first
+(2026-11-01 PHI @ WAS was rebuilt for exactly that).
 
 Five lineups, each a bet on one game script: 3 heavy on the favourite, 2 on the
 underdog, stars repeated on purpose (`showdown.game_scripts`; on 12 games they

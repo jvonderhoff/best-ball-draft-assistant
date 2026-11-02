@@ -13,8 +13,11 @@ none are given, list this slate's candidates and ask which, rather than
 guessing:
 
 ```bash
-cd dfs && .venv/bin/python cli.py contests --draftgroup <dg> --min-entries 5000
+cd dfs && .venv/bin/python cli.py --draftgroup <dg> contests --min-entries 5000
 ```
+
+(`--draftgroup` is global and goes before the subcommand; after it, argparse
+refuses it.)
 
 (the draft group is the Featured Classic slate `cli.py slates` names; the
 list comes from the Sunday job's 10:45 lobby snapshot, so it needs no login).
