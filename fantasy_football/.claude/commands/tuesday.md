@@ -129,6 +129,8 @@ each), the depth line, then **NEEDS**, numbered, each tagged with its kind:
 - **`short`** — a position below its floor (slots + depth, the trade board's
   rule): IR, PUP, a suspension or an `unavailable.json` assertion is gone for
   the season; a one-week Out is not.
+  A backup TE does not count: with one TE slot the floor is one TE, and the
+  starter's bye shows up as a `bye` (2026-11-03: never cut an RB for a 2nd TE).
 - **`empty`** — a slot nobody ranked can fill at all.
 - **`upgrade`** — a starter that a free player beats by a WHOLE LateRound tier.
   Inside one tier it is noise and is not listed.
@@ -142,8 +144,11 @@ each), the depth line, then **NEEDS**, numbered, each tagged with its kind:
 
 Then `surplus` (positions above their floor, where a cut costs nothing) and
 **TARGETS**: free players at a needed position (or a `top_add`), each with the drop that
-leaves every position at its floor (in dynasty, the lowest KTC). Each target
-prints the signal it rests on, under it:
+leaves every position at its floor (in dynasty, the lowest KTC). A season need
+lists LateRound rest-of-season ranks first, then the unranked by signal; a
+this-week or bye need lists the signals first. A later bye's claim only cuts an
+unranked player, or one a tier below the add. Each target prints the signal it
+rests on, under it:
 
 - **the field** — the columns that named him with their FAAB range, and his
   trending adds (`CBS, Yahoo [3-5%] · 552k adds`);
