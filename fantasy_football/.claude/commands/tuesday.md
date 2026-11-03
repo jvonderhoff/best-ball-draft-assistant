@@ -132,11 +132,16 @@ each), the depth line, then **NEEDS**, numbered, each tagged with its kind:
 - **`empty`** — a slot nobody ranked can fill at all.
 - **`upgrade`** — a starter that a free player beats by a WHOLE LateRound tier.
   Inside one tier it is noise and is not listed.
+- **`top_add`** — at a position you are NOT short at: a free player two or more
+  columns name whom LateRound ranks a whole tier above your weakest bench
+  player there (Mike Washington Jr. in NNCC, week 9, missed before it existed).
+  Its claim only ever cuts a player a tier below him; when none is left it
+  says `skip`. Optional: a claim, not a hole, so the report may pass on it.
 - **`bye`** — the same as `this_week`, for the next two weeks: claim ahead of it,
   or plan to stream.
 
 Then `surplus` (positions above their floor, where a cut costs nothing) and
-**TARGETS**: free players at a needed position only, each with the drop that
+**TARGETS**: free players at a needed position (or a `top_add`), each with the drop that
 leaves every position at its floor (in dynasty, the lowest KTC). Each target
 prints the signal it rests on, under it:
 
