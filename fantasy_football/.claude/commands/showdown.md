@@ -19,8 +19,16 @@ is a different ladder and always takes Step 1.
 
 If no ids are given, find the game's draft group with `cli.py slates`, list
 candidates with `cli.py --draftgroup <dg> contests` (the flag is global: it goes
-BEFORE the subcommand, and after it argparse refuses it), suggest a $1
-single-entry tournament for the scripts, and ask which, rather than guessing.
+BEFORE the subcommand, and after it argparse refuses it), suggest $1 contests
+for the scripts, and ask which, rather than guessing. **Lean single entry and
+fields of 2k-50k** (Daily Dollar, Singleback, Quarter Jukebox, Dime Package)
+over the 100k+ mini-MAX and First Down when there is a choice: on 23 games the
+scripts' top-1% rate was ~6% in every size, but per $1 single entry paid +60%
+(+10% without its best two games) and 50k+ fields +12% (-14%) (dfs
+docs/STATUS.md, 2026-11-09). A lean, not a rule: say which way it points and
+let the user pick. Five lineups in one contest and one each in five are the
+same bet (the five never shared a top 1%), so a single-entry suggestion is up
+to five different contests, and the count follows the budget, not field size.
 
 ## Step 1 — ordinary builds: a double-up, or two at $2-5 when asked
 
