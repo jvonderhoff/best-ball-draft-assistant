@@ -1,19 +1,28 @@
 ---
 description: A showdown night (Thursday, Sunday night, Monday) — build the lineups for the contests being entered, keep the night under the two-per-player cap, and put the builds on the Fantasy HQ DFS tab.
-argument-hint: "<contest id> [<contest id> ...] [scripts:<$1 contest id>]"
+argument-hint: "<$1 contest id> [two:<$2-5 contest id>] [<double-up id>]"
 ---
 
 One game, one question per contest: which captain and five, for THIS ladder.
 The ladder sets mean or ceiling, so the only inputs are the contests and how
 many lineups each.
 
-**Arguments: `$ARGUMENTS`.** DraftKings contest ids, from the lobby URL. An id
-written `scripts:<id>` gets the five game-script lineups (Step 1b) instead of
-the ordinary two -- and on a script night they replace the $2-5 entries. If none are given, find the game's draft group with `cli.py slates`, list candidates with
-`cli.py --draftgroup <dg> contests` (the flag is global: it goes BEFORE the
-subcommand, and after it argparse refuses it), and ask which, rather than guessing.
+**Arguments: `$ARGUMENTS`.** DraftKings contest ids, from the lobby URL.
 
-## Step 1 — build every contest into one ledger and one day file
+**The default is five game-script lineups at $1 (Step 1b)** -- the user's call
+on 2026-11-09, for upside; scorecard row `sd-five-dollar` is now that rule. A
+$1 tournament id, bare or written `scripts:<id>`, gets the five scripts. Build
+two ordinary lineups at $2-5 (Step 1) only when the user asks for them by name
+(`two:<id>`, or says so); a $2-5 tournament id given bare is a question -- ask
+whether tonight is two at $2-5 instead of the scripts, never both. A double-up
+is a different ladder and always takes Step 1.
+
+If no ids are given, find the game's draft group with `cli.py slates`, list
+candidates with `cli.py --draftgroup <dg> contests` (the flag is global: it goes
+BEFORE the subcommand, and after it argparse refuses it), suggest a $1
+single-entry tournament for the scripts, and ask which, rather than guessing.
+
+## Step 1 — ordinary builds: a double-up, or two at $2-5 when asked
 
 ```bash
 cd dfs && .venv/bin/python cli.py showdown --contest <id> -n 2 \
@@ -23,21 +32,23 @@ cd dfs && .venv/bin/python cli.py showdown --contest <id> -n 2 \
 Repeat per contest with the SAME `--ledger` and `--json`. The ledger is what
 holds the night to two lineups per player, DST included, across every build
 (memory: small-portfolio exposure); the day file is what the dashboard reads.
-**Two lineups a contest by default** — the scorecard's decided row: lineups 1-2
-cash well above chance, 4+ at chance. A rebuild of the same contest replaces its
+**Two lineups a $2-5 tournament when that is the night** — scorecard row
+`sd-entries`: lineups 1-2 cash well above chance, 4+ at chance. A rebuild of the same contest replaces its
 entry in the day file but APPENDS to the ledger, so delete that contest's old
 rows from the ledger before rebuilding.
 
-## Step 1b — game scripts, for a `scripts:` contest
+## Step 1b — game scripts, the default tournament plan
 
-**A script night REPLACES the two at $2-5; it is not added on top** (the user's
-call, 2026-10-13). Five at $1 is $5, the same money as two at $2-5, so it is not
-a raise in stakes, and the scorecard row `sd-five-dollar` (5x$1 scripts vs
-2x$2-5, revisit at 15 games, ~Nov 30) is the comparison being run with real
-money. So when the arguments hold a `scripts:` id, do not also build or
-recommend $2-5 tournament entries for that game; if they hold both, ask which
-the night is before building. A double-up beside a script night is fine --
-it is a different ladder -- and it still takes Step 1 and the ledger.
+**Five scripts at $1 REPLACE the two at $2-5; never both on one game** (the
+user's call, 2026-10-13; the default since 2026-11-09). Five at $1 is $5, the
+same money as two at $2-5, so it is not a raise in stakes. Why the default: on
+15-18 games with the cheap shade the scripts took top 1% on 5 of 18 nights and
+returned +41% at $1, while two at $2-5's lead on ROI was two nights (DEN @ KC,
+DAL @ GB; -19% without them), and 10-20 lineups -- more scripts or ordinary
+fill -- only diluted it (dfs docs/STATUS.md, 2026-11-09). Row `sd-five-dollar`
+flags if the scripts stop out-shooting two at $2-5 at the top. A double-up
+beside the scripts is fine -- a different ladder -- and it still takes Step 1
+and the ledger.
 
 Script builds record to `data/<date>-<game>-scripts.csv`, apart from the
 ordinary `-built.csv`, so a script night's real entries can be told from an
