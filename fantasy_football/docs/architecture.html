@@ -932,7 +932,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>projections/data/weekly_props.json</code>; its own committed copy only when that is absent (a clone)</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="dfs">530</span> tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="dfs">531</span> tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
       </dl>
     </header>
 
@@ -965,7 +965,7 @@ cd ../sleeper
             <li><b><code>--objective mean</code></b> for 50/50s and double-ups; <b><code>ceiling</code></b> for big tournaments.</li>
             <li><b><code>--top-games 2 --min-bringback 1</code></b> takes quarterbacks from the highest-total games and adds an opposing player. <b>Top-games is on trial</b>: a large-field tournament ladder still sets it, but the builds have passed <code>--top-games 0</code> since 11 Oct, and this season the top 1% took QBs from those games at 0.86× the field's rate over 5 slates. The scorecard's 6-slate threshold is decided by a one-off Claude task on Mon 19 Oct, 10:00 (below, under What runs by itself).</li>
             <li><b>Defences are projected</b> from the opponent's implied total, so the optimiser no longer just buys the cheapest.</li>
-            <li><b>Kickers are projected too</b> (showdown only) — without a number they were never selectable at all. The level is the fix; the slope does not pick kickers, and <b>a kicker is never the captain</b>.</li>
+            <li><b>Kickers are projected too</b> (showdown only) — without a number they were never selectable at all. The level is the fix; the slope does not pick kickers. <b>A kicker may captain</b> (since 9 Nov) when price and projection favour it, but only off a sane kicker-model number (≤ 12; <code>--no-kicker-captain</code> forbids it). On 23 archived games that never happened: the kicker number barely moves, so it takes an unusual board.</li>
             <li><b>Showdown leaves out cheap blanks</b>: under $1,500, no market number, projecting under 4 — 88% of them scored zero. The <code>punts:</code> line names them; <code>--lock</code> one by name (a backup whose starter is OUT), or <code>--keep-punts</code>.</li>
             <li><b>Showdown shades cheap market-priced players</b> (since 9 Nov): market skill players under $1,500 scored 0.51× their projection and $1,500–2,999 0.76× on 23 games, and the punt rule never touched them. The build counts them at those fractions (<code>showdown.CHEAP_SHADE</code>, objective only; <code>--no-cheap-shade</code>). Held out: tournament ROI +96% → +126%, scripts −58% → −39% (<code>tools/backtest_cheap_shade.py</code>); scorecard row <code>sd-cheap-shade</code> re-reads the ratio on later games.</li>
           </ul>
@@ -1377,7 +1377,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">256</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">444</span></td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">530</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">531</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
