@@ -94,6 +94,14 @@ build (a double-up); build that FIRST so the cap is spent on it. A tournament la
   `--lock` the rule cannot see; `cli.py winners` shows a punt cut has blocked
   top lineups before.
 - **Questionable players**, by name, before lock.
+- **A player OUT after the lineups were entered: `cli.py swap`, never a
+  rebuild.** `cd dfs && .venv/bin/python cli.py swap --draftgroup <dg> --entered
+  data/<date>-<game>-<id>-names.csv [--out "<name>"]` keeps each entered lineup
+  and refills only the OUT slot (a captain out is replaced from his own side);
+  its `OUT x -> IN y` lines are the DK edits. DK's OUT/IR are read by itself;
+  `--out` is for news DK has not marked yet. A from-scratch rebuild for Skyler
+  Bell (BUF @ MIN, 2026-11-09) also traded away the Bills DST the Cook-captain
+  script was built on; the winner was Cook captain with the Bills DST.
 
 ## Step 3 — the dashboard
 
