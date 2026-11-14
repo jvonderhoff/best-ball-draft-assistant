@@ -94,6 +94,14 @@ build (a double-up); build that FIRST so the cap is spent on it. A tournament la
   `--lock` the rule cannot see; `cli.py winners` shows a punt cut has blocked
   top lineups before.
 - **Questionable players**, by name, before lock.
+- **To see how tonight's five might play out** (asked for, never needed to
+  enter): `cd dfs && .venv/bin/python cli.py sim --draftgroup <dg> --entered
+  data/<date>-<game>-<id>-names.csv --json data/dashboard/gamesim.json`, then
+  `.venv/bin/python tools/gamesim_page.py data/dashboard/gamesim.json
+  data/gamesim.html` and republish data/gamesim.html (Artifact
+  https://claude.ai/artifact/JkbAXua78QcNqd9QgLBYJf). It watches lineups and
+  never changes one; its top-1% chances ran slightly low on 24 games and its
+  script lean is a coin flip, so say both.
 - **A player OUT after the lineups were entered: `cli.py swap`, never a
   rebuild.** `cd dfs && .venv/bin/python cli.py swap --draftgroup <dg> --entered
   data/<date>-<game>-<id>-names.csv [--out "<name>"]` keeps each entered lineup
