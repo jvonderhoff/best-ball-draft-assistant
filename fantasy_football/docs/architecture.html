@@ -932,7 +932,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>projections/data/weekly_props.json</code>; its own committed copy only when that is absent (a clone)</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="dfs">551</span> tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="dfs">552</span> tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
       </dl>
     </header>
 
@@ -1056,7 +1056,7 @@ tools/gameday.sh -n 4 &lt;id&gt; -n 1 &lt;id&gt; --serve
           <h2>Runs by itself</h2>
           <ul>
             <li><b>Sunday export</b>: 08:30 and 10:45. Refreshes props, checks them, commits and pushes, so another machine can pull.</li>
-            <li><b>Ownership import</b>: Monday and Tuesday 09:00. Keeps the field and your entries for every contest you played, then the other big contests on those slates, so <code>replay</code> can place your lineups in all of them. Then it paper-trades the slate: 150 lineups off the last props commit before lock, replayed at 1–150 entries (<code>replay --volume</code>). Then every showdown with archived props: its fields, entered or not, and 20 lineups per kind at 1–20 entries (<code>replay --volume --showdown</code>). Then it grades the point projections of every new game against what players scored (<code>accuracy</code>). Then five-at-$1 vs two-at-$2–5 on every showdown with a field (<code>tools/entry_count.py</code>), and the game-script captain rules paper-traded on every showdown since 2026-11-03, the favourite RB + own DST script since 2026-11-10, and the game simulator's own five since 2026-11-14, held out (<code>tools/script_captains.py</code>). Then the scorecard: <code>data/scorecard.html</code>, which a Claude session republishes as its Artifact — launchd cannot. Last, <code>cli.py backup</code>: a rotated copy of <code>ownership.db</code>, the one file DraftKings won't refill (on this disk only, for now).</li>
+            <li><b>Ownership import</b>: Monday and Tuesday 09:00. Keeps the field and your entries for every contest you played, then the other big contests on those slates, so <code>replay</code> can place your lineups in all of them. Then it paper-trades the slate: 150 lineups off the last props commit before lock, replayed at 1–150 entries (<code>replay --volume</code>). Then every showdown with archived props: its fields, entered or not, and 20 lineups per kind at 1–20 entries (<code>replay --volume --showdown</code>). Then it grades the point projections of every new game against what players scored (<code>accuracy</code>). Then five-at-$1 vs two-at-$2–5 on every showdown with a field (<code>tools/entry_count.py</code>), and the game-script captain rules paper-traded on every showdown since 2026-11-03, the favourite RB + own DST script since 2026-11-10, the game simulator's own five and favourite scripts keeping one underdog player, both since 2026-11-14, held out (<code>tools/script_captains.py</code>). Then the scorecard: <code>data/scorecard.html</code>, which a Claude session republishes as its Artifact — launchd cannot. Last, <code>cli.py backup</code>: a rotated copy of <code>ownership.db</code>, the one file DraftKings won't refill (on this disk only, for now).</li>
             <li><b>Each run keeps its own log</b> in <code>data/sunday-export/</code> or <code>data/monday-ownership/</code>; <code>latest.txt</code> is the last <em>scheduled</em> run, and <code>doctor</code> says when one exited non-zero.</li>
           </ul>
         </div>
@@ -1379,7 +1379,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
             <tbody>
               <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">256</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">444</span></td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">551</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">552</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
