@@ -265,8 +265,12 @@ def check_playoff(target: str) -> None:
     # in draft week, wild-card lines and Friday injury reports move them daily.
     warn_h, fail_h = (72, 192) if season_sim else (12, 48)
     lvl = FAIL if age is None or age > fail_h else WARN if age > warn_h else OK
+    # Mid-season `fixed` (priced playoff games) is always empty; the priced games
+    # that matter are the regular-season ones still to play.
+    priced = (f"{b.get('remaining_priced', 0)} of {b.get('remaining_games', 0)} remaining games at moneylines"
+              if season_sim else f"{len(b.get('fixed', []))} playoff games priced")
     check(lvl, 'playoff push age', f"{age}h old, source {d.get('source')}, lines through "
-                                   f"week {b.get('lines_through_week')}, {len(b.get('fixed', []))} games priced")
+                                   f"week {b.get('lines_through_week')}, {priced}")
     if d.get('source') != 'postgres':
         check(WARN, 'playoff durability', f"served from {d.get('source')} — the next cold "
                                           'start may lose it')
