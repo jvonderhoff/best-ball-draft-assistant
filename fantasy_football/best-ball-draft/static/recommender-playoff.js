@@ -46,7 +46,9 @@
       // The two measurements disagree, so the page says so. In-model (12 drafts):
       // 0.99x. Real postseasons 2016-25 (12 drafts each): 3.4x, 2.2x without
       // 2018, better in only 5 of 10 seasons. Neither is proof either way.
-      warning: 'Mixed evidence in this format: no better than ADP in-model (0.99x), 3.4x on real 2016-25 postseasons but better in only 5 of 10 seasons. Treat as a second opinion.',
+      // Mid-season (drafting from November, 30 drafts on real 2016-25 postseasons):
+      // round 1 level with ADP, P(final) 0.17x, worse in 9 of 10 seasons.
+      warning: 'Do not follow this format mid-season: drafting from November on real 2016-25 postseasons it reached the final 0.17x as often as ADP drafters (worse in 9 of 10 seasons). After week 18 the evidence was mixed (0.99x in-model, 3.4x on real postseasons).',
     },
   };
   // Roster caps for the bots, so a bot does not take a fifth QB. Judgement, not

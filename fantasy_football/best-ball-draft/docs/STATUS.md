@@ -27,6 +27,9 @@ has the model and every table; the headline numbers:
 - Players playing now play in January 87% of the time; players out now 49%.
 - Real-postseason drafts from mid-November, 12 rounds: round 1 won 26.7% vs 14.7%;
   P(final) 3.1x, but 1.8x without 2024 and better in only 4 of 10 seasons.
+- **20 rounds from mid-November: worse than ADP** — round 1 level, P(final) 0.17x,
+  worse in 9 of 10 seasons (30 drafts). The preset now says not to follow it
+  mid-season. Why is not investigated.
 
 **Fast-draft fixes to the page.** Picks are polled every 3 s near your turn and 6 s
 otherwise (was 30 s, the whole pick clock), the bar shows `updated N s ago`, and errors

@@ -234,10 +234,15 @@ five ADP bots on synthetic ADP; the files from `build_playoff_backtest.py --mid`
 | format | recommender P(R1) / P(final) | ADP seats P(R1) / P(final) | ratio | without best season | seasons better on P(final) |
 |---|---|---|---|---|---|
 | 12 rounds, 60 drafts | 26.7% / 0.82% | 14.7% / 0.26% | 3.1x | 1.8x (no 2024) | 4 of 10 |
-| 20 rounds, 30 drafts | (run in progress 2026-11-17) | | | | |
+| 20 rounds, 30 drafts | 16.7% / 0.08% | 16.7% / 0.49% | **0.17x** | 0.00x (no 2017) | **1 of 10** |
 
-Round 1 is again the solid number: better in 5 seasons, worse in 1, level in 4. P(final)
-rests on a few seasons. `avail`'s rates were measured on these same seasons; they are
+12 rounds: round 1 is again the solid number, better in 5 seasons, worse in 1, level
+in 4; P(final) rests on a few seasons. **20 rounds: no edge in round 1 (better 5, worse
+5) and worse at reaching the final in 9 of 10 seasons.** Thirty drafts is noisy, but this
+is not noise around an edge. The 20-round preset was already "mixed evidence" after
+week 18 (0.99x in-model); mid-season it should not be followed. Not investigated yet:
+whether it is the format (8 starters, deeper benches, more players from teams that miss)
+or the recommender's 20-round completions. `avail`'s rates were measured on these same seasons; they are
 base rates applied to every drafter alike, so they do not favour the recommender seat.
 
 **What the strategy write-ups say, against what the model does.** None showed data on
