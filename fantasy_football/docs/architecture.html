@@ -359,7 +359,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
         <div><dt>Runs</dt><dd>Locally only. Analysis page at <code>localhost:8100</code></dd></div>
         <div><dt>Stores</dt><dd><code>data/store.db</code> (ids, snapshots) · <code>data/analysis.db</code></dd></div>
         <div><dt>Keyed on</dt><dd><code>dk_player_id</code>, crosswalked to every other id</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="projections">257</span> tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="projections">272</span> tests</dd></div>
       </dl>
     </header>
 
@@ -443,6 +443,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
               <tr><td><code>waiver_buzz.json</code></td><td>Waivers — trending adds, news, the week's columns</td><td><code>tools/export_waiver_buzz.py</code></td><td class="num">72 h</td></tr>
               <tr><td><code>season_stats.json</code></td><td>Waivers — the ROS column: this season's real stat line per game, scored by each league (since 20 Oct; it was the preseason projection)</td><td><code>tools/export_season_stats.py</code></td><td class="num">weekly</td></tr>
               <tr><td><code>usage.json</code></td><td>Fantasy HQ's Usage &amp; luck tab — expected vs actual points per game, the half-and-half estimate, rise/fall calls, NGS (all held out on 2025 by <code>tools/backtest_xfp_predictive.py</code>)</td><td><code>tools/export_usage.py</code></td><td class="num">weekly</td></tr>
+              <tr><td><code>playoff_bracket.json</code></td><td>Playoff best ball (not consumed yet): team ratings from market spreads, seeds, and each team's chance to play in each round. Says <code>seeds_final: false</code> until week 18 is over</td><td><code>cli.py playoff-bracket</code></td><td class="num">per line move</td></tr>
               <tr><td>News bundle</td><td>Best Ball's <code>/news</code> page</td><td><code>tools/news-push.sh</code></td><td class="num">off in-season</td></tr>
             </tbody>
           </table></div>
@@ -590,6 +591,7 @@ tools/refresh-sources.sh --publish
             <li><b>V2</b> (<code>static/recommender-v2.js</code>): built on points, using six fields from Projections: <code>ppg sd sources avail disagreement rec_share</code>. Its key number is <code>ceiling = ppg + 1.28·sd</code>.</li>
             <li><b>Will he last to my next pick?</b> That estimate was calibrated on 33 real DraftKings boards, not the simulator.</li>
             <li><b>V2 wins at every contest size measured</b>: +43% at an 18-team final, +49% at 45.</li>
+            <li><b>Playoff best ball (being built)</b>: a separate playoff mode for DK's January contests, valued by simulating the bracket rather than by V1/V2. Step 1, the bracket, is done in Projections (<code>cli.py playoff-bracket</code>); the plan is <code>docs/PLAYOFF_DESIGN.md</code>.</li>
           </ul>
         </div>
 
@@ -1377,13 +1379,13 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <div class="tbl"><table>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
-              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">257</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">272</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">446</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">554</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 16 Nov 2026. Every count on this map is tagged <code>data-tests</code>, so <code>tools/drift.py</code> checks it against the code. Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 17 Nov 2026. Every count on this map is tagged <code>data-tests</code>, so <code>tools/drift.py</code> checks it against the code. Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>

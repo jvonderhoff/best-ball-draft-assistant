@@ -11,6 +11,14 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-17: playoff best ball, step 1 — the bracket
+
+A playoff mode for DK playoff best ball is planned in `docs/PLAYOFF_DESIGN.md`. Step 1
+is in `projections`: `cli.py --season 2026 playoff-bracket` writes each team's chance to
+play in each round from ratings fitted to market spreads. Held out on 2015-2025 it beats
+the seed-only control (log loss 0.352 vs 0.439). Nothing in this app reads it yet. Drafts
+open the week before wild-card weekend, so steps 2-4 have to land before about 2027-01-03.
+
 ## 2026-10-08: ladder hold measured per stat; below-first-rung integration fixed
 
 `dkprops_weekly.HOLD` replaces the flat 6%: 0.229 for receiving, rushing and
