@@ -1,7 +1,10 @@
 # Playoff best ball — design
 
-Status: **step 1 done 2026-11-17** (the bracket, in `projections`: `pipeline/bracket.py`,
-`cli.py playoff-bracket`, `tools/backtest_bracket.py`). Steps 2-4 not started. A playoff mode inside this app for
+Status: **steps 1-2 done 2026-11-17.** Step 1, the bracket, is in `projections`
+(`pipeline/bracket.py`, `cli.py playoff-bracket`). Step 2, player week scores, is the
+`projections` export (`tools/export_playoff_players.py`) plus the simulator
+`static/playoff-sim.js`, checked by `node tools/playoff-sim-check.js`. Steps 3-4 are
+not started. A playoff mode inside this app for
 DraftKings NFL playoff best ball. Decided with the user: it lives here, not in a new
 project, because the DK draft capture, live board and queue push are reusable and only
 the valuation is new. The contest format is **settings chosen per draft**, not a default
@@ -114,10 +117,34 @@ not move, and seeds replicated before believing a small difference.
    backtested, and futures could not. Futures stay a check for draft week. The contest
    format settings moved to step 3, where they are first read -- a setting with no
    reader yet is bug class 6.
-2. Player week-score model and the roster/lineup evaluator; ADP-bot field.
+2. **Done 2026-11-17.** Player week scores, lineups and the field. Measured in
+   `projections/tools/backtest_playoff_scores.py`, choices made on 2016-21 and checked
+   on 2022-25, and recorded in `projections/pipeline/playoff_scores.py`:
+   - **mean** = season DK points per game × playoff discount (RB 0.92) × the square root
+     of (game implied total / season implied total). Held-out average error 4.78 → 4.70
+     points.
+   - **spread** = a + b·mean per position. The **shape is normal**: it matched the
+     upper tail, where a lognormal ran about 25% short.
+   - **correlation**: each player loads on a game factor, plus a within-team matrix.
+     QB-WR +0.31, receiver-receiver ~0, QB vs the opposing QB +0.23. These apply only
+     to players averaging 6+ points.
+
+   Three things the check script caught that would otherwise have been silent:
+   - **Correlations on whole depth charts.** Applied to every player, they made the
+     matrix invalid, so it was shrunk and QB-WR came out at 0.20.
+   - **The Sleeper join.** Sleeper keeps duplicate records for some players. Taking
+     the last one read turned 8 teams' starting QBs into backups and hid 15 IR players.
+   - **Survivor sampling.** Round-1 survivors taken from random rosters instead of
+     real boards put round-3 survival 15% too high.
+
+   Backup QBs (not first on the depth chart) score nothing. Their per-game numbers are
+   real, from the games they started, which is exactly why they would otherwise be
+   overvalued.
 3. Format settings, `recommender-playoff.js` (re-simulates from the bracket file's
    `ratings` + `fixed`, so its draws join to player scores) and the playoff mode on
    `/recommend`; pool table by draft group.
+   Step 3 also replaces the SYNTHETIC ADP (expected postseason points) that the field uses
+   until a real DK playoff pool exists.
 4. Dry run on a mock board before the lobby opens; then capture the real pool the day
    it appears, set the format from the lobby, and re-run the checks.
 

@@ -11,7 +11,21 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
-## 2026-11-17: playoff best ball, step 1 — the bracket
+## 2026-11-17: playoff best ball, step 2: player scores and the simulator
+
+`static/playoff-sim.js` simulates whole postseasons: the bracket, every player's
+correlated DK score, best lineups, ADP-bot boards, and survivors round by round. Its
+inputs are two `projections` files, and every constant comes from them.
+`node tools/playoff-sim-check.js` checks it against what it must reproduce:
+- the Python bracket
+- the measured correlations and the upper tail
+- zero for unusable players and bye teams
+- 1/6, 1/36, 1/216 survival for an average roster
+
+It found three silent bugs on its first runs (`docs/PLAYOFF_DESIGN.md` step 2). Nothing
+on `/recommend` uses it yet. The field's ADP is SYNTHETIC until DK's playoff pool exists.
+
+## 2026-11-17: playoff best ball, step 1: the bracket
 
 A playoff mode for DK playoff best ball is planned in `docs/PLAYOFF_DESIGN.md`. Step 1
 is in `projections`: `cli.py --season 2026 playoff-bracket` writes each team's chance to
