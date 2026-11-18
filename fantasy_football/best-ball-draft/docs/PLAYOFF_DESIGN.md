@@ -36,7 +36,8 @@ format = { rounds, lineup:{QB,RB,WR,TE,FLEX}, pod_size: 6, advance_per_pod: 1,
 ```
 
 Timing matters more than anything else here: the pool exists only once seeds are set
-(week 18 ends early January), and drafts run in the days before wild-card weekend. The
+(week 18 is Sunday 2027-01-10 in the 2026 schedule), and drafts run in the days before
+wild-card weekend (~Jan 16-18). The
 tool has to be finished and tested **before** the lobby opens; there is no week to fix
 it live.
 
@@ -176,7 +177,7 @@ not move, and seeds replicated before believing a small difference.
    seats. P(final) came out 2.1x (12 rounds) and 3.4x (20 rounds), but carried by one or
    two seasons each, and better in only 5-6 of 10. The round-1 edge is the measured
    one, and it is against bots blind to byes. Still to do:
-   - **The draft-week runbook (§7).**
+   - ~~The draft-week runbook~~: done, `PLAYOFF_RUNBOOK.md`.
    - **A dry run on a mock board** once DK's playoff pool and real ADP exist.
    - **A re-run of this backtest with real ADP** once it can be captured, since the
      bots' blindness to byes is the main doubt.

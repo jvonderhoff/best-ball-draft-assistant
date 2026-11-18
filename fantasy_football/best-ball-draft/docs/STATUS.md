@@ -11,6 +11,13 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-17: playoff best ball, draft-week runbook
+
+`docs/PLAYOFF_RUNBOOK.md`: the calendar, the commands in order, what each output must
+say before you draft, and what to do when it looks wrong. **Week 18 of the 2026 schedule
+is Sunday 2027-01-10, not the 3rd**, as earlier entries here assumed. Seeds go final that
+night, and drafts run from then until the wild card, ~Jan 16-18.
+
 ## 2026-11-17: playoff best ball, step 4: backtest on real postseasons
 
 `tools/playoff-backtest.sh <preset> <drafts>`. Each season uses its draft-time inputs
@@ -91,7 +98,8 @@ A playoff mode for DK playoff best ball is planned in `docs/PLAYOFF_DESIGN.md`. 
 is in `projections`: `cli.py --season 2026 playoff-bracket` writes each team's chance to
 play in each round from ratings fitted to market spreads. Held out on 2015-2025 it beats
 the seed-only control (log loss 0.352 vs 0.439). Nothing in this app reads it yet. Drafts
-open the week before wild-card weekend, so steps 2-4 have to land before about 2027-01-03.
+open after week 18 (Sunday 2027-01-10) and close at the wild card, ~Jan 16-18: the
+whole drafting window is one week. Draft-week steps: `docs/PLAYOFF_RUNBOOK.md`.
 
 ## 2026-10-08: ladder hold measured per stat; below-first-rung integration fixed
 

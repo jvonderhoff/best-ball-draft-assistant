@@ -424,6 +424,7 @@ the user: `docs/DECISIONS.md`.
 
 DK's January playoff contests. These are a different game, valued by simulating the
 bracket, not by V1/V2. Plan, evidence and build state: `docs/PLAYOFF_DESIGN.md`.
+Draft week, step by step: `docs/PLAYOFF_RUNBOOK.md`.
 
 - **Its own page, pool and inputs.** It never reads `/api/players`,
   `player_cache.json` or the rankings board. Formats do not share pools.

@@ -1,0 +1,162 @@
+# Playoff best ball: draft week
+
+What to run, in order, to draft DraftKings playoff best ball with `/playoff`. Why it
+works the way it does is `PLAYOFF_DESIGN.md`. What has been measured is `STATUS.md`
+(2026-11-17 entries).
+
+## The calendar (2026 season)
+
+| when | what happens | what you do |
+|---|---|---|
+| now to Jan 9 | seeds are "if the season ended today" | §1 once; practise on a mock board (§5) |
+| **Sun Jan 10** | week 18 is played (all 16 games that day); seeds become final that night | §2 that night or Monday morning |
+| Jan 10-11 | wild-card lines post; DK's playoff lobby opens | §3 when the lobby is up |
+| Jan 11-16 | **drafts** | §4 for each draft; repeat §2 when lines or injuries move (§6) |
+| ~Jan 16-18 | wild-card weekend; drafts close at the first kickoff | nothing |
+
+Dates are from the 2026 schedule in `projections/data/nflverse/games.csv`. The
+wild-card dates are not in the file yet; check the lobby for the draft deadline.
+
+## 1. Once, before draft week: deploy
+
+The `/playoff` page exists only locally until it is pushed.
+
+- Push `master`, which deploys to Render.
+- Check that the new build is live: `curl -s https://<host>/playoff | grep -q "Playoff Draft"`.
+  A 200 alone proves nothing (CLAUDE.md, *A 200 does not mean your deploy landed*).
+- Optionally publish the provisional inputs (§2 steps 1-3) to see the page on your
+  phone. They are marked PROVISIONAL everywhere and preflight FAILs on them.
+
+## 2. When seeds are final (Sunday Jan 10 night, or Monday)
+
+From `fantasy_football/projections`:
+
+```bash
+.venv/bin/python cli.py --season 2026 playoff-bracket --refresh
+```
+
+- **The PROVISIONAL line must be gone.** If it is still there, nflverse has not
+  posted the final results yet. Wait, or pass the real bracket by hand:
+  `--seeds "AFC=T1,T2,...,T7;NFC=T1,...,T7"`, seed order, team codes as in `games.csv`.
+- **Compare the seeds with the NFL's announced bracket.** One wrong seed simulates a
+  bracket that will not happen.
+- `--season 2026` is required: the CLI default is 2025, a finished season.
+
+```bash
+.venv/bin/python tools/export_playoff_players.py --season 2026 --refresh
+```
+
+- **No WARNING line**, in particular none for "not exactly one starting QB". A
+  starting QB listed as a backup scores nothing for the whole postseason.
+- **Injury file age is 0-24h.** `--refresh` refetches Sleeper's file only when it is
+  over 24h old, Sleeper's own limit. For Friday injury reports, run it after Friday.
+- Re-run this after every bracket rebuild. Publishing refuses a pair that does not match.
+
+```bash
+.venv/bin/python cli.py playoff-publish --target https://<host>
+DRAFT_APP_URL=https://<host> zsh -ic '.venv/bin/python cli.py playoff-publish --no-dry-run'
+```
+
+- The first command is a dry run. The second needs `BBA_API_KEY`, which exists only
+  in `zsh -ic`.
+- A `durable: false` in the answer means Postgres did not take it, and the next cold
+  start loses it. Publish again.
+
+From `fantasy_football/best-ball-draft`:
+
+```bash
+python3 tools/preflight.py --playoff
+```
+
+- The four playoff lines should be OK: seeds final, push age, `postgres` as the
+  source, injury age.
+
+## 3. When the lobby opens
+
+- **Read the contest rules in the lobby**: rounds, lineup, final size and the prize
+  ladder. The two presets on the page come from write-ups that disagree with each other.
+  - If one matches, pick it and type the prizes into *Payouts* (`1:100000, 2:31000,
+    3-5:5000`). The page then ranks by EV.
+  - If neither matches, add a preset to `PRESETS` in `static/recommender-playoff.js`:
+    `rounds`, `lineup`, `finalSize`, `payouts`. Push, then run
+    `node tools/playoff-rec-check.js --preset <new> --drafts 0` before drafting on it.
+- **Load DK's pool and ADP.** Type the draft group id into *Draft group* and press
+  *Load DK pool*.
+  - The id is the number at the end of DK's rankings page URL for the playoff contest
+    (`draftkings.com/draft/rankings/NFL/<id>`).
+  - Or start following a draft (§4) and the page fills it in.
+  - The bar should say `ADP DK draft group <id>`. If it says `DK players not in the
+    export`, read who:
+    - A real player missing is a name the matcher could not join. Fix it in
+      `app/data/names.py`, never on one side only (CLAUDE.md, *Don't fix a mismatch
+      by special-casing one side*).
+    - Kickers and defences are expected: the simulator has no model for them.
+- **A 502 on the pool** means the DK session is gone. Sign in at `/setup` (Firefox
+  cookies, `python3 sync_cookies.py`).
+
+## 4. Each draft
+
+1. Open `/playoff` and enter the **DK draft id** (the contest id, as on `/recommend`).
+   Press *Follow live draft*. Your seat comes from DK; check it against the board.
+2. The first load builds the field: about 10 seconds, once per draft. After that,
+   each recommendation takes 3-4 seconds against DK's 30-second clock. Picks
+   refresh every 30 seconds. The draft id is not remembered across a reload:
+   re-enter it and press *Follow live draft* again.
+3. Read the bar before trusting a row:
+   - **seeds** must be final
+   - **ADP** must be DK, not SYNTHETIC
+   - **picks not matched** must be empty. An unmatched pick is a player gone from the
+     room that the page still thinks is available.
+4. How to read a row:
+   - **Rd 1** is your chance to win your round-1 pod if you take him now and ADP
+     drafts the rest. It is the number with real evidence behind it: about 24% for
+     the recommender vs 15% for ADP drafters, across ten past postseasons.
+   - **Final** and **EV** are thinner. On past postseasons the edge to the final came
+     mostly from one or two seasons.
+   - The 20-round preset shows "mixed evidence": the two tests disagree.
+5. **My roster** lists your teams and their expected games. A *same conference* line
+   names two of your teams that must meet before the Super Bowl, with the chance they
+   do; only one of them can reach the final.
+
+## 5. Practising before the lobby
+
+Without a DK draft id the page is a mock board:
+- *Bots to my turn* fills the other seats by ADP.
+- Clicking a recommendation or an available player drafts him for the seat on the clock.
+- *Reset board* starts over.
+
+Until DK's pool loads, the ADP is synthetic (expected postseason points). Bots then
+ignore byes in round 1, which makes the recommender look better than it will against
+real drafters.
+
+## 6. During draft week: when to refresh
+
+Re-run §2 (bracket, export, publish, preflight) before drafting again when:
+
+- **The wild-card moneylines are posted.** The bracket takes them as fixed game
+  odds; the build line says how many games are priced.
+- **An injury report changes a starter**, especially a QB. Friday's reports matter
+  most. The export only knows what Sleeper's file said when it was fetched.
+- **More than 24 hours have passed.** Preflight WARNs past 12h and FAILs past 48h.
+
+After publishing, **reload `/playoff`**: the page simulates once per load.
+
+## 7. After the drafts
+
+- **Keep every draft id** (the page does not store them). With real DK ADP and real
+  outcomes, they are the first evidence about real drafters, and the backtest
+  (`tools/playoff-backtest.sh`) can only use synthetic ADP until then.
+- **Write what happened into `STATUS.md`**: pod results by round, and which
+  recommendations you took or overrode.
+
+## When something looks wrong
+
+| symptom | likely cause | check |
+|---|---|---|
+| "No playoff inputs" | nothing published to this server | §2 publish, `--target` correct |
+| Pushed age keeps growing | publishing stopped | `/api/playoff/data` → `age_hours`, `source` |
+| `source: disk` | Postgres was unreachable at the push | publish again; `/api/stores/status` |
+| A starter ranked absurdly low | flagged backup QB or season-over | export's WARNING line; his `role`, `injury_status` |
+| A backup ranked high | depth chart stale | injury file age; re-export after Sleeper updates |
+| Players on two teams all show a low Rd 1 | those teams have byes | expected: the 1-seeds do not play the wild card ("bye" tag) |
+| Recommendations identical after news | page not reloaded, or §2 not re-run | push age; reload |
