@@ -196,6 +196,10 @@ function rosters() {
 function nextPick() { return S.picks.length + 1; }
 function totalPicks() { return SEATS * format().rounds; }
 function onClock() { return PlayoffRec.seatOfPick(nextPick(), SEATS); }
+function myNextPick() {
+  for (let p = nextPick(); p <= totalPicks(); p++) if (PlayoffRec.seatOfPick(p, SEATS) === S.mySeat) return p;
+  return null;
+}
 function save() {
   if (S.draftId) return;     // a live board is DK's, never ours to persist
   try { sessionStorage.setItem('bba_playoff_mock', JSON.stringify({ picks: S.picks, mySeat: S.mySeat, preset: $('preset').value })); } catch {}
@@ -289,7 +293,19 @@ async function ensureField() {
 async function refresh() {
   if (!S.ctx) return;
   renderBoardBar(); renderMine(); renderAvail();
-  if (nextPick() > totalPicks()) { $('recs').textContent = 'Draft complete.'; renderFinal(); return; }
+  if (nextPick() > totalPicks()) { await ensureField(); renderFinal(); return; }
+  // Only on your pick. Each row means "take him NOW, then ADP drafts the rest";
+  // off-turn that would put him on your roster at someone else's slot and rank
+  // players for a pick you do not have (seen in the first phone mock draft).
+  if (onClock() !== S.mySeat) {
+    const mine = myNextPick();
+    $('recMeta').textContent = '';
+    $('recs').innerHTML = `<div class="msg">Seat ${onClock() + 1} is on the clock. Your next pick is
+      <b>#${mine}</b>, ${mine - nextPick()} pick${mine - nextPick() === 1 ? '' : 's'} away.
+      ${S.draftId ? 'Recommendations appear when it comes up (picks refresh every 30 s).'
+                  : 'Press <b>Bots to my turn</b>, or click players to draft them for the seat on the clock.'}</div>`;
+    return;
+  }
   await ensureField();
   $('recs').textContent = 'Thinking…';
   await nextTick();
@@ -302,9 +318,11 @@ async function refresh() {
 
 function renderBoardBar() {
   const live = S.draftId ? `<span class="ok">live draft ${esc(S.draftId)}</span> · polled every 30 s` : '<span class="k">mock board</span>';
-  const turn = onClock() === S.mySeat ? '<span class="turn">your pick</span>' : `seat ${onClock() + 1} on the clock`;
+  const done = nextPick() > totalPicks();
+  const turn = done ? '<span class="ok">draft complete</span>'
+    : onClock() === S.mySeat ? '<span class="turn">your pick</span>' : `seat ${onClock() + 1} on the clock`;
   const un = S.unmatched.length ? ` · <span class="bad">${S.unmatched.length} picks not matched: ${esc(S.unmatched.slice(0, 5).join(', '))}</span>` : '';
-  $('boardBar').innerHTML = `${live} · pick <b>${Math.min(nextPick(), totalPicks())}</b> of ${totalPicks()} · ${turn}${un}`;
+  $('boardBar').innerHTML = `${live} · ${done ? `${totalPicks()} picks` : `pick <b>${nextPick()}</b> of ${totalPicks()}`} · ${turn}${un}`;
 }
 
 function byeTeams() { return new Set([S.ctx.seeds.AFC[0], S.ctx.seeds.NFC[0]]); }
