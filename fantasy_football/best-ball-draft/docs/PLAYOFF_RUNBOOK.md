@@ -117,35 +117,44 @@ python3 tools/preflight.py --playoff
       `app/data/names.py`, never on one side only (CLAUDE.md, *Don't fix a mismatch
       by special-casing one side*).
     - Kickers and defences are expected: the simulator has no model for them.
-- **A 502 on the pool** means the DK session is gone. Sign in at `/setup` (Firefox
-  cookies, `python3 sync_cookies.py`).
+- **A 502 on the pool**: DK refuses this server's own requests (Akamai 403, since
+  2026-09-22; STATUS 2026-11-18). Click the BBA bookmark on a DK draft tab instead: it
+  sends the pool with the board and the page loads it by itself.
 
 ## 4. Each draft
 
-1. Open `/playoff` and enter the **DK draft id** (the contest id, as on `/recommend`).
-   Press *Follow live draft*. Your seat comes from DK; check it against the board.
-2. The first load builds the field: about 10 seconds, once per draft. After that,
+1. **Once:** drag the *BBA → DK* link on `/playoff` to your bookmarks bar.
+   - DK refuses this server's own requests (STATUS 2026-11-18), so the page cannot read
+     the draft by itself. The bookmark reads it in your browser, signed in on DK.
+2. **Each draft:** on the DK draft tab, click the bookmark. A badge, bottom right of the
+   DK page, says `sending: N of M picks, seat S, ADP sent`. Red means it is not sending
+   and says why.
+   - **Test it on the first draft before the clock matters.** Not yet verified on DK
+     itself: whether DK's page lets it post here, and whether `/mycontests` lists a
+     draft that has not started ("looking for your entry" that never clears).
+   - Keep the DK tab in its own window, visible. A background tab's timers are slowed,
+     and the bar's "DK read N s ago" then goes red.
+3. On `/playoff`, leave the draft id empty and press *Follow live draft*: it follows the
+   draft the bookmark is sending. Your seat comes from DK; check it against the board.
+4. The first load builds the field: about 10 seconds, once per draft. After that,
    each recommendation takes about 2.5 seconds on a Mac (574 players mid-season;
    untested on a phone) against DK's 30-second clock. Picks refresh every 3 seconds
    when your pick is on the clock or at most two away, every 6 seconds otherwise; the
-   bar says `updated N s ago`, so a stalled feed shows. The draft id is not remembered
-   across a reload: re-enter it and press *Follow live draft* again.
-   - **Sign in to DK first** (`/setup`, `python3 sync_cookies.py`). On 2026-11-17 both
-     production and the Mac had expired sessions, and the page then shows `could not
-     fetch picks` on the bar for the whole draft.
-3. Read the bar before trusting a row:
+   bar says `DK read N s ago`, so a stalled feed shows. The draft id is not remembered
+   across a reload: press *Follow live draft* again.
+5. Read the bar before trusting a row:
    - **seeds** must be final
    - **ADP** must be DK, not SYNTHETIC
    - **picks not matched** must be empty. An unmatched pick is a player gone from the
      room that the page still thinks is available.
-4. How to read a row:
+6. How to read a row:
    - **Rd 1** is your chance to win your round-1 pod if you take him now and ADP
      drafts the rest. It is the number with real evidence behind it: about 24% for
      the recommender vs 15% for ADP drafters, across ten past postseasons.
    - **Final** and **EV** are thinner. On past postseasons the edge to the final came
      mostly from one or two seasons.
    - The 20-round preset shows "mixed evidence": the two tests disagree.
-5. **My roster** lists your teams and their expected games. A *same conference* line
+7. **My roster** lists your teams and their expected games. A *same conference* line
    names two of your teams that must meet before the Super Bowl, with the chance they
    do; only one of them can reach the final.
 
@@ -191,5 +200,8 @@ After publishing, **reload `/playoff`**: the page simulates once per load.
 | A backup ranked high | depth chart stale | injury file age; re-export after Sleeper updates |
 | Players on two teams all show a low Rd 1 | those teams have byes | expected: the 1-seeds do not play the wild card ("bye" tag) |
 | A star ranked low mid-season | his team's P(make) is low, or he is "out now" | the team tag's % and `out now 49%` on his row |
-| `could not fetch picks` on the bar | DK session expired | `/setup`, `python3 sync_cookies.py`; the page keeps retrying |
+| `no picks yet: click the BBA bookmark` | the bookmark is not running on the DK tab | click it there; its badge says what it sees |
+| badge: `could not reach BBA` | DK's page blocks posting to another host | not seen yet; tell Claude, a relay window is the fallback |
+| badge: `looking for your entry` that never clears | `/mycontests` does not list the draft yet | reload the DK tab and click again once the draft starts |
+| `DK read N s ago` in red | the DK tab is hidden, closed or erroring | bring the DK window forward; read its badge |
 | Recommendations identical after news | page not reloaded, or §2 not re-run | push age; reload |

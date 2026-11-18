@@ -2456,8 +2456,13 @@ def playoff_pool():
         return jsonify({'error': 'no playoff inputs pushed yet'}), 404
     pool = _fetch_dk_rankings_direct(dg)
     if not pool:
-        return jsonify({'error': f'DK returned no pool for draft group {dg} '
-                                 '(not signed in at /setup, or wrong id)'}), 502
+        # DK refuses the server (Akamai 403, see playoff_push). A copy the
+        # bookmarklet sent beats nothing; its age goes back with it.
+        if hit:
+            return jsonify({**hit[1], 'fetched_at': hit[0], 'cached': True, 'stale': True})
+        return jsonify({'error': f'no DK pool for draft group {dg}: DK refuses the server\'s '
+                                 'own requests, so click the BBA bookmark on your DK draft tab '
+                                 '(it sends the pool too), or check the id'}), 502
     joined = playoff.join_pool(pool, payload['players']['players'])
     joined['dk_count'] = len(pool)
     joined['draft_group_id'] = dg
@@ -2467,40 +2472,125 @@ def playoff_pool():
 
 
 _playoff_entries = {}
+# Boards sent by the bookmarklet (static/dk-playoff-bookmarklet.js), per DK
+# contest id. Since 2026-09-22 api.draftkings.com answers the server's own
+# requests with Akamai's 403 "Access Denied" whatever the cookies, and every
+# caller turned that into `None`: /playoff then said "sign in at /setup" to a
+# signed-in user (found 2026-11-18). The user's own browser, on DK's own draft
+# page, is not refused, so it reads the board there and sends it here.
+# In memory only: a board is worth seconds, and render.yaml runs one worker.
+_playoff_pushed = {}
+_playoff_direct_fail = {}    # draft id -> when the server's own DK pull last failed
+_DIRECT_RETRY_S = 60         # one sync worker: a failing 2 s DK call must not run every poll
+
+
+@app.route('/api/playoff/push/<draft_id>', methods=['POST'])
+def playoff_push(draft_id):
+    """A DK draft board, read in the user's browser by the bookmarklet.
+
+    Open like /api/dk-intercept: the bookmarklet runs on draftkings.com and has
+    no key to send. What it can write is one in-memory board per contest id,
+    capped in size, gone on restart -- nothing durable and nothing shared.
+    """
+    from app import playoff
+    from app.data.api_fetcher import _load_user_guid, _parse_dk_api_responses
+    body = request.get_json(silent=True) or {}
+    board = body.get('board')
+    if not str(draft_id).isdigit() or not isinstance(board, list) or len(board) > 600:
+        return jsonify({'ok': False, 'error': 'need a numeric draft id and a board list'}), 400
+    guid = _load_user_guid()
+    picks, my_position = [], None
+    for e in board:
+        if not isinstance(e, dict):
+            continue
+        mine = bool(guid) and e.get('user_key') == guid
+        if mine and e.get('round') == 1 and e.get('pick_number'):
+            my_position = e['pick_number']
+        if not e.get('draftable_id'):
+            continue                    # a slot not picked yet
+        picks.append({'player_name': str(e.get('player_name') or f"Player #{e['draftable_id']}"),
+                      'pick_number': e.get('pick_number'), 'round': e.get('round'),
+                      'pos': str(e.get('pos') or '').upper(), 'team': str(e.get('team') or '').upper(),
+                      'username': 'jvonderhoff' if mine else '',
+                      'draftable_id': str(e['draftable_id'])})
+    dg = str(body.get('draft_group_id') or '')
+    _playoff_pushed[str(draft_id)] = {
+        'picks': picks, 'my_position': my_position, 'slots': len(board),
+        'draft_group_id': dg, 'entry_id': str(body.get('entry_id') or ''),
+        'received_at': time.time()}
+    pool_n = None
+    pool = body.get('pool')
+    if dg.isdigit() and isinstance(pool, dict):
+        payload, _ = playoff.load()
+        rows = _parse_dk_api_responses(pool)
+        if payload and rows:
+            joined = playoff.join_pool(rows, payload['players']['players'])
+            joined['dk_count'] = len(rows)
+            joined['draft_group_id'] = dg
+            joined['source'] = 'bookmarklet'
+            _playoff_pool_cache[dg] = (time.time(), joined)
+            pool_n = len(rows)
+    return jsonify({'ok': True, 'picks': len(picks), 'my_position': my_position,
+                    'seat_known': bool(guid), 'pool_players': pool_n})
+
+
+@app.route('/api/playoff/pushed', methods=['GET'])
+def playoff_pushed():
+    """Drafts the bookmarklet is sending, newest first: lets the page follow one
+    without the contest id being typed against a 30-second clock."""
+    now = time.time()
+    rows = [{'draft_id': k, 'age_s': round(now - v['received_at'], 1), 'picks': len(v['picks']),
+             'slots': v['slots']} for k, v in _playoff_pushed.items()]
+    return jsonify({'drafts': sorted(rows, key=lambda r: r['age_s'])})
 
 
 @app.route('/api/playoff/board/<draft_id>', methods=['POST'])
 def playoff_board(draft_id):
     """Live picks for one DK draft, each mapped to the export's gsis_id.
 
-    The pull itself is the same one /recommend uses; only the mapping is new.
-    Unmatched picks are returned by name -- a pick the page cannot place still
-    removes a player from the room, and the page must say it could not.
+    From the bookmarklet's push when there is one; otherwise the server's own
+    pull (the one /recommend uses), which DK has refused since 2026-09-22 and is
+    kept for the day it stops. Unmatched picks are returned by name -- a pick
+    the page cannot place still removes a player from the room, and the page
+    must say it could not.
     """
     from app import playoff
     from app.data.api_fetcher import fetch_dk_draft_picks
     payload, _ = playoff.load()
     if not payload:
         return jsonify({'error': 'no playoff inputs pushed yet'}), 404
-    # Fast drafts are polled every few seconds. Without the entry id every poll
-    # would also pay for DK's drafts/live lookup, a second request per pick, so
-    # the first answer's ids are kept for the life of the process.
-    known = _playoff_entries.get(str(draft_id)) or {}
-    entry_id = (_saved_draft_ids.get(str(draft_id)) or {}).get('entry_id') or known.get('entry_id')
-    result = fetch_dk_draft_picks(draft_id, entry_id=entry_id,
-                                  draft_group_id=known.get('draft_group_id'))
-    if result and result.get('entry_id'):
-        _playoff_entries[str(draft_id)] = {'entry_id': result['entry_id'],
-                                           'draft_group_id': result.get('draft_group_id')}
+    did = str(draft_id)
+    pushed = _playoff_pushed.get(did)
+    result, source, age = None, None, None
+    if pushed:
+        result, source, age = pushed, 'bookmarklet', time.time() - pushed['received_at']
+    elif time.time() - _playoff_direct_fail.get(did, 0) > _DIRECT_RETRY_S:
+        # Fast drafts are polled every few seconds. Without the entry id every poll
+        # would also pay for DK's drafts/live lookup, a second request per pick, so
+        # the first answer's ids are kept for the life of the process.
+        known = _playoff_entries.get(did) or {}
+        entry_id = (_saved_draft_ids.get(did) or {}).get('entry_id') or known.get('entry_id')
+        result = fetch_dk_draft_picks(draft_id, entry_id=entry_id,
+                                      draft_group_id=known.get('draft_group_id'))
+        if result and result.get('entry_id'):
+            _playoff_entries[did] = {'entry_id': result['entry_id'],
+                                     'draft_group_id': result.get('draft_group_id')}
+        if result:
+            source, age = 'server', 0.0
+        else:
+            _playoff_direct_fail[did] = time.time()
     if not result:
-        return jsonify({'error': 'could not fetch picks — sign in at /setup', 'picks': [],
-                        'needs_auth': True})
+        return jsonify({'error': 'no picks yet: click the BBA bookmark on your DK draft tab '
+                                 '(DK refuses the server\'s own requests)',
+                        'picks': [], 'needs_bookmarklet': True})
     mapped = playoff.map_picks(result.get('picks', []), payload['players']['players'])
     # Every pick DK has made, matched or not: the page counts the clock from
     # this, because an unmatched pick still used a turn.
     made = max((p.get('pick_number') or 0 for p in result.get('picks', [])), default=0)
+    dg = result.get('draft_group_id')
     return jsonify({**mapped, 'my_position': result.get('my_position'), 'picks_made': made,
-                    'draft_group_id': result.get('draft_group_id'),
+                    'draft_group_id': dg, 'source': source, 'age_s': round(age, 1),
+                    'pool_ready': bool(dg) and dg in _playoff_pool_cache,
                     'updated_at': time.time()})
 
 

@@ -20,6 +20,8 @@
     .warn { color: var(--orange); font-weight: 700; }
     .bad { color: var(--red); font-weight: 700; }
     .ok { color: var(--green); font-weight: 700; }
+    .bm { display: inline-block; padding: 3px 10px; border: 1px dashed var(--muted); border-radius: 6px;
+          font-weight: 700; text-decoration: none; cursor: grab; white-space: nowrap; }
     .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 0.82em; }
     .row label { color: var(--muted); display: flex; gap: 6px; align-items: center; }
     input, select, button {
@@ -93,6 +95,13 @@
     <label>My seat <select id="mySeat"></select></label>
     <button id="botsBtn" title="Mock draft: bots pick until it is your turn">Bots to my turn</button>
     <button id="resetBtn">Reset board</button>
+  </div>
+  <div class="row k" id="bmRow">
+    <a id="bmLink" class="bm" href="#" title="Drag me to your bookmarks bar">BBA → DK</a>
+    <span>Drag to your bookmarks bar. On your DK draft tab, click it: it reads the draft
+    there and sends it here (DK refuses this server's own requests). Then press
+    <b>Follow live draft</b>; an empty id follows the draft it is sending. Keep the DK
+    tab in its own window, not a background tab: browsers slow a hidden tab's timers.</span>
   </div>
   <div class="bar" id="boardBar"></div>
 
@@ -250,8 +259,11 @@ async function pullLive() {
   const d = await r.json();
   // Kept on S, not written to the bar: the bar re-renders every second, and an
   // error painted once would vanish before anyone read it.
-  if (!r.ok || d.needs_auth) { S.pullError = d.error || 'pull failed'; renderBoardBar(); return; }
+  if (!r.ok || d.needs_auth || d.needs_bookmarklet) { S.pullError = d.error || 'pull failed'; renderBoardBar(); return; }
   S.pullError = null;
+  // How old DK's board is, not how old our last request to the server is: the
+  // bookmarklet can stall (tab closed, DK error) while the server keeps answering.
+  S.dkAge = d.age_s; S.source = d.source;
   const byGsis = new Map(S.ctx.players.map((p, i) => [p.gsis_id, i]));
   const picks = [];
   for (const pk of d.picks.sort((a, b) => a.pick_number - b.pick_number)) {
@@ -262,6 +274,8 @@ async function pullLive() {
   S.unmatched = d.unmatched || [];
   if (d.my_position) { S.mySeat = d.my_position - 1; $('mySeat').value = String(S.mySeat); }
   if (d.draft_group_id && !$('dgId').value) $('dgId').value = d.draft_group_id;
+  // The bookmarklet sent DK's pool with the board: load its ADP once, unasked.
+  if (d.pool_ready && S.adpSource !== 'dk' && !S.poolTried) { S.poolTried = true; loadPool(); }
   const made = d.picks_made || picks.length;
   const changed = picks.length !== S.picks.length || made !== S.picksMade;
   S.picks = picks;
@@ -331,7 +345,10 @@ async function refresh() {
 
 function renderBoardBar() {
   const ago = S.lastPull ? Math.round((Date.now() - S.lastPull) / 1000) : null;
-  const live = S.draftId ? `<span class="ok">live draft ${esc(S.draftId)}</span> · updated ${ago === null ? '—' : ago + ' s ago'}` : '<span class="k">mock board</span>';
+  const dkAge = S.lastPull && S.dkAge != null ? Math.round(S.dkAge + (Date.now() - S.lastPull) / 1000) : null;
+  const read = dkAge === null ? `updated ${ago === null ? '—' : ago + ' s ago'}`
+    : `DK read <span class="${dkAge > 20 ? 'bad' : ''}">${dkAge} s ago</span>${S.source === 'bookmarklet' ? ' (bookmark)' : ''}`;
+  const live = S.draftId ? `<span class="ok">live draft ${esc(S.draftId)}</span>${nextPick() > totalPicks() ? '' : ' · ' + read}` : '<span class="k">mock board</span>';
   const done = nextPick() > totalPicks();
   const turn = done ? '<span class="ok">draft complete</span>'
     : onClock() === S.mySeat ? '<span class="turn">your pick</span>' : `seat ${onClock() + 1} on the clock`;
@@ -469,13 +486,26 @@ async function pollLoop(token) {
   if (token === S.pollToken) S.pollTimer = setTimeout(() => pollLoop(token), wait);
 }
 $('connectBtn').onclick = async () => {
+  if (!$('draftId').value.trim()) {
+    // No id typed: follow the draft the bookmark is sending, if one is live.
+    const r = await fetch('/api/playoff/pushed');
+    const live = r.ok ? ((await r.json()).drafts || []).filter(x => x.age_s < 60) : [];
+    if (!live.length) { alert('No draft is being sent. Click the BBA bookmark on your DK draft tab first, or type the DK draft id.'); return; }
+    $('draftId').value = live[0].draft_id;
+  }
   S.draftId = $('draftId').value.trim() || null;
   clearTimeout(S.pollTimer);
   S.pollToken = (S.pollToken || 0) + 1;
   if (!S.draftId) return;
-  S.picks = []; S.picksMade = 0; S.lastPull = null;
+  S.picks = []; S.picksMade = 0; S.lastPull = null; S.dkAge = null; S.poolTried = false;
   pollLoop(S.pollToken);
 };
+// The bookmark carries this server's origin, so it sends to whichever copy of
+// the app built it (production, or the Mac).
+fetch('/static/dk-playoff-bookmarklet.js').then(r => r.text()).then(src => {
+  $('bmLink').href = 'javascript:' + encodeURIComponent(src.split('__BBA_HOST__').join(location.origin));
+}).catch(() => { $('bmRow').innerHTML = '<span class="bad">bookmarklet did not load</span>'; });
+$('bmLink').onclick = e => { e.preventDefault(); alert('Drag this link to your bookmarks bar, then click the bookmark on your DK draft tab.'); };
 // The "updated N s ago" counter, so a stalled feed is visible.
 setInterval(() => { if (S.draftId) renderBoardBar(); }, 1000);
 showFormatNote();

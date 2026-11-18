@@ -11,6 +11,41 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-18: DK refuses the server; `/playoff` reads drafts through a bookmarklet
+
+**Found:** with fresh cookies synced, `/playoff` still said "could not fetch picks —
+sign in at /setup". The sign-in was fine. api.draftkings.com answers the server's own
+requests with Akamai's 403 "Access Denied" (measured from the Mac: drafts/live,
+draftgroups and draftables, all 403 with the app's headers). The trigger is the Chrome
+User-Agent sent from Python's TLS stack; the same request with requests' own UA is a 200.
+`tools/capture-standings.py` hit this on 2026-09-22 and fixed it for itself; the draft
+pull (`api_fetcher._dk_session`) never was. Every caller turns the 403 into `None`, so
+the live-draft pull, `/recommend`'s board, the DK pool refresh (preflight's 70-day-old
+pool) and `/playoff` have all been failing silently since — bug class 1.
+
+**Not done:** dropping the UA in `_dk_session`. The session's permission check refused
+it as getting past DK's bot protection, and the user chose the bookmarklet instead.
+
+**Built:** `static/dk-playoff-bookmarklet.js`, a bookmark built by `/playoff` (the
+*BBA → DK* link). Clicked on the DK draft tab, it reads the draft with the browser's own
+session: entry id and draft group from `/mycontests` (falling back to the page's own
+traffic), draftStatus every 3 s, draftables and DK's playerpool once. It posts to
+`POST /api/playoff/push/<contest>`; the server works out your seat from the DK user id it
+already holds. `/api/playoff/board` serves the pushed board (`source: bookmarklet`,
+`age_s`), tries its own pull at most once a minute (one sync worker), and its error now
+says to click the bookmark. The pool it sends loads on the page by itself. *Follow live
+draft* with an empty id follows the draft being sent (`GET /api/playoff/pushed`). The
+bar shows "DK read N s ago", the age of DK's board rather than of the page's request.
+
+**Tested:** end to end in the browser pane against a mocked DK (fetch stubbed on a page
+at `/draft/snake/<id>`): entry found, seat 3 detected, ADP loaded (71 joined, 1 unmatched
+named), picks 14 → 17 → 72 followed, draft complete stops both sides. The mock caught a
+real bug: the host placeholder also sat in the header comment and only the first copy
+was replaced. **Not tested against DK itself**, because no draft was live and neither
+browser here can open draftkings.com. Unknowns, in order: whether DK's page lets a
+bookmarklet post to another host (its CSP), whether `/mycontests` lists a draft before it
+starts, and whether a background DK tab is throttled. The badge on the DK tab names each.
+
 ## 2026-11-17: playoff best ball, drafting before the field is set
 
 **DK's playoff drafts are open now (November), and they are fast drafts.** Until
