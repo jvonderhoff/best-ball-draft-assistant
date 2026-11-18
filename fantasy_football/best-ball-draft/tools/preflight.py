@@ -248,13 +248,23 @@ def check_playoff(target: str) -> None:
                                       'in ../projections')
         return
     b, m = d['bracket'], d['players']['meta']
-    if not b.get('seeds_final'):
+    season_sim = b.get('mode') == 'season_sim'
+    if season_sim:
+        # Mid-season drafting (DK opens these in November): the seeds are
+        # simulated on purpose, from the results and lines at build time.
+        check(OK, 'playoff seeds', f"simulated: {b.get('remaining_games')} regular-season games "
+                                   f"left at build, {b.get('sims')} finishes, {m.get('players')} players "
+                                   f"on {len(m.get('teams') or [])} teams")
+    elif not b.get('seeds_final'):
         check(FAIL, 'playoff seeds', 'PROVISIONAL — the regular season was unfinished '
                                      'when the bracket was built; rebuild and republish')
     else:
         check(OK, 'playoff seeds', f"final, season {b['season']}")
     age = d.get('age_hours')
-    lvl = FAIL if age is None or age > 48 else WARN if age > 12 else OK
+    # Mid-season the inputs move once a week (results, then next week's lines);
+    # in draft week, wild-card lines and Friday injury reports move them daily.
+    warn_h, fail_h = (72, 192) if season_sim else (12, 48)
+    lvl = FAIL if age is None or age > fail_h else WARN if age > warn_h else OK
     check(lvl, 'playoff push age', f"{age}h old, source {d.get('source')}, lines through "
                                    f"week {b.get('lines_through_week')}, {len(b.get('fixed', []))} games priced")
     if d.get('source') != 'postgres':

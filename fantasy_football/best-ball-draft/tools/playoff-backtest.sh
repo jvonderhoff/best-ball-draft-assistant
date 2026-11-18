@@ -2,11 +2,12 @@
 # Run tools/playoff-backtest.js for every season in parallel, then summarise.
 #   tools/playoff-backtest.sh dk-12 6           # preset, drafts per season
 #   tools/playoff-backtest.sh dk-20 3 --completions 6
+#   PLAYOFF_BT_OUT=tools/.playoff-backtest/mid-dk-12 tools/playoff-backtest.sh dk-12 6 --data ../projections/data/playoff_backtest_mid
 # Results land in tools/.playoff-backtest/<preset>/ (gitignored, regenerable).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PRESET=${1:-dk-12}; DRAFTS=${2:-6}; shift 2 || true
-OUT=tools/.playoff-backtest/$PRESET
+OUT=${PLAYOFF_BT_OUT:-tools/.playoff-backtest/$PRESET}   # env override keeps runs apart
 mkdir -p "$OUT"
 for s in 2016 2017 2018 2019 2020 2021 2022 2023 2024 2025; do
   node tools/playoff-backtest.js --season $s --preset "$PRESET" --drafts "$DRAFTS" --out "$OUT/$s.json" "$@" &

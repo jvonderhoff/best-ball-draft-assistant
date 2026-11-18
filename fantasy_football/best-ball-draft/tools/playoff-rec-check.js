@@ -34,7 +34,7 @@ const DRAFTS = parseInt(args.drafts || '6', 10);
 const format = { ...Rec.PRESETS[args.preset || 'dk-12'] };
 const ctx = Sim.build(JSON.parse(fs.readFileSync(path.join(DATA, 'playoff_bracket.json'))),
   JSON.parse(fs.readFileSync(path.join(DATA, 'playoff_players.json'))));
-console.log(`season ${ctx.season} (${ctx.seedsFinal ? 'final' : 'PROVISIONAL'} seeds), ${ctx.players.length} players, `
+console.log(`season ${ctx.season} (${ctx.seedsFinal ? 'final seeds' : ctx.seasonSim ? 'SEASON SIM' : 'PROVISIONAL seeds'}), ${ctx.players.length} players, `
   + `${N} worlds, format ${args.preset || 'dk-12'} (${format.label}), ADP SYNTHETIC`);
 
 let fails = 0;

@@ -106,9 +106,25 @@
     for (const g of playersFile.posted || []) {
       posted.set(`${g.home}|${g.away}`, [g.home_implied, g.away_implied]);
     }
+    // Mid-season files (pipeline/season_sim.py) carry a sample of simulated
+    // regular-season finishes: every world plays its postseason on one of them,
+    // with that season's seeds and each team's rating drift. A January file has
+    // none, and every world uses the one real bracket.
+    let seasons = null;
+    if (bracket.seasons && bracket.seasons.length) {
+      seasons = bracket.seasons.map(x => {
+        const k = x.t.length / 2;
+        const drift = {};
+        x.t.forEach((t, i) => { drift[t] = x.d[i]; });
+        return { seeds: { AFC: x.t.slice(0, k), NFC: x.t.slice(k) }, drift };
+      });
+    }
+    const conf = bracket.conf || {};
+    if (!bracket.conf) for (const [c, ts] of Object.entries(bracket.seeds)) for (const t of ts) conf[t] = c;
     return {
       season: bracket.season,
       seedsFinal: !!bracket.seeds_final,
+      seasonSim: !!seasons, seasons, conf, odds: bracket.odds || null,
       seeds: bracket.seeds, ratings: bracket.ratings, hfa: bracket.hfa, sigma: bracket.sigma,
       fixed, posted, params, players, byTeam, teamChol,
       implied: playersFile.team_implied,
@@ -116,17 +132,18 @@
   }
 
   // ── bracket (mirrors pipeline/bracket.py; tests compare the two) ──────────
-  function pHome(ctx, home, away, neutral) {
+  function pHome(ctx, home, away, neutral, drift) {
     const k = `${home}|${away}`, r = `${away}|${home}`;
     if (ctx.fixed.has(k)) return ctx.fixed.get(k);
     if (ctx.fixed.has(r)) return 1 - ctx.fixed.get(r);
-    const spread = (neutral ? 0 : ctx.hfa) + ctx.ratings[home] - ctx.ratings[away];
+    const d = drift || {};
+    const spread = (neutral ? 0 : ctx.hfa) + ctx.ratings[home] + (d[home] || 0) - ctx.ratings[away] - (d[away] || 0);
     return normCdf(spread / ctx.sigma);
   }
-  function play(ctx, home, away, rng, neutral) {
-    return rng() < pHome(ctx, home, away, neutral) ? home : away;
+  function play(ctx, home, away, rng, neutral, drift) {
+    return rng() < pHome(ctx, home, away, neutral, drift) ? home : away;
   }
-  function conference(ctx, seeds, rng, log) {
+  function conference(ctx, seeds, rng, log, drift) {
     const k = seeds.length, byes = 8 - k;
     const seedOf = Object.fromEntries(seeds.map((t, i) => [t, i + 1]));
     const bySeed = (a, b) => seedOf[a] - seedOf[b];
@@ -135,25 +152,30 @@
     for (let i = 0; i < field.length / 2; i++) {
       const h = field[i], a = field[field.length - 1 - i];
       log.WC.push([h, a, false]);
-      alive.push(play(ctx, h, a, rng, false));
+      alive.push(play(ctx, h, a, rng, false, drift));
     }
     alive.sort(bySeed);
     const nxt = [];
     for (let i = 0; i < alive.length / 2; i++) {
       const h = alive[i], a = alive[alive.length - 1 - i];
       log.DIV.push([h, a, false]);
-      nxt.push(play(ctx, h, a, rng, false));
+      nxt.push(play(ctx, h, a, rng, false, drift));
     }
     nxt.sort(bySeed);
     log.CON.push([nxt[0], nxt[1], false]);
-    return play(ctx, nxt[0], nxt[1], rng, false);
+    return play(ctx, nxt[0], nxt[1], rng, false, drift);
   }
-  function simulateBracket(ctx, rng) {
-    const log = { WC: [], DIV: [], CON: [], SB: [] };
-    const afc = conference(ctx, ctx.seeds.AFC, rng, log);
-    const nfc = conference(ctx, ctx.seeds.NFC, rng, log);
+  /* One postseason. `w` picks the simulated regular season it is played on
+   * (mid-season files); log.seeds says which, for anything that reads byes. */
+  function simulateBracket(ctx, rng, w) {
+    const season = ctx.seasons ? ctx.seasons[(w || 0) % ctx.seasons.length] : null;
+    const seeds = season ? season.seeds : ctx.seeds;
+    const drift = season ? season.drift : null;
+    const log = { WC: [], DIV: [], CON: [], SB: [], seeds };
+    const afc = conference(ctx, seeds.AFC, rng, log, drift);
+    const nfc = conference(ctx, seeds.NFC, rng, log, drift);
     log.SB.push([afc, nfc, true]);
-    log.champion = play(ctx, afc, nfc, rng, true);
+    log.champion = play(ctx, afc, nfc, rng, true, drift);
     return log;
   }
 
@@ -181,8 +203,15 @@
     const [a, b] = ctx.params.sd_line[pos];
     return a + b * Math.max(mean, 0);
   }
-  function available(p, round) {
-    if (!p.avail || SEASON_OVER.has(p.injury_status)) return false;
+  /* Can he score in `round` at all? Mid-season (ctx.seasonSim) a status is
+   * about this week, not January: an IR player may be back, a healthy one may
+   * not be. There `avail` is a probability (measured: projections
+   * tools/measure_playoff_avail.py) drawn once per world in simulateWorlds,
+   * and statuses are not read again here. */
+  function available(p, round, ctx) {
+    if (!p.avail) return false;
+    if (ctx && ctx.seasonSim) return true;
+    if (SEASON_OVER.has(p.injury_status)) return false;
     // `Out` is a statement about this week's game: the wild card only.
     if (round === 'WC' && p.injury_status === 'Out') return false;
     return true;
@@ -199,8 +228,19 @@
     const scores = new Float32Array(n * R * P);
     const brackets = [];
     const floor = ctx.params.floor;
+    // Who is still playing by January, drawn once per world for the whole
+    // postseason, on its own stream so the brackets and scores of a file with
+    // every avail at 1 are exactly what they were before.
+    const arng = mulberry32((seed || 1) + 7919);
+    const playing = new Uint8Array(n * P);
     for (let w = 0; w < n; w++) {
-      const br = simulateBracket(ctx, rng);
+      for (let i = 0; i < P; i++) {
+        const a = ctx.players[i].avail;
+        playing[w * P + i] = a >= 1 ? 1 : a > 0 && arng() < a ? 1 : 0;
+      }
+    }
+    for (let w = 0; w < n; w++) {
+      const br = simulateBracket(ctx, rng, w);
       brackets.push(br);
       ROUNDS.forEach((rnd, r) => {
         for (const [home, away] of br[rnd]) {
@@ -211,7 +251,7 @@
             const e = ps.map(() => gauss(rng));
             const imp = gameImplied(ctx, team, opp);
             ps.forEach((p, i) => {
-              if (!available(p, rnd)) return;
+              if (!available(p, rnd, ctx) || !playing[w * P + p.idx]) return;
               let z = ctx.params.game_load[p.pos] * g;
               const Li = L[i];
               for (let k = 0; k <= i; k++) z += Li[k] * e[k];
@@ -223,7 +263,7 @@
         }
       });
     }
-    return { n, R, P, scores, brackets };
+    return { n, R, P, scores, brackets, playing };
   }
 
   // ── lineups ──────────────────────────────────────────────────────────────

@@ -36,7 +36,7 @@
       source: 'RotoWire, "$3M Playoff Millionaire"',
       rounds: 12, lineup: { QB: 1, RB: 1, WR: 2, TE: 1, FLEX: 1 },
       podSize: 6, finalSize: 816, payouts: [],
-      measured: 'real postseasons 2016-25 (30 drafts each, synthetic-ADP bots): 2.1x the ADP seats\' P(final), 1.6x without the best season; better in 6 of 10',
+      measured: 'real postseasons 2016-25, synthetic-ADP bots. Drafting from mid-November: round 1 won 27% vs 15%, P(final) 3.1x (1.8x without the best season, better in 4 of 10). After week 18: 2.1x (1.6x), better in 6 of 10',
     },
     'dk-20': {
       label: '20 rounds · QB RB RB WR WR WR TE FLEX · final 81',
@@ -224,8 +224,7 @@
    * that is: two teams in one conference cannot both reach the final. */
   function conflicts(ctx, worlds, rosterIdx) {
     const teams = [...new Set(rosterIdx.map(i => ctx.players[i].team))];
-    const conf = {};
-    for (const [c, ts] of Object.entries(ctx.seeds)) for (const t of ts) conf[t] = c;
+    const conf = ctx.conf;
     const out = [];
     for (let a = 0; a < teams.length; a++) for (let b = a + 1; b < teams.length; b++) {
       if (conf[teams[a]] !== conf[teams[b]]) continue;

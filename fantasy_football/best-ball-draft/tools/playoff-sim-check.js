@@ -12,7 +12,11 @@
  *   scores      the simulated z-scores have variance 1 and the measured
  *               correlations (QB-WR +0.31, WR-WR ~0, QB-v-QB +0.23). A wrong
  *               Cholesky still produces scores that look like scores.
- *   unusable    a season-over player never scores; a bye team scores 0 in WC.
+ *   unusable    a season-over player never scores; a bye team scores 0 in WC
+ *               (per world: mid-season every world has its own seeds).
+ *   seasons     mid-season files: each world's seeds are one simulated season,
+ *               so P(make playoffs) must equal the file's `odds`, and a player
+ *               with avail a must be playing in a share a of worlds.
  *   field       ADP bots are symmetric: each seat wins its round-1 pod ~1/6.
  *               An average roster survives ~1/6, 1/36, 1/216 -- the recursion
  *               in survivorPools is right only if this comes out.
@@ -44,7 +48,7 @@ function check(name, ok, detail) {
 const bracket = JSON.parse(fs.readFileSync(path.join(DATA, 'playoff_bracket.json')));
 const players = JSON.parse(fs.readFileSync(path.join(DATA, 'playoff_players.json')));
 const ctx = Sim.build(bracket, players);
-console.log(`season ${ctx.season} (${ctx.seedsFinal ? 'final seeds' : 'PROVISIONAL seeds'}), `
+console.log(`season ${ctx.season} (${ctx.seedsFinal ? 'final seeds' : ctx.seasonSim ? `SEASON SIM, ${ctx.seasons.length} simulated finishes` : 'PROVISIONAL seeds'}), `
   + `${ctx.players.length} players, ${N} worlds, ${BOARDS} bot boards x ${ROUNDS_DRAFTED} rounds`);
 
 let t0 = Date.now();
@@ -56,7 +60,7 @@ console.log(`worlds simulated in ${Date.now() - t0} ms`);
   const M = 20000, rng = Sim.mulberry32(5);
   const reach = {};
   for (let k = 0; k < M; k++) {
-    const b = Sim.simulateBracket(ctx, rng);
+    const b = Sim.simulateBracket(ctx, rng, k);
     for (const r of Sim.ROUNDS) for (const [h, a] of b[r]) for (const t of [h, a]) {
       reach[t] = reach[t] || { WC: 0, DIV: 0, CON: 0, SB: 0, champ: 0 };
       reach[t][r] += 1 / M;
@@ -85,7 +89,7 @@ console.log(`worlds simulated in ${Date.now() - t0} ms`);
         const game = {};
         for (const [team, opp] of [[home, away], [away, home]]) {
           for (const p of ctx.byTeam[team] || []) {
-            if (!Sim.available(p, rnd) || p.dk_ppg < 6) continue;
+            if (!Sim.available(p, rnd, ctx) || !worlds.playing[w * P + p.idx] || p.dk_ppg < 6) continue;
             const m = Sim.weekMean(ctx, p, Sim.gameImplied(ctx, team, opp));
             const sd = Sim.weekSd(ctx, p.pos, m);
             const sc = scores[w * R * P + r * P + p.idx];
@@ -137,10 +141,50 @@ console.log(`worlds simulated in ${Date.now() - t0} ms`);
   let leaked = 0;
   for (const p of over) for (let w = 0; w < N; w++) for (let r = 0; r < R; r++) leaked += scores[w * R * P + r * P + p.idx] !== 0;
   check('unusable: season-over', leaked === 0, `${over.length} players, ${leaked} nonzero scores`);
-  const byes = [ctx.seeds.AFC[0], ctx.seeds.NFC[0]];
-  let byeLeak = 0;
-  for (const t of byes) for (const p of ctx.byTeam[t] || []) for (let w = 0; w < N; w++) byeLeak += scores[w * R * P + p.idx] !== 0;
-  check('unusable: bye week', byeLeak === 0, `${byes.join(', ')} in the wild card: ${byeLeak} nonzero scores`);
+  let byeLeak = 0, byeTeams = 0;
+  const notIn = new Set();
+  let outLeak = 0;
+  for (let w = 0; w < N; w++) {
+    const sd = worlds.brackets[w].seeds;
+    for (const ts of [sd.AFC, sd.NFC]) for (const t of ts.slice(0, 8 - ts.length)) {
+      byeTeams++;
+      for (const p of ctx.byTeam[t] || []) byeLeak += scores[w * R * P + p.idx] !== 0;
+    }
+    // A team that missed the playoffs in this world scores nothing in it.
+    const inW = new Set([...sd.AFC, ...sd.NFC]);
+    for (const [t, ps] of Object.entries(ctx.byTeam)) {
+      if (inW.has(t)) continue;
+      notIn.add(t);
+      for (const p of ps) for (let r = 0; r < R; r++) outLeak += scores[w * R * P + r * P + p.idx] !== 0;
+    }
+  }
+  check('unusable: bye week', byeLeak === 0, `${byeTeams} team-worlds on a bye: ${byeLeak} nonzero wild-card scores`);
+  check('unusable: missed playoffs', outLeak === 0, `${notIn.size} teams miss in some world: ${outLeak} nonzero scores`);
+}
+
+// ── seasons (mid-season files only) ──────────────────────────────────────────
+if (ctx.seasonSim) {
+  const { P } = worlds;
+  const make = {};
+  for (let w = 0; w < N; w++) for (const ts of Object.values(worlds.brackets[w].seeds)) for (const t of ts) make[t] = (make[t] || 0) + 1 / N;
+  let worst = 0, where = '';
+  for (const [t, d] of Object.entries(ctx.odds)) {
+    const diff = Math.abs((make[t] || 0) - d.make);
+    if (diff > worst) { worst = diff; where = t; }
+  }
+  // Worlds cycle through the file's seasons, so with N a multiple of their
+  // count the two are the same sample and agree to rounding.
+  const exact = N % ctx.seasons.length === 0;
+  check('seasons: P(make)', worst < (exact ? 0.001 : 0.03), `max |JS - file| ${worst.toFixed(4)} (${where}), ${N} worlds over ${ctx.seasons.length} seasons`);
+  const groups = {};
+  ctx.players.forEach((p, i) => {
+    if (!(p.avail > 0 && p.avail < 1)) return;
+    const g = groups[p.avail] = groups[p.avail] || [0, 0];
+    for (let w = 0; w < N; w++) { g[0] += worlds.playing[w * P + i]; g[1]++; }
+  });
+  for (const [a, [k, n]] of Object.entries(groups)) {
+    check(`seasons: avail ${a}`, Math.abs(k / n - a) < 0.01, `playing in ${(k / n).toFixed(4)} of ${n} player-worlds`);
+  }
 }
 
 // ── field ────────────────────────────────────────────────────────────────────

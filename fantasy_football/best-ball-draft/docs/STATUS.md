@@ -11,6 +11,31 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-17: playoff best ball, drafting before the field is set
+
+**DK's playoff drafts are open now (November), and they are fast drafts.** Until
+today `/playoff` took the "if it ended today" seeds as certain, so the 18 teams outside
+them had no players at all. Now, until week 18 is played, the bracket is a simulation
+of the rest of the season (`../projections/pipeline/season_sim.py`), all 32 teams'
+players are exported, and `avail` is P(still playing by January). PLAYOFF_DESIGN §8
+has the model and every table; the headline numbers:
+
+- NFL tiebreakers reproduce every real bracket 2002-25: 300/300 seeds.
+- Playoff odds from mid-November, held out 2016-25: round-by-round log loss 1.345,
+  against 2.929 for today's seeds as certain and 1.407 for standings alone. Ratings
+  help on who goes deep; on who gets in, standings alone do as well.
+- Players playing now play in January 87% of the time; players out now 49%.
+- Real-postseason drafts from mid-November, 12 rounds: round 1 won 26.7% vs 14.7%;
+  P(final) 3.1x, but 1.8x without 2024 and better in only 4 of 10 seasons.
+
+**Fast-draft fixes to the page.** Picks are polled every 3 s near your turn and 6 s
+otherwise (was 30 s, the whole pick clock), the bar shows `updated N s ago`, and errors
+stay on it. **The clock had counted only matched picks**, so one unmatched pick would
+have shown the wrong seat on the clock, and "your pick" one pick early or late.
+
+**Not tested against a real DK board:** both production and the Mac had expired DK
+sessions on 2026-11-17. The polling and clock were tested against a stubbed board.
+
 ## 2026-11-17: playoff best ball, draft-week runbook
 
 `docs/PLAYOFF_RUNBOOK.md`: the calendar, the commands in order, what each output must

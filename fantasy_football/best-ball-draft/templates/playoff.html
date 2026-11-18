@@ -171,7 +171,11 @@ async function load() {
 function renderFresh() {
   const b = S.data.bracket, m = S.data.players.meta;
   const age = S.data.age_hours;
-  const seeds = b.seeds_final ? '<span class="ok">final</span>' : '<span class="bad">PROVISIONAL — do not draft on this</span>';
+  // Mid-season the seeds are simulated, which is the point (pipeline/season_sim.py);
+  // only a fixed bracket that is not final is wrong to draft on.
+  const seeds = b.seeds_final ? '<span class="ok">final</span>'
+    : b.mode === 'season_sim' ? `<span class="warn">simulated</span> · ${b.remaining_games} games left, ${b.sims} finishes`
+    : '<span class="bad">PROVISIONAL — do not draft on this</span>';
   const ageCls = age == null ? 'bad' : age > 24 ? 'warn' : 'ok';
   const adp = S.adpSource === 'synthetic'
     ? '<span class="warn">SYNTHETIC (expected points) — load the DK pool</span>'
@@ -193,7 +197,10 @@ function rosters() {
   for (const p of S.picks) rs[p.seat].push(p.idx);
   return rs;
 }
-function nextPick() { return S.picks.length + 1; }
+// On a live board the clock counts every pick DK has made, matched or not: an
+// unmatched pick (a kicker, a name the matcher missed) still used a turn, and
+// counting only matched picks put the wrong seat on the clock.
+function nextPick() { return (S.draftId ? Math.max(S.picksMade || 0, S.picks.length) : S.picks.length) + 1; }
 function totalPicks() { return SEATS * format().rounds; }
 function onClock() { return PlayoffRec.seatOfPick(nextPick(), SEATS); }
 function myNextPick() {
@@ -241,7 +248,10 @@ async function pullLive() {
   if (!S.draftId) return;
   const r = await fetch(`/api/playoff/board/${encodeURIComponent(S.draftId)}`, { method: 'POST' });
   const d = await r.json();
-  if (!r.ok || d.needs_auth) { $('boardBar').innerHTML = `<span class="bad">${esc(d.error || 'pull failed')}</span>`; return; }
+  // Kept on S, not written to the bar: the bar re-renders every second, and an
+  // error painted once would vanish before anyone read it.
+  if (!r.ok || d.needs_auth) { S.pullError = d.error || 'pull failed'; renderBoardBar(); return; }
+  S.pullError = null;
   const byGsis = new Map(S.ctx.players.map((p, i) => [p.gsis_id, i]));
   const picks = [];
   for (const pk of d.picks.sort((a, b) => a.pick_number - b.pick_number)) {
@@ -252,8 +262,11 @@ async function pullLive() {
   S.unmatched = d.unmatched || [];
   if (d.my_position) { S.mySeat = d.my_position - 1; $('mySeat').value = String(S.mySeat); }
   if (d.draft_group_id && !$('dgId').value) $('dgId').value = d.draft_group_id;
-  const changed = picks.length !== S.picks.length;
+  const made = d.picks_made || picks.length;
+  const changed = picks.length !== S.picks.length || made !== S.picksMade;
   S.picks = picks;
+  S.picksMade = made;
+  S.lastPull = Date.now();
   if (changed) await refresh(); else renderBoardBar();
 }
 
@@ -302,7 +315,7 @@ async function refresh() {
     $('recMeta').textContent = '';
     $('recs').innerHTML = `<div class="msg">Seat ${onClock() + 1} is on the clock. Your next pick is
       <b>#${mine}</b>, ${mine - nextPick()} pick${mine - nextPick() === 1 ? '' : 's'} away.
-      ${S.draftId ? 'Recommendations appear when it comes up (picks refresh every 30 s).'
+      ${S.draftId ? 'Recommendations appear when it comes up (picks refresh every 3 s near your turn, 6 s otherwise).'
                   : 'Press <b>Bots to my turn</b>, or click players to draft them for the seat on the clock.'}</div>`;
     return;
   }
@@ -317,16 +330,31 @@ async function refresh() {
 }
 
 function renderBoardBar() {
-  const live = S.draftId ? `<span class="ok">live draft ${esc(S.draftId)}</span> · polled every 30 s` : '<span class="k">mock board</span>';
+  const ago = S.lastPull ? Math.round((Date.now() - S.lastPull) / 1000) : null;
+  const live = S.draftId ? `<span class="ok">live draft ${esc(S.draftId)}</span> · updated ${ago === null ? '—' : ago + ' s ago'}` : '<span class="k">mock board</span>';
   const done = nextPick() > totalPicks();
   const turn = done ? '<span class="ok">draft complete</span>'
     : onClock() === S.mySeat ? '<span class="turn">your pick</span>' : `seat ${onClock() + 1} on the clock`;
   const un = S.unmatched.length ? ` · <span class="bad">${S.unmatched.length} picks not matched: ${esc(S.unmatched.slice(0, 5).join(', '))}</span>` : '';
-  $('boardBar').innerHTML = `${live} · ${done ? `${totalPicks()} picks` : `pick <b>${nextPick()}</b> of ${totalPicks()}`} · ${turn}${un}`;
+  const err = S.draftId && S.pullError ? `<span class="bad">${esc(S.pullError)}</span> · ` : '';
+  $('boardBar').innerHTML = `${err}${live} · ${done ? `${totalPicks()} picks` : `pick <b>${nextPick()}</b> of ${totalPicks()}`} · ${turn}${un}`;
 }
 
 function byeTeams() { return new Set([S.ctx.seeds.AFC[0], S.ctx.seeds.NFC[0]]); }
-function teamTag(t) { return byeTeams().has(t) ? `${t} <span class="bye">bye</span>` : t; }
+/* Mid-season a team is tagged with what is uncertain about it: P(makes the
+ * playoffs) when under 95%, P(a bye) when 10% or more. */
+function teamTag(t) {
+  const o = S.ctx.odds;
+  if (!o) return byeTeams().has(t) ? `${t} <span class="bye">bye</span>` : t;
+  const d = o[t] || { make: 0, bye: 0 };
+  const make = d.make < 0.95 ? ` <span class="${d.make < 0.5 ? 'bad' : 'k'}" title="P(makes the playoffs)">${pct(d.make, 0)}</span>` : '';
+  const bye = d.bye >= 0.1 ? ` <span class="bye" title="P(a first-round bye)">bye ${pct(d.bye, 0)}</span>` : '';
+  return `${t}${make}${bye}`;
+}
+/* A player out now is valued at P(back by January), measured; say so. */
+function availTag(p) {
+  return p.avail > 0 && p.avail < 0.6 ? ` <span class="warn" title="out now: P(playing by January)">out now ${pct(p.avail, 0)}</span>` : '';
+}
 
 function renderRecs(out, f, ms) {
   const P = S.ctx.players;
@@ -338,7 +366,7 @@ function renderRecs(out, f, ms) {
     const p = P[r.idx];
     const stack = myTeams[p.team] ? ` <span class="k">+${myTeams[p.team]} ${p.team}</span>` : '';
     return `<tr class="click${k === 0 ? ' top' : ''}" data-idx="${r.idx}">
-      <td><span class="pos">${p.pos}</span>${esc(p.name)}${stack}</td><td>${teamTag(p.team)}</td>
+      <td><span class="pos">${p.pos}</span>${esc(p.name)}${availTag(p)}${stack}</td><td>${teamTag(p.team)}</td>
       <td class="n">${S.adp[r.idx] ? S.adp[r.idx].toFixed(1) : '—'}</td>
       <td class="n">${pct(r.pR[0])}</td><td class="n">${pct(r.pR[1], 2)}</td><td class="n">${pct(r.pFinal, 2)}</td>
       <td class="n">${evMode ? '$' + r.ev.toFixed(2) : pct(r.pWin, 3)}</td></tr>`;
@@ -374,7 +402,7 @@ function renderAvail() {
     && (!q || P[i].name.toLowerCase().includes(q) || P[i].team.toLowerCase() === q))
     .sort((a, b) => S.adp[a] - S.adp[b]).slice(0, 80);
   $('avail').innerHTML = '<tr><th>Player</th><th>Team</th><th class="n">ADP</th><th class="n">DK/g</th><th class="n">E[pts]</th></tr>'
-    + rows.map(i => `<tr class="click" data-idx="${i}"><td><span class="pos">${P[i].pos}</span>${esc(P[i].name)}${P[i].low_sample ? ' <span class="k" title="under 4 games">*</span>' : ''}</td>
+    + rows.map(i => `<tr class="click" data-idx="${i}"><td><span class="pos">${P[i].pos}</span>${esc(P[i].name)}${P[i].low_sample ? ' <span class="k" title="under 4 games">*</span>' : ''}${availTag(P[i])}</td>
       <td>${teamTag(P[i].team)}</td><td class="n">${S.adp[i].toFixed(1)}</td><td class="n">${P[i].dk_ppg.toFixed(1)}</td>
       <td class="n">${S.expPts[i].toFixed(1)}</td></tr>`).join('');
   for (const tr of $('avail').querySelectorAll('tr.click')) tr.onclick = () => draft(+tr.dataset.idx);
@@ -383,8 +411,12 @@ function renderAvail() {
 function renderTeams() {
   const b = S.data.bracket, seedOf = {};
   for (const [c, ts] of Object.entries(b.seeds)) ts.forEach((t, i) => { seedOf[t] = c[0] + (i + 1); });
-  $('teams').innerHTML = '<tr><th>Team</th><th class="n">WC</th><th class="n">DIV</th><th class="n">CON</th><th class="n">SB</th><th class="n">Win</th></tr>'
-    + Object.entries(b.reach).map(([t, d]) => `<tr><td>${t} <span class="k">${seedOf[t]}</span></td>
+  const odds = b.odds;
+  // Mid-season: P(make) and P(bye) lead, and the seed is today's, labelled "now".
+  const head = odds ? '<th class="n" title="P(makes the playoffs)">In</th><th class="n" title="P(first-round bye)">Bye</th>' : '';
+  $('teams').innerHTML = `<tr><th>Team${odds ? ' <span class="k">seed now</span>' : ''}</th>${head}<th class="n">WC</th><th class="n">DIV</th><th class="n">CON</th><th class="n">SB</th><th class="n">Win</th></tr>`
+    + Object.entries(b.reach).filter(([t]) => !odds || (odds[t] && odds[t].make >= 0.005)).map(([t, d]) => `<tr><td>${t} <span class="k">${seedOf[t] || ''}</span></td>
+      ${odds ? `<td class="n">${pct(odds[t].make, 0)}</td><td class="n">${pct(odds[t].bye, 0)}</td>` : ''}
       ${['WC', 'DIV', 'CON', 'SB', 'champ'].map(r => `<td class="n">${d[r] === 0 ? '<span class="bye">—</span>' : pct(d[r], 0)}</td>`).join('')}</tr>`).join('');
 }
 
@@ -416,14 +448,36 @@ $('search').oninput = () => renderAvail();
 $('botsBtn').onclick = () => botsToMyTurn();
 $('resetBtn').onclick = () => { if (S.draftId) return; S.picks = []; save(); refresh(); };
 $('poolBtn').onclick = () => loadPool();
+/* Fast drafts give 30 seconds a pick, so a 30-second poll could show your turn
+ * after it had passed. Poll every POLL_NEAR ms when your pick is on the clock or
+ * at most two picks away, POLL_FAR otherwise; one request at a time; back off
+ * after a failure; stop when the draft is complete. */
+const POLL_NEAR = 3000, POLL_FAR = 6000, POLL_ERR = 10000;
+async function pollLoop(token) {
+  if (token !== S.pollToken || !S.draftId) return;
+  let wait = POLL_FAR;
+  try {
+    await pullLive();
+    if (nextPick() > totalPicks()) { renderBoardBar(); return; }
+    const mine = myNextPick();
+    if (mine !== null && mine - nextPick() <= 2) wait = POLL_NEAR;
+  } catch (e) {
+    wait = POLL_ERR;
+    S.pullError = `pull failed: ${String(e.message || e)} — retrying`;
+    renderBoardBar();
+  }
+  if (token === S.pollToken) S.pollTimer = setTimeout(() => pollLoop(token), wait);
+}
 $('connectBtn').onclick = async () => {
   S.draftId = $('draftId').value.trim() || null;
-  clearInterval(S.pollTimer);
+  clearTimeout(S.pollTimer);
+  S.pollToken = (S.pollToken || 0) + 1;
   if (!S.draftId) return;
-  S.picks = [];
-  await pullLive();
-  S.pollTimer = setInterval(pullLive, 30000);
+  S.picks = []; S.picksMade = 0; S.lastPull = null;
+  pollLoop(S.pollToken);
 };
+// The "updated N s ago" counter, so a stalled feed is visible.
+setInterval(() => { if (S.draftId) renderBoardBar(); }, 1000);
 showFormatNote();
 load();
 </script>

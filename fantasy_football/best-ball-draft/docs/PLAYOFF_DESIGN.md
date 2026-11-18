@@ -182,4 +182,86 @@ not move, and seeds replicated before believing a small difference.
    - **A re-run of this backtest with real ADP** once it can be captured, since the
      bots' blindness to byes is the main doubt.
 
+## 8. Drafting before the field is set (added 2026-11-17)
+
+**DK's playoff drafts open in November, not after week 18.** Steps 1-4 assumed the
+field was known; mid-season that meant treating "if the season ended today" as
+certain: 14 teams in at fixed seeds, the other 18 teams' players not exported at all,
+byes fixed. The writers who play these contests call the uncertainty the edge ("most
+of the edge is before the field is set", RotoGrinders' expert survey, Dec 2025): strong
+teams are cheap while their odds are unsettled.
+
+**The model** (`../projections/pipeline/season_sim.py`), per simulated season:
+1. every team's market rating takes a random walk to the wild card, SD **1.30 points**
+   in total, measured on 2006-15 as the January fit minus the mid-November fit (1.42 on
+   2016-25, not used to fit). A team that gets in has, on average, drifted up, so making
+   the playoffs and winning in them are correlated;
+2. every unplayed game is played, at the de-vigged moneyline where one is posted;
+3. the NFL tiebreak procedure seeds the result, through strength of schedule. Checked
+   on every real bracket 2002-25 from its real results: **300/300 teams and 300/300
+   seeds**. A first version that stopped at conference record missed 10 teams and 28
+   seeds, every miss a tie decided by common games, strength of victory or the sweep rule.
+
+2,000 such seasons are written to the bracket file; the JS simulator plays world *w*'s
+postseason on season *w*, so every player's value already includes P(his team is in)
+and P(it has a bye). All 32 teams' players are exported.
+
+**Availability by January** (`../projections/tools/measure_playoff_avail.py`, 2016-25,
+players at 6+ DK points a game on teams that made it): **87.3%** of players playing now
+played their team's first playoff game, flat across positions; **49%** of players out
+now (n = 89) did. `avail` is that probability, drawn once per world; a backup QB stays 0.
+Not modelled: a backup who becomes the starter, and a mid-season trade.
+
+**Evidence, playoff odds** (`../projections/tools/backtest_season_sim.py`, 2,000
+seasons per replay, from the point 8 weeks remain; lower is better):
+
+| arm | make: log loss | make: Brier | bye: Brier | rounds: log loss |
+|---|---|---|---|---|
+| model, held out 2016-25 | 0.376 | 0.125 | 0.039 | **1.345** |
+| no drift | 0.376 | 0.125 | 0.039 | 1.352 |
+| every team average (standings only) | 0.380 | 0.123 | 0.041 | 1.407 |
+| today's seeds as certain (what `/playoff` did) | 0.799 | 0.192 | 0.069 | 2.929 |
+
+Today's-seeds is scored with probabilities clipped to 2-98% (its log loss is otherwise
+infinite). Read it plainly: **ratings earn their place on who goes deep, not on who
+gets in** (the standings alone predict making it as well, Brier 0.123 vs 0.125), and
+the drift is a small gain (better in 8 of 10 held-out seasons on the rounds).
+
+**Evidence, drafts** (`tools/playoff-backtest.sh` with `--data
+../projections/data/playoff_backtest_mid`, real postseasons, one recommender seat and
+five ADP bots on synthetic ADP; the files from `build_playoff_backtest.py --mid`):
+
+| format | recommender P(R1) / P(final) | ADP seats P(R1) / P(final) | ratio | without best season | seasons better on P(final) |
+|---|---|---|---|---|---|
+| 12 rounds, 60 drafts | 26.7% / 0.82% | 14.7% / 0.26% | 3.1x | 1.8x (no 2024) | 4 of 10 |
+| 20 rounds, 30 drafts | (run in progress 2026-11-17) | | | | |
+
+Round 1 is again the solid number: better in 5 seasons, worse in 1, level in 4. P(final)
+rests on a few seasons. `avail`'s rates were measured on these same seasons; they are
+base rates applied to every drafter alike, so they do not favour the recommender seat.
+
+**What the strategy write-ups say, against what the model does.** None showed data on
+winning rosters; these are their authors' reasoning (Stokastic Aug 2026, RotoWire Jan
+2026, PlayerProfiler Dec 2025, Spike Week Nov 2025, Establish The Run Nov 2025,
+RotoGrinders Dec 2025):
+
+- *Build for the Super Bowl* (one stack per conference, at most two teams per
+  conference, ~5 players from the two finalists): the recommender's target is P(final)
+  and EV, and it scores every lineup on the simulated finals, so this is its objective,
+  not a rule it needs.
+- *Cap bye-team players; cover the wild card*: byes are per world, and round 1 is scored
+  as a pod you must win. Mid-season a bye is itself uncertain (the team tag shows it).
+- *Don't stack teams that meet early*: the same-conference line under *My roster*, with
+  P(they meet), from the same worlds.
+- *Bubble teams*: the write-ups split (avoid them vs. take them cheap at ~40%). The
+  model prices them by P(make) x what they do if in; it takes a side only through ADP.
+- *DK rooms are soft and break stacks*: an edge the synthetic-ADP bots cannot show. The
+  real test is real DK ADP (§6 step 4's to-do).
+
+**Fast drafts.** DK's playoff drafts are 30 seconds a pick. The page polls the live board
+every 3 s when your pick is on the clock or at most two away, 6 s otherwise, one request
+at a time, and shows `updated N s ago`. The clock counts every pick DK has made: it had
+counted only matched picks, so one unmatched pick would have put the wrong seat on the
+clock.
+
 [unusable players]: ../../CLAUDE.md

@@ -432,6 +432,12 @@ Draft week, step by step: `docs/PLAYOFF_RUNBOOK.md`.
   and `age_hours` on `/api/playoff/data` before trusting a number.
 - **Its constants come from the push** (`params`), measured in `../projections`. Do not
   add a number to `static/playoff-sim.js`.
+- **DK's playoff drafts open in November.** Until week 18 is played the bracket file is a
+  simulation of the rest of the season (`mode: season_sim`, `../projections/pipeline/season_sim.py`):
+  each world has its own seeds, byes and rating drift, all 32 teams' players are in, and
+  `avail` is P(still playing by January). Evidence: PLAYOFF_DESIGN §8.
+- **Fast drafts (30 s a pick).** `/playoff` polls the live board every 3-6 s and counts the
+  clock from every pick DK made, matched or not.
 - **Check it after any change:** run `node tools/playoff-sim-check.js` and
   `node tools/playoff-rec-check.js`. Each check exists because the simulator returned
   confident wrong numbers without it. An average roster must come out at 1/6, 1/36,

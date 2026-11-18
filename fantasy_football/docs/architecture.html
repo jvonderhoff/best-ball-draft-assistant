@@ -359,7 +359,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
         <div><dt>Runs</dt><dd>Locally only. Analysis page at <code>localhost:8100</code></dd></div>
         <div><dt>Stores</dt><dd><code>data/store.db</code> (ids, snapshots) · <code>data/analysis.db</code></dd></div>
         <div><dt>Keyed on</dt><dd><code>dk_player_id</code>, crosswalked to every other id</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="projections">281</span> tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="projections">287</span> tests</dd></div>
       </dl>
     </header>
 
@@ -443,8 +443,8 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
               <tr><td><code>waiver_buzz.json</code></td><td>Waivers — trending adds, news, the week's columns</td><td><code>tools/export_waiver_buzz.py</code></td><td class="num">72 h</td></tr>
               <tr><td><code>season_stats.json</code></td><td>Waivers — the ROS column: this season's real stat line per game, scored by each league (since 20 Oct; it was the preseason projection)</td><td><code>tools/export_season_stats.py</code></td><td class="num">weekly</td></tr>
               <tr><td><code>usage.json</code></td><td>Fantasy HQ's Usage &amp; luck tab — expected vs actual points per game, the half-and-half estimate, rise/fall calls, NGS (all held out on 2025 by <code>tools/backtest_xfp_predictive.py</code>)</td><td><code>tools/export_usage.py</code></td><td class="num">weekly</td></tr>
-              <tr><td><code>playoff_bracket.json</code></td><td>Playoff best ball's <code>/playoff</code>, via <code>cli.py playoff-publish</code>: team ratings from market spreads, seeds, and each team's chance to play in each round. Says <code>seeds_final: false</code> until week 18 is over</td><td><code>cli.py playoff-bracket</code></td><td class="num">per line move</td></tr>
-              <tr><td><code>playoff_players.json</code></td><td>Playoff best ball's simulator: every skill player on a playoff team, DK points per game, injury status and depth chart, plus the measured week-score constants</td><td><code>tools/export_playoff_players.py</code></td><td class="num">per line move</td></tr>
+              <tr><td><code>playoff_bracket.json</code></td><td>Playoff best ball's <code>/playoff</code>, via <code>cli.py playoff-publish</code>: team ratings from market spreads and each team's chance to play in each round. Until week 18 is over it is <code>mode: season_sim</code> (<code>pipeline/season_sim.py</code>): the rest of the regular season simulated 2,000 times into seeds, with the NFL tiebreakers and a measured rating drift, so every team carries P(makes it) and P(bye)</td><td><code>cli.py playoff-bracket</code></td><td class="num">per line move</td></tr>
+              <tr><td><code>playoff_players.json</code></td><td>Playoff best ball's simulator: every skill player on a playoff team (all 32 teams mid-season), DK points per game, injury status and depth chart, <code>avail</code> = measured P(still playing by January), plus the measured week-score constants</td><td><code>tools/export_playoff_players.py</code></td><td class="num">per line move</td></tr>
               <tr><td>News bundle</td><td>Best Ball's <code>/news</code> page</td><td><code>tools/news-push.sh</code></td><td class="num">off in-season</td></tr>
             </tbody>
           </table></div>
@@ -593,7 +593,7 @@ tools/refresh-sources.sh --publish
             <li><b>V2</b> (<code>static/recommender-v2.js</code>): built on points, using six fields from Projections: <code>ppg sd sources avail disagreement rec_share</code>. Its key number is <code>ceiling = ppg + 1.28·sd</code>.</li>
             <li><b>Will he last to my next pick?</b> That estimate was calibrated on 33 real DraftKings boards, not the simulator.</li>
             <li><b>V2 wins at every contest size measured</b>: +43% at an 18-team final, +49% at 45.</li>
-            <li><b>Playoff best ball</b> (<code>/playoff</code>, live since 17 Nov with provisional seeds): a separate page for DK's January contests, valued by simulating the bracket rather than by V1/V2. Steps 1-3 are done, and <code>/playoff</code> is the page: the bracket (<code>cli.py playoff-bracket</code>) and player week scores (<code>tools/export_playoff_players.py</code>) in Projections, and the simulator <code>static/playoff-sim.js</code> here, checked by <code>node tools/playoff-sim-check.js</code> and <code>tools/playoff-rec-check.js</code>, and backtested on real 2016-25 postseasons (<code>tools/playoff-backtest.sh</code>). The plan is <code>docs/PLAYOFF_DESIGN.md</code>; draft week is <code>docs/PLAYOFF_RUNBOOK.md</code>.</li>
+            <li><b>Playoff best ball</b> (<code>/playoff</code>, live since 17 Nov): a separate page for DK's playoff contests, which draft from November, valued by simulating the bracket rather than by V1/V2. Steps 1-3 are done, and <code>/playoff</code> is the page: the bracket (<code>cli.py playoff-bracket</code>) and player week scores (<code>tools/export_playoff_players.py</code>) in Projections, and the simulator <code>static/playoff-sim.js</code> here, checked by <code>node tools/playoff-sim-check.js</code> and <code>tools/playoff-rec-check.js</code>, and backtested on real 2016-25 postseasons (<code>tools/playoff-backtest.sh</code>). The plan is <code>docs/PLAYOFF_DESIGN.md</code>; draft week is <code>docs/PLAYOFF_RUNBOOK.md</code>.</li>
           </ul>
         </div>
 
@@ -1381,7 +1381,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <div class="tbl"><table>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
-              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">281</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">287</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">446</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">554</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>

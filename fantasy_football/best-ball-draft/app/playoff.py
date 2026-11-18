@@ -43,9 +43,23 @@ def validate(payload: dict) -> str | None:
             return f'players missing {k!r}'
     if br['season'] != pl['meta'].get('season'):
         return f"bracket is season {br['season']}, players are {pl['meta'].get('season')}"
-    teams = {t for c in br['seeds'].values() for t in c}
-    if len(teams) not in (12, 14):
-        return f'bracket has {len(teams)} distinct seeded teams'
+    if br.get('mode') == 'season_sim':
+        # Mid-season (projections pipeline/season_sim.py): every team can still
+        # get in, so all 32 are exported, and the seeds that matter are the
+        # sampled ones -- each of which must itself be a whole bracket.
+        teams = set(br.get('conf') or {})
+        if len(teams) != 32:
+            return f'season-sim bracket lists {len(teams)} teams, not 32'
+        seasons = br.get('seasons') or []
+        if not seasons:
+            return 'season-sim bracket has no simulated seasons'
+        if any(len(s.get('t', [])) not in (12, 14) or len(set(s['t'])) != len(s['t'])
+               or len(s.get('d', [])) != len(s['t']) for s in seasons):
+            return 'a simulated season is not a whole bracket'
+    else:
+        teams = {t for c in br['seeds'].values() for t in c}
+        if len(teams) not in (12, 14):
+            return f'bracket has {len(teams)} distinct seeded teams'
     if set(pl['meta'].get('teams') or []) != teams:
         return 'players were exported for a different bracket (team sets differ)'
     if not pl['players']:

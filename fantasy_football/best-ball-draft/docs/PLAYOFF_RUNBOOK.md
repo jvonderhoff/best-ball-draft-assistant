@@ -6,16 +6,27 @@ works the way it does is `PLAYOFF_DESIGN.md`. What has been measured is `STATUS.
 
 ## The calendar (2026 season)
 
+**DK's playoff drafts are open now, mid-November** (the user, 2026-11-17), not only
+after week 18 as this runbook first assumed. They are fast drafts: 30 seconds a pick.
+
 | when | what happens | what you do |
 |---|---|---|
-| now to Jan 9 | seeds are "if the season ended today" | §1 once; practise on a mock board (§5) |
+| **now to Jan 10** | drafts open; the field is not set | §2a every Tuesday (results + next week's lines), and after a big injury; §3, §4 |
 | **Sun Jan 10** | week 18 is played (all 16 games that day); seeds become final that night | §2 that night or Monday morning |
-| Jan 10-11 | wild-card lines post; DK's playoff lobby opens | §3 when the lobby is up |
-| Jan 11-16 | **drafts** | §4 for each draft; repeat §2 when lines or injuries move (§6) |
+| Jan 10-11 | wild-card lines post | §2 again |
+| Jan 11-16 | drafts with the field set | §4 for each draft; repeat §2 when lines or injuries move (§6) |
 | ~Jan 16-18 | wild-card weekend; drafts close at the first kickoff | nothing |
 
 Dates are from the 2026 schedule in `projections/data/nflverse/games.csv`. The
 wild-card dates are not in the file yet; check the lobby for the draft deadline.
+
+**Mid-season the bracket file is a simulation of the rest of the season**
+(`mode: season_sim`, projections `pipeline/season_sim.py`): 2,000 finishes, each with
+its own seeds, byes and rating drift, every one of the 32 teams' players exported, and
+`avail` = the measured chance a player is still playing by January (87% for players
+playing now, 49% for players out now). `cli.py playoff-bracket` switches to it on its
+own while any regular-season game is unplayed, and back to the real bracket once
+none is. Evidence: `PLAYOFF_DESIGN.md` §8.
 
 ## 1. Once, before draft week: deploy
 
@@ -26,6 +37,21 @@ The `/playoff` page exists only locally until it is pushed.
   A 200 alone proves nothing (CLAUDE.md, *A 200 does not mean your deploy landed*).
 - Optionally publish the provisional inputs (§2 steps 1-3) to see the page on your
   phone. They are marked PROVISIONAL everywhere and preflight FAILs on them.
+
+## 2a. Mid-season (every Tuesday until Jan 10)
+
+The same four commands as §2 below, with two differences in what to read:
+
+- `playoff-bracket` prints `SEASON SIM: N regular-season games left`. That is
+  correct now; there is no PROVISIONAL line to clear. Read the `make` and `bye`
+  columns: they are the point.
+- The export prints `SEASON SIM: all 32 teams exported`. Still no WARNING line for
+  "not exactly one starting QB".
+- Preflight's seeds line says `simulated`. Push age WARNs past 3 days and FAILs past 8:
+  a week of results the page does not know about.
+
+Tuesday, because Monday night's game is then in the file and next week's lines are
+posted. `--refresh` on both commands fetches them.
 
 ## 2. When seeds are final (Sunday Jan 10 night, or Monday)
 
@@ -99,9 +125,14 @@ python3 tools/preflight.py --playoff
 1. Open `/playoff` and enter the **DK draft id** (the contest id, as on `/recommend`).
    Press *Follow live draft*. Your seat comes from DK; check it against the board.
 2. The first load builds the field: about 10 seconds, once per draft. After that,
-   each recommendation takes 3-4 seconds against DK's 30-second clock. Picks
-   refresh every 30 seconds. The draft id is not remembered across a reload:
-   re-enter it and press *Follow live draft* again.
+   each recommendation takes about 2.5 seconds on a Mac (574 players mid-season;
+   untested on a phone) against DK's 30-second clock. Picks refresh every 3 seconds
+   when your pick is on the clock or at most two away, every 6 seconds otherwise; the
+   bar says `updated N s ago`, so a stalled feed shows. The draft id is not remembered
+   across a reload: re-enter it and press *Follow live draft* again.
+   - **Sign in to DK first** (`/setup`, `python3 sync_cookies.py`). On 2026-11-17 both
+     production and the Mac had expired sessions, and the page then shows `could not
+     fetch picks` on the bar for the whole draft.
 3. Read the bar before trusting a row:
    - **seeds** must be final
    - **ADP** must be DK, not SYNTHETIC
@@ -159,4 +190,6 @@ After publishing, **reload `/playoff`**: the page simulates once per load.
 | A starter ranked absurdly low | flagged backup QB or season-over | export's WARNING line; his `role`, `injury_status` |
 | A backup ranked high | depth chart stale | injury file age; re-export after Sleeper updates |
 | Players on two teams all show a low Rd 1 | those teams have byes | expected: the 1-seeds do not play the wild card ("bye" tag) |
+| A star ranked low mid-season | his team's P(make) is low, or he is "out now" | the team tag's % and `out now 49%` on his row |
+| `could not fetch picks` on the bar | DK session expired | `/setup`, `python3 sync_cookies.py`; the page keeps retrying |
 | Recommendations identical after news | page not reloaded, or §2 not re-run | push age; reload |

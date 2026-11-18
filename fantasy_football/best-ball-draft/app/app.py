@@ -2466,6 +2466,9 @@ def playoff_pool():
     return jsonify({**joined, 'fetched_at': now, 'cached': False})
 
 
+_playoff_entries = {}
+
+
 @app.route('/api/playoff/board/<draft_id>', methods=['POST'])
 def playoff_board(draft_id):
     """Live picks for one DK draft, each mapped to the export's gsis_id.
@@ -2479,13 +2482,24 @@ def playoff_board(draft_id):
     payload, _ = playoff.load()
     if not payload:
         return jsonify({'error': 'no playoff inputs pushed yet'}), 404
-    entry_id = (_saved_draft_ids.get(str(draft_id)) or {}).get('entry_id')
-    result = fetch_dk_draft_picks(draft_id, entry_id=entry_id)
+    # Fast drafts are polled every few seconds. Without the entry id every poll
+    # would also pay for DK's drafts/live lookup, a second request per pick, so
+    # the first answer's ids are kept for the life of the process.
+    known = _playoff_entries.get(str(draft_id)) or {}
+    entry_id = (_saved_draft_ids.get(str(draft_id)) or {}).get('entry_id') or known.get('entry_id')
+    result = fetch_dk_draft_picks(draft_id, entry_id=entry_id,
+                                  draft_group_id=known.get('draft_group_id'))
+    if result and result.get('entry_id'):
+        _playoff_entries[str(draft_id)] = {'entry_id': result['entry_id'],
+                                           'draft_group_id': result.get('draft_group_id')}
     if not result:
         return jsonify({'error': 'could not fetch picks — sign in at /setup', 'picks': [],
                         'needs_auth': True})
     mapped = playoff.map_picks(result.get('picks', []), payload['players']['players'])
-    return jsonify({**mapped, 'my_position': result.get('my_position'),
+    # Every pick DK has made, matched or not: the page counts the clock from
+    # this, because an unmatched pick still used a turn.
+    made = max((p.get('pick_number') or 0 for p in result.get('picks', [])), default=0)
+    return jsonify({**mapped, 'my_position': result.get('my_position'), 'picks_made': made,
                     'draft_group_id': result.get('draft_group_id'),
                     'updated_at': time.time()})
 
