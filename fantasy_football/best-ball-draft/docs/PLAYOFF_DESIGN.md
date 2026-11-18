@@ -1,10 +1,11 @@
 # Playoff best ball — design
 
-Status: **steps 1-2 done 2026-11-17.** Step 1, the bracket, is in `projections`
+Status: **steps 1-3 done 2026-11-17; step 4 (the draft-week runbook and dry run) is next.** Step 1, the bracket, is in `projections`
 (`pipeline/bracket.py`, `cli.py playoff-bracket`). Step 2, player week scores, is the
 `projections` export (`tools/export_playoff_players.py`) plus the simulator
-`static/playoff-sim.js`, checked by `node tools/playoff-sim-check.js`. Steps 3-4 are
-not started. A playoff mode inside this app for
+`static/playoff-sim.js`, checked by `node tools/playoff-sim-check.js`. Step 3 is the
+`/playoff` page, `static/recommender-playoff.js` and `cli.py playoff-publish`, checked
+by `node tools/playoff-rec-check.js`. A playoff mode inside this app for
 DraftKings NFL playoff best ball. Decided with the user: it lives here, not in a new
 project, because the DK draft capture, live board and queue push are reusable and only
 the valuation is new. The contest format is **settings chosen per draft**, not a default
@@ -140,12 +141,40 @@ not move, and seeds replicated before believing a small difference.
    Backup QBs (not first on the depth chart) score nothing. Their per-game numbers are
    real, from the games they started, which is exactly why they would otherwise be
    overvalued.
-3. Format settings, `recommender-playoff.js` (re-simulates from the bracket file's
-   `ratings` + `fixed`, so its draws join to player scores) and the playoff mode on
-   `/recommend`; pool table by draft group.
-   Step 3 also replaces the SYNTHETIC ADP (expected postseason points) that the field uses
-   until a real DK playoff pool exists.
-4. Dry run on a mock board before the lobby opens; then capture the real pool the day
+3. **Done 2026-11-17.** The `/playoff` page, a separate page rather than a mode on
+   `/recommend`, so the regular-season V1/V2 page is untouched.
+   - **Formats** are two presets from the write-ups, which disagree: 12 rounds with a
+     final of 816, and 20 rounds with a final of 81. Payouts are typed per draft; only
+     prizes a source printed are prefilled.
+   - **Ranking:** by EV when payouts are entered, otherwise by P(reach the final).
+   - **Each candidate:** take him now, let ADP bots finish the board (my seat
+     included), then score every roster on the same 2,000 postseasons. The later
+     rounds are computed exactly from that world's survivor scores, not sampled.
+   - **Pool and picks:** `/api/playoff/pool?dg=` joins DK's playoff pool and ADP to the
+     export, and `/api/playoff/board/<id>` maps live picks. Both joins run in Python
+     through `names.py`. Unmatched players are listed, not dropped.
+   - **Inputs** arrive via `cli.py playoff-publish` and `/api/playoff/upload`, which
+     fails closed without `BBA_API_KEY`. `/api/playoff/data` says the source and age.
+
+   **Measured** with `tools/playoff-rec-check.js`. One seat drafts by the recommender,
+   five by ADP. Every roster is then scored on fresh postseasons against a fresh field.
+   The ADP seats are the control: they must come out at about 1/216.
+   - **12 rounds: 4.6× the ADP seats' P(final). 20 rounds: 0.99×, no better.** Both
+     come from 12 drafts and are in STATUS (2026-11-17). **The scoring model is the recommender's
+     own**, and the ADP is synthetic: bots draft on expected points and ignore byes in
+     round 1. So this shows the recommender uses its model well against such a room. It
+     is not a real-world edge. Step 4's backtest on past postseasons is the real test.
+
+   **What the check found:** the survivor pools let one roster appear twice in a pod,
+   which made pods weaker. An average roster's round-3 survival read 15-24% above
+   1/216. The pools are now tournaments over distinct boards; the sampled path reads
+   exactly 1/216. The computed path reads up to ~10% high in the 20-round format. That
+   level is the same for every candidate, so it does not change the ranking.
+4. **Next.**
+   - **Backtest on real postseasons (2016-2025):** draft-time inputs for each season,
+     recommender vs ADP bots, scored on what players actually scored. It is the only
+     test whose answer key is not the model.
+   - **Then a dry run on a mock board before the lobby opens; then capture the real pool the day
    it appears, set the format from the lobby, and re-run the checks.
 
 [unusable players]: ../../CLAUDE.md

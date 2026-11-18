@@ -11,6 +11,40 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-17: playoff best ball, step 3: the `/playoff` page
+
+`/playoff` drafts DK playoff best ball. Each candidate is scored by simulated
+postseasons: P(win each round's pod), P(reach the final), and EV once payouts are
+entered. It follows a live DK draft (`/api/playoff/board/<id>`) or runs a mock board
+against bots. DK's playoff pool and ADP load by draft group (`/api/playoff/pool?dg=`).
+Inputs arrive from `../projections` via `cli.py playoff-publish` (dry run by default).
+
+Runbook, in order:
+
+```bash
+cd ../projections
+.venv/bin/python cli.py --season 2026 playoff-bracket
+.venv/bin/python tools/export_playoff_players.py --season 2026 --refresh
+DRAFT_APP_URL=https://<host> zsh -ic '.venv/bin/python cli.py playoff-publish --no-dry-run'
+```
+
+**Head-to-head** (`node tools/playoff-rec-check.js --drafts 12`): one seat drafts by
+the recommender, five by ADP, and every roster is scored on fresh postseasons.
+
+| format | recommender P(R1) / P(final) | ADP seats P(R1) / P(final) | ratio |
+|---|---|---|---|
+| 12 rounds, final 816 | 0.409 / 0.0174 | 0.118 / 0.0037 | **4.6x** |
+| 20 rounds, final 81 | 0.156 / 0.0061 | 0.169 / 0.0062 | **0.99x**, no better |
+
+**The 20-round result is a real negative, not noise to explain away.** The page shows
+it as a warning on that preset. The suspect, untested: 108 bot picks per completion
+make each candidate's value too noisy at 2-3 completions to separate picks. Step 4
+should measure more completions before anything else.
+
+**Not proof:** the scoring model is the recommender's own, and the ADP is synthetic. The
+bots ignore byes in round 1, which is most of the round-1 gap. The real test is step 4's
+backtest on past postseasons.
+
 ## 2026-11-17: playoff best ball, step 2: player scores and the simulator
 
 `static/playoff-sim.js` simulates whole postseasons: the bracket, every player's

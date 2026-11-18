@@ -2382,6 +2382,114 @@ def news_page():
     return render_template('news.html')
 
 
+# ── Playoff best ball (docs/PLAYOFF_DESIGN.md) ───────────────────────────────
+
+@app.route('/playoff')
+def playoff_page():
+    return render_template('playoff.html')
+
+
+@app.route('/api/playoff/upload', methods=['POST'])
+def upload_playoff():
+    """Accept {bracket, players} from the projections app (`cli.py playoff-publish`).
+
+    Fails CLOSED on a missing BBA_API_KEY, like /api/season/upload: a new write path
+    has no reason to inherit the older endpoints' accept-anyone fallback.
+    """
+    import hmac
+    from app import playoff
+    expected = os.environ.get('BBA_API_KEY', '')
+    if not expected:
+        return jsonify({'error': 'BBA_API_KEY is not set on this server — refusing every '
+                                 'write rather than accepting unauthenticated ones'}), 503
+    if not hmac.compare_digest(request.headers.get('X-Api-Key', ''), expected):
+        return jsonify({'error': 'Unauthorized'}), 401
+    body = request.get_json(silent=True)
+    problem = playoff.validate(body)
+    if problem:
+        return jsonify({'error': problem}), 400
+    res = playoff.store(body)
+    return jsonify({'ok': True, **res, 'players': len(body['players']['players']),
+                    'season': body['bracket']['season'],
+                    'seeds_final': body['bracket'].get('seeds_final')})
+
+
+@app.route('/api/playoff/data', methods=['GET'])
+def playoff_data():
+    """The pushed inputs, with how old they are and where they came from.
+
+    `source` is 'postgres', 'disk' or 'none' -- read it before trusting a number,
+    as with /api/projections-v2.
+    """
+    from app import playoff
+    payload, source = playoff.load()
+    if not payload:
+        return jsonify({'error': 'no playoff inputs pushed yet — run cli.py playoff-publish '
+                                 'in ../projections', 'source': source}), 404
+    up = payload.get('uploaded_at')
+    return jsonify({**payload, 'source': source,
+                    'age_hours': round((time.time() - up) / 3600, 2) if up else None})
+
+
+_playoff_pool_cache = {}   # draft group id -> (fetched_at, joined)
+
+
+@app.route('/api/playoff/pool', methods=['GET'])
+def playoff_pool():
+    """DK's player pool and ADP for one playoff draft group, joined to the export.
+
+    Kept apart from /api/players on purpose: that endpoint's pool, cache file and
+    TTL are the regular-season contest's, and formats never share a pool or
+    rankings (../CLAUDE.md). Cached here per draft group for 30 minutes, in memory
+    only -- ADP moves through draft week, and an old copy should not survive a restart.
+    """
+    from app import playoff
+    from app.data.api_fetcher import _fetch_dk_rankings_direct
+    dg = (request.args.get('dg') or '').strip()
+    if not dg.isdigit():
+        return jsonify({'error': 'pass ?dg=<DK draft group id>'}), 400
+    hit = _playoff_pool_cache.get(dg)
+    if hit and time.time() - hit[0] < 30 * 60 and not request.args.get('refresh'):
+        return jsonify({**hit[1], 'fetched_at': hit[0], 'cached': True})
+    payload, _ = playoff.load()
+    if not payload:
+        return jsonify({'error': 'no playoff inputs pushed yet'}), 404
+    pool = _fetch_dk_rankings_direct(dg)
+    if not pool:
+        return jsonify({'error': f'DK returned no pool for draft group {dg} '
+                                 '(not signed in at /setup, or wrong id)'}), 502
+    joined = playoff.join_pool(pool, payload['players']['players'])
+    joined['dk_count'] = len(pool)
+    joined['draft_group_id'] = dg
+    now = time.time()
+    _playoff_pool_cache[dg] = (now, joined)
+    return jsonify({**joined, 'fetched_at': now, 'cached': False})
+
+
+@app.route('/api/playoff/board/<draft_id>', methods=['POST'])
+def playoff_board(draft_id):
+    """Live picks for one DK draft, each mapped to the export's gsis_id.
+
+    The pull itself is the same one /recommend uses; only the mapping is new.
+    Unmatched picks are returned by name -- a pick the page cannot place still
+    removes a player from the room, and the page must say it could not.
+    """
+    from app import playoff
+    from app.data.api_fetcher import fetch_dk_draft_picks
+    payload, _ = playoff.load()
+    if not payload:
+        return jsonify({'error': 'no playoff inputs pushed yet'}), 404
+    entry_id = (_saved_draft_ids.get(str(draft_id)) or {}).get('entry_id')
+    result = fetch_dk_draft_picks(draft_id, entry_id=entry_id)
+    if not result:
+        return jsonify({'error': 'could not fetch picks — sign in at /setup', 'picks': [],
+                        'needs_auth': True})
+    mapped = playoff.map_picks(result.get('picks', []), payload['players']['players'])
+    return jsonify({**mapped, 'my_position': result.get('my_position'),
+                    'draft_group_id': result.get('draft_group_id'),
+                    'updated_at': time.time()})
+
+
 # ── Season standings ──────────────────────────────────────────────────────────
 
 @app.route('/api/season/upload', methods=['POST'])

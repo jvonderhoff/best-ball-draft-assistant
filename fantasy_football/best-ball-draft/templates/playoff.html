@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Playoff Draft — Best Ball Assistant</title>
+  <script src="{{ asset('theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ asset('theme.css') }}">
+  <style>
+    [hidden] { display: none !important; }
+    .content { padding: 12px; max-width: 980px; margin: 0 auto; }
+    .page-sub { color: var(--muted); font-size: 0.78em; line-height: 1.5; margin-bottom: 12px; }
+    .bar {
+      display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center;
+      background: var(--card); border: 1px solid var(--border); border-radius: 9px;
+      padding: 9px 13px; margin-bottom: 10px; font-size: 0.78em;
+    }
+    .bar b { color: var(--text); }
+    .k { color: var(--muted); }
+    .warn { color: var(--orange); font-weight: 700; }
+    .bad { color: var(--red); font-weight: 700; }
+    .ok { color: var(--green); font-weight: 700; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 0.82em; }
+    .row label { color: var(--muted); display: flex; gap: 6px; align-items: center; }
+    input, select, button {
+      background: var(--input-bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 8px; font-size: 0.95em;
+    }
+    input.num { width: 90px; } input.wide { width: 230px; }
+    /* The preset labels are long; unconstrained, the select widened the whole
+       page past a phone's 375px. */
+    select { max-width: 100%; } #preset { max-width: min(330px, 78vw); }
+    .row label { flex-wrap: wrap; max-width: 100%; }
+    .card h2 { flex-wrap: wrap; }
+    button { cursor: pointer; } button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button:disabled { opacity: .5; cursor: default; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; }
+    .grid > div { min-width: 0; }
+    @media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } input.wide { width: 100%; } }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; margin-bottom: 12px; }
+    .card h2 { font-size: 0.9em; margin: 0 0 8px; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .card h2 small { color: var(--muted); font-weight: 400; font-size: 0.85em; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8em; }
+    th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    td { padding: 5px 6px; border-bottom: 1px solid var(--row-border); white-space: nowrap; }
+    td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+    tr.click { cursor: pointer; } tr.click:hover { background: var(--hover); }
+    tr.top td { background: var(--card-hi); }
+    .pos { display: inline-block; min-width: 24px; font-weight: 700; font-size: 0.85em; }
+    .bye { color: var(--orange); font-size: 0.8em; }
+    .scroll { max-height: 420px; overflow-y: auto; }
+    /* Seven columns do not fit a phone: the tables scroll inside their card
+       rather than pushing the page sideways. */
+    #recs, #mine, .scroll, .card > table { overflow-x: auto; display: block; }
+    .msg { font-size: 0.8em; color: var(--muted); padding: 6px 0; }
+    .turn { font-weight: 700; color: var(--accent); }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/recommend">Live Draft</a>
+  <a href="/playoff" class="active">Playoff</a>
+  <a href="/season">Season</a>
+  <a href="/history">History</a>
+  <a href="/rankings">Rankings</a>
+  <a href="/news">News</a>
+  <a href="/setup">Setup</a>
+  <button class="theme-toggle" onclick="toggleTheme()"></button>
+</nav>
+
+<div class="content">
+  <div class="page-sub">
+    DraftKings playoff best ball. Every pick is scored by simulating the postseason
+    (which teams keep playing, what each player scores) and asking how the pick changes your
+    chance to win your pod each round and reach the final. Inputs come from the projections
+    app; the plan and the evidence are <code>docs/PLAYOFF_DESIGN.md</code>.
+  </div>
+
+  <div class="bar" id="freshBar"><span class="k">Loading playoff inputs…</span></div>
+
+  <div class="row">
+    <label>Format
+      <select id="preset"></select>
+    </label>
+    <label>Payouts <input id="payouts" class="wide" placeholder="1:100000, 2:31000, 3-5:5000"></label>
+    <span class="k" id="formatNote"></span>
+  </div>
+  <div class="row">
+    <label>DK draft id <input id="draftId" class="num" placeholder="contest"></label>
+    <button id="connectBtn">Follow live draft</button>
+    <label>Draft group <input id="dgId" class="num" placeholder="for ADP"></label>
+    <button id="poolBtn">Load DK pool</button>
+    <label>My seat <select id="mySeat"></select></label>
+    <button id="botsBtn" title="Mock draft: bots pick until it is your turn">Bots to my turn</button>
+    <button id="resetBtn">Reset board</button>
+  </div>
+  <div class="bar" id="boardBar"></div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Recommendations <small id="recMeta"></small></h2>
+        <div id="recs" class="msg">Waiting for inputs…</div>
+      </div>
+      <div class="card">
+        <h2>Available <small>click to draft for the seat on the clock (mock)</small></h2>
+        <input id="search" placeholder="search" style="width:100%;margin-bottom:6px">
+        <div class="scroll"><table id="avail"></table></div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>My roster <small id="myCount"></small></h2>
+        <div id="mine" class="msg">No picks yet.</div>
+        <div id="conflicts"></div>
+      </div>
+      <div class="card">
+        <h2>Teams <small>chance to play each round</small></h2>
+        <table id="teams"></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ asset('playoff-sim.js') }}"></script>
+<script src="{{ asset('recommender-playoff.js') }}"></script>
+<script>
+'use strict';
+const SEATS = 6;
+const WORLDS = 2000;
+const S = {
+  ctx: null, worlds: null, adp: null, adpSource: 'synthetic', expPts: null,
+  field: null, fieldKey: '', picks: [], mySeat: 0, draftId: null, pollTimer: null,
+  unmatched: [], data: null, pool: null,
+};
+const $ = id => document.getElementById(id);
+const pct = (x, d = 1) => (100 * x).toFixed(d) + '%';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const nextTick = () => new Promise(r => setTimeout(r, 30));
+
+function format() {
+  const f = { ...PlayoffRec.PRESETS[$('preset').value] };
+  const typed = PlayoffRec.parsePayouts($('payouts').value);
+  if (typed.length) f.payouts = typed;
+  return f;
+}
+
+// ── load ────────────────────────────────────────────────────────────────────
+async function load() {
+  const r = await fetch('/api/playoff/data');
+  const data = await r.json();
+  if (!r.ok) {
+    $('freshBar').innerHTML = `<span class="bad">No playoff inputs.</span> <span class="k">${esc(data.error)}</span>`;
+    $('recs').textContent = 'Nothing to recommend without inputs.';
+    return;
+  }
+  S.data = data;
+  S.ctx = PlayoffSim.build(data.bracket, data.players);
+  renderFresh();
+  $('recs').textContent = 'Simulating postseasons…';
+  await nextTick();
+  S.worlds = PlayoffSim.simulateWorlds(S.ctx, WORLDS, 1);
+  const syn = PlayoffSim.syntheticAdp(S.ctx, S.worlds);
+  S.expPts = syn.expPoints;
+  S.adp = syn.adp;
+  renderTeams();
+  restore();
+  await refresh();
+}
+
+function renderFresh() {
+  const b = S.data.bracket, m = S.data.players.meta;
+  const age = S.data.age_hours;
+  const seeds = b.seeds_final ? '<span class="ok">final</span>' : '<span class="bad">PROVISIONAL — do not draft on this</span>';
+  const ageCls = age == null ? 'bad' : age > 24 ? 'warn' : 'ok';
+  const adp = S.adpSource === 'synthetic'
+    ? '<span class="warn">SYNTHETIC (expected points) — load the DK pool</span>'
+    : `<span class="ok">DK draft group ${esc(S.pool.draft_group_id)}</span> · ${S.pool.players.length} joined`
+      + (S.pool.unmatched.length ? ` · <span class="warn">${S.pool.unmatched.length} DK players not in the export</span>` : '');
+  $('freshBar').innerHTML = [
+    `<span><span class="k">Season</span> <b>${b.season}</b></span>`,
+    `<span><span class="k">Seeds</span> ${seeds}</span>`,
+    `<span><span class="k">Pushed</span> <span class="${ageCls}">${age == null ? '?' : age.toFixed(1) + 'h ago'}</span> (${esc(S.data.source)})</span>`,
+    `<span><span class="k">Lines through week</span> <b>${b.lines_through_week}</b></span>`,
+    `<span><span class="k">Injuries</span> <b>${m.sleeper_players_age_h ?? '?'}h</b> old at export</span>`,
+    `<span><span class="k">ADP</span> ${adp}</span>`,
+  ].join('');
+}
+
+// ── board state ─────────────────────────────────────────────────────────────
+function rosters() {
+  const rs = Array.from({ length: SEATS }, () => []);
+  for (const p of S.picks) rs[p.seat].push(p.idx);
+  return rs;
+}
+function nextPick() { return S.picks.length + 1; }
+function totalPicks() { return SEATS * format().rounds; }
+function onClock() { return PlayoffRec.seatOfPick(nextPick(), SEATS); }
+function save() {
+  if (S.draftId) return;     // a live board is DK's, never ours to persist
+  try { sessionStorage.setItem('bba_playoff_mock', JSON.stringify({ picks: S.picks, mySeat: S.mySeat, preset: $('preset').value })); } catch {}
+}
+function restore() {
+  try {
+    const m = JSON.parse(sessionStorage.getItem('bba_playoff_mock') || 'null');
+    if (m) { S.picks = m.picks || []; S.mySeat = m.mySeat || 0; if (m.preset) $('preset').value = m.preset; }
+  } catch {}
+  $('mySeat').value = String(S.mySeat);
+}
+
+async function draft(idx) {
+  if (S.draftId || nextPick() > totalPicks()) return;
+  S.picks.push({ idx, seat: onClock() });
+  save();
+  await refresh();
+}
+
+async function botsToMyTurn() {
+  if (S.draftId) return;
+  const f = format();
+  const rng = PlayoffSim.mulberry32(Date.now() & 0xffff);
+  while (nextPick() <= totalPicks() && onClock() !== S.mySeat) {
+    const rs = rosters();
+    const taken = S.picks.map(p => p.idx);
+    const done = PlayoffRec.completeBoard(S.ctx, S.adp, rs, taken, nextPick(), { ...f, rounds: Math.ceil(nextPick() / SEATS) }, rng, 6);
+    const s = onClock();
+    const idx = done[s][rs[s].length];
+    if (idx === undefined) break;
+    S.picks.push({ idx, seat: s });
+  }
+  save();
+  await refresh();
+}
+
+// ── live DK board ───────────────────────────────────────────────────────────
+async function pullLive() {
+  if (!S.draftId) return;
+  const r = await fetch(`/api/playoff/board/${encodeURIComponent(S.draftId)}`, { method: 'POST' });
+  const d = await r.json();
+  if (!r.ok || d.needs_auth) { $('boardBar').innerHTML = `<span class="bad">${esc(d.error || 'pull failed')}</span>`; return; }
+  const byGsis = new Map(S.ctx.players.map((p, i) => [p.gsis_id, i]));
+  const picks = [];
+  for (const pk of d.picks.sort((a, b) => a.pick_number - b.pick_number)) {
+    const idx = byGsis.get(pk.gsis_id);
+    if (idx === undefined) continue;
+    picks.push({ idx, seat: PlayoffRec.seatOfPick(pk.pick_number, SEATS) });
+  }
+  S.unmatched = d.unmatched || [];
+  if (d.my_position) { S.mySeat = d.my_position - 1; $('mySeat').value = String(S.mySeat); }
+  if (d.draft_group_id && !$('dgId').value) $('dgId').value = d.draft_group_id;
+  const changed = picks.length !== S.picks.length;
+  S.picks = picks;
+  if (changed) await refresh(); else renderBoardBar();
+}
+
+async function loadPool() {
+  const dg = $('dgId').value.trim();
+  if (!dg) return;
+  $('poolBtn').disabled = true;
+  try {
+    const r = await fetch(`/api/playoff/pool?dg=${encodeURIComponent(dg)}`);
+    const d = await r.json();
+    if (!r.ok) { alert(d.error); return; }
+    S.pool = d;
+    const byGsis = new Map(S.ctx.players.map((p, i) => [p.gsis_id, i]));
+    // Players DK does not list cannot be drafted: ADP 0 removes them everywhere.
+    const adp = new Float64Array(S.ctx.players.length);
+    for (const row of d.players) {
+      const i = byGsis.get(row.gsis_id);
+      if (i !== undefined && row.adp && row.adp < 9999) adp[i] = row.adp;
+    }
+    S.adp = adp; S.adpSource = 'dk'; S.field = null;
+    renderFresh();
+    await refresh();
+  } finally { $('poolBtn').disabled = false; }
+}
+
+// ── compute + render ────────────────────────────────────────────────────────
+async function ensureField() {
+  const f = format();
+  const key = `${$('preset').value}|${S.adpSource}|${S.pool ? S.pool.fetched_at : ''}`;
+  if (S.field && S.fieldKey === key) return;
+  $('recs').textContent = 'Building the field (bot boards and later-round opponents, ~10 s once per draft)…';
+  await nextTick();
+  S.field = PlayoffRec.buildField(S.ctx, S.worlds, S.adp, f);
+  S.fieldKey = key;
+}
+
+async function refresh() {
+  if (!S.ctx) return;
+  renderBoardBar(); renderMine(); renderAvail();
+  if (nextPick() > totalPicks()) { $('recs').textContent = 'Draft complete.'; renderFinal(); return; }
+  await ensureField();
+  $('recs').textContent = 'Thinking…';
+  await nextTick();
+  const f = format();
+  const t0 = performance.now();
+  const out = PlayoffRec.recommend(S.ctx, S.worlds, S.adp, S.field, f,
+    { mySeat: S.mySeat, rosters: rosters(), taken: S.picks.map(p => p.idx), nextPick: nextPick() });
+  renderRecs(out, f, performance.now() - t0);
+}
+
+function renderBoardBar() {
+  const live = S.draftId ? `<span class="ok">live draft ${esc(S.draftId)}</span> · polled every 30 s` : '<span class="k">mock board</span>';
+  const turn = onClock() === S.mySeat ? '<span class="turn">your pick</span>' : `seat ${onClock() + 1} on the clock`;
+  const un = S.unmatched.length ? ` · <span class="bad">${S.unmatched.length} picks not matched: ${esc(S.unmatched.slice(0, 5).join(', '))}</span>` : '';
+  $('boardBar').innerHTML = `${live} · pick <b>${Math.min(nextPick(), totalPicks())}</b> of ${totalPicks()} · ${turn}${un}`;
+}
+
+function byeTeams() { return new Set([S.ctx.seeds.AFC[0], S.ctx.seeds.NFC[0]]); }
+function teamTag(t) { return byeTeams().has(t) ? `${t} <span class="bye">bye</span>` : t; }
+
+function renderRecs(out, f, ms) {
+  const P = S.ctx.players;
+  const evMode = out.key === 'ev';
+  $('recMeta').textContent = `${f.label} · ${Math.round(ms)} ms · ranked by ${evMode ? 'EV over entered prizes' : 'P(reach final)'}`;
+  const myTeams = {};
+  for (const i of rosters()[S.mySeat]) myTeams[P[i].team] = (myTeams[P[i].team] || 0) + 1;
+  const rows = out.results.slice(0, 12).map((r, k) => {
+    const p = P[r.idx];
+    const stack = myTeams[p.team] ? ` <span class="k">+${myTeams[p.team]} ${p.team}</span>` : '';
+    return `<tr class="click${k === 0 ? ' top' : ''}" data-idx="${r.idx}">
+      <td><span class="pos">${p.pos}</span>${esc(p.name)}${stack}</td><td>${teamTag(p.team)}</td>
+      <td class="n">${S.adp[r.idx] ? S.adp[r.idx].toFixed(1) : '—'}</td>
+      <td class="n">${pct(r.pR[0])}</td><td class="n">${pct(r.pR[1], 2)}</td><td class="n">${pct(r.pFinal, 2)}</td>
+      <td class="n">${evMode ? '$' + r.ev.toFixed(2) : pct(r.pWin, 3)}</td></tr>`;
+  }).join('');
+  $('recs').innerHTML = `<table><tr><th>Player</th><th>Team</th><th class="n">ADP</th>
+    <th class="n" title="P(win your round-1 pod)">Rd 1</th><th class="n" title="P(win round 1 and 2)">Rd 2</th>
+    <th class="n" title="P(reach the final)">Final</th><th class="n">${evMode ? 'EV' : 'P(1st)'}</th></tr>${rows}</table>
+    <div class="msg">Each row assumes you take him now and ADP drafts every remaining pick, yours included.
+    Same simulated postseasons for every row, so differences are paired.${f.payouts.length ? '' : ' Enter payouts to rank by EV.'}</div>`;
+  for (const tr of $('recs').querySelectorAll('tr.click')) tr.onclick = () => draft(+tr.dataset.idx);
+}
+
+function renderMine() {
+  const P = S.ctx.players, mine = rosters()[S.mySeat];
+  $('myCount').textContent = `${mine.length} of ${format().rounds}`;
+  if (!mine.length) { $('mine').innerHTML = '<div class="msg">No picks yet.</div>'; $('conflicts').innerHTML = ''; return; }
+  const byTeam = {};
+  for (const i of mine) (byTeam[P[i].team] = byTeam[P[i].team] || []).push(P[i]);
+  const reach = S.data.bracket.reach;
+  $('mine').innerHTML = '<table><tr><th>Team</th><th>Players</th><th class="n">E[games]</th></tr>'
+    + Object.entries(byTeam).sort((a, b) => b[1].length - a[1].length).map(([t, ps]) =>
+      `<tr><td>${teamTag(t)}</td><td>${ps.map(p => `<span class="pos">${p.pos}</span>${esc(p.name)}`).join(', ')}</td>
+       <td class="n">${reach[t] ? reach[t].games.toFixed(2) : '—'}</td></tr>`).join('') + '</table>';
+  const cf = PlayoffRec.conflicts(S.ctx, S.worlds, mine).filter(c => c.pMeet > 0.05);
+  $('conflicts').innerHTML = cf.length ? '<div class="msg"><b>Same conference — only one can reach the final:</b> '
+    + cf.map(c => `${c.a}/${c.b} meet ${pct(c.pMeet, 0)}`).join(' · ') + '</div>' : '';
+}
+
+function renderAvail() {
+  const P = S.ctx.players, taken = new Set(S.picks.map(p => p.idx));
+  const q = $('search').value.trim().toLowerCase();
+  const rows = P.map((p, i) => i).filter(i => !taken.has(i) && S.adp[i] > 0 && P[i].avail
+    && (!q || P[i].name.toLowerCase().includes(q) || P[i].team.toLowerCase() === q))
+    .sort((a, b) => S.adp[a] - S.adp[b]).slice(0, 80);
+  $('avail').innerHTML = '<tr><th>Player</th><th>Team</th><th class="n">ADP</th><th class="n">DK/g</th><th class="n">E[pts]</th></tr>'
+    + rows.map(i => `<tr class="click" data-idx="${i}"><td><span class="pos">${P[i].pos}</span>${esc(P[i].name)}${P[i].low_sample ? ' <span class="k" title="under 4 games">*</span>' : ''}</td>
+      <td>${teamTag(P[i].team)}</td><td class="n">${S.adp[i].toFixed(1)}</td><td class="n">${P[i].dk_ppg.toFixed(1)}</td>
+      <td class="n">${S.expPts[i].toFixed(1)}</td></tr>`).join('');
+  for (const tr of $('avail').querySelectorAll('tr.click')) tr.onclick = () => draft(+tr.dataset.idx);
+}
+
+function renderTeams() {
+  const b = S.data.bracket, seedOf = {};
+  for (const [c, ts] of Object.entries(b.seeds)) ts.forEach((t, i) => { seedOf[t] = c[0] + (i + 1); });
+  $('teams').innerHTML = '<tr><th>Team</th><th class="n">WC</th><th class="n">DIV</th><th class="n">CON</th><th class="n">SB</th><th class="n">Win</th></tr>'
+    + Object.entries(b.reach).map(([t, d]) => `<tr><td>${t} <span class="k">${seedOf[t]}</span></td>
+      ${['WC', 'DIV', 'CON', 'SB', 'champ'].map(r => `<td class="n">${d[r] === 0 ? '<span class="bye">—</span>' : pct(d[r], 0)}</td>`).join('')}</tr>`).join('');
+}
+
+function renderFinal() {
+  const f = format(), rs = rosters();
+  const sc = rs.map(r => PlayoffSim.rosterScores(S.ctx, r, S.worlds, f.lineup));
+  const v = PlayoffRec.contestValue(sc[S.mySeat], sc.filter((_, k) => k !== S.mySeat), S.field, S.worlds, f);
+  $('recs').innerHTML = `<div class="msg">Draft complete. Your roster: win round 1 <b>${pct(v.pR[0])}</b>,
+    reach the final <b>${pct(v.pFinal, 2)}</b> (an average roster: 16.7% and 0.46%).</div>`;
+}
+
+// ── wiring ──────────────────────────────────────────────────────────────────
+for (const [k, f] of Object.entries(PlayoffRec.PRESETS)) {
+  const o = document.createElement('option'); o.value = k; o.textContent = f.label; $('preset').appendChild(o);
+}
+for (let s = 0; s < SEATS; s++) {
+  const o = document.createElement('option'); o.value = String(s); o.textContent = `Seat ${s + 1}`; $('mySeat').appendChild(o);
+}
+function showFormatNote() {
+  const f = PlayoffRec.PRESETS[$('preset').value];
+  $('formatNote').innerHTML = `as reported by ${esc(f.source)} — confirm rounds, lineup and prizes in the lobby`
+    + (f.warning ? `<br><span class="bad">${esc(f.warning)}</span>` : f.measured ? `<br><span class="k">${esc(f.measured)}</span>` : '');
+  if (!$('payouts').value && f.payouts.length) $('payouts').placeholder = f.payouts.map(([a, b, x]) => `${a === b ? a : a + '-' + b}:${x}`).join(', ');
+}
+$('preset').onchange = () => { showFormatNote(); S.field = null; save(); refresh(); };
+$('payouts').onchange = () => refresh();
+$('mySeat').onchange = () => { S.mySeat = +$('mySeat').value; save(); refresh(); };
+$('search').oninput = () => renderAvail();
+$('botsBtn').onclick = () => botsToMyTurn();
+$('resetBtn').onclick = () => { if (S.draftId) return; S.picks = []; save(); refresh(); };
+$('poolBtn').onclick = () => loadPool();
+$('connectBtn').onclick = async () => {
+  S.draftId = $('draftId').value.trim() || null;
+  clearInterval(S.pollTimer);
+  if (!S.draftId) return;
+  S.picks = [];
+  await pullLive();
+  S.pollTimer = setInterval(pullLive, 30000);
+};
+showFormatNote();
+load();
+</script>
+</body>
+</html>

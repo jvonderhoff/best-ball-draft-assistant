@@ -479,7 +479,8 @@ def fetch_dk_draft_picks(contest_id, entry_id=None, draft_group_id=None, status=
         })
 
     print(f'  [DK] ✓ {len(picks)} picks for contest {contest_id}, my_position={my_position}')
-    return {'picks': picks, 'my_position': my_position, 'drafted_at': draft_start_time} \
+    return {'picks': picks, 'my_position': my_position, 'drafted_at': draft_start_time,
+            'draft_group_id': str(dg_id)} \
         if picks or my_position else None
 
 

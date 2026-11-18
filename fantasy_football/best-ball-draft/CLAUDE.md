@@ -420,6 +420,22 @@ the user: `docs/DECISIONS.md`.
 - **`analysis-verify` does not expect the two paths to match on projection fields.**
   What must agree exactly is `avail`, `rec_share` and the id keying.
 
+## Playoff best ball (`/playoff`)
+
+DK's January playoff contests. These are a different game, valued by simulating the
+bracket, not by V1/V2. Plan, evidence and build state: `docs/PLAYOFF_DESIGN.md`.
+
+- **Its own page, pool and inputs.** It never reads `/api/players`,
+  `player_cache.json` or the rankings board. Formats do not share pools.
+- **Inputs are pushed** from `../projections` (`cli.py playoff-publish`). Read `source`
+  and `age_hours` on `/api/playoff/data` before trusting a number.
+- **Its constants come from the push** (`params`), measured in `../projections`. Do not
+  add a number to `static/playoff-sim.js`.
+- **Check it after any change:** run `node tools/playoff-sim-check.js` and
+  `node tools/playoff-rec-check.js`. Each check exists because the simulator returned
+  confident wrong numbers without it. An average roster must come out at 1/6, 1/36,
+  1/216, and the ADP seats are the control.
+
 ## How this codebase decides things
 
 This matters more than any individual convention.

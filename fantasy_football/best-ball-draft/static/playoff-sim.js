@@ -304,19 +304,21 @@
     return rosters;
   }
 
-  /* Who you have to beat after round 1. Survivors are regrouped into new pods,
-   * so a round-r opponent is a roster that won its pod in every earlier round.
-   * Sampled recursively and IN THE SAME WORLD, because scores within a world
-   * share the bracket and a field heavy on the champion rises with it:
+  /* Who you have to beat after round 1, in the same world (scores within a
+   * world share the bracket, so a field heavy on the champion rises with it).
    *
-   *   round 1 survivor = the winner of one real BOARD (a drafted pod of 6)
-   *   round r survivor = the winner, on round r-1, of podSize round-(r-1) survivors
+   * A round-r opponent is the winner of a mini-tournament over DISTINCT boards,
+   * the contest's own structure: level 1 is one board's round-1 winner; level r
+   * is the best, on round r-1, of podSize level-(r-1) survivors drawn from
+   * DISJOINT boards. Level r needs podSize^(r-1) distinct boards (36 for the
+   * final's opponents).
    *
-   * The first level must be a real board. Six rosters drawn at random from the
-   * field can hold the same star, so their winner is weaker than a real pod
-   * winner -- that put an average roster's round-3 survival 15% above 1/216,
-   * consistently across seeds. Later pods really are mixed across boards, so
-   * there the random draw is the truth.
+   * Two earlier versions drew pod members WITH replacement -- first from random
+   * rosters, then from a small pool of board winners -- and both let a roster
+   * sit in a pod twice. A pod that repeats a roster is weaker than a real one,
+   * so an average roster's round-3 survival read 15-24% above the 1/216 it must
+   * be (worst in the 20-round format, where boards overlap most). Distinct
+   * boards make the recursion exact by construction.
    *
    * boardScores: array of boards, each an array of rosterScores.
    * Returns pools[r] (r >= 1) = Float32Array [w * S + s] of a round-r opponent's
@@ -324,27 +326,44 @@
   function survivorPools(boardScores, worlds, S, podSize, seed) {
     const rng = mulberry32(seed || 7);
     const R = worlds.R, n = worlds.n, B = boardScores.length;
+    const need = Math.pow(podSize, R - 2);
+    if (B < need) throw new Error(`survivorPools needs >= ${need} boards, got ${B}`);
+    // Each board's round-1 winner per world, ties at random.
+    const winner = new Array(n);
+    for (let w = 0; w < n; w++) {
+      winner[w] = boardScores.map(seats => {
+        let best = null, bs = -Infinity;
+        for (const sc of seats) { const x = sc[w * R]; if (x > bs || (x === bs && rng() < 0.5)) { bs = x; best = sc; } }
+        return best;
+      });
+    }
+    const idx = Array.from({ length: B }, (_, i) => i);
+    // Survivor of `level` from the boards idx[off .. off + podSize^(level-1)).
+    function survivor(w, level, off) {
+      if (level === 1) return winner[w][idx[off]];
+      const span = Math.pow(podSize, level - 2);
+      let best = null, bs = -Infinity;
+      for (let k = 0; k < podSize; k++) {
+        const c = survivor(w, level - 1, off + k * span);
+        const x = c[w * R + (level - 1)];
+        if (x > bs || (x === bs && rng() < 0.5)) { bs = x; best = c; }
+      }
+      return best;
+    }
     const pools = [null];
-    let prev = null;            // [w*S+s] -> roster scores of a survivor of round r-1
     for (let r = 1; r < R; r++) {
-      const cur = new Array(n * S);
+      const m = Math.pow(podSize, r - 1);
+      const pool = new Float32Array(n * S);
       for (let w = 0; w < n; w++) {
         for (let s = 0; s < S; s++) {
-          let best = null, bestScore = -Infinity;
-          const cands = r === 1 ? boardScores[Math.floor(rng() * B)]
-            : Array.from({ length: podSize }, () => prev[w * S + Math.floor(rng() * S)]);
-          for (const c of cands) {
-            const sc = c[w * R + (r - 1)];
-            // Ties at random, as the contest path splits them.
-            if (sc > bestScore || (sc === bestScore && rng() < 0.5)) { bestScore = sc; best = c; }
+          for (let k = 0; k < m; k++) {          // partial Fisher-Yates: m distinct boards
+            const j = k + Math.floor(rng() * (B - k));
+            const t = idx[k]; idx[k] = idx[j]; idx[j] = t;
           }
-          cur[w * S + s] = best;
+          pool[w * S + s] = survivor(w, r, 0)[w * R + r];
         }
       }
-      const pool = new Float32Array(n * S);
-      for (let i = 0; i < n * S; i++) pool[i] = cur[i][Math.floor(i / S) * R + r];
       pools.push(pool);
-      prev = cur;
     }
     return pools;
   }
