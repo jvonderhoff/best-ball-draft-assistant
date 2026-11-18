@@ -37,6 +37,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime
 
@@ -233,10 +234,43 @@ def check_seed_age() -> None:
         check(OK, 'seed age', f'committed seed is {age:.0f}h old ({when})')
 
 
+def check_playoff(target: str) -> None:
+    """Playoff best ball inputs (`--playoff`): pushed, final, fresh.
+
+    Every one of these reads as a normal page when it is wrong. Provisional seeds
+    simulate a bracket that will not happen; a day-old push misses the wild-card
+    lines; an injury file from before Friday's reports values a player who is out.
+    """
+    try:
+        d = get(target, '/api/playoff/data')
+    except urllib.error.HTTPError as e:
+        check(FAIL, 'playoff inputs', f'{e.code}: nothing pushed — cli.py playoff-publish '
+                                      'in ../projections')
+        return
+    b, m = d['bracket'], d['players']['meta']
+    if not b.get('seeds_final'):
+        check(FAIL, 'playoff seeds', 'PROVISIONAL — the regular season was unfinished '
+                                     'when the bracket was built; rebuild and republish')
+    else:
+        check(OK, 'playoff seeds', f"final, season {b['season']}")
+    age = d.get('age_hours')
+    lvl = FAIL if age is None or age > 48 else WARN if age > 12 else OK
+    check(lvl, 'playoff push age', f"{age}h old, source {d.get('source')}, lines through "
+                                   f"week {b.get('lines_through_week')}, {len(b.get('fixed', []))} games priced")
+    if d.get('source') != 'postgres':
+        check(WARN, 'playoff durability', f"served from {d.get('source')} — the next cold "
+                                          'start may lose it')
+    inj = m.get('sleeper_players_age_h')
+    check(WARN if inj is None or inj > 24 else OK, 'playoff injuries',
+          f'injury file was {inj}h old at export')
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--target', default=os.environ.get('DRAFT_APP_URL', PROD))
+    ap.add_argument('--playoff', action='store_true',
+                    help='also check the playoff best-ball inputs (before a /playoff draft)')
     args = ap.parse_args()
 
     print(f'preflight: {args.target}\n')
@@ -256,6 +290,12 @@ def main() -> int:
                     items = got
         except Exception as e:
             check(FAIL, fn.__name__.replace('check_', ''), f'check itself failed: {e}')
+
+    if args.playoff:
+        try:
+            check_playoff(args.target)
+        except Exception as e:
+            check(FAIL, 'playoff', f'check itself failed: {e}')
 
     for level, name, detail in _results:
         print(f'  [{level}] {name:<24} {detail}')

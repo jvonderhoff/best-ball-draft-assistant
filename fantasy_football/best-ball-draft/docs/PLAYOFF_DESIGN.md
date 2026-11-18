@@ -1,6 +1,7 @@
 # Playoff best ball — design
 
-Status: **steps 1-3 done 2026-11-17; step 4 (the draft-week runbook and dry run) is next.** Step 1, the bracket, is in `projections`
+Status: **steps 1-3 done and step 4's backtest run, 2026-11-17.** Left: the draft-week
+runbook (§7) and the dry run once the lobby opens. Step 1, the bracket, is in `projections`
 (`pipeline/bracket.py`, `cli.py playoff-bracket`). Step 2, player week scores, is the
 `projections` export (`tools/export_playoff_players.py`) plus the simulator
 `static/playoff-sim.js`, checked by `node tools/playoff-sim-check.js`. Step 3 is the
@@ -170,11 +171,14 @@ not move, and seeds replicated before believing a small difference.
    1/216. The pools are now tournaments over distinct boards; the sampled path reads
    exactly 1/216. The computed path reads up to ~10% high in the 20-round format. That
    level is the same for every candidate, so it does not change the ranking.
-4. **Next.**
-   - **Backtest on real postseasons (2016-2025):** draft-time inputs for each season,
-     recommender vs ADP bots, scored on what players actually scored. It is the only
-     test whose answer key is not the model.
-   - **Then a dry run on a mock board before the lobby opens; then capture the real pool the day
-   it appears, set the format from the lobby, and re-run the checks.
+4. **Backtest done 2026-11-17** (STATUS has the table). On real 2016-25 postseasons
+   the recommender's seat won round 1 about 24% of the time against 15% for the ADP
+   seats. P(final) came out 2.1x (12 rounds) and 3.4x (20 rounds), but carried by one or
+   two seasons each, and better in only 5-6 of 10. The round-1 edge is the measured
+   one, and it is against bots blind to byes. Still to do:
+   - **The draft-week runbook (§7).**
+   - **A dry run on a mock board** once DK's playoff pool and real ADP exist.
+   - **A re-run of this backtest with real ADP** once it can be captured, since the
+     bots' blindness to byes is the main doubt.
 
 [unusable players]: ../../CLAUDE.md

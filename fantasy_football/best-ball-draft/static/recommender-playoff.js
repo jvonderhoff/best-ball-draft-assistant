@@ -36,17 +36,17 @@
       source: 'RotoWire, "$3M Playoff Millionaire"',
       rounds: 12, lineup: { QB: 1, RB: 1, WR: 2, TE: 1, FLEX: 1 },
       podSize: 6, finalSize: 816, payouts: [],
-      measured: 'head-to-head 2026-11-17 (12 drafts, own model, synthetic ADP): 4.6x the ADP seats\' P(final)',
+      measured: 'real postseasons 2016-25 (30 drafts each, synthetic-ADP bots): 2.1x the ADP seats\' P(final), 1.6x without the best season; better in 6 of 10',
     },
     'dk-20': {
       label: '20 rounds · QB RB RB WR WR WR TE FLEX · final 81',
       source: 'Stokastic, $20 entry',
       rounds: 20, lineup: { QB: 1, RB: 2, WR: 3, TE: 1, FLEX: 1 },
       podSize: 6, finalSize: 81, payouts: [[1, 1, 100000], [2, 2, 31000], [3, 3, 20000]],
-      // Measured, and kept visible on the page rather than buried here: in this
-      // format the recommender did NOT beat ADP. Suspects, untested: 108 bot picks
-      // per completion make each candidate's value too noisy at 2-3 completions.
-      warning: 'NOT better than ADP in this format: head-to-head 2026-11-17, 12 drafts, 0.99x the ADP seats\' P(final). Use as a second opinion only.',
+      // The two measurements disagree, so the page says so. In-model (12 drafts):
+      // 0.99x. Real postseasons 2016-25 (12 drafts each): 3.4x, 2.2x without
+      // 2018, better in only 5 of 10 seasons. Neither is proof either way.
+      warning: 'Mixed evidence in this format: no better than ADP in-model (0.99x), 3.4x on real 2016-25 postseasons but better in only 5 of 10 seasons. Treat as a second opinion.',
     },
   };
   // Roster caps for the bots, so a bot does not take a fifth QB. Judgement, not

@@ -11,6 +11,32 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-17: playoff best ball, step 4: backtest on real postseasons
+
+`tools/playoff-backtest.sh <preset> <drafts>`. Each season uses its draft-time inputs
+from `../projections/tools/build_playoff_backtest.py`: lines through the wild card,
+availability and the starting QB approximated from box scores. One seat drafts by the
+recommender, five by ADP bots. Every roster is then scored on what players actually
+scored. Later rounds are drawn from 120 bot boards scored on that same real postseason.
+
+| format | recommender P(R1) / P(final) | ADP seats P(R1) / P(final) | ratio | without best season | seasons better |
+|---|---|---|---|---|---|
+| 12 rounds, 30 drafts/season | 0.240 / 0.0091 | 0.152 / 0.0044 | **2.1x** | 1.6x (no 2022) | 6/10 |
+| 20 rounds, 12 drafts/season | 0.233 / 0.0108 | 0.153 / 0.0032 | **3.4x** | 2.2x (no 2018) | 5/10 |
+
+**Read it as:**
+- **Round 1 is the solid part.** The recommender's seat won its pod in 23-24% of drafts
+  against 15% for the ADP seats, better in 6 seasons and worse in 2, in both formats.
+- **Reaching the final is not established.** The edge comes mostly from one or two
+  seasons, and season by season it is about a coin flip.
+- **The control holds** (12 rounds): the ADP seats sit at 0.0044 against 1/216 =
+  0.0046.
+- **The 20-round result contradicts the in-model 0.99x.** Both are thin, so the page
+  calls that format "mixed evidence".
+- **Every number is against bots drafting synthetic ADP** (expected postseason points,
+  blind to byes in round 1). That blindness is plausibly most of the round-1 edge. Real
+  DK ADP will be less naive. The first real draft is the next evidence.
+
 ## 2026-11-17: playoff best ball, step 3: the `/playoff` page
 
 `/playoff` drafts DK playoff best ball. Each candidate is scored by simulated
