@@ -2,7 +2,7 @@
 /* Check and measure static/recommender-playoff.js.
  *
  *   node tools/playoff-rec-check.js                       # checks + a short head-to-head
- *   node tools/playoff-rec-check.js --drafts 30 --preset dk-20
+ *   node tools/playoff-rec-check.js --drafts 30 --method redraft
  *
  * 1. contestValue (computed later rounds) agrees with the simulator's sampled
  *    contestPath: an average roster gets 1/6, 1/36, 1/216.
@@ -115,7 +115,8 @@ console.log(`field built in ${Date.now() - t0} ms (${field.boards} boards, ${fie
       let choice;
       if (s === mySeat) {
         choice = Rec.recommend(ctx, worlds, adp, field, format, { mySeat, rosters, taken, nextPick: pick },
-          { candidates: 14, completions: 2 }).results[0].idx;
+          // --method redraft reproduces the runs before 2026-11-19 (with --completions 2).
+          { candidates: 14, completions: args.completions ? +args.completions : undefined, method: args.method }).results[0].idx;
       } else {
         const one = Rec.completeBoard(ctx, adp, rosters, taken, pick, { ...format, rounds: Math.ceil(pick / 6) }, rng, 6);
         choice = one[s][rosters[s].length];

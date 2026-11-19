@@ -22,13 +22,43 @@ What sources agree on (checked 2026-11-17, re-check in the lobby):
 - Only the 14 playoff teams are in the pool. The two 1-seeds have a bye: **their players
   score zero in round 1**.
 
-What disagrees, so it is a setting:
+What disagreed on 2026-11-17, and how it was settled on 2026-11-19:
 
 | setting | RotoWire (Playoff Millionaire) | Stokastic |
 |---|---|---|
 | draft rounds | 12 | 20 |
 | lineup | QB, RB, 2 WR, TE, FLEX | QB, 2 RB, 3 WR, TE, FLEX |
 | final size | 816 | 81 |
+
+**Settled by DK itself (2026-11-19).** The rules page (help/rules/nfl/playoff-best-ball)
+and the lobby's game type both say **12 players**: QB, RB, WR, WR, TE, FLEX and 6 bench,
+30-second fast drafts. The 20-round column was one write-up's error and its preset is
+gone. Rules the recommender must respect, from the same page:
+- **At least 1 QB, 1 RB, 2 WR, 1 TE, or the entry is invalid and scores nothing**; at
+  most 3 QB and 3 TE. `canTake` in `recommender-playoff.js` never offers a pick that
+  breaks either with the picks left.
+- To be eligible for prizes you must edit DK's rankings, queue a player or pick by hand;
+  6 missed manual picks in a row in a fast draft turn auto-draft on.
+- Eliminated teams' players are disabled (red) as teams are eliminated, but can still be
+  drafted by hand.
+- Unfilled pods are topped up with wild cards (best non-advancing scores).
+
+The 2026-27 tournaments (the user's lobby screenshot, 2026-11-19; DK leaves best-ball
+tournaments out of the public lobby JSON, so this cannot be fetched):
+
+| contest | fee | field | rake | max | final if 1 of 6 x3 |
+|---|---|---|---|---|---|
+| $5M Playoff Millionaire | $25 | 235.2K | 15.0% | ? | 1,089 |
+| $1M Field General | $444 | 2,496 | 9.8% | ? | not whole: advances differently |
+| $400K Play-Action | $3 | 158.3K | 15.8% | 20 | 733 |
+| $100K Nickel | $5 | 23.7K | 15.6% | 10 | 110 |
+| $50K Spy | $100 | 540 | 7.4% | 1 | not whole: advances differently |
+| $50K Fair Catch | $12 | 4,752 | 12.3% | 1 | 22 |
+
+The four whose field divides by 216 are presets on `/playoff`. Field General and Spy are
+not, until their rounds tab is read. Playoff Sit & Gos (3 or 6 players, $1-$10,600, rake
+10% up to $50 and 5.7% from $530) score the whole postseason cumulatively, which the
+recommender does not model.
 
 ```
 format = { rounds, lineup:{QB,RB,WR,TE,FLEX}, pod_size: 6, advance_per_pod: 1,
@@ -240,9 +270,15 @@ five ADP bots on synthetic ADP; the files from `build_playoff_backtest.py --mid`
 in 4; P(final) rests on a few seasons. **20 rounds: no edge in round 1 (better 5, worse
 5) and worse at reaching the final in 9 of 10 seasons.** Thirty drafts is noisy, but this
 is not noise around an edge. The 20-round preset was already "mixed evidence" after
-week 18 (0.99x in-model); mid-season it should not be followed. Not investigated yet:
-whether it is the format (8 starters, deeper benches, more players from teams that miss)
-or the recommender's 20-round completions. `avail`'s rates were measured on these same seasons; they are
+week 18 (0.99x in-model); mid-season it should not be followed. **Investigated 2026-11-19, and moot:** DK's playoff format is 12 players only (§1), so
+the preset was removed. What was found on the way: (1) the payout ladder was not the
+cause (ranking by P(final) instead of EV was also worse, 0.56x vs 0.37x at 60 drafts);
+(2) the redraft valuation is noisy (two completion seeds on one board: rank correlation
+-0.2 to 0.5, top pick changed about half the time); (3) a paired 'swap' valuation fixed
+the noise but not the result, in 20 rounds (round 1 15% vs ADP 17%) or in 12, where it
+lost to redraft over 180 drafts (round 1 25.9% vs 28.9%, P(final) 1.76x vs 4.44x on the
+120-draft batch). Redraft stays the default; swap is kept behind `method: 'swap'` and
+recorded in the recommender's header as a dead end. `avail`'s rates were measured on these same seasons; they are
 base rates applied to every drafter alike, so they do not favour the recommender seat.
 
 **What the strategy write-ups say, against what the model does.** None showed data on

@@ -11,6 +11,39 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-19: playoff best ball is 12 players; the 20-round preset is gone
+
+**Asked:** fix the 20-round format (worse than ADP drafters from mid-season, 0.17x).
+**Found:** DK's own rules page and lobby say Playoff Best Ball is **12 players**
+(QB RB WR WR TE FLEX + 6 bench); 20 rounds came from one write-up. The preset is removed,
+and `/playoff` now has a preset per 2026-27 contest that advances 1 of 6 three times
+(Millionaire, Fair Catch, Play-Action, Nickel; final = field / 216). Contest table, rake
+and rules in PLAYOFF_DESIGN §1. The user plays 12 rounds: a couple of Millionaire
+entries, the rest $3-$12.
+
+**Fixed:** the recommender ignored DK's roster rules. A roster without 1 QB, 1 RB, 2 WR
+and 1 TE is void (zero all postseason), and QB/TE are capped at 3; `canTake` now keeps
+every offered pick legal with the picks left.
+
+**Tried and not shipped:** a paired 'swap' valuation, built because redraft's ranking is
+noisy (seed-to-seed rank correlation -0.2 to 0.5). Steadier, but on real 2016-25
+postseasons (12 rounds, from mid-November, 180 drafts) round 1 25.9% vs redraft 28.9%,
+P(final) 1.76x vs 4.44x on the 120-draft batch. Redraft stays.
+
+**Measured, 12 rounds, redraft, 120 new drafts (seeds 6-17):** round 1 30.0% vs ADP seats
+14.0% (better 7 seasons, worse 3); P(final) 4.44x, 2.77x without the best season, better
+in 4 of 10. Still against synthetic-ADP bots blind to byes.
+
+**Seen in one mock draft on this week's data** (recommender seat 3, Fair Catch format):
+9 NFC / 3 AFC, a CIN core plus cheap GB/CAR/LA players on 33-55% teams; fewer than 6 of
+its 12 score in wild-card week in 45% of worlds (an ADP bot: 18%). In-model it still
+rates higher (round 1 35% vs 26%), but that is scored on the worlds it chose from. The
+user's framework (cross-conference stacks, bye stacks paired with wild-card players) has
+not been tested as a rule; forcing roster shape has lost three times in V2_DESIGN §4,
+so any such rule ships only if it wins this backtest.
+
+---
+
 ## 2026-11-18: DK refuses the server; `/playoff` reads drafts through a bookmarklet
 
 **Found:** with fresh cookies synced, `/playoff` still said "could not fetch picks —

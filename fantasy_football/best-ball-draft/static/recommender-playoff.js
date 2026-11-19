@@ -26,34 +26,52 @@
   'use strict';
   const Sim = (typeof module !== 'undefined' && module.exports) ? require('./playoff-sim.js') : root.PlayoffSim;
 
-  /* Formats as reported by write-ups on 2026-11-17. They DISAGREE, which is why
-   * there are two and why the page asks you to confirm in the lobby. Payouts
-   * beyond what a source printed are left out, not invented: EV is then over the
-   * known prizes only, and the page says so. */
+  /* DK's playoff format, from DK's own rules page (help/rules/nfl/playoff-best-ball,
+   * read 2026-11-19): 12 players, QB RB WR WR TE FLEX + 6 bench, 30-second fast
+   * drafts. A 'dk-20' preset (20 rounds, 8 starters, final 81) was here until
+   * 2026-11-19; it came from one write-up (Stokastic, Aug 2026), DK's lobby lists
+   * Playoff Best Ball as "a 12-player team", and it never beat ADP drafters from
+   * mid-season, so it went. Final sizes are
+   * inferred from the lobby (below): confirm them, and the payouts, in the lobby. Payouts beyond what a source
+   * printed are left out, not invented: EV is then over the known prizes only. */
+  // The 2026-27 lobby (user's screenshot, 2026-11-19). Final size = entries / 216,
+  // i.e. 1 of 6 advancing in each of rounds 1-3; it comes out whole for these four,
+  // which is the evidence they use that format. Field General ($444) and Spy ($100)
+  // do not divide by 216, so they advance differently and are left out until their
+  // rounds tab is read. Confirm each contest's rounds tab in the lobby.
+  const BASE = {
+    rounds: 12, lineup: { QB: 1, RB: 1, WR: 2, TE: 1, FLEX: 1 }, podSize: 6, payouts: [],
+    source: 'DK rules page (roster); DK lobby 2026-11-19 (fee, field; final = field / 216)',
+    measured: 'real postseasons 2016-25, synthetic-ADP bots blind to byes. Drafting from mid-November, 180 drafts: round 1 won 29% vs 14% for ADP drafters. P(final) 3.1x (60 drafts) and 4.4x (120; 2.8x without the best season), but better in only 4 of 10 seasons each time: treat the final as a lottery',
+  };
   const PRESETS = {
-    'dk-12': {
-      label: '12 rounds · QB RB WR WR TE FLEX · final 816',
-      source: 'RotoWire, "$3M Playoff Millionaire"',
-      rounds: 12, lineup: { QB: 1, RB: 1, WR: 2, TE: 1, FLEX: 1 },
-      podSize: 6, finalSize: 816, payouts: [],
-      measured: 'real postseasons 2016-25, synthetic-ADP bots. Drafting from mid-November: round 1 won 27% vs 15%, P(final) 3.1x (1.8x without the best season, better in 4 of 10). After week 18: 2.1x (1.6x), better in 6 of 10',
-    },
-    'dk-20': {
-      label: '20 rounds · QB RB RB WR WR WR TE FLEX · final 81',
-      source: 'Stokastic, $20 entry',
-      rounds: 20, lineup: { QB: 1, RB: 2, WR: 3, TE: 1, FLEX: 1 },
-      podSize: 6, finalSize: 81, payouts: [[1, 1, 100000], [2, 2, 31000], [3, 3, 20000]],
-      // The two measurements disagree, so the page says so. In-model (12 drafts):
-      // 0.99x. Real postseasons 2016-25 (12 drafts each): 3.4x, 2.2x without
-      // 2018, better in only 5 of 10 seasons. Neither is proof either way.
-      // Mid-season (drafting from November, 30 drafts on real 2016-25 postseasons):
-      // round 1 level with ADP, P(final) 0.17x, worse in 9 of 10 seasons.
-      warning: 'Do not follow this format mid-season: drafting from November on real 2016-25 postseasons it reached the final 0.17x as often as ADP drafters (worse in 9 of 10 seasons). After week 18 the evidence was mixed (0.99x in-model, 3.4x on real postseasons).',
-    },
+    'dk-12': { ...BASE, label: '$5M Playoff Millionaire · $25 · final 1,089', finalSize: 1089 },
+    'fair-catch': { ...BASE, label: '$50K Fair Catch · $12 single entry · final 22', finalSize: 22 },
+    'play-action': { ...BASE, label: '$400K Play-Action · $3 · final 733', finalSize: 733 },
+    'nickel': { ...BASE, label: '$100K Nickel · $5 · final 110', finalSize: 110 },
   };
   // Roster caps for the bots, so a bot does not take a fifth QB. Judgement, not
   // measured: there is no real playoff board to measure against yet.
-  const CAPS = { 12: { QB: 2, RB: 4, WR: 5, TE: 2 }, 20: { QB: 3, RB: 6, WR: 8, TE: 4 } };
+  // DK's own auto-draft stops at 2 QB, 3 RB, 5 WR, 2 TE (rules page), but only for
+  // drafters who never touched their rankings; RB 4 is kept for the rest.
+  const CAPS = { 12: { QB: 2, RB: 4, WR: 5, TE: 2 } };
+
+  /* DK's own roster rules (help/rules/nfl/playoff-best-ball, read 2026-11-19): a
+   * lineup without at least 1 QB, 1 RB, 2 WR and 1 TE is INVALID and scores
+   * nothing all postseason, and a lineup may hold at most 3 QBs and 3 TEs. The
+   * minimums are the lineup's fixed slots, FLEX excluded. */
+  const MAX_POS = { QB: 3, TE: 3 };
+  function canTake(ctx, format, myRoster, i) {
+    const pos = ctx.players[i].pos;
+    const counts = {};
+    for (const j of myRoster) counts[ctx.players[j].pos] = (counts[ctx.players[j].pos] || 0) + 1;
+    counts[pos] = (counts[pos] || 0) + 1;
+    if (counts[pos] > (MAX_POS[pos] ?? 99)) return false;
+    const left = format.rounds - myRoster.length - 1;   // picks after this one
+    let short = 0;
+    for (const [p, k] of Object.entries(format.lineup)) if (p !== 'FLEX') short += Math.max(0, k - (counts[p] || 0));
+    return short <= left;
+  }
 
   /* "1:100000, 2:31000, 3-5:5000" -> [[1,1,100000],[2,2,31000],[3,5,5000]] */
   function parsePayouts(text) {
@@ -81,7 +99,7 @@
     // Costs ~6 s on the Mac, once per draft.
     const B = opts.boards || 120, S = opts.survivors || 300;
     const rng = Sim.mulberry32(opts.seed || 21);
-    const caps = format.caps || CAPS[format.rounds] || CAPS[20];
+    const caps = format.caps || CAPS[format.rounds] || CAPS[12];
     const boards = [];
     for (let b = 0; b < B; b++) {
       const rs = Sim.botDraft(ctx, adp, { seats: format.podSize, rounds: format.rounds, caps }, rng);
@@ -166,7 +184,7 @@
    * `fromPick`, every seat drafting as an ADP bot. Deterministic for a seed. */
   function completeBoard(ctx, adp, rosters, taken, fromPick, format, rng, noise) {
     const seats = format.podSize, total = seats * format.rounds;
-    const caps = format.caps || CAPS[format.rounds] || CAPS[20];
+    const caps = format.caps || CAPS[format.rounds] || CAPS[12];
     const out = rosters.map(r => r.slice());
     const tk = new Set(taken);
     const pool = ctx.players.map((p, i) => i).filter(i => adp[i] > 0 && !tk.has(i))
@@ -195,31 +213,141 @@
   /* board = { mySeat (0-based), rosters: [[idx...] per seat], taken: [idx...],
    *           nextPick (1-based overall pick about to be made) }
    * Returns candidates sorted best first. */
+  /* Two ways to value a candidate against the rest of the draft:
+   *
+   *  'swap' (tested 2026-11-19, NOT the default): finish the board ONCE per completion with bots in every
+   *   seat, mine included, then for each candidate swap him in for the player
+   *   my seat took at this pick, and hand that displaced player to whichever
+   *   seat had the candidate later. Every candidate then faces the same board,
+   *   so the difference between two candidates is the difference between two
+   *   players and nothing else.
+   *
+   *  'redraft' (the default): re-run the bots after each candidate. Taking a
+   *   different player changes every later bot pick, so each candidate gets
+   *   its own board. Measured 2026-11-19 (tools/playoff-backtest.js, scratch
+   *   stability check): two completion seeds on the same board ranked the
+   *   candidates with rank correlation -0.2 to 0.5 in 20 rounds and changed
+   *   the top pick about half the time, because one player's value is smaller
+   *   than the spread of 19 re-drafted picks. That noise made the 20-round
+   *   recommender reach down the ADP list at random, worse than ADP drafters.
+   *
+   * Swap is far steadier (rank correlation 0.5-0.85 between seeds) and still
+   * lost on real postseasons, 12 rounds, drafting from mid-November
+   * (tools/playoff-backtest.sh, 180 drafts in two batches, same seeds for both):
+   * round 1 won 25.9% vs redraft 28.9% (ADP seats ~14.5%), P(final) 1.76x vs
+   * 4.44x on the 120-draft batch. Paired by draft the round-1 gap is -5.8 points,
+   * se 5.8: not significant, but no sign swap helps. Redraft stays. A guess at
+   * why: swap's later picks cannot react to this one, and redraft's re-run
+   * does price, roughly, what a pick does to the rest of my draft. Do not retry
+   * swap as a noise fix without beating redraft on this backtest. A swap can put
+   * an opponent one over a cap; that roster is not scored as mine. */
   function recommend(ctx, worlds, adp, field, format, board, opts = {}) {
-    const C = opts.candidates || 20, M = opts.completions || 3, noise = opts.noise ?? 6;
+    const method = opts.method || 'redraft';
+    const C = opts.candidates || 20, noise = opts.noise ?? 6;
+    // Swap scores each candidate with 2 rosters, not 6, so it affords more completions.
+    const M = opts.completions || (method === 'swap' ? 8 : 3);
     const taken = new Set(board.taken);
-    const avail = ctx.players.map((p, i) => i).filter(i => !taken.has(i) && adp[i] > 0 && ctx.players[i].avail);
+    const mineNow = board.rosters[board.mySeat];
+    // Never offer a pick that leaves the roster unable to meet DK's minimums with
+    // the picks left (an invalid entry scores zero) or breaks the QB/TE maximum.
+    // opts.allow(i): an extra rule on which players may be offered (rosterRule below).
+    const avail = ctx.players.map((p, i) => i).filter(i => !taken.has(i) && adp[i] > 0 && ctx.players[i].avail
+      && canTake(ctx, format, mineNow, i) && (!opts.allow || opts.allow(i)));
     avail.sort((a, b) => adp[a] - adp[b]);
     const cands = avail.slice(0, C);
-    const results = [];
-    for (const c of cands) {
-      let acc = { pR: [0, 0, 0], pFinal: 0, pWin: 0, ev: 0 };
-      for (let m = 0; m < M; m++) {
-        const rng = Sim.mulberry32(1000 + m);          // same completions for every candidate
-        const rosters = board.rosters.map(r => r.slice());
-        rosters[board.mySeat].push(c);
-        const done = completeBoard(ctx, adp, rosters, [...taken, c], board.nextPick + 1, format, rng, noise);
-        const mine = Sim.rosterScores(ctx, done[board.mySeat], worlds, format.lineup);
-        const pod = done.filter((_, s) => s !== board.mySeat).map(r => Sim.rosterScores(ctx, r, worlds, format.lineup));
-        const v = contestValue(mine, pod, field, worlds, format);
-        acc.pR = acc.pR.map((x, r) => x + v.pR[r] / M);
-        acc.pFinal += v.pFinal / M; acc.pWin += v.pWin / M; acc.ev += v.ev / M;
+    const me = board.mySeat, slot = board.rosters[me].length;
+    const lu = format.lineup;
+    const acc = new Map(cands.map(c => [c, { pR: [0, 0, 0], pFinal: 0, pWin: 0, ev: 0 }]));
+    const add = (c, v) => {
+      const a = acc.get(c);
+      a.pR = a.pR.map((x, r) => x + v.pR[r] / M);
+      a.pFinal += v.pFinal / M; a.pWin += v.pWin / M; a.ev += v.ev / M;
+    };
+    for (let m = 0; m < M; m++) {
+      const rngSeed = (opts.seed ?? 1000) + m;          // same completions for every candidate
+      if (method === 'redraft') {
+        for (const c of cands) {
+          const rosters = board.rosters.map(r => r.slice());
+          rosters[me].push(c);
+          const done = completeBoard(ctx, adp, rosters, [...taken, c], board.nextPick + 1, format, Sim.mulberry32(rngSeed), noise);
+          const mine = Sim.rosterScores(ctx, done[me], worlds, lu);
+          const pod = done.filter((_, s) => s !== me).map(r => Sim.rosterScores(ctx, r, worlds, lu));
+          add(c, contestValue(mine, pod, field, worlds, format));
+        }
+        continue;
       }
-      results.push({ idx: c, ...acc });
+      const base = completeBoard(ctx, adp, board.rosters, board.taken, board.nextPick, format, Sim.mulberry32(rngSeed), noise);
+      const b0 = base[me][slot];
+      const holder = new Map();                         // player -> seat that drafts him in `base`
+      base.forEach((r, s) => r.forEach(i => holder.set(i, s)));
+      const baseScores = base.map(r => Sim.rosterScores(ctx, r, worlds, lu));
+      const others = (s, swapped) => baseScores.filter((_, k) => k !== me).map((sc, j) => {
+        const k = j < me ? j : j + 1;
+        return k === s ? swapped : sc;
+      });
+      for (const c of cands) {
+        const h = holder.get(c);
+        // c is my pick here anyway, or I take him later in `base`: then taking him
+        // now and b0 at that later slot leaves the same roster.
+        if (c === b0 || h === me || b0 === undefined) {
+          add(c, contestValue(baseScores[me], others(-1), field, worlds, format));
+          continue;
+        }
+        const mineIdx = base[me].slice(); mineIdx[slot] = c;
+        const mine = Sim.rosterScores(ctx, mineIdx, worlds, lu);
+        let pod;
+        if (h === undefined) pod = others(-1);          // nobody drafts c; b0 goes undrafted
+        else {
+          const theirs = base[h].map(i => (i === c ? b0 : i));
+          pod = others(h, Sim.rosterScores(ctx, theirs, worlds, lu));
+        }
+        add(c, contestValue(mine, pod, field, worlds, format));
+      }
     }
+    const results = cands.map(c => ({ idx: c, ...acc.get(c) }));
     const key = format.payouts.length ? 'ev' : 'pFinal';
     results.sort((a, b) => b[key] - a[key]);
     return { key, results };
+  }
+
+  /* P(player i scores in wild-card week) in the simulated worlds: his team is in
+   * the bracket, not on a bye, and he is playing. What a drafter knows, not what
+   * happened. Float32Array by player index. */
+  function wcPlay(ctx, worlds) {
+    const P = ctx.players.length, out = new Float32Array(P);
+    const byTeam = ctx.byTeam;
+    worlds.brackets.forEach((br, w) => {
+      for (const [h, a] of br.WC) for (const t of [h, a]) for (const p of (byTeam[t] || [])) {
+        if (!worlds.playing || worlds.playing[w * P + p.idx]) out[p.idx] += 1;
+      }
+    });
+    for (let i = 0; i < P; i++) out[i] /= worlds.n;
+    return out;
+  }
+
+  /* The user's roster rules (2026-11-19), as filters on the candidates, for the
+   * backtest to test before anything ships:
+   *   conf: at most CONF_MAX players from one conference (stack across them: two
+   *         teams in one conference cannot both reach the Super Bowl);
+   *   wc:   keep the roster on course for at least WC_MIN expected wild-card-week
+   *         scorers (a bye stack must be paired with players who play that week).
+   *         Course = expected scorers so far + WC_PER_PICK for each pick left;
+   *         0.7 is about the best a single pick can add (a near-certain playoff
+   *         team, small bye chance). WC_MIN 7 is where an ADP roster sits (7.1 in
+   *         the 2026-11-19 mock draft). */
+  const CONF_MAX = 7, WC_MIN = 7, WC_PER_PICK = 0.7;
+  function rosterRule(name, ctx, format, wc, mine) {
+    if (!name || name === 'none') return null;
+    const conf = {};
+    let exp = 0;
+    for (const j of mine) { const c = ctx.conf[ctx.players[j].team]; conf[c] = (conf[c] || 0) + 1; exp += wc[j]; }
+    const left = format.rounds - mine.length - 1;
+    const okConf = i => (conf[ctx.conf[ctx.players[i].team]] || 0) + 1 <= CONF_MAX;
+    const okWc = i => exp + wc[i] + WC_PER_PICK * left >= WC_MIN;
+    if (name === 'conf') return okConf;
+    if (name === 'wc') return okWc;
+    if (name === 'both') return i => okConf(i) && okWc(i);
+    throw new Error(`unknown rule ${name}`);
   }
 
   /* Teams on my roster that must meet before the Super Bowl, with how likely
@@ -241,7 +369,7 @@
     return out.sort((x, y) => y.pMeet - x.pMeet);
   }
 
-  const api = { PRESETS, CAPS, parsePayouts, buildField, contestValue, completeBoard, recommend, seatOfPick, conflicts };
+  const api = { PRESETS, CAPS, MAX_POS, canTake, wcPlay, rosterRule, CONF_MAX, WC_MIN, parsePayouts, buildField, contestValue, completeBoard, recommend, seatOfPick, conflicts };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PlayoffRec = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -223,7 +223,7 @@ function save() {
 function restore() {
   try {
     const m = JSON.parse(sessionStorage.getItem('bba_playoff_mock') || 'null');
-    if (m) { S.picks = m.picks || []; S.mySeat = m.mySeat || 0; if (m.preset) $('preset').value = m.preset; }
+    if (m) { S.picks = m.picks || []; S.mySeat = m.mySeat || 0; if (m.preset && PlayoffRec.PRESETS[m.preset]) $('preset').value = m.preset; }   // a saved mock may name a removed preset (dk-20)
   } catch {}
   $('mySeat').value = String(S.mySeat);
 }

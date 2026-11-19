@@ -37,8 +37,16 @@ const preset = args.preset || 'dk-12';
 const DRAFTS = parseInt(args.drafts || '6', 10);
 const N = parseInt(args.worlds || '2000', 10);
 const CANDS = parseInt(args.candidates || '14', 10);
-const COMPS = parseInt(args.completions || '2', 10);
+// Unset = the recommender's own default for the method (redraft 3, swap 8). The
+// published runs use redraft with --completions 2 (the default here before
+// 2026-11-19), so pass it to compare with them.
+const COMPS = args.completions ? parseInt(args.completions, 10) : undefined;
+const METHOD = args.method || 'redraft';
 const format = { ...Rec.PRESETS[preset] };
+// --objective pfinal drops the preset's payout ladder, so the recommender ranks
+// by P(final) instead of EV (recommend() switches on payouts.length). Added to
+// test whether dk-20's top-3-only ladder is what made it worse than ADP.
+if (args.objective === 'pfinal') format.payouts = [];
 
 const file = JSON.parse(fs.readFileSync(path.join(DATA, `${season}.json`)));
 const ctx = Sim.build(file.bracket, file.players);
@@ -56,9 +64,16 @@ const worlds = Sim.simulateWorlds(ctx, N, 1);
 const { adp } = Sim.syntheticAdp(ctx, worlds);
 const field = Rec.buildField(ctx, worlds, adp, format);
 const realField = Rec.buildField(ctx, real, adp, format, { seed: 4242 });
+// --rule conf|wc|both: the user's roster rules (Rec.rosterRule), judged on what the
+// drafter knew (the simulated worlds), scored on what happened.
+const RULE = args.rule || 'none';
+const WC = Rec.wcPlay(ctx, worlds);
+let ruleFallbacks = 0;
 
 const rows = [];
-for (let d = 0; d < DRAFTS; d++) {
+// --from N starts at draft N, so a second batch adds new drafts instead of repeating seeds.
+const FROM = parseInt(args.from || '0', 10);
+for (let d = FROM; d < FROM + DRAFTS; d++) {
   const mySeat = d % 6;
   const rng = Sim.mulberry32(season * 100 + d);
   const rosters = Array.from({ length: 6 }, () => []);
@@ -67,8 +82,13 @@ for (let d = 0; d < DRAFTS; d++) {
     const s = Rec.seatOfPick(pick, 6);
     let choice;
     if (s === mySeat) {
-      choice = Rec.recommend(ctx, worlds, adp, field, format, { mySeat, rosters, taken, nextPick: pick },
-        { candidates: CANDS, completions: COMPS }).results[0].idx;
+      const allow = Rec.rosterRule(RULE, ctx, format, WC, rosters[mySeat]);
+      const out = Rec.recommend(ctx, worlds, adp, field, format, { mySeat, rosters, taken, nextPick: pick },
+        { candidates: CANDS, completions: COMPS, method: METHOD, allow });
+      // A rule that leaves no candidate falls back to the unruled pick (counted).
+      if (out.results.length) choice = out.results[0].idx;
+      else { ruleFallbacks++; choice = Rec.recommend(ctx, worlds, adp, field, format, { mySeat, rosters, taken, nextPick: pick },
+        { candidates: CANDS, completions: COMPS, method: METHOD }).results[0].idx; }
     } else {
       const one = Rec.completeBoard(ctx, adp, rosters, taken, pick, { ...format, rounds: Math.ceil(pick / 6) }, rng, 6);
       choice = one[s][rosters[s].length];
@@ -81,16 +101,21 @@ for (let d = 0; d < DRAFTS; d++) {
     const v = Rec.contestValue(sc[s], sc.filter((_, k) => k !== s), realField, real, format);
     const teams = {};
     for (const i of rosters[s]) teams[ctx.players[i].team] = (teams[ctx.players[i].team] || 0) + 1;
-    rows.push({ draft: d, seat: s, rec: s === mySeat, pR: v.pR, pFinal: v.pFinal, ev: v.ev,
+    const conf = {}; let wcExp = 0;
+    for (const i of rosters[s]) { conf[ctx.conf[ctx.players[i].team]] = (conf[ctx.conf[ctx.players[i].team]] || 0) + 1; wcExp += WC[i]; }
+    rows.push({ draft: d, seat: s, rec: s === mySeat, pR: v.pR, pFinal: v.pFinal, ev: v.ev, conf, wcExp,
       wc: sc[s][0], teams });
   }
 }
 const mean = (xs, f) => xs.reduce((a, x) => a + f(x), 0) / xs.length;
 const rec = rows.filter(r => r.rec), bot = rows.filter(r => !r.rec);
 const out = {
-  season, preset, drafts: DRAFTS, champion: file.champion, ms: Date.now() - t0,
+  season, preset, objective: format.payouts.length ? 'ev' : 'pfinal', method: METHOD, rule: RULE, ruleFallbacks, drafts: DRAFTS, champion: file.champion, ms: Date.now() - t0,
   rec: { pR1: mean(rec, r => r.pR[0]), pR2: mean(rec, r => r.pR[1]), pFinal: mean(rec, r => r.pFinal), ev: mean(rec, r => r.ev) },
   bot: { pR1: mean(bot, r => r.pR[0]), pR2: mean(bot, r => r.pR[1]), pFinal: mean(bot, r => r.pFinal), ev: mean(bot, r => r.ev) },
+  // Per-draft values, so two runs on the same seeds can be compared draft by draft.
+  recRows: rec.map(r => ({ draft: r.draft, pR1: r.pR[0], pFinal: r.pFinal, conf: r.conf, wcExp: r.wcExp })),
+  botRows: bot.map(r => ({ draft: r.draft, pR1: r.pR[0], pFinal: r.pFinal })),
   recTeams: rec.map(r => Object.entries(r.teams).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, k]) => `${t}${k}`).join(' ')),
 };
 const line = `${season} ${preset} champ ${out.champion}: rec P(R1) ${out.rec.pR1.toFixed(3)} P(final) ${out.rec.pFinal.toFixed(5)} | ADP P(R1) ${out.bot.pR1.toFixed(3)} P(final) ${out.bot.pFinal.toFixed(5)} | rec stacks ${out.recTeams.join(', ')}`;

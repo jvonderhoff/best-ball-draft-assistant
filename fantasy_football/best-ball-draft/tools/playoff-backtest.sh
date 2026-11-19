@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run tools/playoff-backtest.js for every season in parallel, then summarise.
 #   tools/playoff-backtest.sh dk-12 6           # preset, drafts per season
-#   tools/playoff-backtest.sh dk-20 3 --completions 6
+#   tools/playoff-backtest.sh dk-12 12 --from 6 --method redraft --completions 2   # new seeds, old method
 #   PLAYOFF_BT_OUT=tools/.playoff-backtest/mid-dk-12 tools/playoff-backtest.sh dk-12 6 --data ../projections/data/playoff_backtest_mid
 # Results land in tools/.playoff-backtest/<preset>/ (gitignored, regenerable).
 set -euo pipefail

@@ -153,7 +153,13 @@ python3 tools/preflight.py --playoff
      the recommender vs 15% for ADP drafters, across ten past postseasons.
    - **Final** and **EV** are thinner. On past postseasons the edge to the final came
      mostly from one or two seasons.
-   - The 20-round preset shows "mixed evidence": the two tests disagree.
+   - Pick the contest under **Format** first (Millionaire, Fair Catch, Play-Action,
+     Nickel). They differ only in final size, which matters for 1st-place odds and EV,
+     not for the ranking by P(final). The 20-round preset is gone: DK's playoff format
+     is 12 players (PLAYOFF_DESIGN §1).
+   - The recommender never offers a pick that would leave your roster short of 1 QB,
+     1 RB, 2 WR and 1 TE with the picks left, or over 3 QB / 3 TE. DK voids such a
+     roster: zero points all postseason.
 7. **My roster** lists your teams and their expected games. A *same conference* line
    names two of your teams that must meet before the Super Bowl, with the chance they
    do; only one of them can reach the final.
