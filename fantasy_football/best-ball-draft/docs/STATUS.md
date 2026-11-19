@@ -42,6 +42,19 @@ user's framework (cross-conference stacks, bye stacks paired with wild-card play
 not been tested as a rule; forcing roster shape has lost three times in V2_DESIGN §4,
 so any such rule ships only if it wins this backtest.
 
+**Tested the same day (`--rule`, same 120 drafts):** at most 7 from one conference
+(`conf`) and staying on course for 7 expected wild-card-week scorers (`wc`). Neither
+helped: round 1 30.0% unruled vs 28.3% conf (paired -1.7 pts, se 4.4) and 25.0% wc
+(-5.0, se 4.7); P(final) 4.44x vs 1.44x and 0.37x. Not shipped as rules. Instead the page
+shows the numbers for the user's own call: **In / Bye / G** per recommended player (his
+team's P(make), P(bye), expected games), conferences and expected wild-card-week players
+for My roster (and P(fewer than 6 play) once full), **My entries** (team and player
+exposure across finished live drafts, in this browser's localStorage) and **Avoid
+teams** (never recommend a team this draft; click a team in My entries). The user asked
+for entries not to look alike because the first pick anchors the build; automatic
+spreading is unmeasurable on a single-entry backtest, so it is the user's control, not a
+penalty.
+
 ---
 
 ## 2026-11-18: DK refuses the server; `/playoff` reads drafts through a bookmarklet

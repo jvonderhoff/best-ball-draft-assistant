@@ -160,7 +160,16 @@ python3 tools/preflight.py --playoff
    - The recommender never offers a pick that would leave your roster short of 1 QB,
      1 RB, 2 WR and 1 TE with the picks left, or over 3 QB / 3 TE. DK voids such a
      roster: zero points all postseason.
-7. **My roster** lists your teams and their expected games. A *same conference* line
+7. **In / Bye / G** on each row are his team's chance to make the playoffs, chance of a
+   round-1 bye (zero in round 1) and expected games. Under **My roster**: conferences,
+   expected wild-card-week players, and once the roster is full how often fewer than 6
+   play that week. Forcing either (≤7 per conference, ≥7 wild-card players) measured
+   worse on past postseasons (STATUS 2026-11-19), so they inform, not rule.
+8. **Keeping entries apart:** **My entries** counts teams and players across your finished
+   live drafts in this browser. Click a team there, or type it in **Avoid teams**, to
+   build this entry around a different core. The recommender gives the same answer from
+   the same seat on the same data, so without this your entries converge.
+9. **My roster** lists your teams and their expected games. A *same conference* line
    names two of your teams that must meet before the Super Bowl, with the chance they
    do; only one of them can reach the final.
 

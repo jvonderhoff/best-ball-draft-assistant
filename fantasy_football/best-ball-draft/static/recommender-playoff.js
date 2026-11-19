@@ -334,7 +334,19 @@
    *         Course = expected scorers so far + WC_PER_PICK for each pick left;
    *         0.7 is about the best a single pick can add (a near-certain playoff
    *         team, small bye chance). WC_MIN 7 is where an ADP roster sits (7.1 in
-   *         the 2026-11-19 mock draft). */
+   *         the 2026-11-19 mock draft).
+   *
+   * MEASURED 2026-11-19, and neither ships as a default: tools/playoff-backtest.sh
+   * --rule, 12 rounds from mid-November, the same 120 drafts as the unruled run:
+   *   none: round 1 30.0%, P(final) 4.44x ADP (2.77x without the best season)
+   *   conf: round 1 28.3% (paired -1.7 pts, se 4.4), P(final) 1.44x (0.60x)
+   *   wc:   round 1 25.0% (paired -5.0 pts, se 4.7), P(final) 0.37x (0.13x)
+   *   both: round 1 25.0%, P(final) 0.49x
+   * wc found no legal candidate among the top 14 on 262 of 1,440 picks and fell
+   * back to the unruled pick. The recommender already prices conferences and byes
+   * world by world; forcing them on top cost here, as forcing roster shape did
+   * three times in V2_DESIGN §4. The page shows the numbers instead (In/Bye/G,
+   * conferences, wild-card coverage) for the drafter's own judgement. */
   const CONF_MAX = 7, WC_MIN = 7, WC_PER_PICK = 0.7;
   function rosterRule(name, ctx, format, wc, mine) {
     if (!name || name === 'none') return null;

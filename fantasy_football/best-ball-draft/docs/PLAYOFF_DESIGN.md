@@ -306,3 +306,30 @@ counted only matched picks, so one unmatched pick would have put the wrong seat 
 clock.
 
 [unusable players]: ../../CLAUDE.md
+
+## 9. The drafter's rules, tested (2026-11-19)
+
+The user's read of the game: early in the season a pick is a bet on his team getting in;
+stack across conferences, since only one team per conference reaches the final; a bye
+stack scores nothing in round 1, so pair it with players who play wild-card week. The
+simulator already prices all three world by world (a team that misses scores zero, a bye
+team's round-1 score is zero, two same-conference teams cannot both play the final).
+The question was whether forcing them on top helps. `tools/playoff-backtest.sh --rule`,
+12 rounds, from mid-November, the same 120 real-postseason drafts as the unruled run:
+
+| rule | round 1 won | paired vs none | P(final) vs ADP | without best season | seasons better |
+|---|---|---|---|---|---|
+| none | 30.0% | — | 4.44x | 2.77x | 4/10 |
+| conf (≤7 per conference) | 28.3% | -1.7 pts, se 4.4 | 1.44x | 0.60x | 3/10 |
+| wc (on course for ≥7 wild-card players) | 25.0% | -5.0 pts, se 4.7 | 0.37x | 0.13x | 1/10 |
+| both | 25.0% | -5.0 pts, se 4.7 | 0.49x | 0.26x | 2/10 |
+
+Neither ships as a rule; the page shows the numbers (In / Bye / G, conference count,
+wild-card coverage) so the drafter can overrule a pick. Limits: synthetic-ADP bots blind
+to byes, one batch of 120 drafts, P(final) carried by few seasons. Re-test with real DK
+ADP once the bookmarklet has captured a playoff pool.
+
+**Entries that differ.** The recommender is deterministic for a board, so entries from
+the same seat converge on the same core. Spreading them is a portfolio question the
+single-entry backtest cannot score, so it is the drafter's control (My entries exposure,
+Avoid teams), not an automatic penalty.

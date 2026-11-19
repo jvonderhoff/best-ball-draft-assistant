@@ -56,6 +56,10 @@
     #recs, #mine, .scroll, .card > table { overflow-x: auto; display: block; }
     .msg { font-size: 0.8em; color: var(--muted); padding: 6px 0; }
     .turn { font-weight: 700; color: var(--accent); }
+    .chip { display: inline-block; margin: 2px 4px 2px 0; padding: 2px 7px; border: 1px solid var(--border);
+            border-radius: 10px; cursor: pointer; font-size: 0.95em; }
+    .chip.off { text-decoration: line-through; color: var(--red); border-color: var(--red); }
+    #coverage, #exposure { font-size: 0.8em; }
   </style>
 </head>
 <body>
@@ -96,6 +100,11 @@
     <button id="botsBtn" title="Mock draft: bots pick until it is your turn">Bots to my turn</button>
     <button id="resetBtn">Reset board</button>
   </div>
+  <div class="row">
+    <label title="Never recommend players from these teams in this draft: build this entry around a different core">Avoid teams
+      <input id="avoid" class="wide" placeholder="e.g. CIN SF (this draft only)"></label>
+    <span class="k">To keep entries apart: your exposure across entries is under My roster.</span>
+  </div>
   <div class="row k" id="bmRow">
     <a id="bmLink" class="bm" href="#" title="Drag me to your bookmarks bar">BBA → DK</a>
     <span>Drag to your bookmarks bar. On your DK draft tab, click it: it reads the draft
@@ -121,7 +130,12 @@
       <div class="card">
         <h2>My roster <small id="myCount"></small></h2>
         <div id="mine" class="msg">No picks yet.</div>
+        <div id="coverage"></div>
         <div id="conflicts"></div>
+      </div>
+      <div class="card">
+        <h2>My entries <small id="expMeta"></small></h2>
+        <div id="exposure" class="msg"></div>
       </div>
       <div class="card">
         <h2>Teams <small>chance to play each round</small></h2>
@@ -172,7 +186,9 @@ async function load() {
   const syn = PlayoffSim.syntheticAdp(S.ctx, S.worlds);
   S.expPts = syn.expPoints;
   S.adp = syn.adp;
+  S.wc = PlayoffRec.wcPlay(S.ctx, S.worlds);   // P(he plays wild-card week), per player
   renderTeams();
+  renderExposure();
   restore();
   await refresh();
 }
@@ -320,7 +336,7 @@ async function ensureField() {
 async function refresh() {
   if (!S.ctx) return;
   renderBoardBar(); renderMine(); renderAvail();
-  if (nextPick() > totalPicks()) { await ensureField(); renderFinal(); return; }
+  if (nextPick() > totalPicks()) { await ensureField(); renderFinal(); saveEntry(); return; }
   // Only on your pick. Each row means "take him NOW, then ADP drafts the rest";
   // off-turn that would put him on your roster at someone else's slot and rank
   // players for a pick you do not have (seen in the first phone mock draft).
@@ -338,8 +354,10 @@ async function refresh() {
   await nextTick();
   const f = format();
   const t0 = performance.now();
+  const av = avoided();
+  const allow = av.size ? i => !av.has(S.ctx.players[i].team) : undefined;
   const out = PlayoffRec.recommend(S.ctx, S.worlds, S.adp, S.field, f,
-    { mySeat: S.mySeat, rosters: rosters(), taken: S.picks.map(p => p.idx), nextPick: nextPick() });
+    { mySeat: S.mySeat, rosters: rosters(), taken: S.picks.map(p => p.idx), nextPick: nextPick() }, { allow });
   renderRecs(out, f, performance.now() - t0);
 }
 
@@ -373,6 +391,19 @@ function availTag(p) {
   return p.avail > 0 && p.avail < 0.6 ? ` <span class="warn" title="out now: P(playing by January)">out now ${pct(p.avail, 0)}</span>` : '';
 }
 
+/* The user's playoff read (2026-11-19): early in the season a pick is a bet on his
+ * team getting in at all; byes score nothing in round 1; only one team per
+ * conference reaches the final. These are the numbers for that read, beside the
+ * recommender's own. Mid-season they come from the simulated rest of the season. */
+function teamOdds(t) {
+  const b = S.data.bracket, r = b.reach[t];
+  if (b.odds && b.odds[t]) return { make: b.odds[t].make, bye: b.odds[t].bye, games: r ? r.games : 0 };
+  return { make: r ? 1 : 0, bye: r && r.WC === 0 ? 1 : 0, games: r ? r.games : 0 };
+}
+function avoided() {
+  return new Set($('avoid').value.toUpperCase().split(/[^A-Z]+/).filter(Boolean));
+}
+
 function renderRecs(out, f, ms) {
   const P = S.ctx.players;
   const evMode = out.key === 'ev';
@@ -382,24 +413,30 @@ function renderRecs(out, f, ms) {
   const rows = out.results.slice(0, 12).map((r, k) => {
     const p = P[r.idx];
     const stack = myTeams[p.team] ? ` <span class="k">+${myTeams[p.team]} ${p.team}</span>` : '';
+    const o = teamOdds(p.team);
     return `<tr class="click${k === 0 ? ' top' : ''}" data-idx="${r.idx}">
-      <td><span class="pos">${p.pos}</span>${esc(p.name)}${availTag(p)}${stack}</td><td>${teamTag(p.team)}</td>
+      <td><span class="pos">${p.pos}</span>${esc(p.name)}${availTag(p)}${stack}</td><td>${p.team}</td>
       <td class="n">${S.adp[r.idx] ? S.adp[r.idx].toFixed(1) : '—'}</td>
+      <td class="n${o.make < 0.5 ? ' bad' : ''}">${pct(o.make, 0)}</td><td class="n${o.bye >= 0.3 ? ' warn' : ''}">${pct(o.bye, 0)}</td><td class="n">${o.games.toFixed(2)}</td>
       <td class="n">${pct(r.pR[0])}</td><td class="n">${pct(r.pR[1], 2)}</td><td class="n">${pct(r.pFinal, 2)}</td>
       <td class="n">${evMode ? '$' + r.ev.toFixed(2) : pct(r.pWin, 3)}</td></tr>`;
   }).join('');
   $('recs').innerHTML = `<table><tr><th>Player</th><th>Team</th><th class="n">ADP</th>
+    <th class="n" title="P(his team makes the playoffs)">In</th><th class="n" title="P(his team has a round-1 bye: zero in round 1)">Bye</th>
+    <th class="n" title="His team's expected playoff games">G</th>
     <th class="n" title="P(win your round-1 pod)">Rd 1</th><th class="n" title="P(win round 1 and 2)">Rd 2</th>
     <th class="n" title="P(reach the final)">Final</th><th class="n">${evMode ? 'EV' : 'P(1st)'}</th></tr>${rows}</table>
     <div class="msg">Each row assumes you take him now and ADP drafts every remaining pick, yours included.
-    Same simulated postseasons for every row, so differences are paired.${f.payouts.length ? '' : ' Enter payouts to rank by EV.'}</div>`;
+    Same simulated postseasons for every row, so differences are paired.${f.payouts.length ? '' : ' Enter payouts to rank by EV.'}
+    <b>In</b>, <b>Bye</b>, <b>G</b>: his team's chance to make the playoffs, to have a round-1 bye (zero in round 1), and its expected games.
+    ${avoided().size ? `Avoiding ${esc([...avoided()].join(' '))}.` : ''}</div>`;
   for (const tr of $('recs').querySelectorAll('tr.click')) tr.onclick = () => draft(+tr.dataset.idx);
 }
 
 function renderMine() {
   const P = S.ctx.players, mine = rosters()[S.mySeat];
   $('myCount').textContent = `${mine.length} of ${format().rounds}`;
-  if (!mine.length) { $('mine').innerHTML = '<div class="msg">No picks yet.</div>'; $('conflicts').innerHTML = ''; return; }
+  if (!mine.length) { $('mine').innerHTML = '<div class="msg">No picks yet.</div>'; $('conflicts').innerHTML = ''; $('coverage').innerHTML = ''; return; }
   const byTeam = {};
   for (const i of mine) (byTeam[P[i].team] = byTeam[P[i].team] || []).push(P[i]);
   const reach = S.data.bracket.reach;
@@ -407,9 +444,79 @@ function renderMine() {
     + Object.entries(byTeam).sort((a, b) => b[1].length - a[1].length).map(([t, ps]) =>
       `<tr><td>${teamTag(t)}</td><td>${ps.map(p => `<span class="pos">${p.pos}</span>${esc(p.name)}`).join(', ')}</td>
        <td class="n">${reach[t] ? reach[t].games.toFixed(2) : '—'}</td></tr>`).join('') + '</table>';
+  renderCoverage(mine);
   const cf = PlayoffRec.conflicts(S.ctx, S.worlds, mine).filter(c => c.pMeet > 0.05);
   $('conflicts').innerHTML = cf.length ? '<div class="msg"><b>Same conference — only one can reach the final:</b> '
     + cf.map(c => `${c.a}/${c.b} meet ${pct(c.pMeet, 0)}`).join(' · ') + '</div>' : '';
+}
+
+/* Conferences and wild-card week for my roster. 6 starters score in round 1, so
+ * fewer than 6 players in wild-card week means empty lineup slots. An ADP roster
+ * expects ~7 of 12 (2026-11-19 mock draft); none of these is a rule the backtest
+ * has shown to pay yet (STATUS 2026-11-19). */
+function renderCoverage(mine) {
+  const P = S.ctx.players, conf = {};
+  let exp = 0;
+  for (const i of mine) { const c = S.ctx.conf[P[i].team]; conf[c] = (conf[c] || 0) + 1; exp += S.wc[i]; }
+  const W = S.worlds, R = W.R, NP = W.P;
+  let short = 0;
+  const full = mine.length >= format().rounds;
+  if (full) {
+    // Same test as wcPlay: team in the wild-card round, player playing.
+    const set = new Set(mine);
+    W.brackets.forEach((br, w) => {
+      let k = 0;
+      for (const [h, a] of br.WC) for (const t of [h, a]) for (const p of (S.ctx.byTeam[t] || []))
+        if (set.has(p.idx) && (!W.playing || W.playing[w * NP + p.idx])) k++;
+      if (k < 6) short++;
+    });
+  }
+  const confs = Object.entries(conf).sort((a, b) => b[1] - a[1]).map(([c, k]) => `${c} ${k}`).join(' · ');
+  $('coverage').innerHTML = `<div class="msg"><b>Conferences</b> ${confs}
+    · <b>Wild-card week</b> ${exp.toFixed(1)} of ${mine.length} expected to play`
+    + (full ? ` · fewer than 6 play in <span class="${short / W.n > 0.3 ? 'warn' : ''}">${pct(short / W.n, 0)}</span> of postseasons` : '')
+    + '</div>';
+}
+
+/* Exposure across my finished live entries, kept in this browser only
+ * (localStorage): a draft room drafted elsewhere is not counted. Click a team
+ * to add it to Avoid teams. */
+const ENTRIES_KEY = 'bba_playoff_entries';
+function loadEntries() { try { return JSON.parse(localStorage.getItem(ENTRIES_KEY) || '{}'); } catch { return {}; } }
+function saveEntry() {
+  if (!S.draftId) return;
+  const e = loadEntries();
+  if (e[S.draftId]) return;
+  const P = S.ctx.players;
+  e[S.draftId] = { at: new Date().toISOString(), preset: $('preset').value,
+    players: rosters()[S.mySeat].map(i => ({ n: P[i].name, t: P[i].team, p: P[i].pos })) };
+  try { localStorage.setItem(ENTRIES_KEY, JSON.stringify(e)); } catch {}
+  renderExposure();
+}
+function renderExposure() {
+  const e = Object.values(loadEntries());
+  $('expMeta').textContent = e.length ? `${e.length} finished live draft${e.length === 1 ? '' : 's'} in this browser` : '';
+  if (!e.length) { $('exposure').innerHTML = 'Finished live drafts are counted here, so you can see which teams and players your entries already lean on.'; return; }
+  const teams = {}, players = {};
+  for (const x of e) {
+    for (const t of new Set(x.players.map(p => p.t))) teams[t] = (teams[t] || 0) + 1;
+    for (const p of x.players) players[p.n] = (players[p.n] || 0) + 1;
+  }
+  const av = avoided();
+  const tl = Object.entries(teams).sort((a, b) => b[1] - a[1])
+    .map(([t, k]) => `<span class="chip${av.has(t) ? ' off' : ''}" data-team="${t}" title="click to avoid / allow in this draft">${t} ${k}/${e.length}</span>`).join('');
+  const pl = Object.entries(players).filter(([, k]) => k >= 2).sort((a, b) => b[1] - a[1]).slice(0, 15)
+    .map(([n, k]) => `${esc(n)} ${k}`).join(' · ');
+  $('exposure').innerHTML = `<div><b>Teams</b> (entries with any of their players)</div><div>${tl}</div>`
+    + (pl ? `<div style="margin-top:6px"><b>Players on 2+ entries</b> ${pl}</div>` : '')
+    + '<div style="margin-top:6px"><button id="clearEntries">Clear</button></div>';
+  for (const c of $('exposure').querySelectorAll('.chip')) c.onclick = () => {
+    const a = avoided(), t = c.dataset.team;
+    if (a.has(t)) a.delete(t); else a.add(t);
+    $('avoid').value = [...a].join(' ');
+    $('avoid').onchange();
+  };
+  $('clearEntries').onclick = () => { if (confirm('Forget every finished entry in this browser?')) { localStorage.removeItem(ENTRIES_KEY); renderExposure(); } };
 }
 
 function renderAvail() {
@@ -460,6 +567,11 @@ function showFormatNote() {
 }
 $('preset').onchange = () => { showFormatNote(); S.field = null; save(); refresh(); };
 $('payouts').onchange = () => refresh();
+$('avoid').onchange = () => {
+  try { sessionStorage.setItem('bba_playoff_avoid', $('avoid').value); } catch {}
+  renderExposure(); refresh();
+};
+try { $('avoid').value = sessionStorage.getItem('bba_playoff_avoid') || ''; } catch {}
 $('mySeat').onchange = () => { S.mySeat = +$('mySeat').value; save(); refresh(); };
 $('search').oninput = () => renderAvail();
 $('botsBtn').onclick = () => botsToMyTurn();
