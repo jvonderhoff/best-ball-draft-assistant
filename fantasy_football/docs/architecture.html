@@ -359,7 +359,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
         <div><dt>Runs</dt><dd>Locally only. Analysis page at <code>localhost:8100</code></dd></div>
         <div><dt>Stores</dt><dd><code>data/store.db</code> (ids, snapshots) · <code>data/analysis.db</code></dd></div>
         <div><dt>Keyed on</dt><dd><code>dk_player_id</code>, crosswalked to every other id</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="projections">287</span> tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="projections">290</span> tests</dd></div>
       </dl>
     </header>
 
@@ -441,7 +441,7 @@ td.num,th.num{font-variant-numeric:tabular-nums; white-space:nowrap}
               <tr><td><code>fantasypros_ros.json</code></td><td>Trades — the consensus (6 of 30 experts, the free page)</td><td><code>tools/export_fantasypros_ros.py</code></td><td class="num">weekly</td></tr>
               <tr><td><code>redraft_values.json</code></td><td>Trades — FantasyCalc redraft prices, one board per league shape</td><td><code>tools/export_redraft_values.py</code></td><td class="num">weekly</td></tr>
               <tr><td><code>waiver_buzz.json</code></td><td>Waivers — trending adds, news, the week's columns</td><td><code>tools/export_waiver_buzz.py</code></td><td class="num">72 h</td></tr>
-              <tr><td><code>season_stats.json</code></td><td>Waivers — the ROS column: this season's real stat line per game, scored by each league (since 20 Oct; it was the preseason projection)</td><td><code>tools/export_season_stats.py</code></td><td class="num">weekly</td></tr>
+              <tr><td><code>season_stats.json</code></td><td>Waivers — the ROS column: this season's real stat line per game, scored by each league (since 20 Oct; it was the preseason projection). Also read by <code>export_props.py</code>: a no-market player's <code>season_ppg</code> is his real DK rate once he has 3 games (since 21 Nov)</td><td><code>tools/export_season_stats.py</code></td><td class="num">weekly</td></tr>
               <tr><td><code>usage.json</code></td><td>Fantasy HQ's Usage &amp; luck tab — expected vs actual points per game, the half-and-half estimate, rise/fall calls, NGS (all held out on 2025 by <code>tools/backtest_xfp_predictive.py</code>)</td><td><code>tools/export_usage.py</code></td><td class="num">weekly</td></tr>
               <tr><td><code>playoff_bracket.json</code></td><td>Playoff best ball's <code>/playoff</code>, via <code>cli.py playoff-publish</code>: team ratings from market spreads and each team's chance to play in each round. Until week 18 is over it is <code>mode: season_sim</code> (<code>pipeline/season_sim.py</code>): the rest of the regular season simulated 2,000 times into seeds, with the NFL tiebreakers and a measured rating drift, so every team carries P(makes it) and P(bye)</td><td><code>cli.py playoff-bracket</code></td><td class="num">per line move</td></tr>
               <tr><td><code>playoff_players.json</code></td><td>Playoff best ball's simulator: every skill player on a playoff team (all 32 teams mid-season), DK points per game, injury status and depth chart, <code>avail</code> = measured P(still playing by January), plus the measured week-score constants</td><td><code>tools/export_playoff_players.py</code></td><td class="num">per line move</td></tr>
@@ -681,7 +681,7 @@ node tools/check-model-change.js
         <div><dt>Runs</dt><dd>CLI · live draft board at <code>:8200</code>, open to your wifi</dd></div>
         <div><dt>Store</dt><dd><code>data/leagues.db</code>, a cache of Sleeper that's safe to delete</dd></div>
         <div><dt>Keyed on</dt><dd><code>sleeper_id</code> · does no name matching</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="sleeper">446</span> tests</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="sleeper">449</span> tests</dd></div>
       </dl>
     </header>
 
@@ -936,7 +936,7 @@ cd ../sleeper
         <div><dt>Runs</dt><dd>CLI · board at <code>:8300</code>, open to your wifi</dd></div>
         <div><dt>Reads</dt><dd><code>projections/data/weekly_props.json</code>; its own committed copy only when that is absent (a clone)</dd></div>
         <div><dt>Joined on</dt><dd>Name keys via <code>match_keys</code>. No id overlap exists (0 of 746).</dd></div>
-        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="dfs">554</span> tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
+        <div><dt>Health</dt><dd><code>cli.py doctor</code> · <span data-tests="dfs">555</span> tests · <code>cli.py scorecard</code> and <code>cli.py accuracy</code> weekly</dd></div>
       </dl>
     </header>
 
@@ -1278,7 +1278,7 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--dy)"></span>Dynasty</td><td><code>lateround_dynasty.json</code>: LateRound's dynasty superflex ranks, two boards (<code>sf</code>, <code>sf_tep</code>), plus the page's own date; read by <code>trades</code></td><td><code>sleeper_id</code></td><td><code>tools/export_lateround_dynasty.py</code></td><td class="num">per capture · warns at 21 d page age</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>redraft_values.json</code>: FantasyCalc redraft trade values per league shape. A price, never points</td><td><code>sleeper_id</code> (FantasyCalc's own)</td><td><code>tools/export_redraft_values.py</code></td><td class="num">weekly</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>waiver_buzz.json</code>: Sleeper trending adds + news RSS + the week's five waiver columns (FantasyPros, SI, DynastyNerds, CBS, Yahoo), fetched by <code>tools/capture_waiver_columns.py</code> in <code>weekly.sh</code>. Popularity, never scored</td><td><code>sleeper_id</code>, resolved against the FULL Sleeper universe — <b>not</b> the crosswalk, which is the DK pool and misses the wire</td><td><code>tools/export_waiver_buzz.py</code></td><td class="num">72 h</td></tr>
-        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>season_stats.json</code>: nflverse stat lines per player per completed week, in Sleeper's stat keys with the per-game yardage bonuses resolved; unscored. <code>waivers</code> scores them as ROS once a player has 3 games, else ROS stays the preseason <code>stat_lines.json</code> number and prints with a <code>p</code>. Run in <code>weekly.sh</code></td><td><code>sleeper_id</code> via the crosswalk (<code>gsis_id</code>)</td><td><code>tools/export_season_stats.py</code></td><td class="num">weekly</td></tr>
+        <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>season_stats.json</code>: nflverse stat lines per player per completed week, in Sleeper's stat keys with the per-game yardage bonuses resolved; unscored. <code>waivers</code> scores them as ROS once a player has 3 games, else ROS stays the preseason <code>stat_lines.json</code> number and prints with a <code>p</code>. The props export reads it too, so DFS's <code>season</code> fallback is the same real rate (DK scoring, 3+ games; <code>season_basis</code> on each record). Run in <code>weekly.sh</code></td><td><code>sleeper_id</code> via the crosswalk (<code>gsis_id</code>)</td><td><code>tools/export_season_stats.py</code></td><td class="num">weekly</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td>News bundle for <code>/news</code></td><td>—</td><td><code>tools/news-push.sh</code> → <code>/api/news/upload</code></td><td class="num">off in-season</td></tr>
         <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections → <span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>dk_scores.json</code>: DK points per pool player per completed week, read by the standings capture</td><td><code>dk_player_id</code></td><td><code>tools/export_dk_scores.py</code>, in <code>weekly-xfp.sh</code></td><td class="num">weekly</td></tr>
         <tr><td><span class="dot" style="--c:var(--bb)"></span>Mac → <span class="dot" style="--c:var(--bb)"></span>Render</td><td>Weekly best-ball standings</td><td>DK <code>playerId</code></td><td><code>tools/capture-standings.sh</code> → <code>/api/season/upload</code></td><td class="num">weekly</td></tr>
@@ -1381,13 +1381,13 @@ cd dfs         &amp;&amp; .venv/bin/python cli.py doctor</pre>
           <div class="tbl"><table>
             <thead><tr><th>Project</th><th>Health</th><th class="num">Tests</th></tr></thead>
             <tbody>
-              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">287</span></td></tr>
-              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">446</span></td></tr>
-              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">554</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--pj)"></span>Projections</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="projections">290</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--rd)"></span>Sleeper</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="sleeper">449</span></td></tr>
+              <tr><td><span class="dot" style="--c:var(--dfs)"></span>DFS</td><td><code>.venv/bin/python cli.py doctor</code></td><td class="num"><span data-tests="dfs">555</span></td></tr>
               <tr><td><span class="dot" style="--c:var(--bb)"></span>Best Ball</td><td><code>python3 tools/preflight.py</code> · <code>GET /api/freshness</code> · <code>/api/stores/status</code></td><td class="num">none, by design</td></tr>
             </tbody>
           </table></div>
-          <p>Test counts from <code>pytest --collect-only</code>, 17 Nov 2026. Every count on this map is tagged <code>data-tests</code>, so <code>tools/drift.py</code> checks it against the code. Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
+          <p>Test counts from <code>pytest --collect-only</code>, 21 Nov 2026. Every count on this map is tagged <code>data-tests</code>, so <code>tools/drift.py</code> checks it against the code. Run any suite with <code>.venv/bin/python -m pytest tests/ -q</code>.</p>
         </div>
         <div class="blk">
           <h2>What healthy looks like</h2>
