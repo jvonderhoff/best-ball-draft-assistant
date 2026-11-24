@@ -313,6 +313,19 @@
     order.forEach((i, k) => { adp[i] = k + 1; });
     return { adp, expPoints: Array.from(tot, x => x / n) };
   }
+  /* DK's ADP from a joined pool (/api/playoff/pool or /api/playoff/pools), by
+   * player index. Players DK does not list get 0, which removes them from every
+   * board: they cannot be drafted. One copy for the page and the tools, so a
+   * check runs on exactly the ADP the page drafts with. */
+  function adpFromPool(ctx, pool) {
+    const byGsis = new Map(ctx.players.map((p, i) => [p.gsis_id, i]));
+    const adp = new Float64Array(ctx.players.length);
+    for (const row of pool.players || []) {
+      const i = byGsis.get(row.gsis_id);
+      if (i !== undefined && row.adp && row.adp < 9999) adp[i] = row.adp;
+    }
+    return adp;
+  }
   /* One snake draft by ADP bots: each pick is the available player with the
    * lowest ADP + noise (sd in picks), under per-position caps. `taken` seeds
    * picks already made (a live board). Returns rosters as index arrays. */
@@ -443,7 +456,7 @@
 
   const api = {
     ROUNDS, build, simulateBracket, simulateWorlds, bestLineup, rosterScores,
-    syntheticAdp, botDraft, survivorPools, contestPath, mulberry32, gauss, normCdf,
+    syntheticAdp, adpFromPool, botDraft, survivorPools, contestPath, mulberry32, gauss, normCdf,
     weekMean, weekSd, gameImplied, available,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

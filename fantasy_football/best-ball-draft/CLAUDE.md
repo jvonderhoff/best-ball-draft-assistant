@@ -436,6 +436,11 @@ Draft week, step by step: `docs/PLAYOFF_RUNBOOK.md`.
   simulation of the rest of the season (`mode: season_sim`, `../projections/pipeline/season_sim.py`):
   each world has its own seeds, byes and rating drift, all 32 teams' players are in, and
   `avail` is P(still playing by January). Evidence: PLAYOFF_DESIGN §8.
+- **DK's pool is saved when the bookmarklet sends it** (`playoff_pools`, one row per draft
+  group per day). `/playoff` drafts mocks on the newest; `node tools/playoff-adp.js` pulls
+  it for `playoff-rec-check.js --adp`. The past-postseason backtest cannot use it.
+- **Only the top few rows' ORDER is noise**: `≈` marks rows within 75% of the top
+  (PLAYOFF_DESIGN §10). Do not read a 1.01 ranking as a finding.
 - **Fast drafts (30 s a pick).** `/playoff` polls the live board every 3-6 s and counts the
   clock from every pick DK made, matched or not.
 - **Check it after any change:** run `node tools/playoff-sim-check.js` and

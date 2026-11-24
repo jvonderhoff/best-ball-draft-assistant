@@ -332,4 +332,68 @@ ADP once the bookmarklet has captured a playoff pool.
 **Entries that differ.** The recommender is deterministic for a board, so entries from
 the same seat converge on the same core. Spreading them is a portfolio question the
 single-entry backtest cannot score, so it is the drafter's control (My entries exposure,
-Avoid teams), not an automatic penalty.
+Avoid teams), not an automatic penalty. Since 2026-11-23 the page also marks which rows are a tie with
+the top pick and which tied row the entries use least (§10).
+
+## 10. Real ADP, and how much the ranking can say (2026-11-23)
+
+Prompted by a Legendary Upside stream ("Playoff Best Ball Kick Off", 2026-11-20: three
+drafters using their own simulator, Sidekick, in DK's main contest). Checked against ours:
+
+- **Team odds agree with the market they quote.** SF bye 48% (theirs 45-60%), BUF the
+  likeliest AFC bye (48%), DET to make it 87% (theirs ~80%). KC's bye is the one gap:
+  10.5% here vs 3-8% there.
+- **The 1.01 shortlist agrees.** They see Walker most, then Gibbs, Chase rarely; ours had
+  Walker, Gibbs, Chase and Burrow in the top six on an empty board, with the #1 changing
+  on every seed.
+- **The gap is ADP.** Their reasoning is all about who goes when: Mahomes in rounds 2-3,
+  Jefferson in round 3, the first Bear in round 3-4, LaPorta around 38, all four Bengals
+  gettable only from mid-board. Synthetic ADP (expected points) puts Josh Allen 1st and
+  Purdy 3rd. A live draft already switched to DK's ADP via the bookmarklet, but that pool
+  lived in memory only, so mocks, `playoff-rec-check.js` and every measurement here ran
+  on synthetic ADP.
+
+**Built:**
+
+1. **DK's pool is saved.** The bookmarklet's pool goes to Postgres table `playoff_pools`
+   (`app/playoff_store.save_pool`), one row per draft group per day (how ADP moves through
+   the window is worth having), plus a disk mirror for local dev. `/api/playoff/pool`
+   with no `dg` answers the newest saved pool, and `/playoff` loads it at page start, so a
+   mock drafts against the real room; a live draft's own pool replaces it.
+   `/api/playoff/pools` lists them. `node tools/playoff-adp.js` pulls one into
+   `tools/.playoff-adp/` (gitignored), checks positions and ADP coverage, and prints where
+   the room disagrees with points, by position and by bye odds;
+   `playoff-rec-check.js --adp <file>` then runs the head-to-head against DK's ADP.
+   **The past-postseason backtest cannot use it**: its players are 2016-25's. Re-testing
+   §9's rules on real ADP needs a model of how the room departs from points (fit from
+   this file), which is not built.
+2. **Ties are marked.** Measured on 8 mock boards (picks 1-58), 4 seeds each at the page's
+   3 completions, against one 12-completion run per board on other seeds:
+
+   | tie rule | reference's top inside the set | mean rows in the set (of 20) |
+   |---|---|---|
+   | top only | 16% | 1.0 |
+   | value ≥ 0.9 × top | 25% | 2.0 |
+   | **value ≥ 0.75 × top (shipped)** | **59%** | **5.8** |
+   | value ≥ 0.6 × top | 75% | 10.4 |
+   | value ≥ 0.5 × top | 94% | 13.3 |
+   | paired se band, z 1 / z 2 | 50% / 69% | 4.9 / 11.0 |
+
+   The page's top pick was the reference's top 5 times in 32, and the reference's own #1
+   led its #2 by under 2 se on 7 of 8 boards: the order of the first several rows is
+   mostly completion noise. That does not contradict the backtest (round 1 30% vs 14%):
+   the edge is in which players reach the table and in later picks that build on earlier
+   ones. The reference is noisy too, so the coverage column is a floor. The se band lost
+   at every size and called 0.20% a tie with 1.73% on the page; three completions make a
+   poor se. Rows outside the ratio are dimmed; `≈` marks the ties.
+3. **◆ vary.** Among the tied rows, the one the finished entries in this browser use least
+   (fewest entries with his team, then with him, then the model's order); shown only when
+   it is not the top row. Nothing measured says it does better or worse than the top row,
+   only that the model cannot tell them apart; it is how entries stop converging without
+   giving up anything the model can see.
+
+**Not built:** the stream's timing advice (draft the teams whose price will rise -
+Broncos, Bears, Bengals - before it does). It is about when to enter, not whom to pick,
+there is no history of DK playoff ADP to test it on, and once the pool is real the
+recommender already sees a team that is cheap for its odds.
+

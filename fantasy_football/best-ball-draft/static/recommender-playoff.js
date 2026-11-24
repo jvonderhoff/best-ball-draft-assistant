@@ -307,7 +307,38 @@
     const results = cands.map(c => ({ idx: c, ...acc.get(c) }));
     const key = format.payouts.length ? 'ev' : 'pFinal';
     results.sort((a, b) => b[key] - a[key]);
+    markTies(results, key, opts.tieRatio ?? TIE_RATIO);
     return { key, results };
+  }
+
+  /* Which candidates the model cannot tell from its top pick: r.tie when r's
+   * value is at least TIE_RATIO of the top's (the top is always a tie).
+   *
+   * Measured 2026-11-23 (scratch tiecal.js / tiecal2.js; 8 boards from bot mock
+   * drafts, picks 1-58, play-action preset, synthetic ADP, 4 seeds each = 32 runs
+   * at M = 3 as the page runs, against one M = 12 run per board on other seeds):
+   *   the M = 3 top pick WAS the reference's top in 5 of 32 runs (16%), and the
+   *   reference's own #1 led its #2 by under 2 se on 7 of 8 boards.
+   *   Ratio >= 0.9 / 0.75 / 0.6 / 0.5: the reference's top inside the set 25 /
+   *   59 / 75 / 94% of runs, mean set size 2.0 / 5.8 / 10.4 / 13.3 of 20.
+   *   A paired standard-error band did worse at every size (z 1: 50%, 4.9 rows;
+   *   z 2: 69%, 11.0) -- three completions make a poor se -- and called a 0.20%
+   *   P(final) a tie with 1.73% on the page. The reference is noisy too, so
+   *   every coverage figure here is a floor.
+   * So the order of the first ~6 rows is mostly completion noise. That does not
+   * undo the backtest (round 1 30% vs 14% for ADP seats): the value is in which
+   * players make the table and in later picks that follow up on earlier ones,
+   * not in the order of the top few. 0.75 keeps the set small enough to act on.
+   * Use: show which rows are interchangeable, and let the page rotate among
+   * them across entries (the user wants entries not to look alike; the
+   * 2026-11-20 Legendary Upside stream says a fixed 1.01 is wrong in this
+   * format). Nothing measured says a rotated pick does better or worse, only
+   * that the model cannot tell them apart. */
+  const TIE_RATIO = 0.75;
+  function markTies(results, key, ratio) {
+    const top = results[0];
+    if (!top) return;
+    for (const r of results) r.tie = r === top || (top[key] > 0 && r[key] >= ratio * top[key]);
   }
 
   /* P(player i scores in wild-card week) in the simulated worlds: his team is in
@@ -381,7 +412,7 @@
     return out.sort((x, y) => y.pMeet - x.pMeet);
   }
 
-  const api = { PRESETS, CAPS, MAX_POS, canTake, wcPlay, rosterRule, CONF_MAX, WC_MIN, parsePayouts, buildField, contestValue, completeBoard, recommend, seatOfPick, conflicts };
+  const api = { PRESETS, CAPS, MAX_POS, canTake, wcPlay, rosterRule, TIE_RATIO, markTies, CONF_MAX, WC_MIN, parsePayouts, buildField, contestValue, completeBoard, recommend, seatOfPick, conflicts };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PlayoffRec = api;
 })(typeof window !== 'undefined' ? window : globalThis);

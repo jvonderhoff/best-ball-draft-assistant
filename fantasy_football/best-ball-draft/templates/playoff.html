@@ -50,6 +50,10 @@
     tr.top td { background: var(--card-hi); }
     .pos { display: inline-block; min-width: 24px; font-weight: 700; font-size: 0.85em; }
     .bye { color: var(--orange); font-size: 0.8em; }
+    /* Rows the model cannot tell from the top pick (markTies) vs rows it can. */
+    .tie { display: inline-block; width: 12px; color: var(--muted); }
+    tr.notie td { opacity: 0.6; }
+    .vary { color: var(--accent); font-size: 0.8em; font-weight: 700; }
     .scroll { max-height: 420px; overflow-y: auto; }
     /* Seven columns do not fit a phone: the tables scroll inside their card
        rather than pushing the page sideways. */
@@ -190,7 +194,8 @@ async function load() {
   renderTeams();
   renderExposure();
   restore();
-  await refresh();
+  // Real ADP when any bookmarklet run has saved DK's pool; synthetic otherwise.
+  if (!(await loadPool(true))) await refresh();
 }
 
 function renderFresh() {
@@ -205,6 +210,7 @@ function renderFresh() {
   const adp = S.adpSource === 'synthetic'
     ? '<span class="warn">SYNTHETIC (expected points) — load the DK pool</span>'
     : `<span class="ok">DK draft group ${esc(S.pool.draft_group_id)}</span> · ${S.pool.players.length} joined`
+      + (S.pool.saved ? ` · <span class="${(Date.now() / 1000 - S.pool.fetched_at) > 3 * 86400 ? 'warn' : 'k'}" title="saved by an earlier bookmark run; ADP moves through the window">saved ${esc(S.pool.saved_day || '')}</span>` : '')
       + (S.pool.unmatched.length ? ` · <span class="warn">${S.pool.unmatched.length} DK players not in the export</span>` : '');
   $('freshBar').innerHTML = [
     `<span><span class="k">Season</span> <b>${b.season}</b></span>`,
@@ -291,7 +297,10 @@ async function pullLive() {
   if (d.my_position) { S.mySeat = d.my_position - 1; $('mySeat').value = String(S.mySeat); }
   if (d.draft_group_id && !$('dgId').value) $('dgId').value = d.draft_group_id;
   // The bookmarklet sent DK's pool with the board: load its ADP once, unasked.
-  if (d.pool_ready && S.adpSource !== 'dk' && !S.poolTried) { S.poolTried = true; loadPool(); }
+  // A saved pool loaded at page start (or another contest's) is replaced by this
+  // draft's own, which is fresher.
+  const ownPool = S.adpSource === 'dk' && !S.pool.saved && String(S.pool.draft_group_id) === String(d.draft_group_id);
+  if (d.pool_ready && !ownPool && !S.poolTried) { S.poolTried = true; loadPool(); }
   const made = d.picks_made || picks.length;
   const changed = picks.length !== S.picks.length || made !== S.picksMade;
   S.picks = picks;
@@ -300,25 +309,23 @@ async function pullLive() {
   if (changed) await refresh(); else renderBoardBar();
 }
 
-async function loadPool() {
+/* auto: at page load, with or without a draft group typed. No group means the
+ * newest pool a bookmarklet run saved (any contest), quietly skipped if none.
+ * Returns true when it loaded a pool (and so already refreshed). */
+async function loadPool(auto) {
   const dg = $('dgId').value.trim();
-  if (!dg) return;
+  if (!dg && !auto) { alert('Enter the DK draft group id, or click the BBA bookmark in a DK draft room (it sends the pool).'); return false; }
   $('poolBtn').disabled = true;
   try {
-    const r = await fetch(`/api/playoff/pool?dg=${encodeURIComponent(dg)}`);
+    const r = await fetch(dg ? `/api/playoff/pool?dg=${encodeURIComponent(dg)}` : '/api/playoff/pool');
     const d = await r.json();
-    if (!r.ok) { alert(d.error); return; }
+    if (!r.ok) { if (!auto) alert(d.error); return false; }
     S.pool = d;
-    const byGsis = new Map(S.ctx.players.map((p, i) => [p.gsis_id, i]));
     // Players DK does not list cannot be drafted: ADP 0 removes them everywhere.
-    const adp = new Float64Array(S.ctx.players.length);
-    for (const row of d.players) {
-      const i = byGsis.get(row.gsis_id);
-      if (i !== undefined && row.adp && row.adp < 9999) adp[i] = row.adp;
-    }
-    S.adp = adp; S.adpSource = 'dk'; S.field = null;
+    S.adp = PlayoffSim.adpFromPool(S.ctx, d); S.adpSource = 'dk'; S.field = null;
     renderFresh();
     await refresh();
+    return true;
   } finally { $('poolBtn').disabled = false; }
 }
 
@@ -410,12 +417,17 @@ function renderRecs(out, f, ms) {
   $('recMeta').textContent = `${f.label} · ${Math.round(ms)} ms · ranked by ${evMode ? 'EV over entered prizes' : 'P(reach final)'}`;
   const myTeams = {};
   for (const i of rosters()[S.mySeat]) myTeams[P[i].team] = (myTeams[P[i].team] || 0) + 1;
-  const rows = out.results.slice(0, 12).map((r, k) => {
+  const shown = out.results.slice(0, 12);
+  const vary = varyPick(shown);
+  const nTie = shown.filter(r => r.tie).length;
+  const rows = shown.map((r, k) => {
     const p = P[r.idx];
     const stack = myTeams[p.team] ? ` <span class="k">+${myTeams[p.team]} ${p.team}</span>` : '';
     const o = teamOdds(p.team);
-    return `<tr class="click${k === 0 ? ' top' : ''}" data-idx="${r.idx}">
-      <td><span class="pos">${p.pos}</span>${esc(p.name)}${availTag(p)}${stack}</td><td>${p.team}</td>
+    const tie = r.tie ? '<span class="tie" title="Within the simulator\'s noise of the top pick">≈</span>' : '<span class="tie"></span>';
+    const vb = vary && vary.r === r ? ` <span class="vary" title="${esc(vary.why)}">◆ vary</span>` : '';
+    return `<tr class="click${k === 0 ? ' top' : ''}${r.tie ? '' : ' notie'}" data-idx="${r.idx}">
+      <td>${tie}<span class="pos">${p.pos}</span>${esc(p.name)}${availTag(p)}${stack}${vb}</td><td>${p.team}</td>
       <td class="n">${S.adp[r.idx] ? S.adp[r.idx].toFixed(1) : '—'}</td>
       <td class="n${o.make < 0.5 ? ' bad' : ''}">${pct(o.make, 0)}</td><td class="n${o.bye >= 0.3 ? ' warn' : ''}">${pct(o.bye, 0)}</td><td class="n">${o.games.toFixed(2)}</td>
       <td class="n">${pct(r.pR[0])}</td><td class="n">${pct(r.pR[1], 2)}</td><td class="n">${pct(r.pFinal, 2)}</td>
@@ -429,8 +441,34 @@ function renderRecs(out, f, ms) {
     <div class="msg">Each row assumes you take him now and ADP drafts every remaining pick, yours included.
     Same simulated postseasons for every row, so differences are paired.${f.payouts.length ? '' : ' Enter payouts to rank by EV.'}
     <b>In</b>, <b>Bye</b>, <b>G</b>: his team's chance to make the playoffs, to have a round-1 bye (zero in round 1), and its expected games.
+    ${nTie > 1 ? `<b>≈</b> ${nTie} rows within ${Math.round((1 - PlayoffRec.TIE_RATIO) * 100)}% of the top's value: inside the simulator's noise, so their order means little and any of them is a fair pick.`
+      : `No other row is within ${Math.round((1 - PlayoffRec.TIE_RATIO) * 100)}% of the top's value.`}
+    ${vary ? `<b>◆ vary</b>: the tied pick your finished entries use least (${esc(vary.why)}); take it to keep entries from looking alike.` : ''}
     ${avoided().size ? `Avoiding ${esc([...avoided()].join(' '))}.` : ''}</div>`;
   for (const tr of $('recs').querySelectorAll('tr.click')) tr.onclick = () => draft(+tr.dataset.idx);
+}
+
+/* Among the rows tied with the top pick, the one my finished entries (this
+ * browser) lean on least: fewest entries with his team, then with him, then the
+ * model's order. Null when there are no entries or the least-used IS the top
+ * pick, so the badge only appears when it changes something. Why ties and not
+ * the whole table: recommender-playoff.js, markTies. */
+function varyPick(shown) {
+  const e = Object.values(loadEntries());
+  if (!e.length) return null;
+  const teams = {}, players = {};
+  for (const x of e) {
+    for (const t of new Set(x.players.map(p => p.t))) teams[t] = (teams[t] || 0) + 1;
+    for (const p of x.players) players[p.n] = (players[p.n] || 0) + 1;
+  }
+  const P = S.ctx.players;
+  const tied = shown.filter(r => r.tie).map((r, k) => ({ r, k,
+    t: teams[P[r.idx].team] || 0, n: players[P[r.idx].name] || 0 }));
+  tied.sort((a, b) => a.t - b.t || a.n - b.n || a.k - b.k);
+  const best = tied[0];
+  if (!best || best.r === shown[0]) return null;
+  const p = P[best.r.idx];
+  return { r: best.r, why: `${p.team} on ${best.t} of ${e.length} entries, ${p.name} on ${best.n}` };
 }
 
 function renderMine() {

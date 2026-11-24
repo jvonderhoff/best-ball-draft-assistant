@@ -156,3 +156,56 @@ def map_picks(picks: list, players: list) -> dict:
         if not p:
             unmatched.append(pk.get('player_name'))
     return {'picks': out, 'unmatched': unmatched}
+
+
+POOL_MIRROR = Path(__file__).resolve().parent / 'data' / 'pushed_playoff_pools.json'
+
+
+def _pool_mirror() -> dict:
+    try:
+        return json.loads(POOL_MIRROR.read_text()) if POOL_MIRROR.exists() else {}
+    except ValueError:
+        return {}
+
+
+def save_pool(draft_group: str, joined: dict) -> bool:
+    """DK's pool for a draft group, kept past a restart (playoff_store.save_pool
+    says why). Postgres when it is there; the disk mirror always, which is all
+    local dev has. Returns whether the durable write happened."""
+    from app import playoff_store
+    durable = playoff_store.save_pool(draft_group, joined)
+    m = _pool_mirror()
+    day = time.strftime('%Y-%m-%d', time.gmtime())
+    m[f'{draft_group}|{day}'] = {'joined': joined, 'fetched_at': time.time()}
+    try:
+        POOL_MIRROR.write_text(json.dumps(m))
+    except OSError:
+        pass
+    return durable
+
+
+def load_pool(draft_group: str | None = None, day: str | None = None):
+    """(joined, fetched_at, draft_group, day, source) for the newest saved pool
+    matching, or None. Postgres first: the mirror may be another instance's."""
+    from app import playoff_store
+    got = playoff_store.load_pool(draft_group, day)
+    if got:
+        return (*got, 'postgres')
+    best = None
+    for k, v in _pool_mirror().items():
+        dg, d = k.split('|', 1)
+        if (draft_group and dg != str(draft_group)) or (day and d != day):
+            continue
+        if not best or v['fetched_at'] > best[1]:
+            best = (v['joined'], v['fetched_at'], dg, d, 'disk')
+    return best
+
+
+def list_pools() -> list:
+    from app import playoff_store
+    got = playoff_store.list_pools()
+    if got:
+        return got
+    rows = [{'draft_group': k.split('|')[0], 'day': k.split('|')[1], 'fetched_at': v['fetched_at'],
+             'players': len(v['joined'].get('players', []))} for k, v in _pool_mirror().items()]
+    return sorted(rows, key=lambda r: -r['fetched_at'])

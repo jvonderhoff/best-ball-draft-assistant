@@ -169,6 +169,9 @@ python3 tools/preflight.py --playoff
    live drafts in this browser. Click a team there, or type it in **Avoid teams**, to
    build this entry around a different core. The recommender gives the same answer from
    the same seat on the same data, so without this your entries converge.
+   **≈** marks rows within 25% of the top row's value: the simulator cannot tell them
+   apart (PLAYOFF_DESIGN §10), so any of them is a fair pick. **◆ vary** marks the tied
+   row your finished entries use least; take it to keep entries from looking alike.
 9. **My roster** lists your teams and their expected games. A *same conference* line
    names two of your teams that must meet before the Super Bowl, with the chance they
    do; only one of them can reach the final.
@@ -180,9 +183,19 @@ Without a DK draft id the page is a mock board:
 - Clicking a recommendation or an available player drafts him for the seat on the clock.
 - *Reset board* starts over.
 
-Until DK's pool loads, the ADP is synthetic (expected postseason points). Bots then
-ignore byes in round 1, which makes the recommender look better than it will against
-real drafters.
+The page loads the newest DK pool a bookmark run has saved, so after your first real
+draft the mock bots draft like the real room (the ADP line in the bar says `saved` and
+the day). Before any bookmark run the ADP is synthetic (expected postseason points):
+bots then ignore byes in round 1, which makes the recommender look better than it will
+against real drafters.
+
+To check the saved ADP on the Mac and run the recommender check against it:
+
+```bash
+node tools/playoff-adp.js --list
+node tools/playoff-adp.js                  # newest: saves tools/.playoff-adp/<dg>-<day>.json, compares to synthetic
+node tools/playoff-rec-check.js --adp tools/.playoff-adp/<dg>-<day>.json --drafts 30
+```
 
 ## 6. During draft week: when to refresh
 

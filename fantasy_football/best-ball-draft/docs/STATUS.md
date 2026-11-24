@@ -11,6 +11,24 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-23: playoff — DK's ADP is saved; tied picks are marked
+
+**Asked:** use a Legendary Upside stream (2026-11-20, their Sidekick simulator in DK's
+main contest) to improve `/playoff`. **Found:** our team odds match the market they quote
+(SF bye 48% vs 45-60%; KC's bye 10.5% vs 3-8% is the one gap) and our 1.01 shortlist
+is theirs; the gap is ADP. DK's pool reached only the live draft that sent it, so every
+mock and check drafted on synthetic ADP (Allen 1st, Purdy 3rd).
+
+**Built:** the bookmarklet's pool is saved (Postgres `playoff_pools`, a row per draft
+group per day); `/playoff` loads the newest at page start; `tools/playoff-adp.js` pulls
+it and compares it to synthetic; `playoff-rec-check.js --adp` runs on it. And `≈` ties:
+**the page's top pick matched a 12-completion reference only 5 times in 32**, so rows
+within 75% of the top's value are marked as interchangeable (reference's top inside the
+set 59% of runs, ~6 rows), with **◆ vary** on the tied row your entries use least.
+Measurements and what was rejected: PLAYOFF_DESIGN §10. Checks pass (head-to-head 2.39x,
+unchanged). **Not verified on DK:** nothing is saved until a real bookmark run sends a
+pool, and its ADP field has never been seen from a playoff draft group.
+
 ## 2026-11-19: playoff best ball is 12 players; the 20-round preset is gone
 
 **Asked:** fix the 20-round format (worse than ADP drafters from mid-season, 0.17x).

@@ -25,6 +25,9 @@ app/data/pushed_news.json
 app/data/pushed_season.json
 # And the playoff best-ball inputs (bracket + player export), same reasoning.
 app/data/pushed_playoff.json
+app/data/pushed_playoff_pools.json
+# DK playoff ADP pulled for the tools (tools/playoff-adp.js)
+tools/.playoff-adp/
 tools/replay-draft.json
 
 # Local backups taken before data refreshes

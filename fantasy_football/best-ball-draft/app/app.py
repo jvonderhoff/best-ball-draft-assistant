@@ -2440,12 +2440,24 @@ def playoff_pool():
 
     Kept apart from /api/players on purpose: that endpoint's pool, cache file and
     TTL are the regular-season contest's, and formats never share a pool or
-    rankings (../CLAUDE.md). Cached here per draft group for 30 minutes, in memory
-    only -- ADP moves through draft week, and an old copy should not survive a restart.
+    rankings (../CLAUDE.md). Cached here per draft group for 30 minutes -- ADP
+    moves through the window. Since DK refuses the server, the live copy comes
+    from the bookmarklet; a copy it saved (playoff_store.save_pool) answers when
+    nothing fresher exists, marked `saved` with its day, and with no ?dg= the
+    newest saved pool answers, so a mock draft is not stuck on synthetic ADP.
     """
     from app import playoff
     from app.data.api_fetcher import _fetch_dk_rankings_direct
     dg = (request.args.get('dg') or '').strip()
+    if not dg:
+        # No draft group: the newest pool any bookmarklet run saved, so a mock
+        # draft drafts against real ADP instead of synthetic (playoff_store).
+        saved = playoff.load_pool()
+        if not saved:
+            return jsonify({'error': 'no DK pool saved yet: click the BBA bookmark in a DK playoff draft room once'}), 404
+        joined, at, sdg, day, src = saved
+        return jsonify({**joined, 'fetched_at': at, 'cached': True, 'saved': True,
+                        'saved_day': day, 'saved_source': src, 'draft_group_id': sdg})
     if not dg.isdigit():
         return jsonify({'error': 'pass ?dg=<DK draft group id>'}), 400
     hit = _playoff_pool_cache.get(dg)
@@ -2460,6 +2472,12 @@ def playoff_pool():
         # bookmarklet sent beats nothing; its age goes back with it.
         if hit:
             return jsonify({**hit[1], 'fetched_at': hit[0], 'cached': True, 'stale': True})
+        saved = playoff.load_pool(dg)
+        if saved:                       # an earlier bookmarklet run, kept past a restart
+            joined, at, _, day, src = saved
+            _playoff_pool_cache[dg] = (at, joined)
+            return jsonify({**joined, 'fetched_at': at, 'cached': True, 'stale': True, 'saved': True,
+                            'saved_day': day, 'saved_source': src})
         return jsonify({'error': f'no DK pool for draft group {dg}: DK refuses the server\'s '
                                  'own requests, so click the BBA bookmark on your DK draft tab '
                                  '(it sends the pool too), or check the id'}), 502
@@ -2481,6 +2499,7 @@ _playoff_entries = {}
 # In memory only: a board is worth seconds, and render.yaml runs one worker.
 _playoff_pushed = {}
 _playoff_direct_fail = {}    # draft id -> when the server's own DK pull last failed
+_playoff_pool_saved = {}     # draft group -> when its pool was last saved durably
 _DIRECT_RETRY_S = 60         # one sync worker: a failing 2 s DK call must not run every poll
 
 
@@ -2518,7 +2537,7 @@ def playoff_push(draft_id):
         'picks': picks, 'my_position': my_position, 'slots': len(board),
         'draft_group_id': dg, 'entry_id': str(body.get('entry_id') or ''),
         'received_at': time.time()}
-    pool_n = None
+    pool_n, pool_saved = None, None
     pool = body.get('pool')
     if dg.isdigit() and isinstance(pool, dict):
         payload, _ = playoff.load()
@@ -2530,8 +2549,33 @@ def playoff_push(draft_id):
             joined['source'] = 'bookmarklet'
             _playoff_pool_cache[dg] = (time.time(), joined)
             pool_n = len(rows)
+            # Kept past a restart, for mocks and the tools (playoff_store.save_pool).
+            # The bookmarklet sends the pool once per tab; the guard is for reloads.
+            if time.time() - _playoff_pool_saved.get(dg, 0) > 600:
+                pool_saved = playoff.save_pool(dg, joined)
+                _playoff_pool_saved[dg] = time.time()
     return jsonify({'ok': True, 'picks': len(picks), 'my_position': my_position,
-                    'seat_known': bool(guid), 'pool_players': pool_n})
+                    'seat_known': bool(guid), 'pool_players': pool_n, 'pool_saved': pool_saved})
+
+
+@app.route('/api/playoff/pools', methods=['GET'])
+def playoff_pools():
+    """Saved DK playoff pools: the list, or one with ?dg= and/or ?day=.
+
+    Open like /api/playoff/data: DK's ADP is public, and this is read-only.
+    tools/playoff-adp.js pulls from here so mocks and checks on the Mac can draft
+    against the real room instead of synthetic ADP.
+    """
+    from app import playoff
+    dg, day = request.args.get('dg'), request.args.get('day')
+    if not dg and not day:
+        return jsonify({'pools': playoff.list_pools()})
+    saved = playoff.load_pool(dg, day)
+    if not saved:
+        return jsonify({'error': 'no saved pool matches'}), 404
+    joined, at, sdg, sday, src = saved
+    return jsonify({**joined, 'fetched_at': at, 'draft_group_id': sdg, 'saved_day': sday,
+                    'saved_source': src})
 
 
 @app.route('/api/playoff/pushed', methods=['GET'])

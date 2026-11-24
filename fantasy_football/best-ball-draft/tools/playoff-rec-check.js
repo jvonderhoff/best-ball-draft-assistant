@@ -3,6 +3,7 @@
  *
  *   node tools/playoff-rec-check.js                       # checks + a short head-to-head
  *   node tools/playoff-rec-check.js --drafts 30 --method redraft
+ *   node tools/playoff-rec-check.js --adp tools/.playoff-adp/<dg>-<day>.json   # DK's real ADP
  *
  * 1. contestValue (computed later rounds) agrees with the simulator's sampled
  *    contestPath: an average roster gets 1/6, 1/36, 1/216.
@@ -14,8 +15,8 @@
  *    fresh field. The control is the ADP seats in the same rooms -- the V1-column
  *    discipline: they must come out ~1/216 each, or the experiment is broken.
  *
- * ADP is SYNTHETIC (expected postseason points) until DK's playoff pool exists,
- * so the bots are better informed than a real room. Read the result as "beats a
+ * ADP is SYNTHETIC (expected postseason points) unless --adp gives DK's,
+ * so by default the bots are better informed than a real room. Read the result as "beats a
  * room that already knows the points", which is the harder version.
  */
 'use strict';
@@ -35,13 +36,17 @@ const format = { ...Rec.PRESETS[args.preset || 'dk-12'] };
 const ctx = Sim.build(JSON.parse(fs.readFileSync(path.join(DATA, 'playoff_bracket.json'))),
   JSON.parse(fs.readFileSync(path.join(DATA, 'playoff_players.json'))));
 console.log(`season ${ctx.season} (${ctx.seedsFinal ? 'final seeds' : ctx.seasonSim ? 'SEASON SIM' : 'PROVISIONAL seeds'}), ${ctx.players.length} players, `
-  + `${N} worlds, format ${args.preset || 'dk-12'} (${format.label}), ADP SYNTHETIC`);
+  + `${N} worlds, format ${args.preset || 'dk-12'} (${format.label}), `
+  + (args.adp ? `ADP DK from ${path.basename(args.adp)}` : 'ADP SYNTHETIC (--adp <file from tools/playoff-adp.js> for DK\'s)'));
 
 let fails = 0;
 const check = (name, ok, detail) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}: ${detail}`); if (!ok) fails++; };
 
 const worlds = Sim.simulateWorlds(ctx, N, 1);
-const { adp } = Sim.syntheticAdp(ctx, worlds);
+// --adp: DK's real ADP, saved by a bookmarklet run and pulled by tools/playoff-adp.js.
+const adp = args.adp ? Sim.adpFromPool(ctx, JSON.parse(fs.readFileSync(args.adp)))
+  : Sim.syntheticAdp(ctx, worlds).adp;
+if (args.adp) console.log(`DK ADP for ${adp.filter(x => x > 0).length} of ${ctx.players.length} players`);
 let t0 = Date.now();
 const field = Rec.buildField(ctx, worlds, adp, format);
 console.log(`field built in ${Date.now() - t0} ms (${field.boards} boards, ${field.S} survivors/world)`);

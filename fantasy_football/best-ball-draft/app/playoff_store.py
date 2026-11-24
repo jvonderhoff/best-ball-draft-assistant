@@ -84,3 +84,97 @@ def save(payload: dict) -> bool:
         return False
     finally:
         conn.close()
+
+
+# ── DK's playoff pool and ADP, as the bookmarklet sends it ─────────────────────
+# One row per draft group per day. Until 2026-11-23 the pool lived only in the
+# server's memory: it reached the live draft that sent it and nothing else, so
+# mocks, tools/playoff-rec-check.js and every backtest kept drafting against
+# SYNTHETIC ADP (expected points: Josh Allen 1st, Purdy 3rd) while real rooms
+# take Mahomes in round 2-3 and the first Bear in round 3-4 (Legendary Upside
+# stream, 2026-11-20). One row a day rather than one slot, because how ADP moves
+# through the window is itself worth having later. Same never-raise contract.
+_POOL_DDL = """
+    CREATE TABLE IF NOT EXISTS playoff_pools (
+        draft_group  TEXT,
+        day          DATE,
+        payload      TEXT,
+        fetched_at   TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (draft_group, day)
+    )
+"""
+
+
+def save_pool(draft_group: str, joined: dict) -> bool:
+    """Upsert today's row for this draft group. True only if Postgres took it."""
+    conn = _conn()
+    if not conn:
+        return False
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(_POOL_DDL)
+            cur.execute("""
+                INSERT INTO playoff_pools (draft_group, day, payload, fetched_at)
+                VALUES (%s, (now() AT TIME ZONE 'UTC')::date, %s, now())
+                ON CONFLICT (draft_group, day) DO UPDATE SET
+                    payload = excluded.payload, fetched_at = now()
+            """, (str(draft_group), json.dumps(joined)))
+        return True
+    except Exception as e:
+        _log.warning(f'[playoff-store] save_pool failed: {e!r}')
+        return False
+    finally:
+        conn.close()
+
+
+def load_pool(draft_group: str | None = None, day: str | None = None):
+    """(joined, fetched_at epoch, draft_group, day) for the newest matching row;
+    {} if none; None if the store is unreachable."""
+    conn = _conn()
+    if not conn:
+        return None
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(_POOL_DDL)
+            where, args = [], []
+            if draft_group:
+                where.append('draft_group = %s'); args.append(str(draft_group))
+            if day:
+                where.append('day = %s'); args.append(day)
+            cur.execute("SELECT payload, EXTRACT(EPOCH FROM fetched_at), draft_group, day::text "
+                        "FROM playoff_pools" + (' WHERE ' + ' AND '.join(where) if where else '')
+                        + " ORDER BY fetched_at DESC LIMIT 1", args)
+            row = cur.fetchone()
+            if not row:
+                return {}
+            return json.loads(row[0]), float(row[1]), row[2], row[3]
+    except Exception as e:
+        _log.warning(f'[playoff-store] load_pool failed: {e!r}')
+        return None
+    finally:
+        conn.close()
+
+
+def list_pools():
+    """[{draft_group, day, fetched_at, players}] newest first; None if unreachable."""
+    conn = _conn()
+    if not conn:
+        return None
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(_POOL_DDL)
+            cur.execute("SELECT draft_group, day::text, EXTRACT(EPOCH FROM fetched_at), payload "
+                        "FROM playoff_pools ORDER BY fetched_at DESC LIMIT 200")
+            out = []
+            for dg, day, at, payload in cur.fetchall():
+                try:
+                    n = len(json.loads(payload).get('players', []))
+                except ValueError:
+                    n = None
+                out.append({'draft_group': dg, 'day': day, 'fetched_at': float(at), 'players': n})
+            return out
+    except Exception as e:
+        _log.warning(f'[playoff-store] list_pools failed: {e!r}')
+        return None
+    finally:
+        conn.close()
