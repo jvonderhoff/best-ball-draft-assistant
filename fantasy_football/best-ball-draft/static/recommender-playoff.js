@@ -356,6 +356,43 @@
     return out;
   }
 
+  /* Wild-card week, slot by slot: in how many postseasons my roster leaves each
+   * lineup slot empty in round 1 (bye teams score nothing that week, nor do teams
+   * that miss the playoffs or players who are out). A count of wild-card players
+   * (wcPlay summed) misses the real failure -- 7 expected scorers with no QB among
+   * them is an empty QB slot. Display only: forcing coverage as a pick rule cost
+   * P(final) heavily when measured (rosterRule below); this is for the drafter's
+   * own read. Returns { short: {QB,RB,WR,TE,FLEX: P(slot not filled)},
+   * filled: E[slots filled], slots, pFull: P(every slot filled) }. */
+  function wk1Lineup(ctx, worlds, lineup, mine) {
+    const P = ctx.players, NP = worlds.P;
+    const slots = Object.values(lineup).reduce((s, k) => s + k, 0);
+    const short = { QB: 0, RB: 0, WR: 0, TE: 0, FLEX: 0 };
+    const byTeam = {};
+    for (const i of mine) (byTeam[P[i].team] = byTeam[P[i].team] || []).push(i);
+    let filled = 0, full = 0;
+    worlds.brackets.forEach((br, w) => {
+      const c = { QB: 0, RB: 0, WR: 0, TE: 0 };
+      for (const [h, a] of br.WC) for (const t of [h, a]) for (const i of (byTeam[t] || [])) {
+        if (!worlds.playing || worlds.playing[w * NP + i]) c[P[i].pos]++;
+      }
+      let f = 0, spare = 0;
+      for (const pos of ['QB', 'RB', 'WR', 'TE']) {
+        const need = lineup[pos] || 0, got = Math.min(need, c[pos]);
+        f += got;
+        if (got < need) short[pos]++;
+        if (pos !== 'QB') spare += c[pos] - got;      // FLEX takes any non-QB left over (bestLineup)
+      }
+      const flex = Math.min(lineup.FLEX || 0, spare);
+      f += flex;
+      if (flex < (lineup.FLEX || 0)) short.FLEX++;
+      filled += f;
+      if (f === slots) full++;
+    });
+    for (const k of Object.keys(short)) short[k] /= worlds.n;
+    return { short, filled: filled / worlds.n, slots, pFull: full / worlds.n };
+  }
+
   /* The user's roster rules (2026-11-19), as filters on the candidates, for the
    * backtest to test before anything ships:
    *   conf: at most CONF_MAX players from one conference (stack across them: two
@@ -412,7 +449,7 @@
     return out.sort((x, y) => y.pMeet - x.pMeet);
   }
 
-  const api = { PRESETS, CAPS, MAX_POS, canTake, wcPlay, rosterRule, TIE_RATIO, markTies, CONF_MAX, WC_MIN, parsePayouts, buildField, contestValue, completeBoard, recommend, seatOfPick, conflicts };
+  const api = { PRESETS, CAPS, MAX_POS, canTake, wcPlay, wk1Lineup, rosterRule, TIE_RATIO, markTies, CONF_MAX, WC_MIN, parsePayouts, buildField, contestValue, completeBoard, recommend, seatOfPick, conflicts };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PlayoffRec = api;
 })(typeof window !== 'undefined' ? window : globalThis);

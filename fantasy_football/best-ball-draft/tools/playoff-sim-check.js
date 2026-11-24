@@ -14,6 +14,8 @@
  *               Cholesky still produces scores that look like scores.
  *   unusable    a season-over player never scores; a bye team scores 0 in WC
  *               (per world: mid-season every world has its own seeds).
+ *   wk1         the page's week-1 lineup check (wk1Lineup) leaves a slot empty exactly
+ *               when the round-1 scores do; an empty roster fills nothing.
  *   seasons     mid-season files: each world's seeds are one simulated season,
  *               so P(make playoffs) must equal the file's `odds`, and a player
  *               with avail a must be playing in a share a of worlds.
@@ -160,6 +162,45 @@ console.log(`worlds simulated in ${Date.now() - t0} ms`);
   }
   check('unusable: bye week', byeLeak === 0, `${byeTeams} team-worlds on a bye: ${byeLeak} nonzero wild-card scores`);
   check('unusable: missed playoffs', outLeak === 0, `${notIn.size} teams miss in some world: ${outLeak} nonzero scores`);
+}
+
+// ── wild-card week slots (the page's week-1 tracker) ─────────────────────────
+// wk1Lineup decides "plays wild-card week" from the bracket and `playing`; the
+// scores decide it independently (a bye, a missed playoff or an absence is an
+// exact 0, checked above). Counting a slot filled only when a roster player has
+// a NONZERO round-1 score can only say "short" more often (a player who plays
+// can still score 0), and only rarely. Far apart means the tracker reads a
+// different week, or a different lineup, from the one the contest scores.
+{
+  const Rec = require(path.join(__dirname, '..', 'static', 'recommender-playoff.js'));
+  const { R, P, scores } = worlds;
+  const empty = Rec.wk1Lineup(ctx, worlds, LINEUP, []);
+  check('wk1: empty roster control', Object.values(empty.short).every(x => x === 1) && empty.filled === 0 && empty.pFull === 0,
+    `short ${JSON.stringify(empty.short)}, filled ${empty.filled}`);
+  const { adp } = Sim.syntheticAdp(ctx, worlds);
+  const rosters = Sim.botDraft(ctx, adp, { seats: 6, rounds: ROUNDS_DRAFTED }, Sim.mulberry32(11));
+  let worst = 0;
+  for (const roster of rosters) {
+    const got = Rec.wk1Lineup(ctx, worlds, LINEUP, roster);
+    const short = { QB: 0, RB: 0, WR: 0, TE: 0, FLEX: 0 };
+    for (let w = 0; w < N; w++) {
+      const c = { QB: 0, RB: 0, WR: 0, TE: 0 };
+      for (const i of roster) if (scores[w * R * P + i] !== 0) c[ctx.players[i].pos]++;
+      let spare = 0;
+      for (const pos of ['QB', 'RB', 'WR', 'TE']) {
+        const g = Math.min(LINEUP[pos], c[pos]);
+        if (g < LINEUP[pos]) short[pos]++;
+        if (pos !== 'QB') spare += c[pos] - g;
+      }
+      if (spare < LINEUP.FLEX) short.FLEX++;
+    }
+    for (const k of Object.keys(short)) {
+      const d = short[k] / N - got.short[k];
+      if (d < -1e-9) worst = Infinity;          // the scores found a player wk1Lineup missed
+      else worst = Math.max(worst, d);
+    }
+  }
+  check('wk1: agrees with round-1 scores', worst < 0.02, `max P(short) from scores minus wk1Lineup ${worst.toFixed(4)} over 6 bot rosters`);
 }
 
 // ── seasons (mid-season files only) ──────────────────────────────────────────

@@ -441,6 +441,10 @@ Draft week, step by step: `docs/PLAYOFF_RUNBOOK.md`.
   it for `playoff-rec-check.js --adp`. The past-postseason backtest cannot use it.
 - **Only the top few rows' ORDER is noise**: `≈` marks rows within 75% of the top
   (PLAYOFF_DESIGN §10). Do not read a 1.01 ranking as a finding.
+- **The page opens in a simple view** (`body.simple`; anything marked `.full` shows only
+  under *Details*). New inputs or columns go under `.full` unless a pick needs them. The
+  week-1 lineup check (`PlayoffRec.wk1Lineup`) warns and marks rows; it must not re-rank:
+  the forced version measured far worse (STATUS 2026-11-19).
 - **Fast drafts (30 s a pick).** `/playoff` polls the live board every 3-6 s and counts the
   clock from every pick DK made, matched or not.
 - **Check it after any change:** run `node tools/playoff-sim-check.js` and

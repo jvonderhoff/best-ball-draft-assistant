@@ -11,6 +11,21 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-24: playoff — simple view, conference chips, week-1 lineup check
+
+**Asked:** too much on `/playoff` while drafting; highlight conferences and teams; and a
+bye-heavy roster must still field a week-1 lineup. **Built:** the page opens in a simple
+view (picks, roster, Available; the rest under *Details*, remembered per browser). Team
+chips coloured by conference, filled with a count for teams on your roster. My roster is
+split AFC | NFC. A **Wk1** column (P(he plays wild-card week), `wcPlay`). A slot-by-slot
+**Week 1 lineup** check (`PlayoffRec.wk1Lineup`: P(each of QB RB WR WR TE FLEX is empty
+in round 1)), with a warning and **wk1** row marks once the empty slots near the picks
+left. It is a warning, never a pick rule: forcing wild-card coverage cost P(final) when
+measured (2026-11-19, below). By slot, not by count, because 7 wild-card players with no
+QB among them is still an empty QB slot. `playoff-sim-check.js` checks the slot
+counts against the simulator's own round-1 scores (they agree exactly on 6 bot rosters)
+and an empty-roster control. **Not measured:** whether drafting by the warning helps.
+
 ## 2026-11-23: playoff — DK's ADP is saved; tied picks are marked
 
 **Asked:** use a Legendary Upside stream (2026-11-20, their Sidekick simulator in DK's

@@ -63,10 +63,40 @@
     .chip { display: inline-block; margin: 2px 4px 2px 0; padding: 2px 7px; border: 1px solid var(--border);
             border-radius: 10px; cursor: pointer; font-size: 0.95em; }
     .chip.off { text-decoration: line-through; color: var(--red); border-color: var(--red); }
-    #coverage, #exposure { font-size: 0.8em; }
+    #coverage, #exposure, #conflicts, #wkAlert { font-size: 0.8em; }
+    /* Simple view (the default, 2026-11-24): while drafting, the user wants the
+       pick, the teams and the conferences, not every input. .full is everything
+       else, one click away under "Details". */
+    body.simple .full { display: none !important; }
+    body:not(.simple) .simple-only { display: none !important; }
+    .pos.QB { color: var(--QB); } .pos.RB { color: var(--RB); } .pos.WR { color: var(--WR); } .pos.TE { color: var(--TE); }
+    /* Team chips coloured by conference (AFC red, NFC blue, the league's own);
+       filled when the team is already on my roster, with how many. */
+    .tm { display: inline-block; padding: 0 5px; border: 1px solid; border-radius: 4px; font-weight: 700; font-size: 0.9em; line-height: 1.5; }
+    .tm.AFC { color: var(--red); border-color: var(--red); }
+    .tm.NFC { color: var(--accent); border-color: var(--accent); }
+    .tm.have.AFC { background: var(--red); color: #fff; }
+    .tm.have.NFC { background: var(--accent); color: #fff; }
+    .confs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; font-size: 0.8em; }
+    .confs .ch { font-weight: 700; margin-bottom: 4px; }
+    .confs .t { margin-bottom: 6px; white-space: normal; }
+    .confs .ps { color: var(--text); padding-left: 2px; }
+    .wk1 { margin-top: 10px; font-size: 0.8em; border-top: 1px solid var(--border); padding-top: 8px; }
+    .slot { display: inline-block; margin: 2px 3px 2px 0; padding: 1px 7px; border: 1px solid; border-radius: 5px; font-weight: 700; }
+    .slot.ok { color: var(--green); border-color: var(--green); }
+    .slot.risk { color: var(--orange); border-color: var(--orange); }
+    .slot.empty { color: var(--red); border-color: var(--red); }
+    .alert { margin-top: 6px; padding: 6px 9px; border: 1px solid var(--orange); border-radius: 6px; background: var(--warn-bg); color: var(--text); }
+    .need { color: var(--orange); font-size: 0.8em; font-weight: 700; }
+    /* Phone: one column, and my roster right under the picks rather than below
+       the 80-row Available list. */
+    @media (max-width: 760px) {
+      .grid { gap: 0; } .grid > div { display: contents; }
+      #recCard { order: 1; } #rosterCard { order: 2; } #availCard { order: 3; } #entriesCard { order: 4; } #teamsCard { order: 5; }
+    }
   </style>
 </head>
-<body>
+<body class="simple">
 <nav>
   <a href="/recommend">Live Draft</a>
   <a href="/playoff" class="active">Playoff</a>
@@ -79,7 +109,7 @@
 </nav>
 
 <div class="content">
-  <div class="page-sub">
+  <div class="page-sub full">
     DraftKings playoff best ball. Every pick is scored by simulating the postseason
     (which teams keep playing, what each player scores) and asking how the pick changes your
     chance to win your pod each round and reach the final. Inputs come from the projections
@@ -92,24 +122,25 @@
     <label>Format
       <select id="preset"></select>
     </label>
-    <label>Payouts <input id="payouts" class="wide" placeholder="1:100000, 2:31000, 3-5:5000"></label>
-    <span class="k" id="formatNote"></span>
+    <label class="full">Payouts <input id="payouts" class="wide" placeholder="1:100000, 2:31000, 3-5:5000"></label>
+    <span class="k full" id="formatNote"></span>
+    <button id="detailsBtn" title="Payouts, ADP source, avoid teams, the bookmark, your entries and every column">Details ▾</button>
   </div>
   <div class="row">
     <label>DK draft id <input id="draftId" class="num" placeholder="contest"></label>
     <button id="connectBtn">Follow live draft</button>
-    <label>Draft group <input id="dgId" class="num" placeholder="for ADP"></label>
-    <button id="poolBtn">Load DK pool</button>
+    <label class="full">Draft group <input id="dgId" class="num" placeholder="for ADP"></label>
+    <button id="poolBtn" class="full">Load DK pool</button>
     <label>My seat <select id="mySeat"></select></label>
     <button id="botsBtn" title="Mock draft: bots pick until it is your turn">Bots to my turn</button>
     <button id="resetBtn">Reset board</button>
   </div>
-  <div class="row">
+  <div class="row full">
     <label title="Never recommend players from these teams in this draft: build this entry around a different core">Avoid teams
       <input id="avoid" class="wide" placeholder="e.g. CIN SF (this draft only)"></label>
-    <span class="k">To keep entries apart: your exposure across entries is under My roster.</span>
+    <span class="k">To keep entries apart: your exposure across entries is under My entries.</span>
   </div>
-  <div class="row k" id="bmRow">
+  <div class="row k full" id="bmRow">
     <a id="bmLink" class="bm" href="#" title="Drag me to your bookmarks bar">BBA → DK</a>
     <span>Drag to your bookmarks bar. On your DK draft tab, click it: it reads the draft
     there and sends it here (DK refuses this server's own requests). Then press
@@ -120,28 +151,29 @@
 
   <div class="grid">
     <div>
-      <div class="card">
-        <h2>Recommendations <small id="recMeta"></small></h2>
+      <div class="card" id="recCard">
+        <h2>Recommendations <small id="recMeta" class="full"></small></h2>
+        <div id="wkAlert"></div>
         <div id="recs" class="msg">Waiting for inputs…</div>
       </div>
-      <div class="card">
+      <div class="card" id="availCard">
         <h2>Available <small>click to draft for the seat on the clock (mock)</small></h2>
-        <input id="search" placeholder="search" style="width:100%;margin-bottom:6px">
+        <input id="search" placeholder="search a name or team (e.g. DET)" style="width:100%;margin-bottom:6px">
         <div class="scroll"><table id="avail"></table></div>
       </div>
     </div>
     <div>
-      <div class="card">
+      <div class="card" id="rosterCard">
         <h2>My roster <small id="myCount"></small></h2>
         <div id="mine" class="msg">No picks yet.</div>
         <div id="coverage"></div>
         <div id="conflicts"></div>
       </div>
-      <div class="card">
+      <div class="card full" id="entriesCard">
         <h2>My entries <small id="expMeta"></small></h2>
         <div id="exposure" class="msg"></div>
       </div>
-      <div class="card">
+      <div class="card full" id="teamsCard">
         <h2>Teams <small>chance to play each round</small></h2>
         <table id="teams"></table>
       </div>
@@ -212,12 +244,15 @@ function renderFresh() {
     : `<span class="ok">DK draft group ${esc(S.pool.draft_group_id)}</span> · ${S.pool.players.length} joined`
       + (S.pool.saved ? ` · <span class="${(Date.now() / 1000 - S.pool.fetched_at) > 3 * 86400 ? 'warn' : 'k'}" title="saved by an earlier bookmark run; ADP moves through the window">saved ${esc(S.pool.saved_day || '')}</span>` : '')
       + (S.pool.unmatched.length ? ` · <span class="warn">${S.pool.unmatched.length} DK players not in the export</span>` : '');
+  // The simple view keeps what can change a pick (seeds, ADP) and anything gone
+  // stale; the rest is under Details.
+  const stale = ageCls !== 'ok' ? '' : ' full';
   $('freshBar').innerHTML = [
-    `<span><span class="k">Season</span> <b>${b.season}</b></span>`,
+    `<span class="full"><span class="k">Season</span> <b>${b.season}</b></span>`,
     `<span><span class="k">Seeds</span> ${seeds}</span>`,
-    `<span><span class="k">Pushed</span> <span class="${ageCls}">${age == null ? '?' : age.toFixed(1) + 'h ago'}</span> (${esc(S.data.source)})</span>`,
-    `<span><span class="k">Lines through week</span> <b>${b.lines_through_week}</b></span>`,
-    `<span><span class="k">Injuries</span> <b>${m.sleeper_players_age_h ?? '?'}h</b> old at export</span>`,
+    `<span class="${stale}"><span class="k">Pushed</span> <span class="${ageCls}">${age == null ? '?' : age.toFixed(1) + 'h ago'}</span> (${esc(S.data.source)})</span>`,
+    `<span class="full"><span class="k">Lines through week</span> <b>${b.lines_through_week}</b></span>`,
+    `<span class="full"><span class="k">Injuries</span> <b>${m.sleeper_players_age_h ?? '?'}h</b> old at export</span>`,
     `<span><span class="k">ADP</span> ${adp}</span>`,
   ].join('');
 }
@@ -383,15 +418,55 @@ function renderBoardBar() {
 }
 
 function byeTeams() { return new Set([S.ctx.seeds.AFC[0], S.ctx.seeds.NFC[0]]); }
+function posTag(p) { return `<span class="pos ${p.pos}">${p.pos}</span>`; }
+/* How many of my picks each team has, for the chips. */
+function myTeamCounts() {
+  const c = {};
+  for (const i of rosters()[S.mySeat]) c[S.ctx.players[i].team] = (c[S.ctx.players[i].team] || 0) + 1;
+  return c;
+}
+/* A team chip in its conference's colour; filled, with a count, when the team
+ * is already on my roster -- so a stack, or a second team from one conference,
+ * shows at a glance in every list. */
+function teamChip(t, counts) {
+  const c = S.ctx.conf[t] || '', k = counts && counts[t];
+  return `<span class="tm ${c}${k ? ' have' : ''}" title="${c}${k ? ` · ${k} on your roster` : ''}">${t}${k ? ' ' + k : ''}</span>`;
+}
+
+/* Wild-card week, slot by slot (PlayoffRec.wk1Lineup). A slot is "short" when
+ * no roster player who plays that week can fill it. Early in a draft every slot
+ * is short and that says nothing, so the warning fires only when the short
+ * slots come close to the picks left to fill them. Never a pick rule: forcing
+ * wild-card coverage cost P(final) when measured (recommender-playoff.js,
+ * rosterRule); this is for the drafter's own read. */
+const WK1_SHORT = 0.3, WK1_RISK = 0.1;
+function wk1State() {
+  const f = format(), mine = rosters()[S.mySeat];
+  const g = PlayoffRec.wk1Lineup(S.ctx, S.worlds, f.lineup, mine);
+  const left = f.rounds - mine.length;
+  const needs = Object.entries(g.short).filter(([, x]) => x >= WK1_SHORT).map(([k]) => k);
+  const late = mine.length > 0 && left > 0 && needs.length > 0 && needs.length >= left - 1;
+  return { ...g, left, needs, late, n: mine.length };
+}
+/* A player who would fill a short wild-card slot: his position fits it and he
+ * very likely plays that week. */
+function fillsWk1(i, st) {
+  if (!st.late || S.wc[i] < 0.6) return null;
+  const pos = S.ctx.players[i].pos;
+  if (st.needs.includes(pos)) return pos;
+  if (pos !== 'QB' && st.needs.includes('FLEX')) return 'FLEX';
+  return null;
+}
 /* Mid-season a team is tagged with what is uncertain about it: P(makes the
  * playoffs) when under 95%, P(a bye) when 10% or more. */
-function teamTag(t) {
+function teamTag(t, counts) {
   const o = S.ctx.odds;
-  if (!o) return byeTeams().has(t) ? `${t} <span class="bye">bye</span>` : t;
+  const chip = teamChip(t, counts);
+  if (!o) return byeTeams().has(t) ? `${chip} <span class="bye">bye</span>` : chip;
   const d = o[t] || { make: 0, bye: 0 };
   const make = d.make < 0.95 ? ` <span class="${d.make < 0.5 ? 'bad' : 'k'}" title="P(makes the playoffs)">${pct(d.make, 0)}</span>` : '';
   const bye = d.bye >= 0.1 ? ` <span class="bye" title="P(a first-round bye)">bye ${pct(d.bye, 0)}</span>` : '';
-  return `${t}${make}${bye}`;
+  return `${chip}${make}${bye}`;
 }
 /* A player out now is valued at P(back by January), measured; say so. */
 function availTag(p) {
@@ -415,32 +490,40 @@ function renderRecs(out, f, ms) {
   const P = S.ctx.players;
   const evMode = out.key === 'ev';
   $('recMeta').textContent = `${f.label} · ${Math.round(ms)} ms · ranked by ${evMode ? 'EV over entered prizes' : 'P(reach final)'}`;
-  const myTeams = {};
-  for (const i of rosters()[S.mySeat]) myTeams[P[i].team] = (myTeams[P[i].team] || 0) + 1;
+  const myTeams = myTeamCounts();
+  const wk = S.wk1 || { late: false };
   const shown = out.results.slice(0, 12);
   const vary = varyPick(shown);
   const nTie = shown.filter(r => r.tie).length;
   const rows = shown.map((r, k) => {
     const p = P[r.idx];
-    const stack = myTeams[p.team] ? ` <span class="k">+${myTeams[p.team]} ${p.team}</span>` : '';
     const o = teamOdds(p.team);
     const tie = r.tie ? '<span class="tie" title="Within the simulator\'s noise of the top pick">≈</span>' : '<span class="tie"></span>';
     const vb = vary && vary.r === r ? ` <span class="vary" title="${esc(vary.why)}">◆ vary</span>` : '';
+    const fill = fillsWk1(r.idx, wk);
+    const nb = fill ? ` <span class="need" title="fills your empty wild-card-week ${fill} slot">wk1 ${fill}</span>` : '';
     return `<tr class="click${k === 0 ? ' top' : ''}${r.tie ? '' : ' notie'}" data-idx="${r.idx}">
-      <td>${tie}<span class="pos">${p.pos}</span>${esc(p.name)}${availTag(p)}${stack}${vb}</td><td>${p.team}</td>
+      <td>${tie}${posTag(p)}${esc(p.name)}${availTag(p)}${vb}${nb}</td><td>${teamChip(p.team, myTeams)}</td>
       <td class="n">${S.adp[r.idx] ? S.adp[r.idx].toFixed(1) : '—'}</td>
-      <td class="n${o.make < 0.5 ? ' bad' : ''}">${pct(o.make, 0)}</td><td class="n${o.bye >= 0.3 ? ' warn' : ''}">${pct(o.bye, 0)}</td><td class="n">${o.games.toFixed(2)}</td>
-      <td class="n">${pct(r.pR[0])}</td><td class="n">${pct(r.pR[1], 2)}</td><td class="n">${pct(r.pFinal, 2)}</td>
-      <td class="n">${evMode ? '$' + r.ev.toFixed(2) : pct(r.pWin, 3)}</td></tr>`;
+      <td class="n${S.wc[r.idx] < 0.5 ? ' warn' : ''}">${pct(S.wc[r.idx], 0)}</td>
+      <td class="n${o.bye >= 0.3 ? ' warn' : ''}">${pct(o.bye, 0)}</td>
+      <td class="n full${o.make < 0.5 ? ' bad' : ''}">${pct(o.make, 0)}</td><td class="n full">${o.games.toFixed(2)}</td>
+      <td class="n full">${pct(r.pR[0])}</td><td class="n full">${pct(r.pR[1], 2)}</td><td class="n">${pct(r.pFinal, 2)}</td>
+      <td class="n full">${evMode ? '$' + r.ev.toFixed(2) : pct(r.pWin, 3)}</td></tr>`;
   }).join('');
   $('recs').innerHTML = `<table><tr><th>Player</th><th>Team</th><th class="n">ADP</th>
-    <th class="n" title="P(his team makes the playoffs)">In</th><th class="n" title="P(his team has a round-1 bye: zero in round 1)">Bye</th>
-    <th class="n" title="His team's expected playoff games">G</th>
-    <th class="n" title="P(win your round-1 pod)">Rd 1</th><th class="n" title="P(win round 1 and 2)">Rd 2</th>
-    <th class="n" title="P(reach the final)">Final</th><th class="n">${evMode ? 'EV' : 'P(1st)'}</th></tr>${rows}</table>
-    <div class="msg">Each row assumes you take him now and ADP drafts every remaining pick, yours included.
+    <th class="n" title="P(he plays wild-card week): his team makes the playoffs without a bye, and he is playing">Wk1</th>
+    <th class="n" title="P(his team has a round-1 bye: zero in round 1)">Bye</th>
+    <th class="n full" title="P(his team makes the playoffs)">In</th>
+    <th class="n full" title="His team's expected playoff games">G</th>
+    <th class="n full" title="P(win your round-1 pod)">Rd 1</th><th class="n full" title="P(win round 1 and 2)">Rd 2</th>
+    <th class="n" title="P(reach the final)">Final</th><th class="n full">${evMode ? 'EV' : 'P(1st)'}</th></tr>${rows}</table>
+    <div class="msg simple-only">Top row is the pick. <b>≈</b> any of these is about as good.
+    ${vary ? '<b>◆ vary</b> the tied pick your other entries use least. ' : ''}<b>Wk1</b> his chance to play wild-card week.
+    Filled team chips are teams already on your roster.</div>
+    <div class="msg full">Each row assumes you take him now and ADP drafts every remaining pick, yours included.
     Same simulated postseasons for every row, so differences are paired.${f.payouts.length ? '' : ' Enter payouts to rank by EV.'}
-    <b>In</b>, <b>Bye</b>, <b>G</b>: his team's chance to make the playoffs, to have a round-1 bye (zero in round 1), and its expected games.
+    <b>Wk1</b>: his chance to play wild-card week. <b>In</b>, <b>Bye</b>, <b>G</b>: his team's chance to make the playoffs, to have a round-1 bye (zero in round 1), and its expected games.
     ${nTie > 1 ? `<b>≈</b> ${nTie} rows within ${Math.round((1 - PlayoffRec.TIE_RATIO) * 100)}% of the top's value: inside the simulator's noise, so their order means little and any of them is a fair pick.`
       : `No other row is within ${Math.round((1 - PlayoffRec.TIE_RATIO) * 100)}% of the top's value.`}
     ${vary ? `<b>◆ vary</b>: the tied pick your finished entries use least (${esc(vary.why)}); take it to keep entries from looking alike.` : ''}
@@ -474,46 +557,60 @@ function varyPick(shown) {
 function renderMine() {
   const P = S.ctx.players, mine = rosters()[S.mySeat];
   $('myCount').textContent = `${mine.length} of ${format().rounds}`;
+  S.wk1 = wk1State();
+  renderWkAlert();
   if (!mine.length) { $('mine').innerHTML = '<div class="msg">No picks yet.</div>'; $('conflicts').innerHTML = ''; $('coverage').innerHTML = ''; return; }
-  const byTeam = {};
-  for (const i of mine) (byTeam[P[i].team] = byTeam[P[i].team] || []).push(P[i]);
-  const reach = S.data.bracket.reach;
-  $('mine').innerHTML = '<table><tr><th>Team</th><th>Players</th><th class="n">E[games]</th></tr>'
-    + Object.entries(byTeam).sort((a, b) => b[1].length - a[1].length).map(([t, ps]) =>
-      `<tr><td>${teamTag(t)}</td><td>${ps.map(p => `<span class="pos">${p.pos}</span>${esc(p.name)}`).join(', ')}</td>
-       <td class="n">${reach[t] ? reach[t].games.toFixed(2) : '—'}</td></tr>`).join('') + '</table>';
-  renderCoverage(mine);
+  // AFC | NFC side by side: only one team per conference reaches the final, so
+  // the user tracks the roster by conference first, then by team.
+  const byConf = { AFC: {}, NFC: {} };
+  for (const i of mine) {
+    const c = S.ctx.conf[P[i].team] || 'AFC', t = P[i].team;
+    (byConf[c][t] = byConf[c][t] || []).push(P[i]);
+  }
+  const counts = myTeamCounts();
+  $('mine').innerHTML = '<div class="confs">' + ['AFC', 'NFC'].map(c => {
+    const teams = Object.entries(byConf[c]).sort((a, b) => b[1].length - a[1].length);
+    const n = teams.reduce((s, [, ps]) => s + ps.length, 0);
+    return `<div><div class="ch"><span class="tm ${c}">${c}</span> ${n} player${n === 1 ? '' : 's'}${teams.length ? ` · ${teams.length} team${teams.length === 1 ? '' : 's'}` : ''}</div>`
+      + (teams.length ? teams.map(([t, ps]) => {
+        const o = teamOdds(t);
+        const odds = `${o.make < 0.95 ? ` <span class="${o.make < 0.5 ? 'bad' : 'k'}" title="P(makes the playoffs)">in ${pct(o.make, 0)}</span>` : ''}`
+          + `${o.bye >= 0.1 ? ` <span class="bye" title="P(a first-round bye): zero in wild-card week">bye ${pct(o.bye, 0)}</span>` : ''}`;
+        return `<div class="t">${teamChip(t, counts)}${odds}<div class="ps">${ps.map(p => `${posTag(p)}${esc(p.name)}`).join('<br>')}</div></div>`;
+      }).join('') : '<div class="k">none yet</div>') + '</div>';
+  }).join('') + '</div>';
+  renderCoverage();
   const cf = PlayoffRec.conflicts(S.ctx, S.worlds, mine).filter(c => c.pMeet > 0.05);
   $('conflicts').innerHTML = cf.length ? '<div class="msg"><b>Same conference — only one can reach the final:</b> '
     + cf.map(c => `${c.a}/${c.b} meet ${pct(c.pMeet, 0)}`).join(' · ') + '</div>' : '';
 }
 
-/* Conferences and wild-card week for my roster. 6 starters score in round 1, so
- * fewer than 6 players in wild-card week means empty lineup slots. An ADP roster
- * expects ~7 of 12 (2026-11-19 mock draft); none of these is a rule the backtest
- * has shown to pay yet (STATUS 2026-11-19). */
-function renderCoverage(mine) {
-  const P = S.ctx.players, conf = {};
-  let exp = 0;
-  for (const i of mine) { const c = S.ctx.conf[P[i].team]; conf[c] = (conf[c] || 0) + 1; exp += S.wc[i]; }
-  const W = S.worlds, R = W.R, NP = W.P;
-  let short = 0;
-  const full = mine.length >= format().rounds;
-  if (full) {
-    // Same test as wcPlay: team in the wild-card round, player playing.
-    const set = new Set(mine);
-    W.brackets.forEach((br, w) => {
-      let k = 0;
-      for (const [h, a] of br.WC) for (const t of [h, a]) for (const p of (S.ctx.byTeam[t] || []))
-        if (set.has(p.idx) && (!W.playing || W.playing[w * NP + p.idx])) k++;
-      if (k < 6) short++;
-    });
+/* Wild-card week for my roster, one chip per lineup slot: green when some
+ * roster player who plays that week fills it in 90%+ of postseasons, orange
+ * below that, red when it is empty in 30%+ (wk1State). An ADP roster expects ~7
+ * of 12 players to play that week (2026-11-19 mock draft). */
+function renderCoverage() {
+  const st = S.wk1, lineup = format().lineup;
+  const chips = [];
+  for (const [pos, k] of Object.entries(lineup)) for (let j = 0; j < k; j++) {
+    // WR has two slots and one P(short) for the pair: show it once.
+    const x = st.short[pos];
+    const cls = x >= WK1_SHORT ? 'empty' : x >= WK1_RISK ? 'risk' : 'ok';
+    const label = j === 0 && x >= WK1_RISK ? `${pos} ${pct(x, 0)}` : pos;
+    chips.push(`<span class="slot ${cls}" title="${pos}: no wild-card-week player to start here in ${pct(x, 0)} of postseasons">${label}</span>`);
   }
-  const confs = Object.entries(conf).sort((a, b) => b[1] - a[1]).map(([c, k]) => `${c} ${k}`).join(' · ');
-  $('coverage').innerHTML = `<div class="msg"><b>Conferences</b> ${confs}
-    · <b>Wild-card week</b> ${exp.toFixed(1)} of ${mine.length} expected to play`
-    + (full ? ` · fewer than 6 play in <span class="${short / W.n > 0.3 ? 'warn' : ''}">${pct(short / W.n, 0)}</span> of postseasons` : '')
-    + '</div>';
+  $('coverage').innerHTML = `<div class="wk1"><b>Week 1 lineup</b> (wild card; bye teams score 0)<br>${chips.join('')}
+    <div class="k">${st.filled.toFixed(1)} of ${st.slots} slots filled on average · all ${st.slots} filled in ${pct(st.pFull, 0)} of postseasons
+    · red/orange % = how often that slot is empty</div></div>`;
+}
+
+/* The warning above the picks, only when it matters (wk1State.late). */
+function renderWkAlert() {
+  const st = S.wk1;
+  if (!st || !st.late || onClock() !== S.mySeat) { $('wkAlert').innerHTML = ''; return; }
+  const names = st.needs.map(k => `${k} (empty ${pct(st.short[k], 0)})`).join(', ');
+  $('wkAlert').innerHTML = `<div class="alert"><b>Week 1:</b> ${names} with ${st.left} pick${st.left === 1 ? '' : 's'} left.
+    Rows marked <span class="need">wk1</span> fill it with a player very likely to play wild-card week.</div>`;
 }
 
 /* Exposure across my finished live entries, kept in this browser only
@@ -563,10 +660,11 @@ function renderAvail() {
   const rows = P.map((p, i) => i).filter(i => !taken.has(i) && S.adp[i] > 0 && P[i].avail
     && (!q || P[i].name.toLowerCase().includes(q) || P[i].team.toLowerCase() === q))
     .sort((a, b) => S.adp[a] - S.adp[b]).slice(0, 80);
-  $('avail').innerHTML = '<tr><th>Player</th><th>Team</th><th class="n">ADP</th><th class="n">DK/g</th><th class="n">E[pts]</th></tr>'
-    + rows.map(i => `<tr class="click" data-idx="${i}"><td><span class="pos">${P[i].pos}</span>${esc(P[i].name)}${P[i].low_sample ? ' <span class="k" title="under 4 games">*</span>' : ''}${availTag(P[i])}</td>
-      <td>${teamTag(P[i].team)}</td><td class="n">${S.adp[i].toFixed(1)}</td><td class="n">${P[i].dk_ppg.toFixed(1)}</td>
-      <td class="n">${S.expPts[i].toFixed(1)}</td></tr>`).join('');
+  const counts = myTeamCounts();
+  $('avail').innerHTML = '<tr><th>Player</th><th>Team</th><th class="n">ADP</th><th class="n" title="P(he plays wild-card week)">Wk1</th><th class="n full">DK/g</th><th class="n full">E[pts]</th></tr>'
+    + rows.map(i => `<tr class="click" data-idx="${i}"><td>${posTag(P[i])}${esc(P[i].name)}${P[i].low_sample ? ' <span class="k" title="under 4 games">*</span>' : ''}${availTag(P[i])}</td>
+      <td>${teamTag(P[i].team, counts)}</td><td class="n">${S.adp[i].toFixed(1)}</td><td class="n${S.wc[i] < 0.5 ? ' warn' : ''}">${pct(S.wc[i], 0)}</td>
+      <td class="n full">${P[i].dk_ppg.toFixed(1)}</td><td class="n full">${S.expPts[i].toFixed(1)}</td></tr>`).join('');
   for (const tr of $('avail').querySelectorAll('tr.click')) tr.onclick = () => draft(+tr.dataset.idx);
 }
 
@@ -612,6 +710,14 @@ $('avoid').onchange = () => {
 try { $('avoid').value = sessionStorage.getItem('bba_playoff_avoid') || ''; } catch {}
 $('mySeat').onchange = () => { S.mySeat = +$('mySeat').value; save(); refresh(); };
 $('search').oninput = () => renderAvail();
+/* Simple view unless the user opened Details last time (this browser). */
+function setSimple(on) {
+  document.body.classList.toggle('simple', on);
+  $('detailsBtn').textContent = on ? 'Details ▾' : 'Hide details ▴';
+  try { localStorage.setItem('bba_playoff_simple', on ? '1' : '0'); } catch {}
+}
+$('detailsBtn').onclick = () => setSimple(!document.body.classList.contains('simple'));
+try { setSimple(localStorage.getItem('bba_playoff_simple') !== '0'); } catch { setSimple(true); }
 $('botsBtn').onclick = () => botsToMyTurn();
 $('resetBtn').onclick = () => { if (S.draftId) return; S.picks = []; save(); refresh(); };
 $('poolBtn').onclick = () => loadPool();

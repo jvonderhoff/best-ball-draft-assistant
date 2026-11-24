@@ -147,34 +147,50 @@ python3 tools/preflight.py --playoff
    - **ADP** must be DK, not SYNTHETIC
    - **picks not matched** must be empty. An unmatched pick is a player gone from the
      room that the page still thinks is available.
-6. How to read a row:
-   - **Rd 1** is your chance to win your round-1 pod if you take him now and ADP
-     drafts the rest. It is the number with real evidence behind it: about 24% for
-     the recommender vs 15% for ADP drafters, across ten past postseasons.
-   - **Final** and **EV** are thinner. On past postseasons the edge to the final came
-     mostly from one or two seasons.
+6. **The page opens in the simple view** (since 2026-11-24): the picks, your roster and
+   Available, with only the columns a pick needs. **Details ▾** (next to Format) shows the
+   rest: payouts, the draft group and *Load DK pool*, Avoid teams, the bookmark link, My
+   entries, the Teams table and the In / G / Rd 1 / Rd 2 / EV columns. The browser
+   remembers which view you left open. On a phone, My roster comes right after the picks.
+7. How to read a row (simple view):
+   - The **top row is the pick**. **≈** marks rows within 25% of the top's value: the
+     simulator cannot tell them apart (PLAYOFF_DESIGN §10), so any of them is a fair
+     pick. **◆ vary** marks the tied row your finished entries use least; take it to
+     keep entries from looking alike.
+   - **Team chips** are coloured by conference (AFC red, NFC blue), and filled, with a
+     count, for teams already on your roster. A stack, or a second team in one
+     conference, shows in every list.
+   - **Wk1** is his chance to play wild-card week (his team makes the playoffs without a
+     bye, and he is playing). **Bye** is his team's chance of a round-1 bye.
+   - **Final** is P(reach the final). It is thin: on past postseasons the edge to the
+     final came mostly from one or two seasons. Under Details, **Rd 1** (win your
+     round-1 pod) is the number with real evidence behind it: about 24% for the
+     recommender vs 15% for ADP drafters, across ten past postseasons.
    - Pick the contest under **Format** first (Millionaire, Fair Catch, Play-Action,
      Nickel). They differ only in final size, which matters for 1st-place odds and EV,
-     not for the ranking by P(final). The 20-round preset is gone: DK's playoff format
-     is 12 players (PLAYOFF_DESIGN §1).
+     not for the ranking by P(final). DK's playoff format is 12 players (PLAYOFF_DESIGN §1).
    - The recommender never offers a pick that would leave your roster short of 1 QB,
      1 RB, 2 WR and 1 TE with the picks left, or over 3 QB / 3 TE. DK voids such a
      roster: zero points all postseason.
-7. **In / Bye / G** on each row are his team's chance to make the playoffs, chance of a
-   round-1 bye (zero in round 1) and expected games. Under **My roster**: conferences,
-   expected wild-card-week players, and once the roster is full how often fewer than 6
-   play that week. Forcing either (≤7 per conference, ≥7 wild-card players) measured
-   worse on past postseasons (STATUS 2026-11-19), so they inform, not rule.
-8. **Keeping entries apart:** **My entries** counts teams and players across your finished
-   live drafts in this browser. Click a team there, or type it in **Avoid teams**, to
-   build this entry around a different core. The recommender gives the same answer from
-   the same seat on the same data, so without this your entries converge.
-   **≈** marks rows within 25% of the top row's value: the simulator cannot tell them
-   apart (PLAYOFF_DESIGN §10), so any of them is a fair pick. **◆ vary** marks the tied
-   row your finished entries use least; take it to keep entries from looking alike.
-9. **My roster** lists your teams and their expected games. A *same conference* line
-   names two of your teams that must meet before the Super Bowl, with the chance they
-   do; only one of them can reach the final.
+8. **My roster** is split AFC | NFC, then by team, each with its playoff and bye odds.
+   A *same conference* line names two of your teams that must meet before the Super
+   Bowl, with the chance they do; only one of them can reach the final.
+9. **Week 1 lineup** (under My roster) has one chip per lineup slot (QB RB WR WR TE
+   FLEX): green when a roster player who plays wild-card week fills it in 90%+ of
+   simulated postseasons, orange below that, red when it is empty in 30%+. Bye teams
+   score zero that week, so a bye-heavy roster shows red here. When the red slots come
+   close to the picks you have left, an orange **Week 1** warning appears above the
+   picks and rows that would fill a red slot get a **wk1** mark. It warns, it does not
+   re-rank: forcing wild-card coverage as a rule measured far worse on past postseasons
+   (P(final) 0.37x ADP vs 4.4x without it, STATUS 2026-11-19), because the recommender
+   already counts a bye team's round-1 zero in every simulated postseason. Expect the
+   top row to be a bye-team player sometimes even with the warning up; the warning is
+   for your judgement.
+10. **Keeping entries apart** (under Details): **My entries** counts teams and players
+   across your finished live drafts in this browser. Click a team there, or type it in
+   **Avoid teams**, to build this entry around a different core. The recommender gives
+   the same answer from the same seat on the same data, so without this your entries
+   converge.
 
 ## 5. Practising before the lobby
 
