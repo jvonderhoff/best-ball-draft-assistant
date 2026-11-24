@@ -11,6 +11,24 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-24: playoff — practice drafts saved and reviewed pick by pick
+
+**Asked:** draft fake lineups first, then go through them together for what to do
+differently. **Built:** finished mock boards are saved in the browser (**Practice drafts**,
+`bba_playoff_mocks`, newest 30, separate from entries so practice never counts as
+exposure) with a **Copy for review** button (clipboard, or a selected text box where the
+clipboard refuses, as in the app's browser pane). `tools/playoff-review.js` replays one:
+per pick the recommender at 24 completions with that pick's Build around / Avoid, rank,
+vs top, ≈, and P(my player still there at my next pick had I taken the top); then my
+roster vs "top every time" (same room; a bot whose player the tool took takes best ADP)
+on fresh worlds (seed 999), bots as the control. **Checked:** a bot-drafted mock with a
+deliberate round-2 DEN reach (scratch): flagged at 31% of the top, "100% he was there at
+#15"; a page-copied mock through stdin with chat around the JSON; bots 16.6-17.9% round 1,
+0.41-0.47% final. **Learned:** one roster's P(final) moved 0.41% → 0.96% between the
+page's worlds and fresh ones, so the review compares rows scored together, never a level
+across sets. **Not measured:** whether "top every time" beats a human's picks across many
+mocks; one mock is one board.
+
 ## 2026-11-24: playoff — the table settles; Next; Build around
 
 **Asked:** why Parker Washington at 1.01, why not Lawrence; and "go a little off ADP" to

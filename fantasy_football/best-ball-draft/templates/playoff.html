@@ -96,11 +96,16 @@
     .slot.empty { color: var(--red); border-color: var(--red); }
     .alert { margin-top: 6px; padding: 6px 9px; border: 1px solid var(--orange); border-radius: 6px; background: var(--warn-bg); color: var(--text); }
     .need { color: var(--orange); font-size: 0.8em; font-weight: 700; }
+    #mocks { font-size: 0.8em; }
+    #mocks .m { display: flex; gap: 6px; align-items: center; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--row-border); }
+    #mocks .m span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    #mocks .m button { flex: none; }
+    textarea.copy { width: 100%; height: 90px; font-size: 0.75em; margin-top: 6px; }
     /* Phone: one column, and my roster right under the picks rather than below
        the 80-row Available list. */
     @media (max-width: 760px) {
       .grid { gap: 0; } .grid > div { display: contents; }
-      #recCard { order: 1; } #rosterCard { order: 2; } #availCard { order: 3; } #entriesCard { order: 4; } #teamsCard { order: 5; }
+      #recCard { order: 1; } #rosterCard { order: 2; } #availCard { order: 3; } #mocksCard { order: 4; } #entriesCard { order: 5; } #teamsCard { order: 6; }
     }
   </style>
 </head>
@@ -182,6 +187,10 @@
         <div id="coverage"></div>
         <div id="conflicts"></div>
       </div>
+      <div class="card" id="mocksCard">
+        <h2>Practice drafts <small id="mocksMeta"></small></h2>
+        <div id="mocks" class="msg"></div>
+      </div>
       <div class="card full" id="entriesCard">
         <h2>My entries <small id="expMeta"></small></h2>
         <div id="exposure" class="msg"></div>
@@ -203,7 +212,7 @@ const WORLDS = 2000;
 const S = {
   ctx: null, worlds: null, adp: null, adpSource: 'synthetic', expPts: null,
   field: null, fieldKey: '', picks: [], mySeat: 0, draftId: null, pollTimer: null,
-  unmatched: [], data: null, pool: null,
+  unmatched: [], data: null, pool: null, mockId: null,
 };
 const $ = id => document.getElementById(id);
 const pct = (x, d = 1) => (100 * x).toFixed(d) + '%';
@@ -238,6 +247,7 @@ async function load() {
   S.wc = PlayoffRec.wcPlay(S.ctx, S.worlds);   // P(he plays wild-card week), per player
   renderTeams();
   renderExposure();
+  renderMocks();
   restore();
   // Real ADP when any bookmarklet run has saved DK's pool; synthetic otherwise.
   if (!(await loadPool(true))) await refresh();
@@ -288,19 +298,23 @@ function myNextPick() {
 }
 function save() {
   if (S.draftId) return;     // a live board is DK's, never ours to persist
-  try { sessionStorage.setItem('bba_playoff_mock', JSON.stringify({ picks: S.picks, mySeat: S.mySeat, preset: $('preset').value })); } catch {}
+  try { sessionStorage.setItem('bba_playoff_mock', JSON.stringify({ picks: S.picks, mySeat: S.mySeat, preset: $('preset').value, id: S.mockId })); } catch {}
 }
 function restore() {
   try {
     const m = JSON.parse(sessionStorage.getItem('bba_playoff_mock') || 'null');
-    if (m) { S.picks = m.picks || []; S.mySeat = m.mySeat || 0; if (m.preset && PlayoffRec.PRESETS[m.preset]) $('preset').value = m.preset; }   // a saved mock may name a removed preset (dk-20)
+    if (m) { S.picks = m.picks || []; S.mySeat = m.mySeat || 0; S.mockId = m.id || null; if (m.preset && PlayoffRec.PRESETS[m.preset]) $('preset').value = m.preset; }   // a saved mock may name a removed preset (dk-20)
   } catch {}
   $('mySeat').value = String(S.mySeat);
 }
 
 async function draft(idx) {
   if (S.draftId || nextPick() > totalPicks()) return;
-  S.picks.push({ idx, seat: onClock() });
+  if (!S.picks.length) S.mockId = 'm' + Date.now().toString(36);
+  const pk = { idx, seat: onClock() };
+  // What the page was told for this pick, so a review can ask the same question.
+  if (pk.seat === S.mySeat) { pk.st = $('stack').value.trim(); pk.av = $('avoid').value.trim(); }
+  S.picks.push(pk);
   save();
   await refresh();
 }
@@ -316,6 +330,7 @@ async function botsToMyTurn() {
     const s = onClock();
     const idx = done[s][rs[s].length];
     if (idx === undefined) break;
+    if (!S.picks.length) S.mockId = 'm' + Date.now().toString(36);
     S.picks.push({ idx, seat: s });
   }
   save();
@@ -392,7 +407,7 @@ async function refresh() {
   if (!S.ctx) return;
   const token = S.recToken = (S.recToken || 0) + 1;   // stops a refine loop from an older board
   renderBoardBar(); renderMine(); renderAvail(); renderStackChips();
-  if (nextPick() > totalPicks()) { await ensureField(); renderFinal(); saveEntry(); return; }
+  if (nextPick() > totalPicks()) { await ensureField(); const v = renderFinal(); saveEntry(); saveMock(v); return; }
   // Only on your pick. Each row means "take him NOW, then ADP drafts the rest";
   // off-turn that would put him on your roster at someone else's slot and rank
   // players for a pick you do not have (seen in the first phone mock draft).
@@ -799,7 +814,76 @@ function renderFinal() {
   const sc = rs.map(r => PlayoffSim.rosterScores(S.ctx, r, S.worlds, f.lineup));
   const v = PlayoffRec.contestValue(sc[S.mySeat], sc.filter((_, k) => k !== S.mySeat), S.field, S.worlds, f);
   $('recs').innerHTML = `<div class="msg">Draft complete. Your roster: win round 1 <b>${pct(v.pR[0])}</b>,
-    reach the final <b>${pct(v.pFinal, 2)}</b> (an average roster: 16.7% and 0.46%).</div>`;
+    reach the final <b>${pct(v.pFinal, 2)}</b> (an average roster: 16.7% and 0.46%).</div>`
+    + (S.draftId ? '' : `<div class="msg">Saved under <b>Practice drafts</b>.
+      <button id="copyThis">Copy for review</button> and paste it to Claude to go through it pick by pick.</div><div id="copyBox"></div>`);
+  if (!S.draftId) $('copyThis').onclick = () => copyMock(S.mockId, $('copyBox'));
+  return v;
+}
+
+/* Finished practice drafts, kept in this browser (localStorage) so Reset board
+ * does not lose them, and copied out as JSON for tools/playoff-review.js. Each
+ * pick names the player by gsis_id: player indexes change with every data push.
+ * Never counted as entries: exposure is for real drafts only. */
+const MOCKS_KEY = 'bba_playoff_mocks', MOCKS_MAX = 30;
+function loadMocks() { try { return JSON.parse(localStorage.getItem(MOCKS_KEY) || '[]'); } catch { return []; } }
+function saveMock(v) {
+  if (S.draftId || !S.picks.length) return;
+  if (!S.mockId) { S.mockId = 'm' + Date.now().toString(36); save(); }   // a board from before ids existed
+  const list = loadMocks();
+  if (list.some(m => m.id === S.mockId)) return;
+  const P = S.ctx.players;
+  const rec = { kind: 'bba-playoff-mock', v: 1, id: S.mockId, at: new Date().toISOString(),
+    preset: $('preset').value, payouts: $('payouts').value.trim(), seat: S.mySeat + 1,
+    adp: S.adpSource === 'dk' ? { src: 'dk', dg: S.pool.draft_group_id, fetched_at: S.pool.fetched_at } : { src: 'synthetic' },
+    data_at: S.data.uploaded_at || null, page_final: v ? +v.pFinal.toFixed(5) : null,
+    picks: S.picks.map(p => {
+      const o = { n: P[p.idx].name, t: P[p.idx].team, g: P[p.idx].gsis_id };
+      if (p.st) o.st = p.st;
+      if (p.av) o.av = p.av;
+      return o;
+    }) };
+  list.unshift(rec);
+  try { localStorage.setItem(MOCKS_KEY, JSON.stringify(list.slice(0, MOCKS_MAX))); } catch {}
+  renderMocks();
+}
+function copyMock(id, box) {
+  const m = loadMocks().find(x => x.id === id);
+  if (!m) return;
+  const text = JSON.stringify(m);
+  // Clipboard needs a secure page and a user gesture; when it refuses, show the
+  // text selected so it can be copied by hand (seen on phones).
+  const show = msg => { box.innerHTML = `<div class="msg">${msg}</div><textarea class="copy" readonly></textarea>`;
+    const ta = box.querySelector('textarea'); ta.value = text; ta.focus(); ta.select(); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => { box.innerHTML = '<div class="msg ok">Copied. Paste it to Claude.</div>'; },
+      () => show('Copy this text and paste it to Claude:'));
+  } else show('Copy this text and paste it to Claude:');
+}
+function renderMocks() {
+  const list = loadMocks();
+  $('mocksMeta').textContent = list.length ? `${list.length} in this browser` : '';
+  if (!list.length) { $('mocks').innerHTML = 'Finish a practice draft (no DK draft id) and it is saved here to copy for review.'; return; }
+  $('mocks').innerHTML = list.map(m => {
+    const mine = m.picks.filter((_, k) => PlayoffRec.seatOfPick(k + 1, SEATS) === m.seat - 1);
+    const teams = {};
+    for (const p of mine) teams[p.t] = (teams[p.t] || 0) + 1;
+    const tl = Object.entries(teams).sort((a, b) => b[1] - a[1]).map(([t, k]) => `${t}${k}`).join(' ');
+    const d = new Date(m.at);
+    return `<div class="m" data-id="${esc(m.id)}"><span>${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+      ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} · seat ${m.seat} · ${esc(tl)}
+      ${m.page_final != null ? `· final ${pct(m.page_final, 2)}` : ''}</span>
+      <span><button class="cp">Copy</button> <button class="rm" title="delete this practice draft">✕</button></span></div><div class="box"></div>`;
+  }).join('') + '<div class="msg">Copy one and paste it to Claude for a pick-by-pick review.</div>';
+  for (const row of $('mocks').querySelectorAll('.m')) {
+    const id = row.dataset.id;
+    row.querySelector('.cp').onclick = () => copyMock(id, row.nextElementSibling);
+    row.querySelector('.rm').onclick = () => {
+      if (!confirm('Delete this practice draft?')) return;
+      try { localStorage.setItem(MOCKS_KEY, JSON.stringify(loadMocks().filter(x => x.id !== id))); } catch {}
+      renderMocks();
+    };
+  }
 }
 
 // ── wiring ──────────────────────────────────────────────────────────────────
@@ -838,7 +922,7 @@ function setSimple(on) {
 $('detailsBtn').onclick = () => setSimple(!document.body.classList.contains('simple'));
 try { setSimple(localStorage.getItem('bba_playoff_simple') !== '0'); } catch { setSimple(true); }
 $('botsBtn').onclick = () => botsToMyTurn();
-$('resetBtn').onclick = () => { if (S.draftId) return; S.picks = []; save(); refresh(); };
+$('resetBtn').onclick = () => { if (S.draftId) return; S.picks = []; S.mockId = null; save(); refresh(); };
 $('poolBtn').onclick = () => loadPool();
 /* Fast drafts give 30 seconds a pick, so a 30-second poll could show your turn
  * after it had passed. Poll every POLL_NEAR ms when your pick is on the clock or

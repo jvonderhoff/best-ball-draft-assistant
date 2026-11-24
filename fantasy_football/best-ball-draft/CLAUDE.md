@@ -449,6 +449,10 @@ Draft week, step by step: `docs/PLAYOFF_RUNBOOK.md`.
   1000.. one completion at a time, merged by `PlayoffRec.mergeRuns`) and is never
   awaited, because the live poll loop awaits `refresh()`. *Build around* (`include`)
   and **Next** (`PlayoffRec.survival`) are display only; they must not re-rank.
+- **Practice drafts** are saved by `saveMock` (localStorage `bba_playoff_mocks`) and
+  name players by `gsis_id`, never by index: indexes change with every data push.
+  `tools/playoff-review.js` replays one; it scores rosters on fresh worlds (seed 999),
+  never the recommender's own (seed 1), which would flatter the tool.
 - **Fast drafts (30 s a pick).** `/playoff` polls the live board every 3-6 s and counts the
   clock from every pick DK made, matched or not.
 - **Check it after any change:** run `node tools/playoff-sim-check.js` and

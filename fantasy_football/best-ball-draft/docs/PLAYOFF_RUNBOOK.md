@@ -217,6 +217,23 @@ Without a DK draft id the page is a mock board:
 - Clicking a recommendation or an available player drafts him for the seat on the clock.
 - *Reset board* starts over.
 
+**Review a practice draft.** A finished practice draft is saved under **Practice drafts**
+(this browser, newest 30; Reset does not lose it; never counted as an entry). **Copy**
+gives JSON naming each player by gsis_id, with the Build around / Avoid teams of each of
+your picks. Paste it to Claude, or run it yourself (~5 minutes, so in the background):
+
+```bash
+pbpaste | node tools/playoff-review.js -          # production's data and, if the mock used it, DK's saved ADP
+```
+
+For each of your picks: where it ranked, **vs top** (its value as a share of the top
+pick's), whether it was within noise (≈), and a verdict: had you taken the top, the chance
+your player was still there at your next pick, and whether the top actually was. Then
+your roster against "taking the top every time" in the same room, both scored on fresh
+simulated postseasons, with the five bot seats as the control (near 16.7% / 0.46%). If the
+data was pushed again since the mock, the header says the answers are for today's data;
+a player who left the data stops the review.
+
 The page loads the newest DK pool a bookmark run has saved, so after your first real
 draft the mock bots draft like the real room (the ADP line in the bar says `saved` and
 the day). Before any bookmark run the ADP is synthetic (expected postseason points):
