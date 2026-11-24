@@ -181,9 +181,10 @@
   }
 
   /* Finish a board from `rosters` (index arrays per seat) starting at pick
-   * `fromPick`, every seat drafting as an ADP bot. Deterministic for a seed. */
-  function completeBoard(ctx, adp, rosters, taken, fromPick, format, rng, noise) {
-    const seats = format.podSize, total = seats * format.rounds;
+   * `fromPick`, every seat drafting as an ADP bot. Deterministic for a seed.
+   * toPick: stop after this pick (default: the end of the draft). */
+  function completeBoard(ctx, adp, rosters, taken, fromPick, format, rng, noise, toPick) {
+    const seats = format.podSize, total = Math.min(seats * format.rounds, toPick || Infinity);
     const caps = format.caps || CAPS[format.rounds] || CAPS[12];
     const out = rosters.map(r => r.slice());
     const tk = new Set(taken);
@@ -255,6 +256,12 @@
       && canTake(ctx, format, mineNow, i) && (!opts.allow || opts.allow(i)));
     avail.sort((a, b) => adp[a] - adp[b]);
     const cands = avail.slice(0, C);
+    // opts.include: players to score even below the ADP cut (the page's "build
+    // around" teams), so a stack player shows his value and cost, not a blank.
+    if (opts.include) {
+      const ok = new Set(avail);
+      for (const i of opts.include) if (ok.has(i) && !cands.includes(i)) cands.push(i);
+    }
     const me = board.mySeat, slot = board.rosters[me].length;
     const lu = format.lineup;
     const acc = new Map(cands.map(c => [c, { pR: [0, 0, 0], pFinal: 0, pWin: 0, ev: 0 }]));
@@ -308,7 +315,62 @@
     const key = format.payouts.length ? 'ev' : 'pFinal';
     results.sort((a, b) => b[key] - a[key]);
     markTies(results, key, opts.tieRatio ?? TIE_RATIO);
-    return { key, results };
+    return { key, results, m: M };
+  }
+
+  /* Average recommend() runs made on the same board with different completion
+   * seeds, weighted by each run's completions. The page runs one completion at
+   * a time (seed 1000, 1001, ...) and merges, so the table can show after 3 and
+   * keep getting steadier while the user decides: 3 completions per run is what
+   * the backtest measured, and the top six's order at 3 is mostly noise
+   * (markTies). Measured 2026-11-24 on an empty board, dk-12, synthetic ADP:
+   * the page's 3-completion run put Parker Washington first; 48 completions put
+   * him 11th (0.39% vs Allen 0.55%, Walker 0.54%, Burrow 0.52%, se ~0.03). */
+  function mergeRuns(runs, tieRatio) {
+    const acc = new Map();
+    let m = 0;
+    for (const run of runs) {
+      m += run.m;
+      for (const r of run.results) {
+        const a = acc.get(r.idx) || { idx: r.idx, pR: [0, 0, 0], pFinal: 0, pWin: 0, ev: 0, w: 0 };
+        a.pR = a.pR.map((x, k) => x + r.pR[k] * run.m);
+        a.pFinal += r.pFinal * run.m; a.pWin += r.pWin * run.m; a.ev += r.ev * run.m; a.w += run.m;
+        acc.set(r.idx, a);
+      }
+    }
+    const results = [...acc.values()].map(a => ({ idx: a.idx, pR: a.pR.map(x => x / a.w),
+      pFinal: a.pFinal / a.w, pWin: a.pWin / a.w, ev: a.ev / a.w }));
+    const key = runs.length ? runs[0].key : 'pFinal';
+    results.sort((a, b) => b[key] - a[key]);
+    markTies(results, key, tieRatio ?? TIE_RATIO);
+    return { key, results, m };
+  }
+
+  /* P(each player is still on the board at my next pick), if I take `takeNow`
+   * now and ADP bots (noise sd `noise`, as everywhere here) make the picks in
+   * between. The question behind a reach: "if I wait, do I get him?" Null when
+   * this is my last pick. Bots follow ADP, so this is as good as the ADP: with
+   * the synthetic ADP it is a room that drafts by expected points. */
+  function survival(ctx, adp, board, format, takeNow, opts = {}) {
+    const seats = format.podSize, total = seats * format.rounds;
+    let next = null;
+    for (let p = board.nextPick + 1; p <= total; p++) if (seatOfPick(p, seats) === board.mySeat) { next = p; break; }
+    if (next === null) return null;
+    const n = opts.n || 200, noise = opts.noise ?? 6;
+    const rng = Sim.mulberry32(opts.seed ?? 4242);
+    const left = new Float32Array(ctx.players.length);
+    const rosters = board.rosters.map(r => r.slice());
+    if (takeNow != null) rosters[board.mySeat].push(takeNow);
+    const taken = takeNow != null ? [...board.taken, takeNow] : board.taken.slice();
+    const before = new Set(taken);
+    for (let k = 0; k < n; k++) {
+      const done = completeBoard(ctx, adp, rosters, taken, board.nextPick + 1, format, rng, noise, next - 1);
+      const gone = new Set();
+      for (const r of done) for (const i of r) gone.add(i);
+      for (let i = 0; i < left.length; i++) if (!gone.has(i)) left[i] += 1;
+    }
+    for (let i = 0; i < left.length; i++) left[i] = before.has(i) ? 0 : left[i] / n;
+    return { next, left };
   }
 
   /* Which candidates the model cannot tell from its top pick: r.tie when r's
@@ -449,7 +511,7 @@
     return out.sort((x, y) => y.pMeet - x.pMeet);
   }
 
-  const api = { PRESETS, CAPS, MAX_POS, canTake, wcPlay, wk1Lineup, rosterRule, TIE_RATIO, markTies, CONF_MAX, WC_MIN, parsePayouts, buildField, contestValue, completeBoard, recommend, seatOfPick, conflicts };
+  const api = { PRESETS, CAPS, MAX_POS, canTake, wcPlay, wk1Lineup, rosterRule, TIE_RATIO, markTies, mergeRuns, survival, CONF_MAX, WC_MIN, parsePayouts, buildField, contestValue, completeBoard, recommend, seatOfPick, conflicts };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PlayoffRec = api;
 })(typeof window !== 'undefined' ? window : globalThis);

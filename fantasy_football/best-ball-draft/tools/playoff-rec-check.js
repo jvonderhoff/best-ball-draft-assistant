@@ -9,6 +9,8 @@
  *    contestPath: an average roster gets 1/6, 1/36, 1/216.
  * 2. Speed: one recommendation must fit inside DK's 30-second pick clock with
  *    room to spare on a phone, so it is timed here on the Mac.
+ * 2b. The page's refine loop (merged single-completion runs = one run), build-around
+ *    candidates scored below the ADP cut, and survival to my next pick vs controls.
  * 3. Head-to-head, the only test that says it is worth using: one seat drafts by
  *    the recommender, five by ADP, and every roster is then scored on FRESH
  *    worlds (a different seed from the ones the recommender chose on) against a
@@ -100,6 +102,43 @@ console.log(`field built in ${Date.now() - t0} ms (${field.boards} boards, ${fie
     const top = out.results.slice(0, 3).map(r => `${ctx.players[r.idx].name} ${(100 * r.pFinal).toFixed(2)}%`).join(', ');
     check(`speed @ pick ${nextPick}`, ms < 8000, `${ms} ms, top: ${top}`);
   }
+}
+
+// ── 2b. the page's refine loop, build-around candidates, survival ──────────
+// The page runs one completion at a time (seed 1000, 1001, ...) and merges them;
+// that must be the same estimate as one 3-completion run, or the table the user
+// sees first is not the one the backtest measured.
+{
+  const empty = { mySeat: 0, rosters: Array.from({ length: 6 }, () => []), taken: [], nextPick: 1 };
+  const one = Rec.recommend(ctx, worlds, adp, field, format, empty, { completions: 3, seed: 1000 });
+  const parts = [0, 1, 2].map(m => Rec.recommend(ctx, worlds, adp, field, format, empty, { completions: 1, seed: 1000 + m }));
+  const merged = Rec.mergeRuns(parts);
+  const by = new Map(merged.results.map(r => [r.idx, r]));
+  const worst = Math.max(...one.results.map(r => Math.abs(r.pFinal - by.get(r.idx).pFinal)));
+  check('refine: 3 single runs merge to one 3-completion run', worst < 1e-12 && merged.m === 3
+    && merged.results[0].idx === one.results[0].idx, `max |diff| ${worst.toExponential(1)}, top ${ctx.players[merged.results[0].idx].name}`);
+
+  // A player far below the ADP cut gets scored when included, and only then.
+  const deep = ctx.players.map((p, i) => i).filter(i => adp[i] > 40 && ctx.players[i].avail && ctx.players[i].pos === 'WR').sort((a, b) => adp[a] - adp[b])[0];
+  const without = Rec.recommend(ctx, worlds, adp, field, format, empty, { completions: 1 });
+  const withIt = Rec.recommend(ctx, worlds, adp, field, format, empty, { completions: 1, include: [deep] });
+  check('include: scores a player below the ADP cut', !without.results.some(r => r.idx === deep)
+    && withIt.results.some(r => r.idx === deep) && withIt.results.length === without.results.length + 1,
+    `${ctx.players[deep].name} (ADP ${adp[deep]}) ${withIt.results.some(r => r.idx === deep) ? 'scored' : 'missing'}`);
+
+  // Survival controls. Seat 1 at pick 1 waits until pick 12: ADP 2 is nearly
+  // always gone, a player 60+ ADP nearly always left. At pick 12 the next pick
+  // is 13, nobody picks between, so everyone not taken is left.
+  const top = without.results[0].idx;
+  const sv = Rec.survival(ctx, adp, empty, format, top, { n: 300 });
+  const at = rank => ctx.players.map((p, i) => i).filter(i => adp[i] > 0 && i !== top).sort((a, b) => adp[a] - adp[b])[rank];
+  const early = sv.left[at(0)], late = sv.left[at(70)];
+  check('survival: ADP control at 1.01', sv.next === 12 && early < 0.05 && late > 0.95 && sv.left[top] === 0,
+    `next pick ${sv.next}, best ADP left ${(100 * early).toFixed(0)}%, 71st ADP left ${(100 * late).toFixed(0)}%`);
+  const turn = { mySeat: 0, rosters: Array.from({ length: 6 }, () => []), taken: [], nextPick: 12 };
+  const sv2 = Rec.survival(ctx, adp, turn, format, top, { n: 20 });
+  check('survival: the turn (12 then 13) leaves everyone', sv2.next === 13 && sv2.left.every((x, i) => i === top ? x === 0 : x === 1),
+    `next pick ${sv2.next}`);
 }
 
 // ── 3. head-to-head on fresh worlds ─────────────────────────────────────────

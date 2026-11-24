@@ -160,8 +160,17 @@ python3 tools/preflight.py --playoff
    - **Team chips** are coloured by conference (AFC red, NFC blue), and filled, with a
      count, for teams already on your roster. A stack, or a second team in one
      conference, shows in every list.
+   - **The table settles.** It shows after 3 simulated drafts and keeps adding one at a
+     time to 24 (*Settling: 9 of 24…* above the table, then *Settled on 24*), about 13 s
+     at pick 1 on the Mac, longer on a phone. At 3 the top rows' order is mostly noise:
+     on an empty board the 3-draft #1 (Parker Washington) was 11th at 48. On a live
+     clock you may pick before it settles; the ≈ rows are fair either way.
    - **Wk1** is his chance to play wild-card week (his team makes the playoffs without a
-     bye, and he is playing). **Bye** is his team's chance of a round-1 bye.
+     bye, and he is playing). **Bye** (under Details) is his team's chance of a round-1 bye.
+   - **Next** is his chance to still be there at your next pick if you pass on him now
+     (ADP bots make the picks in between). Low means take him now or lose him; at the
+     turn (12 then 13) everyone shows 100%. It is only as good as the ADP: on SYNTHETIC
+     ADP it is a room drafting by expected points.
    - **Final** is P(reach the final). It is thin: on past postseasons the edge to the
      final came mostly from one or two seasons. Under Details, **Rd 1** (win your
      round-1 pod) is the number with real evidence behind it: about 24% for the
@@ -186,7 +195,16 @@ python3 tools/preflight.py --playoff
    already counts a bye team's round-1 zero in every simulated postseason. Expect the
    top row to be a bye-team player sometimes even with the warning up; the warning is
    for your judgement.
-10. **Keeping entries apart** (under Details): **My entries** counts teams and players
+10. **Build around** (below the seat row): the teams to stack in THIS entry, typed or
+   clicked from the chips beside it. The chips are teams with 40%+ playoff odds, the ones
+   your finished entries use least first (with how many entries use each), so a portfolio
+   spreads across stacks. Each team's best 3 available players are scored however deep
+   they sit, in a **Build around** table under the picks: **vs top** is his value as a
+   share of the top pick's (100% costs nothing; under 60% is orange), and **Next** says
+   whether waiting loses him. Reach when Next is low and you want the stack; wait when
+   it is high. It changes what is shown, never the ranking (a forced roster rule cost
+   P(final) when measured). Kept per browser tab, like Avoid teams.
+11. **Keeping entries apart** (under Details): **My entries** counts teams and players
    across your finished live drafts in this browser. Click a team there, or type it in
    **Avoid teams**, to build this entry around a different core. The recommender gives
    the same answer from the same seat on the same data, so without this your entries

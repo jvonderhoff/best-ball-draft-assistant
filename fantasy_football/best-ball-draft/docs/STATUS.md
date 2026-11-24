@@ -11,6 +11,24 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-24: playoff — the table settles; Next; Build around
+
+**Asked:** why Parker Washington at 1.01, why not Lawrence; and "go a little off ADP" to
+build a portfolio of stacks. **Found:** the page's 3-completion run is noise at the top.
+Re-run at 48 completions (4 seeds x 12, empty board, dk-12, synthetic ADP): Allen 0.55%,
+Walker 0.54%, Burrow 0.52% (se ~0.03) lead; Washington 0.39% is 11th, Lawrence 0.37% 13th
+(Mahomes, ADP 10, is the same 21 pts/g QB six picks later). **Built:**
+`PlayoffRec.mergeRuns` and the page's refine loop (shows at 3, adds one completion at a
+time to 24, stops when the board changes; ~13 s at pick 1 on the Mac); `PlayoffRec.survival`
+and a **Next** column (P(still there at my next pick), ADP bots between); **Build around**
+teams whose best 3 players are scored below the ADP cut (`recommend` `include`) and shown
+with **vs top** and Next; chips ordering likely playoff teams by least use across
+finished entries. Display only: the ranking is unchanged. `playoff-rec-check.js` checks
+3 merged single runs = one 3-run exactly, include scores a deep player, and survival
+against two controls (best ADP 0% left at 1.01 → 12, 71st 100%; the turn leaves all).
+**Not measured:** whether 24 completions beat 3 on the backtest (same estimator, less
+noise), and Next against a real room until DK's ADP is saved.
+
 ## 2026-11-24: playoff — simple view, conference chips, week-1 lineup check
 
 **Asked:** too much on `/playoff` while drafting; highlight conferences and teams; and a
