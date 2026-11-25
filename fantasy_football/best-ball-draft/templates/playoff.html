@@ -212,12 +212,75 @@ const WORLDS = 2000;
 const S = {
   ctx: null, worlds: null, adp: null, adpSource: 'synthetic', expPts: null,
   field: null, fieldKey: '', picks: [], mySeat: 0, draftId: null, pollTimer: null,
-  unmatched: [], data: null, pool: null, mockId: null,
+  unmatched: [], data: null, pool: null, mockId: null, fieldP: null,
 };
 const $ = id => document.getElementById(id);
 const pct = (x, d = 1) => (100 * x).toFixed(d) + '%';
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const nextTick = () => new Promise(r => setTimeout(r, 30));
+
+/* ── worker pool ─────────────────────────────────────────────────────────────
+ * DK's playoff drafts give 30 seconds a pick, and the table settles only at 24
+ * simulated drafts: one at a time on the page that was ~13 s at pick 1 on the
+ * Mac (plus a ~5 s field build on the first pick), and a phone is slower
+ * (the user, 2026-11-25). The drafts are independent, so they run side by side
+ * in static/playoff-worker.js, with the same seeds and so the same numbers.
+ * Any worker failure turns the pool off and the page computes as before. */
+const Pool = { ws: [], jobs: [], cbs: new Map(), seq: 0, ok: false, ready: null };
+function poolStart() {
+  if (typeof Worker === 'undefined') return;
+  // One per spare core, at most 6: each holds its own ~25 MB of worlds and field.
+  const n = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
+  const scripts = [...document.querySelectorAll('script[src]')].map(x => x.src)
+    .filter(u => /\/(playoff-sim|recommender-playoff)\.js/.test(u));
+  try {
+    for (let k = 0; k < n; k++) {
+      const w = new Worker('{{ asset("playoff-worker.js") }}');
+      w.onmessage = e => { const cb = Pool.cbs.get(e.data.id); if (cb) { Pool.cbs.delete(e.data.id); cb(e.data); } };
+      w.onerror = ev => poolFail('worker error: ' + (ev.message || 'unknown'));
+      Pool.ws.push(w);
+    }
+  } catch (err) { Pool.ws.forEach(w => w.terminate()); Pool.ws = []; return; }
+  Pool.ok = true;
+  Pool.ready = Promise.all(Pool.ws.map(w => poolCall(w, { type: 'init', scripts, ctx: S.ctx, worlds: S.worlds, adp: S.adp })));
+  Pool.ready.catch(err => poolFail(String(err)));
+}
+function poolCall(w, msg) {
+  return new Promise((res, rej) => {
+    const id = ++Pool.seq;
+    Pool.cbs.set(id, d => (d.error ? rej(new Error(d.error)) : res(d)));
+    w.postMessage({ ...msg, id });
+  });
+}
+function poolFail(why) {
+  if (!Pool.ok) return;
+  Pool.ok = false;
+  console.warn('playoff workers off, computing on the page:', why);
+  Pool.ws.forEach(w => w.terminate());
+  for (const cb of Pool.cbs.values()) cb({ error: why });
+  Pool.cbs.clear();
+  for (const j of Pool.jobs.splice(0)) j.rej(new Error(why));
+}
+/* One job per worker at a time, and a job for an older board is dropped before
+ * it starts, so a new pick never waits behind the last pick's queue. */
+function poolJob(token, msg) {
+  return new Promise((res, rej) => { Pool.jobs.push({ token, msg, res, rej }); poolDispatch(); });
+}
+function poolDispatch() {
+  for (const w of Pool.ws) {
+    if (w.busy || !Pool.ok) continue;
+    while (Pool.jobs.length && Pool.jobs[0].token !== S.recToken) Pool.jobs.shift().res(null);
+    const j = Pool.jobs.shift();
+    if (!j) return;
+    w.busy = true;
+    poolCall(w, j.msg).then(d => { w.busy = false; j.res(d); poolDispatch(); },
+                            e => { w.busy = false; j.rej(e); poolDispatch(); });
+  }
+}
+function setAdp(adp, source) {
+  S.adp = adp; S.adpSource = source;
+  if (Pool.ok) for (const w of Pool.ws) poolCall(w, { type: 'adp', adp }).catch(e => poolFail(String(e)));
+}
 
 function format() {
   const f = { ...PlayoffRec.PRESETS[$('preset').value] };
@@ -245,12 +308,15 @@ async function load() {
   S.expPts = syn.expPoints;
   S.adp = syn.adp;
   S.wc = PlayoffRec.wcPlay(S.ctx, S.worlds);   // P(he plays wild-card week), per player
+  poolStart();
   renderTeams();
   renderExposure();
   renderMocks();
   restore();
   // Real ADP when any bookmarklet run has saved DK's pool; synthetic otherwise.
   if (!(await loadPool(true))) await refresh();
+  // Build the field now, in the background, so the first pick does not wait for it.
+  ensureField();
 }
 
 function renderFresh() {
@@ -385,7 +451,7 @@ async function loadPool(auto) {
     if (!r.ok) { if (!auto) alert(d.error); return false; }
     S.pool = d;
     // Players DK does not list cannot be drafted: ADP 0 removes them everywhere.
-    S.adp = PlayoffSim.adpFromPool(S.ctx, d); S.adpSource = 'dk'; S.field = null;
+    setAdp(PlayoffSim.adpFromPool(S.ctx, d), 'dk'); S.field = null;
     renderFresh();
     await refresh();
     return true;
@@ -393,14 +459,27 @@ async function loadPool(auto) {
 }
 
 // ── compute + render ────────────────────────────────────────────────────────
-async function ensureField() {
+/* The field depends on the format and the ADP only, so it is built once per
+ * draft, in a worker when there is one, and the other workers get a copy. */
+function ensureField() {
   const f = format();
   const key = `${$('preset').value}|${S.adpSource}|${S.pool ? S.pool.fetched_at : ''}`;
-  if (S.field && S.fieldKey === key) return;
-  $('recs').textContent = 'Building the field (bot boards and later-round opponents, ~10 s once per draft)…';
-  await nextTick();
-  S.field = PlayoffRec.buildField(S.ctx, S.worlds, S.adp, f);
-  S.fieldKey = key;
+  if (S.fieldKey === key && S.fieldP) return S.fieldP;
+  S.fieldKey = key; S.field = null;
+  const p = S.fieldP = (async () => {
+    let field = null;
+    if (Pool.ok) {
+      try {
+        await Pool.ready;
+        field = (await poolCall(Pool.ws[0], { type: 'buildField', format: f })).field;
+        if (S.fieldP === p) await Promise.all(Pool.ws.slice(1).map(w => poolCall(w, { type: 'field', field })));
+      } catch (err) { poolFail(String(err)); field = null; }
+    }
+    if (!field) { await nextTick(); field = PlayoffRec.buildField(S.ctx, S.worlds, S.adp, f); }
+    if (S.fieldP === p) S.field = field;
+    return field;
+  })();
+  return p;
 }
 
 async function refresh() {
@@ -420,6 +499,7 @@ async function refresh() {
                   : 'Press <b>Bots to my turn</b>, or click players to draft them for the seat on the clock.'}</div>`;
     return;
   }
+  if (!S.field) $('recs').textContent = 'Building the field (bot boards and later-round opponents, a few seconds once per draft)…';
   await ensureField();
   if (token !== S.recToken) return;
   $('recs').textContent = 'Thinking…';
@@ -431,6 +511,7 @@ async function refresh() {
   const av = avoided();
   const opts = { allow: av.size ? i => !av.has(S.ctx.players[i].team) : undefined,
     include: stackInclude(new Set(board.taken)) };
+  if (Pool.ok) { recParallel(token, f, board, [...av], opts.include, t0); return; }
   const runs = [PlayoffRec.recommend(S.ctx, S.worlds, S.adp, S.field, f, board, { ...opts, completions: 3, seed: 1000 })];
   const out = PlayoffRec.mergeRuns(runs);
   const sv = survivalFor(f, board, out);
@@ -452,6 +533,29 @@ async function refine(token, f, board, opts, runs, sv, t0) {
     if (token !== S.recToken) return;
     runs.push(PlayoffRec.recommend(S.ctx, S.worlds, S.adp, S.field, f, board, { ...opts, completions: 1, seed: 1000 + m }));
     if ((m + 1) % 3 === 0 && token === S.recToken) renderRecs(PlayoffRec.mergeRuns(runs), f, performance.now() - t0, sv);
+  }
+}
+
+/* The same 24 drafts as refine(), seeds 1000-1023, on the workers. Merged in
+ * seed order, so the table does not depend on which worker finished first. */
+async function recParallel(token, f, board, avoid, include, t0) {
+  const runs = new Map();
+  let sv;
+  const draw = () => {
+    const out = PlayoffRec.mergeRuns([...runs.keys()].sort((a, b) => a - b).map(s => runs.get(s)));
+    if (sv === undefined) sv = survivalFor(f, board, out);
+    renderRecs(out, f, performance.now() - t0, sv);
+  };
+  try {
+    await Promise.all(Array.from({ length: REFINE_TO }, (_, k) =>
+      poolJob(token, { type: 'rec', format: f, board, avoid, include, seed: 1000 + k }).then(d => {
+        if (!d || token !== S.recToken) return;
+        runs.set(1000 + k, d.run);
+        if (runs.size >= 3 && (runs.size % 3 === 0 || runs.size === REFINE_TO)) draw();
+      })));
+  } catch (err) {
+    poolFail(String(err));
+    if (token === S.recToken) refresh();   // the page computes it instead
   }
 }
 
@@ -899,7 +1003,7 @@ function showFormatNote() {
     + (f.warning ? `<br><span class="bad">${esc(f.warning)}</span>` : f.measured ? `<br><span class="k">${esc(f.measured)}</span>` : '');
   if (!$('payouts').value && f.payouts.length) $('payouts').placeholder = f.payouts.map(([a, b, x]) => `${a === b ? a : a + '-' + b}:${x}`).join(', ');
 }
-$('preset').onchange = () => { showFormatNote(); S.field = null; save(); refresh(); };
+$('preset').onchange = () => { showFormatNote(); S.field = null; save(); ensureField(); refresh(); };
 $('payouts').onchange = () => refresh();
 $('avoid').onchange = () => {
   try { sessionStorage.setItem('bba_playoff_avoid', $('avoid').value); } catch {}

@@ -11,6 +11,26 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-25: playoff — a pick settles in ~4 s, not ~13 s
+
+DK's playoff drafts are 30 seconds a pick, and the user found the table too slow to
+use inside that (2026-11-25). Measured on the Mac at pick 1: the field build ~4.7 s
+(on the first pick of the draft), then 24 simulated drafts at ~0.53 s each = ~13 s to
+settle. A phone is slower.
+
+- The 24 drafts now run in parallel in `static/playoff-worker.js` (one worker per
+  spare core, at most 6). Same seeds, same merge: the settled table is the same 12
+  players in the same order as the one-at-a-time path (checked at pick 1, 2026-11-25).
+- The field is built in a worker as soon as the page loads, so the first pick does not
+  wait for it.
+- Measured on the Mac: first table ~1 s, settled ~3.7 s, at picks 3, 10, 15 and 22.
+- Any worker failure turns the pool off and the page computes as before (checked).
+- Not measured: a phone. Each worker holds its own ~25 MB copy of the worlds and field.
+
+Found while testing, not fixed yet: the export values Drew Lock as Seattle's playoff QB
+(Darnold is Out, not IR, so likely back), and players with one big game rank as
+starters (Max Hurleman: 1 game, 18.1 DK points, valued at 18.1 a game).
+
 ## 2026-11-24: playoff — practice drafts saved and reviewed pick by pick
 
 **Asked:** draft fake lineups first, then go through them together for what to do
