@@ -100,9 +100,12 @@
     const B = opts.boards || 120, S = opts.survivors || 300;
     const rng = Sim.mulberry32(opts.seed || 21);
     const caps = format.caps || CAPS[format.rounds] || CAPS[12];
+    // opts.room: share of stackers in the other pods (Sim.roomStyles). Off by default.
+    const share = (opts.room && opts.room.share) || 0;
     const boards = [];
     for (let b = 0; b < B; b++) {
-      const rs = Sim.botDraft(ctx, adp, { seats: format.podSize, rounds: format.rounds, caps }, rng);
+      const styles = share ? Sim.roomStyles(format.podSize, share, rng) : null;
+      const rs = Sim.botDraft(ctx, adp, { seats: format.podSize, rounds: format.rounds, caps, styles }, rng);
       boards.push(rs.map(r => Sim.rosterScores(ctx, r, worlds, format.lineup)));
     }
     const pools = Sim.survivorPools(boards, worlds, S, format.podSize, (opts.seed || 21) + 1);
@@ -182,8 +185,9 @@
 
   /* Finish a board from `rosters` (index arrays per seat) starting at pick
    * `fromPick`, every seat drafting as an ADP bot. Deterministic for a seed.
-   * toPick: stop after this pick (default: the end of the draft). */
-  function completeBoard(ctx, adp, rosters, taken, fromPick, format, rng, noise, toPick) {
+   * toPick: stop after this pick (default: the end of the draft).
+   * styles: per seat, 0 = ADP bot, else a stacker (Sim.roomStyles); default all ADP. */
+  function completeBoard(ctx, adp, rosters, taken, fromPick, format, rng, noise, toPick, styles) {
     const seats = format.podSize, total = Math.min(seats * format.rounds, toPick || Infinity);
     const caps = format.caps || CAPS[format.rounds] || CAPS[12];
     const out = rosters.map(r => r.slice());
@@ -195,13 +199,15 @@
       const counts = {};
       for (const i of out[s]) counts[ctx.players[i].pos] = (counts[ctx.players[i].pos] || 0) + 1;
       let best = -1, bestKey = Infinity;
-      // ADP-sorted, so beyond ~4 noise sds past the best key nothing can win.
+      const st = styles ? styles[s] : 0;
+      const reach = st * Sim.STACK_MAX;                  // the most a stacker's bonus can move a key
+      // ADP-sorted, so beyond ~4 noise sds (plus any stack bonus) past the best key nothing can win.
       for (const i of pool) {
         if (tk.has(i)) continue;
-        if (adp[i] - 4 * noise > bestKey) break;
+        if (adp[i] - 4 * noise - reach > bestKey) break;
         const pos = ctx.players[i].pos;
         if ((counts[pos] || 0) >= (caps[pos] ?? 99)) continue;
-        const key = adp[i] + noise * Sim.gauss(rng);
+        const key = adp[i] + noise * Sim.gauss(rng) - (st ? Sim.stackBonus(ctx, out[s], i, st) : 0);
         if (key < bestKey) { bestKey = key; best = i; }
       }
       if (best < 0) continue;
@@ -272,18 +278,22 @@
     };
     for (let m = 0; m < M; m++) {
       const rngSeed = (opts.seed ?? 1000) + m;          // same completions for every candidate
+      // opts.room: the room I expect (share of stackers among the other seats; my own
+      // later picks stay ADP). Drawn per completion on its own stream, so a share of 0
+      // or no room leaves every completion exactly as before.
+      const styles = opts.room && opts.room.share ? Sim.roomStyles(format.podSize, opts.room.share, Sim.mulberry32(rngSeed + 7919), me) : null;
       if (method === 'redraft') {
         for (const c of cands) {
           const rosters = board.rosters.map(r => r.slice());
           rosters[me].push(c);
-          const done = completeBoard(ctx, adp, rosters, [...taken, c], board.nextPick + 1, format, Sim.mulberry32(rngSeed), noise);
+          const done = completeBoard(ctx, adp, rosters, [...taken, c], board.nextPick + 1, format, Sim.mulberry32(rngSeed), noise, undefined, styles);
           const mine = Sim.rosterScores(ctx, done[me], worlds, lu);
           const pod = done.filter((_, s) => s !== me).map(r => Sim.rosterScores(ctx, r, worlds, lu));
           add(c, contestValue(mine, pod, field, worlds, format));
         }
         continue;
       }
-      const base = completeBoard(ctx, adp, board.rosters, board.taken, board.nextPick, format, Sim.mulberry32(rngSeed), noise);
+      const base = completeBoard(ctx, adp, board.rosters, board.taken, board.nextPick, format, Sim.mulberry32(rngSeed), noise, undefined, styles);
       const b0 = base[me][slot];
       const holder = new Map();                         // player -> seat that drafts him in `base`
       base.forEach((r, s) => r.forEach(i => holder.set(i, s)));
@@ -364,7 +374,8 @@
     const taken = takeNow != null ? [...board.taken, takeNow] : board.taken.slice();
     const before = new Set(taken);
     for (let k = 0; k < n; k++) {
-      const done = completeBoard(ctx, adp, rosters, taken, board.nextPick + 1, format, rng, noise, next - 1);
+      const styles = opts.room && opts.room.share ? Sim.roomStyles(seats, opts.room.share, rng, board.mySeat) : null;
+      const done = completeBoard(ctx, adp, rosters, taken, board.nextPick + 1, format, rng, noise, next - 1, styles);
       const gone = new Set();
       for (const r of done) for (const i of r) gone.add(i);
       for (let i = 0; i < left.length; i++) if (!gone.has(i)) left[i] += 1;

@@ -326,13 +326,46 @@
     }
     return adp;
   }
+  /* Drafter styles (the user, 2026-11-25: "some will stack in a smart way and
+   * others will draft off ADP"). A style is a number per seat: 0 drafts by ADP;
+   * STACK_PICKS makes a stacker, who reaches that many picks earlier for each
+   * teammate already on the roster (up to STACK_MAX), so stacks follow the
+   * team of the stars a stacker's ADP picks land on. JUDGEMENT, not measured:
+   * no real DK playoff board has been read yet. Six picks is one round per
+   * teammate in a six-seat pod, which put stackers at 4-5 from their main team
+   * where ADP bots hold 2-3 (tools/playoff-automock.js --room-check). */
+  const STACK_PICKS = 6, STACK_MAX = 3;
+  /* Bonus (in picks) a drafter of style `style` gives player i, holding `roster`. */
+  function stackBonus(ctx, roster, i, style) {
+    if (!style) return 0;
+    const t = ctx.players[i].team;
+    let k = 0;
+    for (const j of roster) if (ctx.players[j].team === t) k++;
+    return style * Math.min(k, STACK_MAX);
+  }
+  /* `share` of the seats other than `skip`, chosen at random, as stackers. */
+  function roomStyles(seats, share, rng, skip = -1) {
+    const styles = new Array(seats).fill(0);
+    if (!share) return styles;
+    const others = [...Array(seats).keys()].filter(s => s !== skip);
+    const n = Math.round(share * others.length);
+    for (let k = 0; k < n; k++) {
+      const j = k + Math.floor(rng() * (others.length - k));
+      [others[k], others[j]] = [others[j], others[k]];
+      styles[others[k]] = STACK_PICKS;
+    }
+    return styles;
+  }
+
   /* One snake draft by ADP bots: each pick is the available player with the
    * lowest ADP + noise (sd in picks), under per-position caps. `taken` seeds
-   * picks already made (a live board). Returns rosters as index arrays. */
+   * picks already made (a live board). opts.styles: per seat, as above (default
+   * all ADP). Returns rosters as index arrays. */
   function botDraft(ctx, adp, opts, rng) {
     const seats = opts.seats || 6, rounds = opts.rounds || 12;
     const caps = opts.caps || { QB: 3, RB: 6, WR: 8, TE: 3 };
     const noise = opts.noise ?? 6;
+    const styles = opts.styles || null;
     const rosters = Array.from({ length: seats }, () => []);
     const taken = new Set(opts.taken || []);
     const pool = ctx.players.map((p, i) => i).filter(i => !taken.has(i) && adp[i] > 0);
@@ -342,11 +375,12 @@
         const counts = {};
         for (const i of rosters[s]) counts[ctx.players[i].pos] = (counts[ctx.players[i].pos] || 0) + 1;
         let best = -1, bestKey = Infinity;
+        const st = styles ? styles[s] : 0;
         for (const i of pool) {
           if (taken.has(i)) continue;
           const pos = ctx.players[i].pos;
           if ((counts[pos] || 0) >= (caps[pos] ?? 99)) continue;
-          const key = adp[i] + noise * gauss(rng);
+          const key = adp[i] + noise * gauss(rng) - (st ? stackBonus(ctx, rosters[s], i, st) : 0);
           if (key < bestKey) { bestKey = key; best = i; }
         }
         if (best < 0) continue;
@@ -456,7 +490,7 @@
 
   const api = {
     ROUNDS, build, simulateBracket, simulateWorlds, bestLineup, rosterScores,
-    syntheticAdp, adpFromPool, botDraft, survivorPools, contestPath, mulberry32, gauss, normCdf,
+    syntheticAdp, adpFromPool, botDraft, STACK_PICKS, STACK_MAX, stackBonus, roomStyles, survivorPools, contestPath, mulberry32, gauss, normCdf,
     weekMean, weekSd, gameImplied, available,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -11,6 +11,27 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-25: playoff — stacker bots (off by default); a tool that expects them did better in simulation
+
+**Asked:** "some [drafters] will stack in a smart way and others will draft off ADP."
+**Built:** a stacker style (`Sim.STACK_PICKS` 6, `STACK_MAX` 3, `Sim.roomStyles`): an ADP
+bot that reaches one round earlier per teammate already rostered, up to three. On
+200 drafts its biggest team averages 4.6 players (ADP bots 2.7), with that team's QB
+67% of the time. `room: {share}` threads through `buildField`, `recommend`,
+`survival`, `completeBoard` (`styles`), `tools/playoff-automock.js` (`--room-share`,
+`--model-share`) and `tools/playoff-backtest.js` (same flags). Unset, every output is
+byte-identical to before (checked against HEAD), so the page is unchanged. The stacking
+strength and the 40% share are JUDGEMENT: no real DK playoff board has been read.
+
+**Measured, simulated postseasons, synthetic ADP, 20 paired drafts each:**
+- room 2 of 5 stackers, tool assumes ADP: round 1 33.8%, final 1.71%;
+  tool assumes 40% stackers: 34.8%, 2.00% -- final +0.30 pts (se 0.13), better in 13/20.
+- room all ADP, tool assumes 40% stackers: final +0.26 pts (se 0.16) vs not, 10/20 --
+  no cost when the guess is wrong.
+
+**Open:** the real-postseason backtest of the same pairs (mid-Nov and January data);
+then the page's mock bots and the tool's default room.
+
 ## 2026-11-25: playoff — 20 auto-drafted mocks; "wait on a sure thing" does not help
 
 **Asked:** auto-draft mocks taking the top row every time, and look into why Jaxon

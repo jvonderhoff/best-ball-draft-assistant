@@ -62,8 +62,14 @@ ctx.players.forEach((p, i) => {
 const t0 = Date.now();
 const worlds = Sim.simulateWorlds(ctx, N, 1);
 const { adp } = Sim.syntheticAdp(ctx, worlds);
-const field = Rec.buildField(ctx, worlds, adp, format);
-const realField = Rec.buildField(ctx, real, adp, format, { seed: 4242 });
+// --room-share X: that share of the five bot seats (and of the later pods) are
+// stackers (Sim.roomStyles); --model-share Y: the room the recommender assumes.
+// Both default to 0, the ADP-only room every earlier run used (the user,
+// 2026-11-25: "some will stack in a smart way and others will draft off ADP").
+const ROOM = parseFloat(args['room-share'] || '0'), MODEL = parseFloat(args['model-share'] || '0');
+const model = MODEL ? { share: MODEL } : undefined;
+const field = Rec.buildField(ctx, worlds, adp, format, { room: model });
+const realField = Rec.buildField(ctx, real, adp, format, { seed: 4242, room: ROOM ? { share: ROOM } : undefined });
 // --rule conf|wc|both|qb1|qb2: the user's roster rules (Rec.rosterRule), judged on what the
 // drafter knew (the simulated worlds), scored on what happened.
 const RULE = args.rule || 'none';
@@ -76,6 +82,7 @@ const FROM = parseInt(args.from || '0', 10);
 for (let d = FROM; d < FROM + DRAFTS; d++) {
   const mySeat = d % 6;
   const rng = Sim.mulberry32(season * 100 + d);
+  const styles = ROOM ? Sim.roomStyles(6, ROOM, Sim.mulberry32(season * 100 + d + 777), mySeat) : null;
   const rosters = Array.from({ length: 6 }, () => []);
   const taken = [];
   for (let pick = 1; pick <= 6 * format.rounds; pick++) {
@@ -84,13 +91,13 @@ for (let d = FROM; d < FROM + DRAFTS; d++) {
     if (s === mySeat) {
       const allow = Rec.rosterRule(RULE, ctx, format, WC, rosters[mySeat]);
       const out = Rec.recommend(ctx, worlds, adp, field, format, { mySeat, rosters, taken, nextPick: pick },
-        { candidates: CANDS, completions: COMPS, method: METHOD, allow });
+        { candidates: CANDS, completions: COMPS, method: METHOD, allow, room: model });
       // A rule that leaves no candidate falls back to the unruled pick (counted).
       if (out.results.length) choice = out.results[0].idx;
       else { ruleFallbacks++; choice = Rec.recommend(ctx, worlds, adp, field, format, { mySeat, rosters, taken, nextPick: pick },
-        { candidates: CANDS, completions: COMPS, method: METHOD }).results[0].idx; }
+        { candidates: CANDS, completions: COMPS, method: METHOD, room: model }).results[0].idx; }
     } else {
-      const one = Rec.completeBoard(ctx, adp, rosters, taken, pick, { ...format, rounds: Math.ceil(pick / 6) }, rng, 6);
+      const one = Rec.completeBoard(ctx, adp, rosters, taken, pick, { ...format, rounds: Math.ceil(pick / 6) }, rng, 6, undefined, styles);
       choice = one[s][rosters[s].length];
     }
     rosters[s].push(choice);

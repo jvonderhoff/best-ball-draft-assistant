@@ -57,23 +57,25 @@ const M = parseInt(opt('completions', '24'), 10);
 function summary(files) {
   const rows = files.flatMap(f => fs.readFileSync(f, 'utf8').trim().split('\n').map(l => JSON.parse(l)));
   const by = {};
-  for (const r of rows) (by[r.draft] = by[r.draft] || {})[r.policy] = r;
-  const pairs = Object.values(by).filter(p => p.top && p.wait);
+  // Runs are named by --tag (else the policy); --compare A,B picks the pair (default top,wait).
+  const [A, B] = (opt('compare', 'top,wait')).split(',');
+  for (const r of rows) (by[r.draft] = by[r.draft] || {})[r.run || r.policy] = r;
+  const pairs = Object.values(by).filter(p => p[A] && p[B]).map(p => ({ top: p[A], wait: p[B] }));
   const mean = xs => xs.reduce((a, b) => a + b, 0) / xs.length;
   const se = xs => { const m = mean(xs); return Math.sqrt(xs.reduce((a, x) => a + (x - m) ** 2, 0) / Math.max(1, xs.length - 1) / xs.length); };
   const pct = (x, d = 1) => (100 * x).toFixed(d) + '%';
   console.log(`${pairs.length} drafts, each run both ways (same seat, same bot randomness)\n`);
   for (const pol of ['top', 'wait']) {
     const rs = pairs.map(p => p[pol]);
-    console.log(`${pol.padEnd(5)} me: round 1 ${pct(mean(rs.map(r => r.me.pR1)))}  final ${pct(mean(rs.map(r => r.me.pFinal)), 2)}`
+    console.log(`${(pol === 'top' ? A : B).padEnd(8)} me: round 1 ${pct(mean(rs.map(r => r.me.pR1)))}  final ${pct(mean(rs.map(r => r.me.pFinal)), 2)}`
       + `   bots: round 1 ${pct(mean(rs.map(r => r.bots.pR1)))}  final ${pct(mean(rs.map(r => r.bots.pFinal)), 2)}`);
   }
   const d1 = pairs.map(p => p.wait.me.pR1 - p.top.me.pR1), dF = pairs.map(p => p.wait.me.pFinal - p.top.me.pFinal);
-  console.log(`wait - top, paired: round 1 ${(100 * mean(d1)).toFixed(1)} pts (se ${(100 * se(d1)).toFixed(1)}), `
+  console.log(`${B} - ${A}, paired: round 1 ${(100 * mean(d1)).toFixed(1)} pts (se ${(100 * se(d1)).toFixed(1)}), `
     + `final ${(100 * mean(dF)).toFixed(2)} pts (se ${(100 * se(dF)).toFixed(2)}); better in ${dF.filter(x => x > 0).length}, `
     + `worse in ${dF.filter(x => x < 0).length}, same in ${dF.filter(x => x === 0).length}`);
   const waits = pairs.flatMap(p => p.wait.picks.filter(k => k.waited));
-  console.log(`\nwait rule fired on ${waits.length} of ${pairs.length * 12} picks; the top was there at the next pick ${waits.filter(k => k.topThereNext).length} times`
+  if (waits.length) console.log(`\nwait rule fired on ${waits.length} of ${pairs.length * 12} picks; the top was there at the next pick ${waits.filter(k => k.topThereNext).length} times`
     + `, and taken then ${waits.filter(k => k.tookTopNext).length} times`);
   // What the 'top' drafts show on their own.
   const tp = pairs.flatMap(p => p.top.picks.filter(k => k.nextSurv != null));
@@ -87,32 +89,46 @@ function summary(files) {
   console.log(`  QBs per roster: ${Object.entries(qbs).map(([k, n]) => `${k}: ${n}`).join(', ')}`);
   const stack = pairs.map(p => p.top.topTeam);
   console.log(`  biggest team stack: ${stack.map(s => s.team + s.n).join(' ')}`);
-  console.log('\nper draft (seat, top final vs wait final, top roster teams):');
+  // Do the stacker bots stack? Biggest one-team count on each bot roster, by style.
+  const bs = pairs.flatMap(p => p.top.botStacks || []);
+  if (bs.length) for (const st of [...new Set(bs.map(b => b.style))].sort()) {
+    const xs = bs.filter(b => b.style === st).map(b => b.max);
+    const dist = {}; for (const x of xs) dist[x] = (dist[x] || 0) + 1;
+    console.log(`  bots, ${st ? 'stackers' : 'ADP'}: biggest team on a roster ${mean(xs).toFixed(1)} (${Object.entries(dist).map(([k, v]) => k + ':' + v).join(' ')}, n=${xs.length})`);
+  }
+  console.log(`  me (${A}): biggest team ${mean(pairs.map(p => p.top.topTeam.n)).toFixed(1)}`);
+  console.log(`\nper draft (seat, ${A} final vs ${B} final, ${A} roster teams):`);
   for (const p of pairs) console.log(`  #${p.top.draft} seat ${p.top.seat + 1}: ${pct(p.top.me.pFinal, 2)} vs ${pct(p.wait.me.pFinal, 2)}  `
     + `R1 ${pct(p.top.me.pR1, 0)} vs ${pct(p.wait.me.pR1, 0)}  ${p.top.teams}`);
 }
 
 function main() {
-  if (opt('summary')) return summary(argv.slice(argv.indexOf('--summary') + 1).filter(a => !a.startsWith('--')));
+  if (opt('summary')) return summary(argv.slice(argv.indexOf('--summary') + 1).filter((a, i, xs) => !a.startsWith('--') && xs[i - 1] !== '--compare'));
   const dir = opt('data');
   if (!dir) throw new Error('--data DIR (playoff_bracket.json + playoff_players.json) is required');
   const data = { bracket: JSON.parse(fs.readFileSync(path.join(dir, 'playoff_bracket.json'))),
     players: JSON.parse(fs.readFileSync(path.join(dir, 'playoff_players.json'))) };
   const from = parseInt(opt('from', '0'), 10), n = parseInt(opt('drafts', '1'), 10);
   const policies = (opt('policies', 'top,wait')).split(',');
+  // The room drafted against (--room-share: share of the five bot seats that stack)
+  // and the room the recommender assumes (--model-share), each 0 = all ADP bots.
+  const roomShare = parseFloat(opt('room-share', '0')), modelShare = parseFloat(opt('model-share', '0'));
+  const tag = opt('tag');
+  const model = modelShare ? { share: modelShare } : undefined;
   const out = opt('out');
   const ctx = Sim.build(data.bracket, data.players);
   const P = ctx.players;
   const format = { ...Rec.PRESETS[opt('preset', 'dk-12')] };
   const worlds = Sim.simulateWorlds(ctx, 2000, 1);              // the page's worlds
   const adp = Sim.syntheticAdp(ctx, worlds).adp;                  // the page's ADP without a DK pool
-  const field = Rec.buildField(ctx, worlds, adp, format);
+  const field = Rec.buildField(ctx, worlds, adp, format, { room: model });
   const fresh = Sim.simulateWorlds(ctx, 2000, 999);
-  const freshField = Rec.buildField(ctx, fresh, adp, format, { seed: 555 });
+  const freshField = Rec.buildField(ctx, fresh, adp, format, { seed: 555, room: roomShare ? { share: roomShare } : undefined });
   const total = SEATS * format.rounds;
 
   for (let d = from; d < from + n; d++) {
     const me = Math.floor(Sim.mulberry32(77 + d)() * SEATS);
+    const styles = Sim.roomStyles(SEATS, roomShare, Sim.mulberry32(5000 + d), me);
     for (const policy of policies) {
       const t0 = Date.now();
       const rosters = Array.from({ length: SEATS }, () => []);
@@ -122,22 +138,22 @@ function main() {
         const s = Rec.seatOfPick(pick, SEATS);
         let idx;
         if (s !== me) {
-          const done = Rec.completeBoard(ctx, adp, rosters, taken, pick, format, Sim.mulberry32(d * 1000 + pick), NOISE, pick);
+          const done = Rec.completeBoard(ctx, adp, rosters, taken, pick, format, Sim.mulberry32(d * 1000 + pick), NOISE, pick, styles);
           idx = done[s][rosters[s].length];
           if (idx === undefined) continue;
         } else {
           const board = { mySeat: me, rosters: rosters.map(r => r.slice()), taken: taken.slice(), nextPick: pick };
-          const res = Rec.recommend(ctx, worlds, adp, field, format, board, { completions: M, seed: 1000 }).results;
+          const res = Rec.recommend(ctx, worlds, adp, field, format, board, { completions: M, seed: 1000, room: model }).results;
           const top = res[0];
           // The page's Next for the top row: if I take the second row now, is the top there next time?
-          const svAlt = res[1] ? Rec.survival(ctx, adp, board, format, res[1].idx) : null;
+          const svAlt = res[1] ? Rec.survival(ctx, adp, board, format, res[1].idx, { room: model }) : null;
           const nextSurv = svAlt ? svAlt.left[top.idx] : null;
           idx = top.idx;
           let waited = false, alt = null;
           if (policy === 'wait' && nextSurv != null && nextSurv >= WAIT_SURE) {
-            const svTop = Rec.survival(ctx, adp, board, format, top.idx);
+            const svTop = Rec.survival(ctx, adp, board, format, top.idx, { room: model });
             for (const r of res.slice(1).filter(x => x.tie)) {
-              const sv = Rec.survival(ctx, adp, board, format, r.idx);
+              const sv = Rec.survival(ctx, adp, board, format, r.idx, { room: model });
               if (sv.left[top.idx] >= WAIT_SURE && svTop.left[r.idx] <= ALT_GONE) { alt = r; break; }
             }
             if (alt) { idx = alt.idx; waited = true; }
@@ -162,7 +178,11 @@ function main() {
       for (const i of rosters[me]) tm[P[i].team] = (tm[P[i].team] || 0) + 1;
       const top = Object.entries(tm).sort((a, b) => b[1] - a[1])[0];
       const rec = {
-        draft: d, policy, seat: me, s: (Date.now() - t0) / 1000,
+        draft: d, policy, run: tag || policy, roomShare, modelShare, seat: me,
+        botStacks: rosters.map((r, k) => {
+          const c = {}; for (const i of r) c[P[i].team] = (c[P[i].team] || 0) + 1;
+          return { seat: k, style: styles[k], max: Math.max(0, ...Object.values(c)) };
+        }).filter(b => b.seat !== me), s: (Date.now() - t0) / 1000,
         me: { pR1: v[me].pR[0], pFinal: v[me].pFinal },
         bots: { pR1: bots.reduce((a, x) => a + x.pR[0], 0) / bots.length, pFinal: bots.reduce((a, x) => a + x.pFinal, 0) / bots.length },
         qbs: rosters[me].filter(i => P[i].pos === 'QB').length,
@@ -173,7 +193,7 @@ function main() {
       };
       const line = JSON.stringify(rec);
       if (out) fs.appendFileSync(out, line + '\n'); else console.log(line);
-      console.error(`draft ${d} ${policy} seat ${me + 1}: R1 ${(100 * rec.me.pR1).toFixed(1)}% final ${(100 * rec.me.pFinal).toFixed(2)}% (${rec.s.toFixed(0)} s)`);
+      console.error(`draft ${d} ${tag || policy} seat ${me + 1}: R1 ${(100 * rec.me.pR1).toFixed(1)}% final ${(100 * rec.me.pFinal).toFixed(2)}% (${rec.s.toFixed(0)} s)`);
     }
   }
 }
