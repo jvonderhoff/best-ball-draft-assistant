@@ -64,7 +64,7 @@ const worlds = Sim.simulateWorlds(ctx, N, 1);
 const { adp } = Sim.syntheticAdp(ctx, worlds);
 const field = Rec.buildField(ctx, worlds, adp, format);
 const realField = Rec.buildField(ctx, real, adp, format, { seed: 4242 });
-// --rule conf|wc|both: the user's roster rules (Rec.rosterRule), judged on what the
+// --rule conf|wc|both|qb1|qb2: the user's roster rules (Rec.rosterRule), judged on what the
 // drafter knew (the simulated worlds), scored on what happened.
 const RULE = args.rule || 'none';
 const WC = Rec.wcPlay(ctx, worlds);
@@ -103,8 +103,9 @@ for (let d = FROM; d < FROM + DRAFTS; d++) {
     for (const i of rosters[s]) teams[ctx.players[i].team] = (teams[ctx.players[i].team] || 0) + 1;
     const conf = {}; let wcExp = 0;
     for (const i of rosters[s]) { conf[ctx.conf[ctx.players[i].team]] = (conf[ctx.conf[ctx.players[i].team]] || 0) + 1; wcExp += WC[i]; }
+    const qbs = rosters[s].filter(i => ctx.players[i].pos === 'QB').length;
     rows.push({ draft: d, seat: s, rec: s === mySeat, pR: v.pR, pFinal: v.pFinal, ev: v.ev, conf, wcExp,
-      wc: sc[s][0], teams });
+      wc: sc[s][0], teams, qbs });
   }
 }
 const mean = (xs, f) => xs.reduce((a, x) => a + f(x), 0) / xs.length;
@@ -114,8 +115,8 @@ const out = {
   rec: { pR1: mean(rec, r => r.pR[0]), pR2: mean(rec, r => r.pR[1]), pFinal: mean(rec, r => r.pFinal), ev: mean(rec, r => r.ev) },
   bot: { pR1: mean(bot, r => r.pR[0]), pR2: mean(bot, r => r.pR[1]), pFinal: mean(bot, r => r.pFinal), ev: mean(bot, r => r.ev) },
   // Per-draft values, so two runs on the same seeds can be compared draft by draft.
-  recRows: rec.map(r => ({ draft: r.draft, pR1: r.pR[0], pFinal: r.pFinal, conf: r.conf, wcExp: r.wcExp })),
-  botRows: bot.map(r => ({ draft: r.draft, pR1: r.pR[0], pFinal: r.pFinal })),
+  recRows: rec.map(r => ({ draft: r.draft, pR1: r.pR[0], pR2: r.pR[1], pFinal: r.pFinal, conf: r.conf, wcExp: r.wcExp, qbs: r.qbs })),
+  botRows: bot.map(r => ({ draft: r.draft, pR1: r.pR[0], pR2: r.pR[1], pFinal: r.pFinal, qbs: r.qbs })),
   recTeams: rec.map(r => Object.entries(r.teams).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, k]) => `${t}${k}`).join(' ')),
 };
 const line = `${season} ${preset} champ ${out.champion}: rec P(R1) ${out.rec.pR1.toFixed(3)} P(final) ${out.rec.pFinal.toFixed(5)} | ADP P(R1) ${out.bot.pR1.toFixed(3)} P(final) ${out.bot.pFinal.toFixed(5)} | rec stacks ${out.recTeams.join(', ')}`;

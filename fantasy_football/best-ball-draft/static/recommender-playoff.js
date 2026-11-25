@@ -489,6 +489,25 @@
     if (name === 'conf') return okConf;
     if (name === 'wc') return okWc;
     if (name === 'both') return i => okConf(i) && okWc(i);
+    // QB count (the user, 2026-11-25: "if my team won't have a week-1 bye, I don't
+    // need a 2nd QB"). qb1: never a second QB. qb2: always finish with two.
+    // MEASURED 2026-11-25, neither ships: same 120 drafts (seeds 6-17, redraft,
+    // completions 2, pfinal), paired against no rule.
+    //   mid-Nov  none: rd1 26.7%, 1/2/3 QBs 13/68/20%
+    //            qb1:  rd1 -3.3 pts (se 3.9), rd2 +0.24 (se 1.28)
+    //            qb2:  rd1 +0.8 (se 0.8), rd2 -0.07
+    //   January  none: rd1 25.8%, 1/2/3 QBs 24/73/3%
+    //            qb1:  rd1 +0.8 (se 3.0), rd2 -2.18 pts (se 1.39), P(final) 2.27x
+    //                  ADP vs 4.77x (1.03x vs 2.16x without the best season)
+    //            qb2:  identical to none on every draft (8 fallbacks)
+    // The backup QB is not only week-1 bye cover: once QB1's team is eliminated
+    // he is the only QB left, which is where qb1 lost (round 2 and on). The
+    // unruled tool already goes one-QB when the worlds say the backup adds
+    // nothing (24% of rosters once byes are known), so neither rule adds to it.
+    const isQB = i => ctx.players[i].pos === 'QB';
+    const nQB = mine.filter(isQB).length;
+    if (name === 'qb1') return i => !isQB(i) || nQB === 0;
+    if (name === 'qb2') return i => nQB + (isQB(i) ? 1 : 0) + left >= 2;
     throw new Error(`unknown rule ${name}`);
   }
 

@@ -11,6 +11,21 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-25: playoff — QB-count rules measured; neither ships
+
+**Asked:** "if my team won't have a week-1 bye, I don't need a 2nd QB, right?"
+**Tested:** `tools/playoff-backtest.sh dk-12 12 --from 6 --method redraft --completions 2
+--objective pfinal --rule {none,qb1,qb2}`, from mid-November and from January data, 120
+drafts each, paired on the same drafts. Numbers in the `rosterRule` comment.
+
+- **Never a 2nd QB (`qb1`)**: no better in round 1 either time (−3.3 pts mid-Nov, +0.8
+  January, both inside one se), and worse after it once byes are known (round 2 −2.2
+  pts, se 1.4; P(final) roughly halved). A backup QB also covers QB1's team being
+  knocked out, not just the bye.
+- **Always 2 (`qb2`)**: no difference. In January it matched no rule on every draft.
+- **The tool already decides this per draft**: one QB on 13% of rosters mid-Nov and
+  24% in January, when the worlds say the backup adds nothing. Leave it to the tool.
+
 ## 2026-11-25: playoff — a pick settles in ~4 s, not ~13 s
 
 DK's playoff drafts are 30 seconds a pick, and the user found the table too slow to
@@ -27,9 +42,11 @@ settle. A phone is slower.
 - Any worker failure turns the pool off and the page computes as before (checked).
 - Not measured: a phone. Each worker holds its own ~25 MB copy of the worlds and field.
 
-Found while testing, not fixed yet: the export values Drew Lock as Seattle's playoff QB
-(Darnold is Out, not IR, so likely back), and players with one big game rank as
-starters (Max Hurleman: 1 game, 18.1 DK points, valued at 18.1 a game).
+Found while testing and fixed the same day in `../projections` (ab2e3e0): the export
+valued Drew Lock as Seattle's playoff QB (Darnold is Out, not IR, so likely back;
+`restore_injured_starter`), and players with one big game ranked as starters (Max
+Hurleman: 1 game, 18.1 DK points; under-4-game players now get the measured few-game
+availability, 0.529 active / 0.378 inactive, `AVAIL_FEW`).
 
 ## 2026-11-24: playoff — practice drafts saved and reviewed pick by pick
 
