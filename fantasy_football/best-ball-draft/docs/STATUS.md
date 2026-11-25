@@ -11,7 +11,7 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
-## 2026-11-25: playoff — stacker bots (off by default); a tool that expects them did better in simulation
+## 2026-11-25: playoff — stacker bots (off by default); better in simulation, unresolved on real postseasons
 
 **Asked:** "some [drafters] will stack in a smart way and others will draft off ADP."
 **Built:** a stacker style (`Sim.STACK_PICKS` 6, `STACK_MAX` 3, `Sim.roomStyles`): an ADP
@@ -29,8 +29,21 @@ strength and the 40% share are JUDGEMENT: no real DK playoff board has been read
 - room all ADP, tool assumes 40% stackers: final +0.26 pts (se 0.16) vs not, 10/20 --
   no cost when the guess is wrong.
 
-**Open:** the real-postseason backtest of the same pairs (mid-Nov and January data);
-then the page's mock bots and the tool's default room.
+**Measured, real postseasons 2016-25, 120 drafts per arm (`--from 6`, redraft, pfinal):**
+- mid-Nov, room 0.4: aware vs not round 1 +4.2 pts (se 5.7), round 2 -0.77 (se 2.32),
+  P(final) better in 5/10 seasons. Room all ADP: round 1 -2.5 (se 5.1), round 2 +3.38
+  (se 2.09), 5/10.
+- January, room 0.4: round 1 -2.5 (se 4.5), round 2 -1.56 (se 1.66), 5/10. Room all ADP:
+  round 1 0.0 (se 5.8), round 2 -0.51 (se 2.24), 5/10.
+- Every difference is inside its se and every arm splits 5/10: ten real postseasons
+  cannot resolve an effect this size. P(final) levels swing 0.3%-2.8% between arms on
+  the same seeds -- a handful of finals each -- so do not read them.
+
+**Decision:** the tool's default room stays ADP (off). The simulated gain is real but
+small and the real seasons neither confirm nor contradict it; the share and strength
+are guesses. Revisit once real DK playoff boards say how much rooms actually stack.
+**Open:** stacker bots in the page's practice mocks (realism only, no effect on the
+recommendation) -- not built; needs the user's yes, and a push.
 
 ## 2026-11-25: playoff — 20 auto-drafted mocks; "wait on a sure thing" does not help
 
