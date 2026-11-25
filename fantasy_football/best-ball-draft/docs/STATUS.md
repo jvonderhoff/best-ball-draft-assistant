@@ -11,6 +11,24 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-25: playoff — 20 auto-drafted mocks; "wait on a sure thing" does not help
+
+**Asked:** auto-draft mocks taking the top row every time, and look into why Jaxon
+Smith-Njigba was the top row at 1.05 with a 100% Next (sure to last to pick 8).
+**Why it happens:** `recommend` values a candidate as "him now, then every later pick,
+mine included, by ADP", so the option of taking a falling player next time is
+invisible to the ranking; Next is display only.
+**Built:** `tools/playoff-automock.js`, the page's mock draft headless (same bots,
+24 simulated drafts a pick, random seat), each draft run as top-every-time and as a
+wait rule (pass on a top player >= 90% to last if a ≈ row is <= 50% to), paired on
+seat and bot randomness, scored on fresh worlds.
+**Measured (20 drafts):** top 33.3% round 1, 2.09% final (bots 13.3%, 0.42%); wait
++0.5 pts round 1 (se 1.2), −0.10 final (se 0.09), better in 5, worse in 8. Not
+shipped. The passed-over player was there next pick 39 of 40 times but taken only
+21: by then another player ranked higher. 17 of 20 rosters took 2 QBs; Detroit was
+the biggest stack in 9 of 20 (3+ Lions on 13), Carolina in 6. Simulated postseasons and synthetic-ADP
+bots only.
+
 ## 2026-11-25: playoff — QB-count rules measured; neither ships
 
 **Asked:** "if my team won't have a week-1 bye, I don't need a 2nd QB, right?"
