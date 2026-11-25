@@ -111,7 +111,7 @@ async function main() {
   const total = SEATS * format.rounds;
   if (picks.length !== total) console.log(`WARNING: ${picks.length} picks for a ${total}-pick draft; reviewing what is there.`);
 
-  console.log(`Practice draft ${mock.id}, ${new Date(mock.at).toLocaleString()} · seat ${mock.seat} · ${format.label}`);
+  console.log(`Practice draft ${mock.id}, ${new Date(mock.at).toLocaleString()} · seat ${mock.seat} · ${format.label}${mock.stackers && mock.stackers.length ? ` · seats ${mock.stackers.join(' and ')} stacked` : ''}`);
   console.log(`Inputs: ${source}${mock.data_at && data.uploaded_at && Math.abs(mock.data_at - data.uploaded_at) > 1 ? ' -- PUSHED AGAIN since the mock: answers are for today\'s data' : ''}`);
   console.log(`ADP: ${adpNote} · ${N} worlds · ${M} simulated drafts per pick`);
 

@@ -385,18 +385,39 @@ async function draft(idx) {
   await refresh();
 }
 
+/* Mock rooms are mixed: MOCK_STACK_SHARE of the bots (2 of 5) stack -- reach a
+ * round earlier per teammate they already hold (PlayoffSim.stackBonus) -- and the
+ * rest draft off ADP, because real DK rooms hold both. PRACTICE REALISM ONLY: the
+ * recommender still assumes an ADP room. A tool that expected stackers did better
+ * in simulation but was unresolved on ten real postseasons (STATUS 2026-11-25),
+ * and the share and strength are judgement until real DK playoff boards are read.
+ * Which seats stack is fixed per mock (hashed from its id), so stopping and
+ * resuming "Bots to my turn" never changes who is stacking. */
+const MOCK_STACK_SHARE = 0.4;
+function mockStyles() {
+  if (S.draftId || !S.mockId) return null;
+  let h = 2166136261;
+  for (const c of S.mockId) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return PlayoffSim.roomStyles(SEATS, MOCK_STACK_SHARE, PlayoffSim.mulberry32(h >>> 0), S.mySeat);
+}
+function stackerSeats() {
+  const st = mockStyles();
+  return st ? st.map((v, s) => v ? s + 1 : 0).filter(Boolean) : [];
+}
+
 async function botsToMyTurn() {
   if (S.draftId) return;
   const f = format();
   const rng = PlayoffSim.mulberry32(Date.now() & 0xffff);
+  if (!S.picks.length) S.mockId = 'm' + Date.now().toString(36);
+  const styles = mockStyles();
   while (nextPick() <= totalPicks() && onClock() !== S.mySeat) {
     const rs = rosters();
     const taken = S.picks.map(p => p.idx);
-    const done = PlayoffRec.completeBoard(S.ctx, S.adp, rs, taken, nextPick(), { ...f, rounds: Math.ceil(nextPick() / SEATS) }, rng, 6);
+    const done = PlayoffRec.completeBoard(S.ctx, S.adp, rs, taken, nextPick(), { ...f, rounds: Math.ceil(nextPick() / SEATS) }, rng, 6, undefined, styles);
     const s = onClock();
     const idx = done[s][rs[s].length];
     if (idx === undefined) break;
-    if (!S.picks.length) S.mockId = 'm' + Date.now().toString(36);
     S.picks.push({ idx, seat: s });
   }
   save();
@@ -611,7 +632,9 @@ function renderBoardBar() {
   const dkAge = S.lastPull && S.dkAge != null ? Math.round(S.dkAge + (Date.now() - S.lastPull) / 1000) : null;
   const read = dkAge === null ? `updated ${ago === null ? '—' : ago + ' s ago'}`
     : `DK read <span class="${dkAge > 20 ? 'bad' : ''}">${dkAge} s ago</span>${S.source === 'bookmarklet' ? ' (bookmark)' : ''}`;
-  const live = S.draftId ? `<span class="ok">live draft ${esc(S.draftId)}</span>${nextPick() > totalPicks() ? '' : ' · ' + read}` : '<span class="k">mock board</span>';
+  const sk = stackerSeats();
+  const live = S.draftId ? `<span class="ok">live draft ${esc(S.draftId)}</span>${nextPick() > totalPicks() ? '' : ' · ' + read}`
+    : `<span class="k">mock board</span>${sk.length ? ` · <span class="k" title="These bots reach for teammates of players they already hold; the rest draft off ADP">seats ${sk.join(' and ')} stack</span>` : ''}`;
   const done = nextPick() > totalPicks();
   const turn = done ? '<span class="ok">draft complete</span>'
     : onClock() === S.mySeat ? '<span class="turn">your pick</span>' : `seat ${onClock() + 1} on the clock`;
@@ -941,6 +964,7 @@ function saveMock(v) {
     preset: $('preset').value, payouts: $('payouts').value.trim(), seat: S.mySeat + 1,
     adp: S.adpSource === 'dk' ? { src: 'dk', dg: S.pool.draft_group_id, fetched_at: S.pool.fetched_at } : { src: 'synthetic' },
     data_at: S.data.uploaded_at || null, page_final: v ? +v.pFinal.toFixed(5) : null,
+    stackers: stackerSeats(),
     picks: S.picks.map(p => {
       const o = { n: P[p.idx].name, t: P[p.idx].team, g: P[p.idx].gsis_id };
       if (p.st) o.st = p.st;

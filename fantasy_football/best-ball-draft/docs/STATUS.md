@@ -42,8 +42,12 @@ strength and the 40% share are JUDGEMENT: no real DK playoff board has been read
 **Decision:** the tool's default room stays ADP (off). The simulated gain is real but
 small and the real seasons neither confirm nor contradict it; the share and strength
 are guesses. Revisit once real DK playoff boards say how much rooms actually stack.
-**Open:** stacker bots in the page's practice mocks (realism only, no effect on the
-recommendation) -- not built; needs the user's yes, and a push.
+**Built (user's yes):** practice mocks on `/playoff` are mixed rooms -- 2 of the 5 bots
+stack (`MOCK_STACK_SHARE` 0.4, seats fixed per mock by hashing its id), the bar says
+which ("seats 2 and 6 stack"), and a saved mock records `stackers` for
+`tools/playoff-review.js`. Realism only: the recommendation still assumes an ADP room.
+Checked on a local mock: stackers ended KC5 and SF7, ADP bots at most 2 from a team;
+sim-check and rec-check pass.
 
 ## 2026-11-25: playoff — 20 auto-drafted mocks; "wait on a sure thing" does not help
 
