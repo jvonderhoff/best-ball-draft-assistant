@@ -3,6 +3,7 @@
  *
  *   node tools/playoff-automock.js --data DIR --from 0 --drafts 20 --out runs.jsonl
  *   node tools/playoff-automock.js --summary runs.jsonl [more.jsonl ...]
+ *   node tools/playoff-automock.js --data DIR --adp tools/.playoff-adp/<dg>-<day>.json ...   # DK's real ADP
  *
  * Why: the user auto-drafted two mocks by hand on 2026-11-25 ("always take the top
  * recommendation") and at pick 1.05 the top row was Jaxon Smith-Njigba, whom the
@@ -120,7 +121,14 @@ function main() {
   const P = ctx.players;
   const format = { ...Rec.PRESETS[opt('preset', 'dk-12')] };
   const worlds = Sim.simulateWorlds(ctx, 2000, 1);              // the page's worlds
-  const adp = Sim.syntheticAdp(ctx, worlds).adp;                  // the page's ADP without a DK pool
+  // --adp: DK's real ADP (a bookmarklet run, pulled by tools/playoff-adp.js), which is
+  // what the page drafts mocks and scores picks with once a pool is saved. Without it,
+  // synthetic ADP (expected points): a room that drafts by the numbers, which real
+  // rooms do not -- every result before the first saved pool rests on that.
+  const adpFile = opt('adp');
+  const adp = adpFile ? Sim.adpFromPool(ctx, JSON.parse(fs.readFileSync(adpFile)))
+    : Sim.syntheticAdp(ctx, worlds).adp;
+  console.error(adpFile ? `ADP DK from ${path.basename(adpFile)}: ${adp.filter(x => x > 0).length} of ${P.length} players` : 'ADP SYNTHETIC');
   const field = Rec.buildField(ctx, worlds, adp, format, { room: model });
   const fresh = Sim.simulateWorlds(ctx, 2000, 999);
   const freshField = Rec.buildField(ctx, fresh, adp, format, { seed: 555, room: roomShare ? { share: roomShare } : undefined });
@@ -178,7 +186,7 @@ function main() {
       for (const i of rosters[me]) tm[P[i].team] = (tm[P[i].team] || 0) + 1;
       const top = Object.entries(tm).sort((a, b) => b[1] - a[1])[0];
       const rec = {
-        draft: d, policy, run: tag || policy, roomShare, modelShare, seat: me,
+        draft: d, policy, run: tag || policy, adp: adpFile ? path.basename(adpFile) : 'synthetic', roomShare, modelShare, seat: me,
         botStacks: rosters.map((r, k) => {
           const c = {}; for (const i of r) c[P[i].team] = (c[P[i].team] || 0) + 1;
           return { seat: k, style: styles[k], max: Math.max(0, ...Object.values(c)) };
