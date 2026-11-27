@@ -119,7 +119,12 @@ function main() {
   const out = opt('out');
   const ctx = Sim.build(data.bracket, data.players);
   const P = ctx.players;
+  // --payouts ranks by expected winnings (the page's Details -> Payouts) instead of
+  // P(final). --score-payouts scores every roster's winnings with a table, whatever
+  // it was ranked by, so two arms can be compared in dollars.
   const format = { ...Rec.PRESETS[opt('preset', 'dk-12')] };
+  if (opt('payouts')) format.payouts = Rec.parsePayouts(opt('payouts'));
+  const scoreFormat = { ...format, payouts: opt('score-payouts') ? Rec.parsePayouts(opt('score-payouts')) : format.payouts };
   const worlds = Sim.simulateWorlds(ctx, 2000, 1);              // the page's worlds
   // --adp: DK's real ADP (a bookmarklet run, pulled by tools/playoff-adp.js), which is
   // what the page drafts mocks and scores picks with once a pool is saved. Without it,
@@ -180,7 +185,7 @@ function main() {
         w.tookTopNext = log[k + 1].took === P[w.topIdx].name;
       }
       const sc = rosters.map(r => Sim.rosterScores(ctx, r, fresh, format.lineup));
-      const v = sc.map((x, k) => Rec.contestValue(x, sc.filter((_, j) => j !== k), freshField, fresh, format));
+      const v = sc.map((x, k) => Rec.contestValue(x, sc.filter((_, j) => j !== k), freshField, fresh, scoreFormat));
       const bots = v.filter((_, k) => k !== me);
       const tm = {};
       for (const i of rosters[me]) tm[P[i].team] = (tm[P[i].team] || 0) + 1;
@@ -191,8 +196,10 @@ function main() {
           const c = {}; for (const i of r) c[P[i].team] = (c[P[i].team] || 0) + 1;
           return { seat: k, style: styles[k], max: Math.max(0, ...Object.values(c)) };
         }).filter(b => b.seat !== me), s: (Date.now() - t0) / 1000,
-        me: { pR1: v[me].pR[0], pFinal: v[me].pFinal },
-        bots: { pR1: bots.reduce((a, x) => a + x.pR[0], 0) / bots.length, pFinal: bots.reduce((a, x) => a + x.pFinal, 0) / bots.length },
+        rankedBy: format.payouts.length ? 'ev' : 'pFinal',
+        me: { pR1: v[me].pR[0], pFinal: v[me].pFinal, pWin: v[me].pWin, ev: v[me].ev },
+        bots: { pR1: bots.reduce((a, x) => a + x.pR[0], 0) / bots.length, pFinal: bots.reduce((a, x) => a + x.pFinal, 0) / bots.length,
+          pWin: bots.reduce((a, x) => a + x.pWin, 0) / bots.length, ev: bots.reduce((a, x) => a + x.ev, 0) / bots.length },
         qbs: rosters[me].filter(i => P[i].pos === 'QB').length,
         topTeam: { team: top[0], n: top[1] },
         teams: Object.entries(tm).sort((a, b) => b[1] - a[1]).map(([t, k]) => t + k).join(' '),

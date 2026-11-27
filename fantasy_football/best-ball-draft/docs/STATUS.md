@@ -11,6 +11,28 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-27: playoff — ranking by payouts (expected winnings) is much WORSE; leave Payouts blank
+
+Asked: winning money is about placing high in the FINAL, and the tool ranks by P(reach
+the final). The page already ranks by expected winnings when Details -> Payouts is
+filled in, so that was tested (`tools/playoff-automock.js --payouts / --score-payouts`,
+new). 20 paired drafts (seeds 200-219), play-action, DK ADP (156836, 2026-11-27), all-ADP
+room, same seat and bot randomness per pair, scored on fresh worlds with one ASSUMED
+top-heavy table (`1:100000, 2:30000, 3:15000, 4-5:7500, 6-10:3000, 11-25:1000,
+26-100:400, 101-733:260`; DK's real Play-Action table was not found):
+
+| ranked by | win group | reach final | win final | winnings (harness $) |
+|---|---|---|---|---|
+| P(final), today's default | 38.7% | 2.83% | 0.22% | 257 |
+| expected winnings | 19.7% | 1.15% | 0.12% | 140 |
+
+Worse in all four, including the dollars it ranks on: -117 (se 52), worse in 15 of 20;
+round 1 worse in 20 of 20. Rosters shared 54 of 240 players. Round 1 at 19.7% is close to
+a random roster's 16.7%: the winnings estimate is ruled by a ~0.2% first-place event, too
+rare for 24 completions to rank 20 candidates, so the ranking is mostly noise. Dollar
+levels are harness numbers (ADP-bot field) and mean nothing on their own. **Do not fill
+in Payouts on /playoff.**
+
 ## 2026-11-27: playoff — only "out for the season" lowers a player's value
 
 **The user's rule:** the only injury news that matters for playoff best ball is out for
