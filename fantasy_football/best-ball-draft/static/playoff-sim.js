@@ -316,14 +316,30 @@
   /* DK's ADP from a joined pool (/api/playoff/pool or /api/playoff/pools), by
    * player index. Players DK does not list get 0, which removes them from every
    * board: they cannot be drafted. One copy for the page and the tools, so a
-   * check runs on exactly the ADP the page drafts with. */
-  function adpFromPool(ctx, pool) {
+   * check runs on exactly the ADP the page drafts with.
+   *
+   * A player DK DOES list but nobody has drafted carries ADP 9999. Those are
+   * draftable, and they are where a room that drafts dead teams leaves value:
+   * the first real pool (draft group 156836, 2026-11-27) had ADP for only 139 of
+   * 579, ending at pick 69, and read as 0 they cut Drake Maye and Tyquan Thornton
+   * (synthetic top 72) and 9 of the synthetic top 100 out of every board, the
+   * recommendation included. They get UNDRAFTED_GAP picks past the last real
+   * ADP: bots, which take the lowest ADP, almost never reach them, and the tool
+   * can still take one. opts.undrafted false keeps the 0 (tools/playoff-adp.js
+   * compares real ADP only). */
+  const UNDRAFTED_GAP = 12;    // two rounds of a six-seat pod; judgement
+  function adpFromPool(ctx, pool, opts = {}) {
     const byGsis = new Map(ctx.players.map((p, i) => [p.gsis_id, i]));
     const adp = new Float64Array(ctx.players.length);
+    const listed = [];
+    let last = 0;
     for (const row of pool.players || []) {
       const i = byGsis.get(row.gsis_id);
-      if (i !== undefined && row.adp && row.adp < 9999) adp[i] = row.adp;
+      if (i === undefined) continue;
+      if (row.adp && row.adp < 9999) { adp[i] = row.adp; last = Math.max(last, row.adp); }
+      else listed.push(i);
     }
+    if (opts.undrafted !== false) for (const i of listed) adp[i] = last + UNDRAFTED_GAP;
     return adp;
   }
   /* Drafter styles (the user, 2026-11-25: "some will stack in a smart way and

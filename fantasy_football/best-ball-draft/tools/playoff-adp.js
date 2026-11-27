@@ -85,7 +85,7 @@ async function getJson(u) {
     JSON.parse(fs.readFileSync(path.join(DATA, 'playoff_players.json'))));
   const worlds = Sim.simulateWorlds(ctx, 2000, 1);
   const syn = Sim.syntheticAdp(ctx, worlds).adp;
-  const dk = Sim.adpFromPool(ctx, pool);
+  const dk = Sim.adpFromPool(ctx, pool, { undrafted: false });   // real ADP only, for the comparison
   const odds = JSON.parse(fs.readFileSync(path.join(DATA, 'playoff_bracket.json'))).odds || {};
   console.log(`inputs: season ${ctx.season}, ${ctx.players.length} players in the export; DK ADP for ${dk.filter(x => x > 0).length}`);
 
