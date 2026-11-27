@@ -72,8 +72,20 @@
   // cookies the fetch dies as "Failed to fetch" and every pick arrives nameless
   // ("NO NAMES", draft 198275001, 2026-11-26). draftables needs no login; playerpool
   // and draftStatus do (401 without), and DK names its own origin on those.
+  // `anon` also uses a fetch from a fresh iframe: omitting cookies alone still
+  // failed on DK's page (b94093c, same draft), so DK's page likely wraps fetch and
+  // puts them back. If this fails too, /playoff names the picks itself.
+  function cleanFetch() {
+    try {
+      var f = document.createElement('iframe');
+      f.style.display = 'none';
+      document.body.appendChild(f);
+      return f.contentWindow.fetch.bind(f.contentWindow);
+    } catch (e) { return _fetch.bind(window); }
+  }
   async function dk(url, anon) {
-    var r = await _fetch.call(window, url, { credentials: anon ? 'omit' : 'include' });
+    var r = anon ? await cleanFetch()(url, { credentials: 'omit' })
+      : await _fetch.call(window, url, { credentials: 'include' });
     if (!r.ok) throw new Error('DK ' + url.split('?')[0].split('/').slice(-2).join('/') + ' HTTP ' + r.status);
     return r.json();
   }
@@ -111,13 +123,18 @@
     var dr = await dk('https://api.draftkings.com/draftgroups/v1/draftgroups/' + S.dg + '/draftables?format=json', true);
     var list = dr.draftables || [];
     S.names = {};
-    var slimDraftables = list.map(function (d) {
+    S.slim = list.map(function (d) {
       S.names[d.draftableId] = { name: d.displayName || ((d.firstName || '') + ' ' + (d.lastName || '')).trim(),
                                  pos: d.position || '', team: d.teamAbbreviation || d.teamAbbrev || '' };
       return { draftableId: d.draftableId, playerId: d.playerId, position: d.position,
                teamAbbreviation: d.teamAbbreviation || d.teamAbbrev };
     });
-    // DK's ADP for /playoff's bots. Optional: the board works without it.
+  }
+
+  // DK's ADP for /playoff's bots. Optional: the board works without it. Not tied
+  // to the names: when those fail the pool goes without draftables, and the server
+  // joins it with the copy /playoff posts.
+  async function loadPool() {
     try {
       var pp = await dk('https://api.draftkings.com/rankings/v1/draftgroups/' + S.dg + '/playerpool?format=json');
       var players = ((pp.playerPool || {}).draftablePlayers || []).map(function (p) {
@@ -127,8 +144,8 @@
                    return { draftableId: s && s.draftableId };
                  }) };
       });
-      S.pool = { playerpool: { playerPool: { draftablePlayers: players } },
-                 draftables: { draftables: slimDraftables } };
+      S.pool = { playerpool: { playerPool: { draftablePlayers: players } } };
+      if (S.slim) S.pool.draftables = { draftables: S.slim };
     } catch (e) { S.poolError = e.message; }
   }
 
@@ -166,6 +183,7 @@
         S.namesTried = Date.now();
         try { await loadNames(); } catch (e) { S.namesError = e.message; }
       }
+      if (!S.pool && !S.poolError && S.dg) await loadPool();
       var names = S.names || {};
       var board = (st.draftBoard || []).map(function (e) {
         var n = (e.draftableId && names[e.draftableId]) || {};
@@ -180,9 +198,11 @@
         S.sentPicks = made;
       }
       var seat = S.seat ? 'seat ' + S.seat : S.seatKnown === false ? 'seat unknown (set it on /playoff)' : 'seat ?';
-      var pool = S.namesError && !S.names ? ', NO NAMES (' + S.namesError + ')'
-        : S.poolSent ? ', ADP sent' : S.poolError ? ', no ADP (' + S.poolError + ')' : '';
-      if (done) { show('draft complete: ' + made + ' picks sent. Click to close.'); return; }
+      var pool = (S.namesError && !S.names ? ', NO NAMES (' + S.namesError + '; /playoff names them)' : '')
+        + (S.poolSent ? ', ADP sent' : S.poolError ? ', no ADP (' + S.poolError + ')' : '');
+      // The names and ADP state stays on the badge to the end: "draft complete"
+      // alone hid a run whose names had all failed (draft 198275001).
+      if (done) { show('draft complete: ' + made + ' picks sent' + pool + '. Click to close.'); return; }
       show('sending: ' + made + ' of ' + board.length + ' picks, ' + seat + pool);
       later(EVERY);
     } catch (e) {

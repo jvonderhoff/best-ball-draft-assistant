@@ -444,19 +444,54 @@ async function pullLive() {
     picks.push({ idx, seat: PlayoffRec.seatOfPick(pk.pick_number, SEATS) });
   }
   S.unmatched = d.unmatched || [];
+  // The bookmarklet could not read DK's player list on DK's page (live draft
+  // 198275001: "NO NAMES (Failed to fetch)"), so picks arrive as "Player #<id>"
+  // and DK's ADP waits on the server for positions and teams. DK serves that list
+  // to any other page without a login, so fetch it here and post it; the next
+  // pull comes back named, and a waiting pool is joined and saved.
+  if ((d.names_needed || d.pool_pending) && d.draft_group_id && Date.now() - (S.namesAt || 0) > 30000) {
+    S.namesAt = Date.now();
+    sendNames(d.draft_group_id);
+  }
   if (d.my_position) { S.mySeat = d.my_position - 1; $('mySeat').value = String(S.mySeat); }
   if (d.draft_group_id && !$('dgId').value) $('dgId').value = d.draft_group_id;
   // The bookmarklet sent DK's pool with the board: load its ADP once, unasked.
   // A saved pool loaded at page start (or another contest's) is replaced by this
   // draft's own, which is fresher.
   const ownPool = S.adpSource === 'dk' && !S.pool.saved && String(S.pool.draft_group_id) === String(d.draft_group_id);
-  if (d.pool_ready && !ownPool && !S.poolTried) { S.poolTried = true; loadPool(); }
   const made = d.picks_made || picks.length;
   const changed = picks.length !== S.picks.length || made !== S.picksMade;
   S.picks = picks;
   S.picksMade = made;
   S.lastPull = Date.now();
+  // Awaited, and it refreshes itself: fired and forgotten, loadPool cleared S.field
+  // while this pull's refresh was using it ("Cannot read properties of null
+  // (reading 'S')", replaying draft 198275001 on 2026-11-26).
+  if (d.pool_ready && !ownPool && !S.poolTried) { S.poolTried = true; if (await loadPool()) return; }
   if (changed) await refresh(); else renderBoardBar();
+}
+
+async function sendNames(dg) {
+  try {
+    const r = await fetch(`https://api.draftkings.com/draftgroups/v1/draftgroups/${encodeURIComponent(dg)}/draftables?format=json`,
+      { credentials: 'omit' });
+    if (!r.ok) throw new Error(`DK draftables HTTP ${r.status}`);
+    const list = ((await r.json()).draftables || []).map(x => ({ draftableId: x.draftableId, playerId: x.playerId,
+      displayName: x.displayName || `${x.firstName || ''} ${x.lastName || ''}`.trim(), position: x.position,
+      teamAbbreviation: x.teamAbbreviation || x.teamAbbrev }));
+    const p = await fetch(`/api/playoff/draftables/${encodeURIComponent(dg)}`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ draftables: list }) });
+    const out = await p.json();
+    if (!p.ok) throw new Error(out.error || `HTTP ${p.status}`);
+    S.namesError = null;
+    if (out.pool_players) { S.poolTried = false; }   // a waiting pool was just joined: load it
+    // Pull again now: the poll loop stops at a finished draft, which would leave a
+    // board opened after the last pick nameless on the page though named on the server.
+    if (S.draftId && nextPick() > totalPicks()) await pullLive();   // a live draft's next poll does it
+  } catch (e) {
+    S.namesError = `player names: ${e.message}`;
+    renderBoardBar();
+  }
 }
 
 /* auto: at page load, with or without a draft group typed. No group means the
@@ -639,7 +674,8 @@ function renderBoardBar() {
   const turn = done ? '<span class="ok">draft complete</span>'
     : onClock() === S.mySeat ? '<span class="turn">your pick</span>' : `seat ${onClock() + 1} on the clock`;
   const un = S.unmatched.length ? ` · <span class="bad">${S.unmatched.length} picks not matched: ${esc(S.unmatched.slice(0, 5).join(', '))}</span>` : '';
-  const err = S.draftId && S.pullError ? `<span class="bad">${esc(S.pullError)}</span> · ` : '';
+  const err = (S.draftId && S.pullError ? `<span class="bad">${esc(S.pullError)}</span> · ` : '')
+    + (S.draftId && S.namesError ? `<span class="bad">${esc(S.namesError)}</span> · ` : '');
   $('boardBar').innerHTML = `${err}${live} · ${done ? `${totalPicks()} picks` : `pick <b>${nextPick()}</b> of ${totalPicks()}`} · ${turn}${un}`;
 }
 
@@ -1088,7 +1124,7 @@ $('connectBtn').onclick = async () => {
   // followed before its first pick (0 picks = 0 picks) never re-rendered, and the
   // page kept showing the previous practice mock's roster and recommendations as
   // if they were this draft's (the user, draft 198275001, 2026-11-26).
-  S.picks = []; S.picksMade = -1; S.lastPull = null; S.dkAge = null; S.poolTried = false;
+  S.picks = []; S.picksMade = -1; S.lastPull = null; S.dkAge = null; S.poolTried = false; S.namesAt = 0; S.namesError = null;
   pollLoop(S.pollToken);
 };
 // The bookmark carries this server's origin, so it sends to whichever copy of
