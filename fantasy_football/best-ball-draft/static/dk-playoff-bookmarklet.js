@@ -113,6 +113,9 @@
         if (o && String(o.ContestId) === S.cid && o.UserContestId) {
           S.eid = String(o.UserContestId);
           if (o.DraftGroupId) S.dg = String(o.DraftGroupId);
+          // For the saved draft's label on /playoff (My teams).
+          S.contest = o.ContestName || null;
+          S.fee = typeof o.BuyInAmount === 'number' ? o.BuyInAmount : null;
         }
       } catch (e) {}
       i = html.indexOf(key, i + key.length);
@@ -150,7 +153,7 @@
   }
 
   async function send(board) {
-    var body = { board: board, entry_id: S.eid, draft_group_id: S.dg };
+    var body = { board: board, entry_id: S.eid, draft_group_id: S.dg, contest: S.contest, entry_fee: S.fee };
     var withPool = S.pool && !S.poolSent;
     if (withPool) body.pool = S.pool;
     var r;

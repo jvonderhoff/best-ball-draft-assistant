@@ -2545,7 +2545,10 @@ def playoff_push(draft_id):
     _playoff_pushed[str(draft_id)] = {
         'picks': picks, 'my_position': my_position, 'slots': len(board),
         'draft_group_id': dg, 'entry_id': str(body.get('entry_id') or ''),
+        'contest': str(body.get('contest') or '')[:200] or None,
+        'entry_fee': body.get('entry_fee') if isinstance(body.get('entry_fee'), (int, float)) else None,
         'received_at': time.time()}
+    _record_playoff_draft(str(draft_id))
     pool_n, pool_saved = None, None
     pool = body.get('pool')
     if dg.isdigit() and isinstance(pool, dict):
@@ -2553,6 +2556,52 @@ def playoff_push(draft_id):
     return jsonify({'ok': True, 'picks': len(picks), 'my_position': my_position,
                     'seat_known': bool(guid), 'pool_players': pool_n, 'pool_saved': pool_saved,
                     'pool_pending': dg in _playoff_pool_pending})
+
+
+_playoff_draft_saved = {}    # draft id -> (picks saved, when, nameless) for the throttle
+_PLAYOFF_DRAFT_SAVE_S = 20   # a fast draft pushes every 3 s; one Postgres write per 20 s is plenty
+_playoff_draft_first = {}    # draft id -> when it was first saved (kept across rewrites)
+
+
+def _record_playoff_draft(did, force=False):
+    """Keep one of MY playoff drafts past a restart (playoff_store.save_draft says
+    why). Only a board with my seat on it: the relay of 2026-11-26 pushed the same
+    room under a made-up id, and a board nobody in it is me is not my entry.
+    Picks are named from the posted draftables where the bookmarklet could not."""
+    from app import playoff
+    b = _playoff_pushed.get(did)
+    if not b or not b.get('my_position') or not b['picks']:
+        return
+    dmap = (_playoff_draftables.get(b['draft_group_id']) or {}).get('names') or {}
+    picks, nameless = [], 0
+    for p in b['picks']:
+        if p['player_name'].startswith('Player #'):
+            n = dmap.get(p['draftable_id'])
+            if n:
+                p = {**p, 'player_name': n['name'], 'pos': n['pos'].upper(), 'team': n['team'].upper()}
+            else:
+                nameless += 1
+        picks.append({k: p.get(k) for k in ('player_name', 'pick_number', 'round', 'pos', 'team',
+                                             'username', 'draftable_id')})
+    complete = len(picks) >= b['slots']
+    last = _playoff_draft_saved.get(did)
+    now = time.time()
+    # Save when something changed: a new pick, a name that arrived, the last pick.
+    # Throttled, except for the last pick and for names, which must not wait.
+    if not force and last and last[0] == len(picks) and last[2] == nameless:
+        return
+    if not force and last and not complete and last[2] == nameless and now - last[1] < _PLAYOFF_DRAFT_SAVE_S:
+        return
+    old = (playoff.load_drafts()[0] or {}).get(did) if not last else None
+    rec = {'draft_id': did, 'draft_group_id': b['draft_group_id'], 'my_position': b['my_position'],
+           'slots': b['slots'], 'picks': picks, 'complete': complete, 'nameless': nameless,
+           'contest': b.get('contest') or (old or {}).get('contest'),
+           'entry_fee': b.get('entry_fee') if b.get('entry_fee') is not None else (old or {}).get('entry_fee'),
+           'first_seen': (old or {}).get('first_seen') or _playoff_draft_first.get(did) or now,
+           'updated_at': now}
+    _playoff_draft_first[did] = rec['first_seen']
+    playoff.save_draft(did, rec)
+    _playoff_draft_saved[did] = (len(picks), now, nameless)
 
 
 def _ingest_playoff_pool(dg, pool):
@@ -2609,7 +2658,63 @@ def playoff_draftables(draft_group):
     pool_n = pool_saved = None
     if dg in _playoff_pool_pending:
         pool_n, pool_saved = _ingest_playoff_pool(dg, _playoff_pool_pending[dg])
+    # A board saved before the names came is saved again, named (198275001 was
+    # nameless for its first 33 picks).
+    for did, b in list(_playoff_pushed.items()):
+        if b.get('draft_group_id') == dg:
+            _record_playoff_draft(did)
     return jsonify({'ok': True, 'names': len(names), 'pool_players': pool_n, 'pool_saved': pool_saved})
+
+
+@app.route('/api/playoff/drafts', methods=['GET'])
+def playoff_drafts():
+    """My saved playoff drafts (see _record_playoff_draft), newest first, each pick
+    mapped to the export's gsis_id like /api/playoff/board. Read-only, and open like
+    /api/drafts: the page shows them without a key."""
+    from app import playoff
+    saved, source = playoff.load_drafts()
+    payload, _ = playoff.load()
+    players = (payload or {}).get('players', {}).get('players') or []
+    out = []
+    for did, rec in (saved or {}).items():
+        mapped = playoff.map_picks(rec.get('picks') or [], players) if players else {'picks': rec.get('picks') or [], 'unmatched': []}
+        out.append({**rec, 'picks': mapped['picks'], 'unmatched': mapped['unmatched']})
+    out.sort(key=lambda r: -(r.get('first_seen') or 0))
+    return jsonify({'drafts': out, 'source': source, 'count': len(out)})
+
+
+@app.route('/api/playoff/drafts/import', methods=['POST'])
+def playoff_drafts_import():
+    """One finished board from the Mac (a draft that ended before saving existed).
+    Keyed and fail-closed, like /api/playoff/upload: unlike the bookmarklet's push it
+    writes durable history directly. Body: {draft_id, draft_group_id, my_position,
+    slots, picks:[{player_name, pick_number, round, pos, team, username}], contest?,
+    entry_fee?, first_seen?}."""
+    import hmac
+    from app import playoff
+    expected = os.environ.get('BBA_API_KEY', '')
+    if not expected:
+        return jsonify({'error': 'BBA_API_KEY is not set on this server — refusing every '
+                                 'write rather than accepting unauthenticated ones'}), 503
+    if not hmac.compare_digest(request.headers.get('X-Api-Key', ''), expected):
+        return jsonify({'error': 'Unauthorized'}), 401
+    b = request.get_json(silent=True) or {}
+    did, picks = str(b.get('draft_id') or ''), b.get('picks')
+    if not did.isdigit() or not isinstance(picks, list) or not picks or len(picks) > 600 \
+            or not isinstance(b.get('my_position'), int):
+        return jsonify({'error': 'need draft_id, my_position and a picks list'}), 400
+    keep = ('player_name', 'pick_number', 'round', 'pos', 'team', 'username', 'draftable_id')
+    picks = [{k: p.get(k) for k in keep} for p in picks if isinstance(p, dict) and p.get('player_name')]
+    slots = int(b.get('slots') or len(picks))
+    now = time.time()
+    rec = {'draft_id': did, 'draft_group_id': str(b.get('draft_group_id') or ''),
+           'my_position': b['my_position'], 'slots': slots, 'picks': picks,
+           'complete': len(picks) >= slots,
+           'nameless': sum(1 for p in picks if str(p['player_name']).startswith('Player #')),
+           'contest': b.get('contest'), 'entry_fee': b.get('entry_fee'),
+           'first_seen': b.get('first_seen') or now, 'updated_at': now, 'imported': True}
+    durable = playoff.save_draft(did, rec)
+    return jsonify({'ok': True, 'picks': len(picks), 'durable': durable})
 
 
 @app.route('/api/playoff/pools', methods=['GET'])

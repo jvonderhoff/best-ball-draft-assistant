@@ -11,6 +11,37 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-27: playoff — My teams: every real draft saved on the server
+
+**What changed.** Every board the bookmarklet sends with the user's seat on it is now
+saved in Postgres (`playoff_drafts`, one row per DK contest, the whole board), from the
+first pick and rewritten as picks arrive (at most once per 20 s, plus the last pick and
+any late names). Before this, a live board lived only in server memory, and the page's
+"My entries" was a localStorage list that counted only drafts that browser had followed
+to the end. The first real draft was in neither and survived only as a file copied to
+the Mac by hand.
+
+- `/playoff` → **My teams** (now in the simple view): team exposure across drafts (click
+  a team to avoid it), players on 2+ drafts, and one row per draft (date, contest, fee,
+  seat, team counts, roster). A finished roster is scored like `playoff-review.js`:
+  fresh worlds (seed 999), a fresh field (seed 555), against the other five rosters in
+  that room. A row marked `*` had no recognisable contest name, so it was scored with
+  the page's preset.
+- Scoring takes ~1.6 s on the Mac on the main thread, so it runs automatically only
+  when no live draft is being followed; otherwise there is a Score button.
+- Build around's chips and the tie-break (`varyPick`) read these drafts now, finished
+  ones only, and never the draft being followed (it would steer away from the stack
+  being built).
+- The bookmarklet sends the contest name and fee from `/mycontests`. A draft whose
+  entry id was sniffed before `/mycontests` was read has no name and shows its id.
+- `GET /api/playoff/drafts` (open, like `/api/drafts`); `POST /api/playoff/drafts/import`
+  (BBA_API_KEY, fail-closed) for a board that finished before saving existed.
+- Only boards with the user's seat are saved: the 2026-11-26 relay pushed the same room
+  under a made-up id. There is no delete yet.
+
+Local dev keeps a mirror at `app/data/pushed_playoff_drafts.json` (gitignored: real
+boards).
+
 ## 2026-11-26: playoff — first real draft (198275001); DK's ADP saved; the tool on real ADP
 
 **The user's first real playoff draft** ($3 Play-Action, seat 4, draft group 156836)

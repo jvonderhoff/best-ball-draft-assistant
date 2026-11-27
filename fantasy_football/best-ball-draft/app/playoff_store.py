@@ -178,3 +178,66 @@ def list_pools():
         return None
     finally:
         conn.close()
+
+
+# ── My playoff drafts, as the bookmarklet sends them ───────────────────────────
+# Until 2026-11-27 a live board lived only in the server's memory: the first real
+# playoff draft (198275001) survived only because it was copied to the Mac by hand,
+# and the page's "My entries" kept rosters in one browser's localStorage, and only
+# for a draft the page had followed to the end. One row per DK contest, the whole
+# board (every seat: how real rooms stack is what the practice rooms are calibrated
+# on), rewritten in place as picks arrive so a draft in progress counts too. Same
+# never-raise contract.
+_DRAFTS_DDL = """
+    CREATE TABLE IF NOT EXISTS playoff_drafts (
+        draft_id     TEXT PRIMARY KEY,
+        payload      TEXT,
+        first_seen   TIMESTAMPTZ DEFAULT now(),
+        updated_at   TIMESTAMPTZ DEFAULT now()
+    )
+"""
+
+
+def save_draft(draft_id: str, rec: dict) -> bool:
+    """Upsert one draft. True only if Postgres took it."""
+    conn = _conn()
+    if not conn:
+        return False
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(_DRAFTS_DDL)
+            cur.execute("""
+                INSERT INTO playoff_drafts (draft_id, payload, first_seen, updated_at)
+                VALUES (%s, %s, now(), now())
+                ON CONFLICT (draft_id) DO UPDATE SET
+                    payload = excluded.payload, updated_at = now()
+            """, (str(draft_id), json.dumps(rec)))
+        return True
+    except Exception as e:
+        _log.warning(f'[playoff-store] save_draft failed: {e!r}')
+        return False
+    finally:
+        conn.close()
+
+
+def load_drafts():
+    """{draft_id: rec} for every saved draft; {} if none; None if unreachable."""
+    conn = _conn()
+    if not conn:
+        return None
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(_DRAFTS_DDL)
+            cur.execute("SELECT draft_id, payload FROM playoff_drafts")
+            out = {}
+            for did, payload in cur.fetchall():
+                try:
+                    out[did] = json.loads(payload)
+                except ValueError:
+                    continue
+            return out
+    except Exception as e:
+        _log.warning(f'[playoff-store] load_drafts failed: {e!r}')
+        return None
+    finally:
+        conn.close()

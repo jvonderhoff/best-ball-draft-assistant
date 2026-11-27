@@ -449,6 +449,10 @@ Draft week, step by step: `docs/PLAYOFF_RUNBOOK.md`.
   1000.. one completion at a time, merged by `PlayoffRec.mergeRuns`) and is never
   awaited, because the live poll loop awaits `refresh()`. *Build around* (`include`)
   and **Next** (`PlayoffRec.survival`) are display only; they must not re-rank.
+- **Real drafts are saved on the server** (`playoff_drafts`, `_record_playoff_draft`):
+  every board the bookmarklet sends with my seat on it, from the first pick. **My teams**
+  reads `GET /api/playoff/drafts`; Build around and the tie-break read finished ones only.
+  A board that finished before saving existed goes in by `POST /api/playoff/drafts/import`.
 - **Practice drafts** are saved by `saveMock` (localStorage `bba_playoff_mocks`) and
   name players by `gsis_id`, never by index: indexes change with every data push.
   `tools/playoff-review.js` replays one; it scores rosters on fresh worlds (seed 999),

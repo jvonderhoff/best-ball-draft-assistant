@@ -209,3 +209,38 @@ def list_pools() -> list:
     rows = [{'draft_group': k.split('|')[0], 'day': k.split('|')[1], 'fetched_at': v['fetched_at'],
              'players': len(v['joined'].get('players', []))} for k, v in _pool_mirror().items()]
     return sorted(rows, key=lambda r: -r['fetched_at'])
+
+
+DRAFTS_MIRROR = Path(__file__).resolve().parent / 'data' / 'pushed_playoff_drafts.json'
+
+
+def _drafts_mirror() -> dict:
+    try:
+        return json.loads(DRAFTS_MIRROR.read_text()) if DRAFTS_MIRROR.exists() else {}
+    except ValueError:
+        return {}
+
+
+def save_draft(draft_id: str, rec: dict) -> bool:
+    """One of my playoff drafts, kept past a restart (playoff_store.save_draft says
+    why). Postgres when it is there; the disk mirror always, which is all local dev
+    has. Returns whether the durable write happened."""
+    from app import playoff_store
+    durable = playoff_store.save_draft(draft_id, rec)
+    m = _drafts_mirror()
+    m[str(draft_id)] = rec
+    try:
+        DRAFTS_MIRROR.write_text(json.dumps(m))
+    except OSError:
+        pass
+    return durable
+
+
+def load_drafts() -> tuple:
+    """({draft_id: rec}, source). Postgres first: the mirror may be another
+    instance's, or a dev machine's."""
+    from app import playoff_store
+    got = playoff_store.load_drafts()
+    if got is not None:
+        return got, 'postgres'
+    return _drafts_mirror(), 'disk'

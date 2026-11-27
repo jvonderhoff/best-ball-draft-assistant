@@ -26,6 +26,7 @@ app/data/pushed_season.json
 # And the playoff best-ball inputs (bracket + player export), same reasoning.
 app/data/pushed_playoff.json
 app/data/pushed_playoff_pools.json
+app/data/pushed_playoff_drafts.json
 # DK playoff ADP pulled for the tools (tools/playoff-adp.js)
 tools/.playoff-adp/
 # Real DK playoff boards, named (live relay / bookmarklet), for calibrating the bots

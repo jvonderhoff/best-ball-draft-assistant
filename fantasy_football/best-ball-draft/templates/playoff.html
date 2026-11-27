@@ -97,6 +97,8 @@
     .alert { margin-top: 6px; padding: 6px 9px; border: 1px solid var(--orange); border-radius: 6px; background: var(--warn-bg); color: var(--text); }
     .need { color: var(--orange); font-size: 0.8em; font-weight: 700; }
     #mocks { font-size: 0.8em; }
+    #exposure details.md { padding: 4px 0; border-bottom: 1px solid var(--row-border); }
+    #exposure details.md summary { cursor: pointer; }
     #mocks .m { display: flex; gap: 6px; align-items: center; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--row-border); }
     #mocks .m span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     #mocks .m button { flex: none; }
@@ -191,8 +193,8 @@
         <h2>Practice drafts <small id="mocksMeta"></small></h2>
         <div id="mocks" class="msg"></div>
       </div>
-      <div class="card full" id="entriesCard">
-        <h2>My entries <small id="expMeta"></small></h2>
+      <div class="card" id="entriesCard">
+        <h2>My teams <small id="expMeta"></small></h2>
         <div id="exposure" class="msg"></div>
       </div>
       <div class="card full" id="teamsCard">
@@ -313,6 +315,9 @@ async function load() {
   renderExposure();
   renderMocks();
   restore();
+  // Scored only while no live draft is being followed: the fresh worlds and field
+  // take a few seconds on the main thread, and a fast draft's clock must not wait.
+  loadMyDrafts().then(() => { if (!S.draftId) setTimeout(scoreMyDrafts, 2000); });
   // Real ADP when any bookmarklet run has saved DK's pool; synthetic otherwise.
   if (!(await loadPool(true))) await refresh();
   // Build the field now, in the background, so the first pick does not wait for it.
@@ -542,7 +547,7 @@ async function refresh() {
   if (!S.ctx) return;
   const token = S.recToken = (S.recToken || 0) + 1;   // stops a refine loop from an older board
   renderBoardBar(); renderMine(); renderAvail(); renderStackChips();
-  if (nextPick() > totalPicks()) { await ensureField(); const v = renderFinal(); saveEntry(); saveMock(v); return; }
+  if (nextPick() > totalPicks()) { await ensureField(); const v = renderFinal(); reloadMineOnce(); saveMock(v); return; }
   // Only on your pick. Each row means "take him NOW, then ADP drafts the rest";
   // off-turn that would put him on your roster at someone else's slot and rank
   // players for a pick you do not have (seen in the first phone mock draft).
@@ -905,45 +910,155 @@ function renderWkAlert() {
     Rows marked <span class="need">wk1</span> fill it with a player very likely to play wild-card week.</div>`;
 }
 
-/* Exposure across my finished live entries, kept in this browser only
- * (localStorage): a draft room drafted elsewhere is not counted. Click a team
- * to add it to Avoid teams. */
-const ENTRIES_KEY = 'bba_playoff_entries';
-function loadEntries() { try { return JSON.parse(localStorage.getItem(ENTRIES_KEY) || '{}'); } catch { return {}; } }
-function saveEntry() {
-  if (!S.draftId) return;
-  const e = loadEntries();
-  if (e[S.draftId]) return;
-  const P = S.ctx.players;
-  e[S.draftId] = { at: new Date().toISOString(), preset: $('preset').value,
-    players: rosters()[S.mySeat].map(i => ({ n: P[i].name, t: P[i].team, p: P[i].pos })) };
-  try { localStorage.setItem(ENTRIES_KEY, JSON.stringify(e)); } catch {}
+/* My teams: every DK draft the bookmarklet has sent with my seat on it, saved on
+ * the server as it happens (_record_playoff_draft in app.py), so it is the same on
+ * every device and survives a restart. It replaced, 2026-11-27, a localStorage
+ * list that counted only drafts this page had followed to the end in one browser:
+ * the first real draft (198275001) was in neither, and survived only as a file
+ * copied to the Mac by hand. Click a team to add it to Avoid teams.
+ *
+ * Each finished roster is scored like tools/playoff-review.js scores it: on FRESH
+ * worlds (seed 999) and a fresh field (seed 555), against the other five rosters
+ * of that same room. Never on the recommender's own worlds, which would flatter
+ * every roster the tool picked. */
+const Mine = { drafts: null, scores: {}, fresh: null, fields: {}, scoring: false, err: null, reloaded: {} };
+async function loadMyDrafts() {
+  try {
+    const r = await fetch('/api/playoff/drafts');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    Mine.drafts = d.drafts; Mine.source = d.source; Mine.err = null;
+  } catch (e) { Mine.err = String(e.message || e); }
   renderExposure();
+  if (S.data) renderStackChips();   // its "used" counts come from these drafts
+}
+// The contest's preset from its DK name ("$400K Play-Action" -> play-action);
+// null when none matches, and the row then says it used the page's preset.
+function presetFor(d) {
+  const c = String(d.contest || '').toLowerCase();
+  if (!c) return null;
+  for (const [k, f] of Object.entries(PlayoffRec.PRESETS)) {
+    const word = f.label.split('·')[0].replace(/^\$[\d.]+[KM]?\s*/i, '').trim().toLowerCase();
+    if (word && c.includes(word)) return k;
+  }
+  return null;
+}
+// Seat rosters as player indexes. A pick the export does not know is dropped,
+// and counted when it is mine, so the row can say so.
+function draftRosters(d) {
+  const byGsis = new Map(S.ctx.players.map((p, i) => [p.gsis_id, i]));
+  const rs = Array.from({ length: SEATS }, () => []);
+  const me = d.my_position - 1;
+  let missing = 0;
+  for (const p of d.picks) {
+    const i = p.gsis_id ? byGsis.get(p.gsis_id) : undefined;
+    const seat = PlayoffRec.seatOfPick(p.pick_number, SEATS);
+    if (i === undefined) { if (seat === me) missing++; continue; }
+    rs[seat].push(i);
+  }
+  return { rs, me, missing };
+}
+async function scoreMyDrafts() {
+  if (Mine.scoring || !Mine.drafts || !S.ctx) return;
+  const todo = Mine.drafts.filter(d => d.complete && !Mine.scores[d.draft_id]);
+  if (!todo.length) return;
+  Mine.scoring = true; renderExposure();
+  try {
+    await nextTick();
+    if (!Mine.fresh) Mine.fresh = PlayoffSim.simulateWorlds(S.ctx, WORLDS, 999);
+    for (const d of todo) {
+      const k = presetFor(d) || $('preset').value;
+      const f = { ...PlayoffRec.PRESETS[k] };
+      if (!Mine.fields[k]) { await nextTick(); Mine.fields[k] = PlayoffRec.buildField(S.ctx, Mine.fresh, S.adp, f, { seed: 555 }); }
+      await nextTick();
+      const { rs, me } = draftRosters(d);
+      const sc = rs.map(r => PlayoffSim.rosterScores(S.ctx, r, Mine.fresh, f.lineup));
+      const v = PlayoffRec.contestValue(sc[me], sc.filter((_, j) => j !== me), Mine.fields[k], Mine.fresh, f);
+      Mine.scores[d.draft_id] = { r1: v.pR[0], fin: v.pFinal, preset: k, guessed: !presetFor(d) };
+      renderExposure();
+    }
+  } finally { Mine.scoring = false; renderExposure(); }
 }
 function renderExposure() {
-  const e = Object.values(loadEntries());
-  $('expMeta').textContent = e.length ? `${e.length} finished live draft${e.length === 1 ? '' : 's'} in this browser` : '';
-  if (!e.length) { $('exposure').innerHTML = 'Finished live drafts are counted here, so you can see which teams and players your entries already lean on.'; return; }
-  const teams = {}, players = {};
-  for (const x of e) {
-    for (const t of new Set(x.players.map(p => p.t))) teams[t] = (teams[t] || 0) + 1;
-    for (const p of x.players) players[p.n] = (players[p.n] || 0) + 1;
+  if (!S.ctx) return;
+  const ds = Mine.drafts || [];
+  $('expMeta').textContent = ds.length ? `${ds.length} DK draft${ds.length === 1 ? '' : 's'}, saved on the server` : '';
+  if (Mine.err && !ds.length) { $('exposure').innerHTML = `<span class="bad">Could not load your drafts:</span> ${esc(Mine.err)}`; return; }
+  if (!ds.length) {
+    $('exposure').innerHTML = Mine.drafts
+      ? 'Draft with the BBA bookmark running on your DK tab and every draft is saved here from the first pick, so you can see which teams your entries already lean on.'
+      : 'Loading your drafts…';
+    return;
   }
-  const av = avoided();
+  const P = S.ctx.players, teams = {}, players = {}, rows = [];
+  for (const d of ds) {
+    const { rs, me, missing } = draftRosters(d);
+    const mine = rs[me] || [];
+    const tc = {};
+    for (const i of mine) tc[P[i].team] = (tc[P[i].team] || 0) + 1;
+    for (const t of Object.keys(tc)) teams[t] = (teams[t] || 0) + 1;
+    for (const i of mine) players[P[i].name] = (players[P[i].name] || 0) + 1;
+    const tl = Object.entries(tc).sort((a, b) => b[1] - a[1]).map(([t, k]) => `${t}${k}`).join(' ');
+    const sc = Mine.scores[d.draft_id];
+    const myN = d.picks.filter(p => PlayoffRec.seatOfPick(p.pick_number, SEATS) === me).length;
+    const rounds = Math.round(d.slots / SEATS);
+    const when = new Date(1000 * (d.first_seen || d.updated_at));
+    const label = d.contest ? esc(d.contest) : `DK draft ${esc(d.draft_id)}`;
+    const score = sc
+      ? `win round 1 <b>${pct(sc.r1)}</b> · final <b>${pct(sc.fin, 2)}</b>`
+        + (sc.guessed ? ' <span class="k" title="contest not recognised: scored with the preset picked above">*</span>' : '')
+      : d.complete ? `<span class="k">${Mine.scoring ? 'scoring…' : 'not scored yet'}</span>`
+      : `<span class="warn">in progress ${myN}/${rounds}</span>`;
+    const byTeam = {};
+    for (const i of mine) (byTeam[P[i].team] = byTeam[P[i].team] || []).push(i);
+    const roster = Object.entries(byTeam).sort((a, b) => b[1].length - a[1].length)
+      .map(([t, is]) => `<div><b>${t}</b> ${is.map(i => `${posTag(P[i])}${esc(P[i].name)}`).join(', ')}</div>`).join('');
+    rows.push(`<details class="md"><summary>${when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+      · ${label}${d.entry_fee != null ? ` · $${d.entry_fee}` : ''} · seat ${d.my_position} · ${esc(tl)}<br>${score}</summary>
+      <div class="k" style="margin:4px 0">${roster}`
+      + (missing ? `<div class="warn">${missing} of your picks are not in the playoff export, so not counted</div>` : '')
+      + (d.nameless ? `<div class="warn">${d.nameless} picks still unnamed</div>` : '')
+      + `<div>DK draft ${esc(d.draft_id)}</div></div></details>`);
+  }
+  const av = avoided(), n = ds.length;
   const tl = Object.entries(teams).sort((a, b) => b[1] - a[1])
-    .map(([t, k]) => `<span class="chip${av.has(t) ? ' off' : ''}" data-team="${t}" title="click to avoid / allow in this draft">${t} ${k}/${e.length}</span>`).join('');
+    .map(([t, k]) => `<span class="chip${av.has(t) ? ' off' : ''}" data-team="${t}" title="click to avoid / allow in this draft">${t} ${k}/${n}</span>`).join('');
   const pl = Object.entries(players).filter(([, k]) => k >= 2).sort((a, b) => b[1] - a[1]).slice(0, 15)
-    .map(([n, k]) => `${esc(n)} ${k}`).join(' · ');
-  $('exposure').innerHTML = `<div><b>Teams</b> (entries with any of their players)</div><div>${tl}</div>`
-    + (pl ? `<div style="margin-top:6px"><b>Players on 2+ entries</b> ${pl}</div>` : '')
-    + '<div style="margin-top:6px"><button id="clearEntries">Clear</button></div>';
+    .map(([nm, k]) => `${esc(nm)} ${k}`).join(' · ');
+  const unscored = ds.some(d => d.complete && !Mine.scores[d.draft_id]);
+  $('exposure').innerHTML = `<div><b>Teams</b> (drafts with any of their players)</div><div>${tl}</div>`
+    + (pl ? `<div style="margin-top:6px"><b>Players on 2+ drafts</b> ${pl}</div>` : '')
+    + `<div style="margin-top:8px">${rows.join('')}</div>`
+    + `<div class="k" style="margin-top:6px">Scored on fresh simulated postseasons against the other five rosters in that room. An average roster: 16.7% and 0.46%.
+      <button id="refreshDrafts">Refresh</button>${unscored && !Mine.scoring ? ' <button id="scoreDrafts">Score</button>' : ''}</div>`;
   for (const c of $('exposure').querySelectorAll('.chip')) c.onclick = () => {
     const a = avoided(), t = c.dataset.team;
     if (a.has(t)) a.delete(t); else a.add(t);
     $('avoid').value = [...a].join(' ');
     $('avoid').onchange();
   };
-  $('clearEntries').onclick = () => { if (confirm('Forget every finished entry in this browser?')) { localStorage.removeItem(ENTRIES_KEY); renderExposure(); } };
+  $('refreshDrafts').onclick = () => loadMyDrafts().then(scoreMyDrafts);
+  if ($('scoreDrafts')) $('scoreDrafts').onclick = scoreMyDrafts;
+}
+// My FINISHED drafts in the shape Build around's chips and the tie-break (varyPick)
+// read: {draft id: {players: [{n, t, p}]}}. Never the draft being followed: counting
+// it would steer the tie-break away from the very stack this draft is building.
+function loadEntries() {
+  const out = {};
+  if (!S.ctx || !Mine.drafts) return out;
+  const P = S.ctx.players;
+  for (const d of Mine.drafts) {
+    if (!d.complete || String(d.draft_id) === String(S.draftId || '')) continue;
+    const { rs, me } = draftRosters(d);
+    out[d.draft_id] = { players: (rs[me] || []).map(i => ({ n: P[i].name, t: P[i].team, p: P[i].pos })) };
+  }
+  return out;
+}
+// A live draft just finished: fetch it once from the server so My teams shows it.
+function reloadMineOnce() {
+  if (!S.draftId || Mine.reloaded[S.draftId]) return;
+  Mine.reloaded[S.draftId] = true;
+  setTimeout(() => loadMyDrafts(), 1500);
 }
 
 function renderAvail() {
