@@ -77,6 +77,11 @@ From `fantasy_football/projections`:
 - **Injury file age is 0-24h.** `--refresh` refetches Sleeper's file only when it is
   over 24h old, Sleeper's own limit. For Friday injury reports, run it after Friday.
 - Re-run this after every bracket rebuild. Publishing refuses a pair that does not match.
+- **Read the CANDIDATES block.** Injured players the rest-of-season rankers have dropped
+  are valued as PLAYING until someone decides: only players on
+  `../projections/season_over.json` are out (the user's rule, 2026-11-27: the only
+  injury news that matters is out for the year). Check each in the news; put a
+  season-ender under `players`, a confirmed returner under `returning`, by gsis_id.
 
 ```bash
 .venv/bin/python cli.py playoff-publish --target https://<host>

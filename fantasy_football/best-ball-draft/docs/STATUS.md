@@ -11,6 +11,33 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-27: playoff — only "out for the season" lowers a player's value
+
+**The user's rule:** the only injury news that matters for playoff best ball is out for
+the year. Before, anyone who had missed his team's last two games got the measured
+"inactive" P(playing by January), 0.494, an average that folds season-ending injuries in
+with a concussion. Puka Nacua (out for the year) and Kenneth Walker III (Out now, 6th
+rest-of-season on both rankers) were valued alike, and Puka was drafted in mocks.
+
+- `../projections/season_over.json` (checked in, by gsis_id): listed players get avail
+  0. Every other player WITH an injury status gets the active rate (0.873, or 0.529
+  under 4 games). A player with no status who stopped playing (benched, lost role)
+  keeps the measured inactive rate: not injury news.
+- Each export prints CANDIDATES: injured, worth 6+ DK/g, absent from LateRound's ROS
+  list and outside FantasyPros' ROS top 200. They are valued as playing until checked.
+  Runbook §2a now says to read it. `returning` silences a checked returner.
+- First list, 2026-11-27: Puka (the user's call; the Nov 9-10 reports said four-plus
+  weeks, one later summary said season-ending surgery), and from the news Drake Maye,
+  Gardner Minshew, Michael Wilson, Terry McLaurin, De'Von Achane, Wan'Dale Robinson,
+  Jaylin Noel. Maye and Minshew had been restored as January starters; now DeVito is
+  NE's. Malik Willis is `returning` (core muscle, earliest Dec 13).
+- 59 players changed value; Walker, Adams, Omar Cooper Jr. and others went 0.494 →
+  0.873. Republished; sim-check passes (124 unusable players, 0 points), 6-draft
+  rec-check 3.00x the ADP seats. 198275001 now scores 34.5% / 2.53%: opponents' hurt
+  players are worth more.
+- Unchecked candidates still valued as playing: Jawhar Jordan, Tyquan Thornton,
+  Brian Robinson, and eight under 8 DK/g.
+
 ## 2026-11-27: playoff — My teams: every real draft saved on the server
 
 **What changed.** Every board the bookmarklet sends with the user's seat on it is now
