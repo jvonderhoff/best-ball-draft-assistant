@@ -42,6 +42,17 @@ the Mac by hand.
 Local dev keeps a mirror at `app/data/pushed_playoff_drafts.json` (gitignored: real
 boards).
 
+**Which drafts count: every real DK draft, paid or free** (the user's rule, 2026-11-27).
+Nothing filters on the fee, and there is deliberately no delete button. 198275001 was
+imported by hand (`$400K Play-Action`, $3, seat 4).
+
+**Zero-game players are in the export now** (projections `zero_game_rows`): De'Zhaun
+Stribling (SF WR, on IR all season) went 43rd in 198275001 and could not be placed,
+because the export was built only from players with games. 80 ACT/RES/PUP players added
+at games 0, dk_ppg 0, avail 0 (661 total); republished 2026-11-27 with sim-check and a
+6-draft rec-check passing (2.59x the ADP seats). The same publish picked up a day of
+Sleeper injury news, which moved 198275001's score from 38.4% / 2.80% to 36.1% / 3.08%.
+
 ## 2026-11-26: playoff — first real draft (198275001); DK's ADP saved; the tool on real ADP
 
 **The user's first real playoff draft** ($3 Play-Action, seat 4, draft group 156836)
