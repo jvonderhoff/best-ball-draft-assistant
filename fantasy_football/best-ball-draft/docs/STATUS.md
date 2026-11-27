@@ -11,6 +11,49 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-26: playoff — first real draft (198275001); DK's ADP saved; the tool on real ADP
+
+**The user's first real playoff draft** ($3 Play-Action, seat 4, draft group 156836)
+broke live tracking twice, both fixed and pushed:
+- Following a draft before its first pick never re-rendered: the page showed the
+  previous practice mock's roster (4de8394).
+- Every pick arrived as "Player #<id>" and DK's ADP was never sent: the bookmarklet's
+  draftables fetch fails on DK's own page, cookies or not ("NO NAMES (Failed to
+  fetch)"), and the pool was only fetched after it. `/playoff` now fetches draftables
+  itself (DK serves them to any other origin, no login) and posts them to
+  `/api/playoff/draftables/<dg>`; the pool goes on its own and waits on the server for
+  them (b94093c, 03df0f1). Mid-draft a Mac-side relay named the picks under a second id.
+  The board is saved, named, in `tools/.playoff-boards/` (gitignored).
+
+**DK's ADP is saved** (`playoff_pools`, 579 players). Only 139 carry an ADP (ending at
+pick 69); the rest are listed but undrafted (9999), and were read as undraftable,
+cutting Drake Maye, Tyquan Thornton and 9 of the synthetic top 100 from every board.
+Now last real ADP + 12 (1787f19). The room drafts teams that are nearly out early:
+Bijan Robinson (10% to make it), McBride (0%), Bowers (3%), Barkley (0%) at picks 46-60.
+
+**The real room stacked.** Opponents' biggest team averaged 3.6 (ADP bots 2.7, stacker
+bots 4.6); every starting QB had 2-3 teammates. One draft: the mock share (2 of 5) and
+`STACK_PICKS` stay until more boards say otherwise.
+
+**Review of the user's draft** (`tools/playoff-review.js`, DK ADP): 11 of 12 picks the
+top or ≈; the one reach, Tuten at 3.04 (65% of Lawrence's value), cost nothing because
+Lawrence came back at 4.03. Roster on fresh worlds: round 1 38.4%, final 2.80% (bots
+0.68%). The tool path in that review (0.84%) is NOT a verdict on stacking: it runs at 6
+completions and split off at a 1.04 tie; 20 tool drafts on the same ADP average 2.69%.
+
+**20 auto drafts on DK's ADP** (`playoff-automock.js --adp`, top every time, room all
+ADP): tool round 1 35.6%, final 2.69%; bots 12.9%, 0.36%. Every draft 1.47-3.73%.
+(Synthetic ADP, same seeds, 11-25: 33.3% / 2.09%, bots 0.42%.) The edge holds on real
+ADP. The tool's biggest team averaged 3.5; drafts with 4-5 from one team averaged 2.92%
+vs 2.37% with 2-3, but the tool stacks when the stack is good, so that is not a reason
+to force stacks (forcing roster shape has measured worse every time here).
+
+**Open:** read more real boards (stacking share and strength); refresh the pool before
+drafting (one bookmark click a day); De'Zhaun Stribling is in DK's pool but not the
+export. The regular-season app's DK pool has also been stale since 2026-09-22 (1,898h).
+
+---
+
 ## 2026-11-25: playoff — stacker bots (off by default); better in simulation, unresolved on real postseasons
 
 **Asked:** "some [drafters] will stack in a smart way and others will draft off ADP."
