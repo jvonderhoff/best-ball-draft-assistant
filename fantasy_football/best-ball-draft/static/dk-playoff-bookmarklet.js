@@ -67,8 +67,13 @@
     return _open.apply(this, arguments);
   };
 
-  async function dk(url) {
-    var r = await _fetch.call(window, url, { credentials: 'include' });
+  // `anon`: send no cookies. DK answers draftables with Access-Control-Allow-Origin
+  // "*", which a browser refuses for any request that carries credentials -- so with
+  // cookies the fetch dies as "Failed to fetch" and every pick arrives nameless
+  // ("NO NAMES", draft 198275001, 2026-11-26). draftables needs no login; playerpool
+  // and draftStatus do (401 without), and DK names its own origin on those.
+  async function dk(url, anon) {
+    var r = await _fetch.call(window, url, { credentials: anon ? 'omit' : 'include' });
     if (!r.ok) throw new Error('DK ' + url.split('?')[0].split('/').slice(-2).join('/') + ' HTTP ' + r.status);
     return r.json();
   }
@@ -103,7 +108,7 @@
   }
 
   async function loadNames() {
-    var dr = await dk('https://api.draftkings.com/draftgroups/v1/draftgroups/' + S.dg + '/draftables?format=json');
+    var dr = await dk('https://api.draftkings.com/draftgroups/v1/draftgroups/' + S.dg + '/draftables?format=json', true);
     var list = dr.draftables || [];
     S.names = {};
     var slimDraftables = list.map(function (d) {
