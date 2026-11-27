@@ -106,10 +106,10 @@ python3 tools/preflight.py --playoff
 
 - **Read the contest rules in the lobby**: rounds, lineup, final size and the prize
   ladder. The two presets on the page come from write-ups that disagree with each other.
-  - If one matches, pick it and type the prizes into *Payouts* (`1:100000, 2:31000,
-    3-5:5000`). The page then ranks by EV.
+  - If one matches, pick it. The page ranks by P(reach the final); there is no Payouts
+    box (removed 2026-11-27: ranking by expected winnings drafted near-randomly, STATUS).
   - If neither matches, add a preset to `PRESETS` in `static/recommender-playoff.js`:
-    `rounds`, `lineup`, `finalSize`, `payouts`. Push, then run
+    `rounds`, `lineup`, `finalSize`. Push, then run
     `node tools/playoff-rec-check.js --preset <new> --drafts 0` before drafting on it.
 - **Load DK's pool and ADP.** Type the draft group id into *Draft group* and press
   *Load DK pool*.
@@ -154,8 +154,7 @@ python3 tools/preflight.py --playoff
      room that the page still thinks is available.
 6. **The page opens in the simple view** (since 2026-11-24): the picks, your roster and
    Available, with only the columns a pick needs. **Details ▾** (next to Format) shows the
-   rest: payouts, the draft group and *Load DK pool*, Avoid teams, the bookmark link, My
-   entries, the Teams table and the In / G / Rd 1 / Rd 2 / EV columns. The browser
+   rest: the draft group and *Load DK pool*, Avoid teams, the bookmark link, the Teams table and the In / G / Rd 1 / Rd 2 / EV columns. The browser
    remembers which view you left open. On a phone, My roster comes right after the picks.
 7. How to read a row (simple view):
    - The **top row is the pick**. **≈** marks rows within 25% of the top's value: the

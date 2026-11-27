@@ -137,9 +137,8 @@
     <label>Format
       <select id="preset"></select>
     </label>
-    <label class="full">Payouts <input id="payouts" class="wide" placeholder="1:100000, 2:31000, 3-5:5000"></label>
     <span class="k full" id="formatNote"></span>
-    <button id="detailsBtn" title="Payouts, ADP source, avoid teams, the bookmark, your entries and every column">Details ▾</button>
+    <button id="detailsBtn" title="ADP source, avoid teams, the bookmark, your entries and every column">Details ▾</button>
   </div>
   <div class="row">
     <label>DK draft id <input id="draftId" class="num" placeholder="contest"></label>
@@ -284,11 +283,13 @@ function setAdp(adp, source) {
   if (Pool.ok) for (const w of Pool.ws) poolCall(w, { type: 'adp', adp }).catch(e => poolFail(String(e)));
 }
 
+/* The page always ranks by P(reach the final). A Payouts box that switched it to
+ * expected winnings was removed 2026-11-27: measured on 20 paired drafts it won the
+ * group 19.7% vs 38.7% and lost on winnings too, because first place (~0.2% of worlds)
+ * is too rare for the completions to rank on, so the order was mostly noise
+ * (STATUS 2026-11-27). Do not bring it back without beating that test. */
 function format() {
-  const f = { ...PlayoffRec.PRESETS[$('preset').value] };
-  const typed = PlayoffRec.parsePayouts($('payouts').value);
-  if (typed.length) f.payouts = typed;
-  return f;
+  return { ...PlayoffRec.PRESETS[$('preset').value] };
 }
 
 // ── load ────────────────────────────────────────────────────────────────────
@@ -798,7 +799,7 @@ function renderRecs(out, f, ms, sv) {
     ${vary ? '<b>◆ vary</b> the tied pick your other entries use least. ' : ''}<b>Wk1</b> his chance to play wild-card week. <b>Next</b> his chance to still be there at your next pick${sv ? ` (#${sv.next})` : ''}.
     Filled team chips are teams already on your roster.</div>${stackTable(out, nextCell, myTeams)}
     <div class="msg full">Each row assumes you take him now and ADP drafts every remaining pick, yours included.
-    Same simulated postseasons for every row, so differences are paired.${f.payouts.length ? '' : ' Enter payouts to rank by EV.'}
+    Same simulated postseasons for every row, so differences are paired.
     <b>Wk1</b>: his chance to play wild-card week. <b>In</b>, <b>Bye</b>, <b>G</b>: his team's chance to make the playoffs, to have a round-1 bye (zero in round 1), and its expected games.
     ${nTie > 1 ? `<b>≈</b> ${nTie} rows within ${Math.round((1 - PlayoffRec.TIE_RATIO) * 100)}% of the top's value: inside the simulator's noise, so their order means little and any of them is a fair pick.`
       : `No other row is within ${Math.round((1 - PlayoffRec.TIE_RATIO) * 100)}% of the top's value.`}
@@ -1112,7 +1113,7 @@ function saveMock(v) {
   if (list.some(m => m.id === S.mockId)) return;
   const P = S.ctx.players;
   const rec = { kind: 'bba-playoff-mock', v: 1, id: S.mockId, at: new Date().toISOString(),
-    preset: $('preset').value, payouts: $('payouts').value.trim(), seat: S.mySeat + 1,
+    preset: $('preset').value, seat: S.mySeat + 1,
     adp: S.adpSource === 'dk' ? { src: 'dk', dg: S.pool.draft_group_id, fetched_at: S.pool.fetched_at } : { src: 'synthetic' },
     data_at: S.data.uploaded_at || null, page_final: v ? +v.pFinal.toFixed(5) : null,
     stackers: stackerSeats(),
@@ -1176,10 +1177,8 @@ function showFormatNote() {
   const f = PlayoffRec.PRESETS[$('preset').value];
   $('formatNote').innerHTML = `as reported by ${esc(f.source)} — confirm rounds, lineup and prizes in the lobby`
     + (f.warning ? `<br><span class="bad">${esc(f.warning)}</span>` : f.measured ? `<br><span class="k">${esc(f.measured)}</span>` : '');
-  if (!$('payouts').value && f.payouts.length) $('payouts').placeholder = f.payouts.map(([a, b, x]) => `${a === b ? a : a + '-' + b}:${x}`).join(', ');
 }
 $('preset').onchange = () => { showFormatNote(); S.field = null; save(); ensureField(); refresh(); };
-$('payouts').onchange = () => refresh();
 $('avoid').onchange = () => {
   try { sessionStorage.setItem('bba_playoff_avoid', $('avoid').value); } catch {}
   renderExposure(); refresh();
