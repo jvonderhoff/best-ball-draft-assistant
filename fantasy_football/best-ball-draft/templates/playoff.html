@@ -46,6 +46,12 @@
     th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
     td { padding: 5px 6px; border-bottom: 1px solid var(--row-border); white-space: nowrap; }
     td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+    #teams th.sort { cursor: pointer; user-select: none; }
+    #teams th.sort.on { color: var(--accent); }
+    #teams th.sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    #teams h3.conf { margin: 10px 0 4px; font-size: 14px; }
+    #teams h3.conf.AFC { color: var(--red); } #teams h3.conf.NFC { color: var(--accent); }
+    #teams table.teamsT { width: 100%; }
     tr.click { cursor: pointer; } tr.click:hover { background: var(--hover); }
     tr.top td { background: var(--card-hi); }
     .pos { display: inline-block; min-width: 24px; font-weight: 700; font-size: 0.85em; }
@@ -197,8 +203,8 @@
         <div id="exposure" class="msg"></div>
       </div>
       <div class="card full" id="teamsCard">
-        <h2>Teams <small>chance to play each round</small></h2>
-        <table id="teams"></table>
+        <h2>Teams <small>chance to play each round · click a column to sort</small></h2>
+        <div id="teams"></div>
       </div>
     </div>
   </div>
@@ -1076,16 +1082,47 @@ function renderAvail() {
   for (const tr of $('avail').querySelectorAll('tr.click')) tr.onclick = () => draft(+tr.dataset.idx);
 }
 
+/* The Teams table, one per conference (only same-conference teams can knock each
+ * other out before the Super Bowl), sortable by any column. Default: In (P makes
+ * the playoffs) mid-season, Win once the field is set and there is no In column.
+ * The sort is kept for the life of the page, not saved. */
+const TEAM_COLS = [
+  { key: 'team', label: 'Team', num: false },
+  { key: 'make', label: 'In', title: 'P(makes the playoffs)', odds: true },
+  { key: 'bye', label: 'Bye', title: 'P(first-round bye)', odds: true },
+  { key: 'WC', label: 'WC' }, { key: 'DIV', label: 'DIV' }, { key: 'CON', label: 'CON' },
+  { key: 'SB', label: 'SB' }, { key: 'champ', label: 'Win' },
+];
+let teamSort = null;
 function renderTeams() {
   const b = S.data.bracket, seedOf = {};
   for (const [c, ts] of Object.entries(b.seeds)) ts.forEach((t, i) => { seedOf[t] = c[0] + (i + 1); });
   const odds = b.odds;
-  // Mid-season: P(make) and P(bye) lead, and the seed is today's, labelled "now".
-  const head = odds ? '<th class="n" title="P(makes the playoffs)">In</th><th class="n" title="P(first-round bye)">Bye</th>' : '';
-  $('teams').innerHTML = `<tr><th>Team${odds ? ' <span class="k">seed now</span>' : ''}</th>${head}<th class="n">WC</th><th class="n">DIV</th><th class="n">CON</th><th class="n">SB</th><th class="n">Win</th></tr>`
-    + Object.entries(b.reach).filter(([t]) => !odds || (odds[t] && odds[t].make >= 0.005)).map(([t, d]) => `<tr><td>${t} <span class="k">${seedOf[t] || ''}</span></td>
-      ${odds ? `<td class="n">${pct(odds[t].make, 0)}</td><td class="n">${pct(odds[t].bye, 0)}</td>` : ''}
-      ${['WC', 'DIV', 'CON', 'SB', 'champ'].map(r => `<td class="n">${d[r] === 0 ? '<span class="bye">—</span>' : pct(d[r], 0)}</td>`).join('')}</tr>`).join('');
+  const cols = TEAM_COLS.filter(c => !c.odds || odds);
+  if (!teamSort || !cols.some(c => c.key === teamSort.key)) teamSort = { key: odds ? 'make' : 'champ', dir: -1 };
+  // Mid-season: teams with no real chance (under 0.5% to make it) are left out, as before.
+  const rows = Object.entries(b.reach).filter(([t]) => !odds || (odds[t] && odds[t].make >= 0.005))
+    .map(([t, d]) => ({ team: t, conf: S.ctx.conf[t] || '', make: odds ? odds[t].make : null, bye: odds ? odds[t].bye : null,
+      WC: d.WC, DIV: d.DIV, CON: d.CON, SB: d.SB, champ: d.champ }));
+  const { key, dir } = teamSort;
+  const cmp = (x, y) => key === 'team' ? dir * x.team.localeCompare(y.team) : dir * ((x[key] ?? -1) - (y[key] ?? -1)) || x.team.localeCompare(y.team);
+  const head = cols.map(c => `<th class="${c.num === false ? '' : 'n'} sort${c.key === key ? ' on' : ''}" data-key="${c.key}" tabindex="0"
+      ${c.title ? `title="${c.title}"` : ''} aria-sort="${c.key === key ? (dir < 0 ? 'descending' : 'ascending') : 'none'}">${c.label}${c.key === key ? (dir < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('');
+  const cell = (r, c) => c.key === 'team' ? `<td>${r.team} <span class="k">${seedOf[r.team] || ''}</span></td>`
+    // A dash only where 0 means a bye (wild-card week); elsewhere 0 is just 0%.
+    : `<td class="n">${r[c.key] === 0 && c.key === 'WC' ? '<span class="bye" title="first-round bye">—</span>' : pct(r[c.key], 0)}</td>`;
+  $('teams').innerHTML = ['AFC', 'NFC'].map(conf => `<h3 class="conf ${conf}">${conf}${odds ? ' <span class="k">seed now</span>' : ''}</h3>
+    <table class="teamsT"><tr>${head}</tr>${rows.filter(r => r.conf === conf).sort(cmp)
+      .map(r => `<tr>${cols.map(c => cell(r, c)).join('')}</tr>`).join('')}</table>`).join('');
+  for (const th of $('teams').querySelectorAll('th.sort')) {
+    const go = () => {
+      const k = th.dataset.key;
+      teamSort = { key: k, dir: teamSort.key === k ? -teamSort.dir : (k === 'team' ? 1 : -1) };
+      renderTeams();
+    };
+    th.onclick = go;
+    th.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+  }
 }
 
 function renderFinal() {
