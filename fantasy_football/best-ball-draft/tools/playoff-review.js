@@ -3,6 +3,7 @@
  *
  *   node tools/playoff-review.js mock.json            # the JSON "Copy for review" gives
  *   pbpaste | node tools/playoff-review.js -
+ *   node tools/playoff-review.js --draft 198275001   # a REAL draft the server saved (My teams)
  *   node tools/playoff-review.js mock.json --data ../projections/data   # local inputs, not production's
  *   node tools/playoff-review.js mock.json --completions 12 --no-alt    # quicker
  *
@@ -37,7 +38,7 @@ const Rec = require(path.join(__dirname, '..', 'static', 'recommender-playoff.js
 const argv = process.argv.slice(2);
 const flag = k => argv.includes('--' + k);
 const opt = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : d; };
-const VALUED = new Set(['--server', '--worlds', '--completions', '--alt-completions', '--data']);
+const VALUED = new Set(['--server', '--worlds', '--completions', '--alt-completions', '--data', '--draft']);
 const file = argv.find((a, i) => (a === '-' || !a.startsWith('--')) && !VALUED.has(argv[i - 1]));
 const SERVER = opt('server', 'https://best-ball-draft-assistant.onrender.com');
 const N = parseInt(opt('worlds', '2000'), 10);
@@ -68,8 +69,29 @@ function readMock() {
   return m;
 }
 
+/* A REAL draft, as the server saved it (/api/playoff/drafts, My teams), in the
+ * shape a practice draft has. Before 2026-11-27 a real board had to be turned into
+ * that JSON by hand (198275001); --draft <DK contest id> reads it directly. The
+ * contest's preset comes from its DK name, as My teams scores it. */
+async function fromServer(id) {
+  const d = (await getJson(`${SERVER}/api/playoff/drafts`)).drafts.find(x => String(x.draft_id) === String(id));
+  if (!d) throw new Error(`draft ${id} is not saved on ${SERVER} (was the BBA bookmark running?)`);
+  if (!d.complete) console.log(`WARNING: draft ${id} is not finished (${d.picks.length} of ${d.slots} picks).`);
+  const c = String(d.contest || '').toLowerCase();
+  const preset = Object.entries(Rec.PRESETS).find(([, f]) => {
+    const w = f.label.split('·')[0].replace(/^\$[\d.]+[KM]?\s*/i, '').trim().toLowerCase();
+    return w && c.includes(w);
+  });
+  if (!preset) console.log(`WARNING: contest "${d.contest || '?'}" matches no preset; reviewing as play-action.`);
+  const picks = d.picks.slice().sort((a, b) => a.pick_number - b.pick_number);
+  return { kind: 'bba-playoff-mock', v: 1, id: `dk${d.draft_id}`, at: new Date(1000 * (d.first_seen || d.updated_at)).toISOString(),
+    preset: preset ? preset[0] : 'play-action', seat: d.my_position,
+    adp: d.draft_group_id ? { src: 'dk', dg: d.draft_group_id } : { src: 'synthetic' }, data_at: null, page_final: null,
+    picks: picks.map(p => ({ n: p.player_name, t: p.team, g: p.gsis_id })) };
+}
+
 async function main() {
-  const mock = readMock();
+  const mock = opt('draft') ? await fromServer(opt('draft')) : readMock();
   let data, pool = null, source;
   if (opt('data')) {
     const dir = opt('data');
