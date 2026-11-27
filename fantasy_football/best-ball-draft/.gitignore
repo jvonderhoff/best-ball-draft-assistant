@@ -28,6 +28,8 @@ app/data/pushed_playoff.json
 app/data/pushed_playoff_pools.json
 # DK playoff ADP pulled for the tools (tools/playoff-adp.js)
 tools/.playoff-adp/
+# Real DK playoff boards, named (live relay / bookmarklet), for calibrating the bots
+tools/.playoff-boards/
 tools/replay-draft.json
 
 # Local backups taken before data refreshes
