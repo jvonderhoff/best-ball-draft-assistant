@@ -1084,7 +1084,11 @@ $('connectBtn').onclick = async () => {
   clearTimeout(S.pollTimer);
   S.pollToken = (S.pollToken || 0) + 1;
   if (!S.draftId) return;
-  S.picks = []; S.picksMade = 0; S.lastPull = null; S.dkAge = null; S.poolTried = false;
+  // picksMade -1, not 0: the first pull must count as a change. At 0, a draft
+  // followed before its first pick (0 picks = 0 picks) never re-rendered, and the
+  // page kept showing the previous practice mock's roster and recommendations as
+  // if they were this draft's (the user, draft 198275001, 2026-11-26).
+  S.picks = []; S.picksMade = -1; S.lastPull = null; S.dkAge = null; S.poolTried = false;
   pollLoop(S.pollToken);
 };
 // The bookmark carries this server's origin, so it sends to whichever copy of
