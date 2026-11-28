@@ -11,6 +11,29 @@ internals) and `V2_DESIGN.md` (the model, and §4 the dead ends).
 
 ---
 
+## 2026-11-27: playoff — a stack bonus builds bigger stacks and does NOT win the final more; not shipped
+
+100 replays (seeds 300-399, `explain-drafts2`-style scratch script) showed the tool's
+rosters with a 5+ player stack winning the final ~5x as often as 3-stacks (0.39% vs
+0.07%) while reaching it only ~1.3x as often. That was a correlation — the big stacks
+were the drafts where one team's players fell — so it was tested as a cause:
+`tools/playoff-automock.js --stack-bonus b` (harness only) picks by
+`pFinal x (1 + b x teammates already on my roster)`. 20 paired drafts (seeds 400-419),
+play-action, DK ADP (156836, 2026-11-27), all-ADP room, scored on fresh worlds:
+
+| arm | win group | reach final | win final | biggest stack |
+|---|---|---|---|---|
+| no bonus (today) | 37.5% | 2.68% | 0.212% | 4.3 |
+| b = 0.10 | 31.7% | 2.27% | 0.197% | 4.9 |
+| b = 0.25 | 29.7% | 1.96% | 0.206% | 5.1 |
+
+Paired vs no bonus: reach final -0.40 pts (se 0.12, worse 16 of 20) and -0.72
+(se 0.13, worse 17 of 20); win final -0.015 (se 0.033) and -0.007 (se 0.044), 9 better
+/ 11 worse in both. **The bonus buys the stack and pays for it in reach-final; win-final
+does not move.** The big-stack effect in the replays is what a stack that FALLS to you
+is worth, not one you force. Same lesson as V2_DESIGN §4 (forced roster shape) and the
+payouts test above: do not add a stack term to the playoff recommender.
+
 ## 2026-11-27: playoff — ranking by payouts (expected winnings) is much WORSE; leave Payouts blank
 
 Asked: winning money is about placing high in the FINAL, and the tool ranks by P(reach

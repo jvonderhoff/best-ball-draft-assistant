@@ -115,6 +115,10 @@ function main() {
   // and the room the recommender assumes (--model-share), each 0 = all ADP bots.
   const roomShare = parseFloat(opt('room-share', '0')), modelShare = parseFloat(opt('model-share', '0'));
   const tag = opt('tag');
+  // --stack-bonus b (harness only, 2026-11-27): pick by pFinal x (1 + b x teammates already
+  // on my roster) instead of pFinal. Tests whether pushing bigger stacks wins the final
+  // more; the 100 replays showed it only as a correlation. The page is untouched.
+  const stackBonus = parseFloat(opt('stack-bonus', '0'));
   const model = modelShare ? { share: modelShare } : undefined;
   const out = opt('out');
   const ctx = Sim.build(data.bracket, data.players);
@@ -156,7 +160,13 @@ function main() {
           if (idx === undefined) continue;
         } else {
           const board = { mySeat: me, rosters: rosters.map(r => r.slice()), taken: taken.slice(), nextPick: pick };
-          const res = Rec.recommend(ctx, worlds, adp, field, format, board, { completions: M, seed: 1000, room: model }).results;
+          let res = Rec.recommend(ctx, worlds, adp, field, format, board, { completions: M, seed: 1000, room: model }).results;
+          if (stackBonus) {
+            const mine = {};
+            for (const i of rosters[me]) mine[P[i].team] = (mine[P[i].team] || 0) + 1;
+            const adj = r => r.pFinal * (1 + stackBonus * (mine[P[r.idx].team] || 0));
+            res = res.slice().sort((a, b) => adj(b) - adj(a));
+          }
           const top = res[0];
           // The page's Next for the top row: if I take the second row now, is the top there next time?
           const svAlt = res[1] ? Rec.survival(ctx, adp, board, format, res[1].idx, { room: model }) : null;
@@ -191,7 +201,7 @@ function main() {
       for (const i of rosters[me]) tm[P[i].team] = (tm[P[i].team] || 0) + 1;
       const top = Object.entries(tm).sort((a, b) => b[1] - a[1])[0];
       const rec = {
-        draft: d, policy, run: tag || policy, adp: adpFile ? path.basename(adpFile) : 'synthetic', roomShare, modelShare, seat: me,
+        draft: d, policy, run: tag || policy, stackBonus, adp: adpFile ? path.basename(adpFile) : 'synthetic', roomShare, modelShare, seat: me,
         botStacks: rosters.map((r, k) => {
           const c = {}; for (const i of r) c[P[i].team] = (c[P[i].team] || 0) + 1;
           return { seat: k, style: styles[k], max: Math.max(0, ...Object.values(c)) };
