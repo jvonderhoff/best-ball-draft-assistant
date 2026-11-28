@@ -62,10 +62,12 @@ node tools/playoff-lab.js --summary lab.jsonl
 | 11 | From round 10, rank by win-final | `latewin:10` | untested | |
 | 12 | More compute per pick: 48 simulated drafts | `compute:48` | untested | |
 | 13 | QB cap 1 on DK's real ADP (only tested on synthetic) | `qbcap:1` | untested | |
-| 14 | Room stacks for real: does the tool's edge hold? | `--room-share 0.4`, control | untested | |
-| 15 | Leverage: favour teams the room is under-drafting | (arm to write) | untested | |
-| 16 | Bring-back: favour the likely Super Bowl opponent of my main stack | (arm to write) | untested | |
-| 17 | Commit early: a main team by round 3, Build-around from then | (arm to write) | untested | |
+| 14 | Room stacks for real: does the tool's edge hold? | `--room-share 0.4`, control | **HOLDS**: me vs the room's mean seat, paired by draft: win group 38.6% vs 12.3% (+26.3, se 2.7), reach final 2.32% vs 0.45% (+1.87, se 0.18, 5.1x), win final 0.067% vs 0.008% (+0.058, se 0.016); 10/10 drafts on all three. Stamp 392697b373 (661 players), seeds 500-509, n 10. Bots' mean mixes 2 stackers + 3 ADP seats | 2026-11-27 |
+| 15 | Leverage: favour teams the room is under-drafting (vs an ADP room by now) | `lev:0.1` | untested | |
+| 16 | Bring-back: favour the likely Super Bowl opponent of my main stack | `bring:0.15` | untested | |
+| 17 | Commit early: a main team by round 3, Build-around from then | `commit:0.1` | untested | |
+
+Seed ranges used by the lab (never reuse): 500-509 (row 14), 510-519 (screen of rows 10-13, 15-17).
 
 Add a row when a theory is proposed, even before it runs. When it runs, record the
 command's stamp, seeds, n, and the paired numbers — enough that the result can be
