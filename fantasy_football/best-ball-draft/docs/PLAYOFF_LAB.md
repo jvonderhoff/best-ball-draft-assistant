@@ -58,16 +58,16 @@ node tools/playoff-lab.js --summary lab.jsonl
 | 7 | Assume 40% of the room stacks | automock `--model-share 0.4` | **UNRESOLVED**: sim +0.30 pts final (se 0.13); real postseasons 5/10 | 2026-11-25 |
 | 8 | Rank by expected winnings (top-heavy table) | automock `--payouts` | **LOST**: final 2.83% → 1.15%, win final 0.22% → 0.12%, 15 of 20 worse | 2026-11-27 |
 | 9 | Stack bonus: pFinal × (1 + b × teammates) | `stack:0.1`, `stack:0.25` | **LOST**: final −0.40 (se 0.12) / −0.72 (se 0.13); win final flat (−0.015 se 0.033) | 2026-11-27 |
-| 10 | Lean toward winning: pFinal^(1−a) × pWin^a | `win:0.25` | untested | |
-| 11 | From round 10, rank by win-final | `latewin:10` | untested | |
-| 12 | More compute per pick: 48 simulated drafts | `compute:48` | untested | |
-| 13 | QB cap 1 on DK's real ADP (only tested on synthetic) | `qbcap:1` | untested | |
+| 10 | Lean toward winning: pFinal^(1−a) × pWin^a | `win:0.25` | **LOST** (screen): final −0.32 (se 0.15) 3/7, win final −0.014 (se 0.022) 4/6. Screen, seeds 510-519, n 10, stamp 392697b373 (661 players), all-ADP room | 2026-11-27 |
+| 11 | From round 10, rank by win-final | `latewin:10` | **LOST** (screen): final −0.26 (se 0.09) 1/7, win final −0.021 (se 0.017) 3/5. Screen, seeds 510-519, n 10, stamp 392697b373 (661 players), all-ADP room | 2026-11-27 |
+| 12 | More compute per pick: 48 simulated drafts | `compute:48` | **NO EFFECT** (screen): final −0.00 (se 0.10) 4/4, win final −0.036 (se 0.032), 7.1 picks differ. 24 completions are enough. Screen, seeds 510-519, n 10, stamp 392697b373 (661 players), all-ADP room | 2026-11-27 |
+| 13 | QB cap 1 on DK's real ADP (only tested on synthetic) | `qbcap:1` | **LOST** (screen): final −0.44 (se 0.11) 0/9, win final −0.046 (se 0.013) 1/8; agrees with row 2. Screen, seeds 510-519, n 10, stamp 392697b373 (661 players), all-ADP room | 2026-11-27 |
 | 14 | Room stacks for real: does the tool's edge hold? | `--room-share 0.4`, control | **HOLDS**: me vs the room's mean seat, paired by draft: win group 38.6% vs 12.3% (+26.3, se 2.7), reach final 2.32% vs 0.45% (+1.87, se 0.18, 5.1x), win final 0.067% vs 0.008% (+0.058, se 0.016); 10/10 drafts on all three. Stamp 392697b373 (661 players), seeds 500-509, n 10. Bots' mean mixes 2 stackers + 3 ADP seats | 2026-11-27 |
-| 15 | Leverage: favour teams the room is under-drafting (vs an ADP room by now) | `lev:0.1` | untested | |
-| 16 | Bring-back: favour the likely Super Bowl opponent of my main stack | `bring:0.15` | untested | |
-| 17 | Commit early: a main team by round 3, Build-around from then | `commit:0.1` | untested | |
+| 15 | Leverage: favour teams the room is under-drafting (vs an ADP room by now) | `lev:0.1` | **NO EFFECT** (screen; all worse, none past 2 se): final −0.32 (se 0.20) 2/8, group −2.6 (se 1.4), win final −0.043 (se 0.042). Screen, seeds 510-519, n 10, stamp 392697b373 (661 players), all-ADP room | 2026-11-27 |
+| 16 | Bring-back: favour the likely Super Bowl opponent of my main stack | `bring:0.15` | **LOST** (screen): win final −0.038 (se 0.016) 2/7 — the number it was meant to raise; final −0.20 (se 0.13), group −3.6 (se 1.6). Screen, seeds 510-519, n 10, stamp 392697b373 (661 players), all-ADP room | 2026-11-27 |
+| 17 | Commit early: a main team by round 3, Build-around from then | `commit:0.1` | screen survivor (seeds 510-519): final −0.10 (se 0.09), win final +0.018 (se 0.014) 4/2, group −1.6 (se 0.7); confirm running | |
 
-Seed ranges used by the lab (never reuse): 500-509 (row 14), 510-519 (screen of rows 10-13, 15-17).
+Seed ranges used by the lab (never reuse): 500-509 (row 14), 510-519 (screen of rows 10-13, 15-17), 520-559 (confirm of row 17).
 
 Add a row when a theory is proposed, even before it runs. When it runs, record the
 command's stamp, seeds, n, and the paired numbers — enough that the result can be
